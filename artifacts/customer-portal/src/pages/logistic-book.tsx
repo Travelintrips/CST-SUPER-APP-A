@@ -189,7 +189,9 @@ function calcResult(calcType: string, state: CalcState): Record<string, unknown>
   }
 }
 
-function CalculatorForm({ item, onAdd, onBack, transportMode, truckType, origin, destination }: {
+interface CompanyOrigin { name: string; address: string; originCity: string; originAirport: string; originPort: string; }
+
+function CalculatorForm({ item, onAdd, onBack, transportMode, truckType, origin, destination, companyOrigin }: {
   item: ServiceItem;
   onAdd: (data: Omit<CartItem, "cartId">) => void;
   onBack: () => void;
@@ -197,10 +199,22 @@ function CalculatorForm({ item, onAdd, onBack, transportMode, truckType, origin,
   truckType?: string;
   origin?: string;
   destination?: string;
+  companyOrigin?: CompanyOrigin;
 }) {
   const [state, setState] = useState<CalcState>({});
   const [autoRateFetching, setAutoRateFetching] = useState(false);
   const { toast } = useToast();
+
+  // Auto-fill origin airport/port from company defaults
+  useEffect(() => {
+    if (!companyOrigin) return;
+    if (item.calculatorType === "air_freight") {
+      setState(prev => ({ ...prev, originAirport: prev.originAirport || companyOrigin.originAirport }));
+    } else if (item.calculatorType === "sea_fcl") {
+      setState(prev => ({ ...prev, originPort: prev.originPort || companyOrigin.originPort }));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [companyOrigin, item.calculatorType]);
 
   function set(key: string, val: string) {
     setState((prev) => ({ ...prev, [key]: val }));
@@ -274,7 +288,16 @@ function CalculatorForm({ item, onAdd, onBack, transportMode, truckType, origin,
 
         {ct === "air_freight" && <>
           <div className="grid grid-cols-2 gap-3">
-            <div><Label className="text-xs">Origin Airport</Label><Input placeholder="CGK" value={state.originAirport||""} onChange={e => set("originAirport", e.target.value)} /></div>
+            <div>
+              <Label className="text-xs flex items-center gap-1">
+                Origin Airport
+                <span className="ml-auto text-[10px] font-semibold text-orange-600 bg-orange-100 border border-orange-200 rounded px-1.5 py-0.5">Otomatis</span>
+              </Label>
+              <div className="flex items-center gap-2 bg-orange-50 border border-orange-200 rounded-md px-3 py-2 mt-1">
+                <MapPin className="w-3.5 h-3.5 text-orange-500 shrink-0" />
+                <span className="text-xs font-semibold text-slate-800">{state.originAirport || companyOrigin?.originAirport || "CGK"}</span>
+              </div>
+            </div>
             <div><Label className="text-xs">Destination Airport</Label><Input placeholder="SIN" value={state.destinationAirport||""} onChange={e => set("destinationAirport", e.target.value)} /></div>
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -297,7 +320,16 @@ function CalculatorForm({ item, onAdd, onBack, transportMode, truckType, origin,
 
         {ct === "sea_fcl" && <>
           <div className="grid grid-cols-2 gap-3">
-            <div><Label className="text-xs">Origin Port</Label><Input placeholder="IDJKT" value={state.originPort||""} onChange={e => set("originPort", e.target.value)} /></div>
+            <div>
+              <Label className="text-xs flex items-center gap-1">
+                Origin Port
+                <span className="ml-auto text-[10px] font-semibold text-orange-600 bg-orange-100 border border-orange-200 rounded px-1.5 py-0.5">Otomatis</span>
+              </Label>
+              <div className="flex items-center gap-2 bg-orange-50 border border-orange-200 rounded-md px-3 py-2 mt-1">
+                <MapPin className="w-3.5 h-3.5 text-orange-500 shrink-0" />
+                <span className="text-xs font-semibold text-slate-800">{state.originPort || companyOrigin?.originPort || "Tanjung Priok, Jakarta"}</span>
+              </div>
+            </div>
             <div><Label className="text-xs">Destination Port</Label><Input placeholder="SGSIN" value={state.destinationPort||""} onChange={e => set("destinationPort", e.target.value)} /></div>
           </div>
           <div><Label className="text-xs">Container Type</Label>
@@ -461,6 +493,22 @@ export default function BookPage() {
   });
 
   const [fromProduct, setFromProduct] = useState<{ name: string; qty: number; price: number; unit?: string } | null>(null);
+  const [companyOrigin, setCompanyOrigin] = useState<CompanyOrigin | null>(null);
+
+  // Fetch company origin defaults (origin airport, port, city)
+  useEffect(() => {
+    fetch("/api/settings/company-pickup-address")
+      .then(r => r.ok ? r.json() : null)
+      .then((d: { companyName: string; companyAddress: string; originCity?: string; originAirport?: string; originPort?: string } | null) => {
+        setCompanyOrigin(d?.companyAddress ? {
+          name: d.companyName, address: d.companyAddress,
+          originCity: d.originCity ?? "Jakarta",
+          originAirport: d.originAirport ?? "CGK",
+          originPort: d.originPort ?? "Tanjung Priok, Jakarta",
+        } : { name: "CST Logistics", address: "Jl. Logistik No. 1, Jakarta", originCity: "Jakarta", originAirport: "CGK", originPort: "Tanjung Priok, Jakarta" });
+      })
+      .catch(() => setCompanyOrigin({ name: "CST Logistics", address: "Jl. Logistik No. 1, Jakarta", originCity: "Jakarta", originAirport: "CGK", originPort: "Tanjung Priok, Jakarta" }));
+  }, []);
 
   const [customerForm, setCustomerForm] = useState({
     companyName: "", customerName: "", email: "", phone: "",
@@ -481,6 +529,11 @@ export default function BookPage() {
   const [transferTerm, setTransferTerm] = useState<"full" | "termin" | "dp" | "">("");
   const [paymentTerm, setPaymentTerm] = useState<"net7" | "net14" | "net30" | "net60" | "">("");
   const [dpNext, setDpNext] = useState<"lunas-delivery" | "lunas-net30" | "lunas-net60" | "cicil" | "">("");
+  const [quickTrucking, setQuickTrucking] = useState<"detail" | "calculator" | null>(null);
+  const [quickTruckData, setQuickTruckData] = useState<Record<string, string>>({});
+  const [quickTruckEstimate, setQuickTruckEstimate] = useState<number | null>(null);
+  const [quickEstimating, setQuickEstimating] = useState(false);
+  const [quickDeliveryAddressError, setQuickDeliveryAddressError] = useState(false);
 
   // Persist orderType + shipmentType to localStorage whenever they change
   useEffect(() => {
@@ -714,6 +767,16 @@ export default function BookPage() {
       return;
     }
     const truckingItem = cartItems.find(c => c.calculatorType === "trucking");
+    const truckingItemData = (truckingItem?.inputData ?? {}) as Record<string, unknown>;
+    if (truckingItem && !String(truckingItemData.destCity ?? "").trim()) {
+      toast({ title: "Alamat Pengiriman wajib diisi pada item Trucking", variant: "destructive" });
+      return;
+    }
+    const hasProductOnly = cartItems.every(c => c.calculatorType === "product");
+    if (hasProductOnly && !customerForm.shippingAddress?.trim() && !customerForm.destination?.trim()) {
+      toast({ title: "Alamat Pengiriman wajib diisi", variant: "destructive" });
+      return;
+    }
     const truckingInputData = (truckingItem?.inputData ?? {}) as Record<string, unknown>;
     const str = (v: unknown) => (v ? String(v) : "");
     const derivedOrderType: "product" | "service" | "shipment" | null = orderType ?? (
@@ -943,21 +1006,16 @@ export default function BookPage() {
           {quickTrucking === "detail" && (
             <div className="bg-muted/30 rounded-xl border border-border p-5 space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <Label className="text-xs flex items-center gap-1"><Calendar className="w-3 h-3" /> Tanggal Pickup</Label>
-                  <Input type="date" value={quickTruckData.pickupDate||""} onChange={e => setQuickTruckData(p => ({ ...p, pickupDate: e.target.value }))} />
-                </div>
-                <div>
-                  <Label className="text-xs flex items-center gap-1"><Clock className="w-3 h-3" /> Jam Pickup</Label>
-                  <Input type="time" value={quickTruckData.pickupTime||""} onChange={e => setQuickTruckData(p => ({ ...p, pickupTime: e.target.value }))} />
-                </div>
                 <div className="sm:col-span-2">
                   <Label className="text-xs">Alamat Pickup <span className="text-destructive">*</span></Label>
                   <Textarea rows={2} placeholder="Jl. ..., Kota, Provinsi" value={quickTruckData.pickupAddress||""} onChange={e => setQuickTruckData(p => ({ ...p, pickupAddress: e.target.value }))} />
                 </div>
                 <div className="sm:col-span-2">
                   <Label className="text-xs">Alamat Pengiriman <span className="text-destructive">*</span></Label>
-                  <Textarea rows={2} placeholder="Jl. ..., Kota, Provinsi" value={quickTruckData.deliveryAddress||""} onChange={e => setQuickTruckData(p => ({ ...p, deliveryAddress: e.target.value }))} />
+                  <Textarea rows={2} placeholder="Jl. ..., Kota, Provinsi" value={quickTruckData.deliveryAddress||""}
+                    className={quickDeliveryAddressError ? "border-destructive focus-visible:ring-destructive" : ""}
+                    onChange={e => { setQuickDeliveryAddressError(false); setQuickTruckData(p => ({ ...p, deliveryAddress: e.target.value })); }} />
+                  {quickDeliveryAddressError && <p className="text-[11px] text-destructive mt-1">Alamat pengiriman wajib diisi.</p>}
                 </div>
                 <div>
                   <Label className="text-xs">Nama Kontak</Label>
@@ -967,22 +1025,32 @@ export default function BookPage() {
                   <Label className="text-xs">No. Telepon</Label>
                   <Input type="tel" placeholder="08xxxxxxxxxx" value={quickTruckData.contactPhone||""} onChange={e => setQuickTruckData(p => ({ ...p, contactPhone: e.target.value }))} />
                 </div>
+                <div className="sm:col-span-2">
+                  <Label className="text-xs">Catatan (opsional)</Label>
+                  <Textarea rows={2} placeholder="Instruksi khusus untuk tim pengiriman..." value={quickTruckData.notes||""} onChange={e => setQuickTruckData(p => ({ ...p, notes: e.target.value }))} />
+                </div>
               </div>
               <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 text-xs text-orange-700">
                 💡 Estimasi biaya akan dikonfirmasi oleh tim setelah pesanan masuk.
               </div>
               <Separator />
               <Button className="w-full bg-orange-600 hover:bg-orange-700"
-                disabled={!quickTruckData.pickupAddress?.trim() || !quickTruckData.deliveryAddress?.trim()}
                 onClick={() => {
+                  if (!quickTruckData.deliveryAddress?.trim()) {
+                    setQuickDeliveryAddressError(true);
+                    toast({ title: "Alamat Pengiriman wajib diisi", variant: "destructive" });
+                    return;
+                  }
                   addItem({ category: "Trucking", serviceName: "Trucking — Pickup & Delivery",
                     calculatorType: "trucking",
                     inputData: { pickupCity: quickTruckData.pickupAddress, destCity: quickTruckData.deliveryAddress,
                       vehicleType: "CDD", pickupDate: quickTruckData.pickupDate, pickupTime: quickTruckData.pickupTime,
-                      receiver_name: quickTruckData.contactName, receiver_phone: quickTruckData.contactPhone },
+                      receiver_name: quickTruckData.contactName, receiver_phone: quickTruckData.contactPhone,
+                      notes: quickTruckData.notes },
                     calculationResult: {}, subtotal: 0 });
                   toast({ title: "Trucking ditambahkan ke pesanan" });
                   setQuickTrucking(null); setQuickTruckData({}); setQuickTruckEstimate(null);
+                  setQuickDeliveryAddressError(false);
                   setStep(2);
                 }}>
                 <Plus className="w-4 h-4 mr-2" /> Tambahkan ke Pesanan
@@ -1202,6 +1270,7 @@ export default function BookPage() {
               truckType={customerForm.truckType}
               origin={customerForm.origin}
               destination={customerForm.destination}
+              companyOrigin={companyOrigin ?? undefined}
             />
           )}
         </div>
@@ -1408,14 +1477,6 @@ export default function BookPage() {
                   <Label className="text-xs">Kota Tujuan (Kecamatan)</Label>
                   <Input placeholder="Rungkut, Surabaya" value={f.destDistrict} onChange={e => set("destDistrict", e.target.value)} />
                 </div>
-                <div className="col-span-2 sm:col-span-1">
-                  <Label className="text-xs">Tanggal Pickup</Label>
-                  <Input type="date" value={f.pickupDate} onChange={e => set("pickupDate", e.target.value)} />
-                </div>
-                <div className="col-span-2 sm:col-span-1">
-                  <Label className="text-xs">Jam Pickup</Label>
-                  <Input type="time" value={f.pickupTime} onChange={e => set("pickupTime", e.target.value)} />
-                </div>
                 <div className="col-span-2">
                   <Label className="text-xs">Tipe Unit / Armada</Label>
                   <select
@@ -1439,8 +1500,18 @@ export default function BookPage() {
               {/* ── Air/Sea-specific fields ─── */}
               {hasLogisticService && (f.transportMode === "AIR_FREIGHT" || f.transportMode === "SEA_FREIGHT") && (<>
                 <div className="col-span-2 sm:col-span-1">
-                  <Label className="text-xs">{f.transportMode === "AIR_FREIGHT" ? "Bandara" : "Pelabuhan"} Asal</Label>
-                  <Input placeholder={f.transportMode === "AIR_FREIGHT" ? "CGK / Soekarno-Hatta" : "Tanjung Priok"} value={f.originPort} onChange={e => set("originPort", e.target.value)} />
+                  <Label className="text-xs flex items-center gap-1">
+                    {f.transportMode === "AIR_FREIGHT" ? "Bandara" : "Pelabuhan"} Asal
+                    <span className="ml-auto text-[10px] font-semibold text-orange-600 bg-orange-100 border border-orange-200 rounded px-1.5 py-0.5">Otomatis</span>
+                  </Label>
+                  <div className="flex items-center gap-2 bg-orange-50 border border-orange-200 rounded-md px-3 py-2 mt-1">
+                    <MapPin className="w-3.5 h-3.5 text-orange-500 shrink-0" />
+                    <span className="text-sm text-slate-800 font-medium">
+                      {f.transportMode === "AIR_FREIGHT"
+                        ? (f.originPort || companyOrigin?.originAirport || "CGK")
+                        : (f.originPort || companyOrigin?.originPort || "Tanjung Priok, Jakarta")}
+                    </span>
+                  </div>
                 </div>
                 <div className="col-span-2 sm:col-span-1">
                   <Label className="text-xs">{f.transportMode === "AIR_FREIGHT" ? "Bandara" : "Pelabuhan"} Tujuan</Label>

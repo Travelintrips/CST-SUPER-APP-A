@@ -8,8 +8,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { BarChart2, Download, Trophy, Clock, CheckCircle2, XCircle, Loader2, Timer } from "lucide-react";
+import { ArrowLeft, BarChart2, Download, Trophy, Clock, CheckCircle2, XCircle, Loader2, Timer } from "lucide-react";
 import { exportXlsx } from "@/lib/export";
+import { Link } from "wouter";
 
 interface DriverStat {
   driverId: number;
@@ -108,6 +109,8 @@ export default function LogisticsDriverPerformancePage() {
         {/* Header */}
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
+            <Link href="/logistics/drivers"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
+
             <h1 className="text-2xl font-bold flex items-center gap-2">
               <BarChart2 className="w-6 h-6 text-primary" />
               Laporan Performa Driver

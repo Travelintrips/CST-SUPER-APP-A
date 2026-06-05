@@ -13,9 +13,10 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Trash2, Link2, ExternalLink, Search, BanIcon, RefreshCcw, Copy } from "lucide-react";
+import { ArrowLeft, Trash2, Link2, ExternalLink, Search, BanIcon, RefreshCcw, Copy } from "lucide-react";
 import { format } from "date-fns";
 import { id as idLocale } from "date-fns/locale";
+import { Link } from "wouter";
 
 interface ShortLink {
   id: number;
@@ -153,6 +154,8 @@ export default function ShortLinksPage() {
         <div className="flex items-center gap-3">
           <Link2 className="h-6 w-6 text-primary" />
           <div>
+            <Link href="/settings"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
+
             <h1 className="text-2xl font-bold">Manajemen Short Link</h1>
             <p className="text-muted-foreground text-sm">Kelola semua short link yang dihasilkan sistem</p>
           </div>

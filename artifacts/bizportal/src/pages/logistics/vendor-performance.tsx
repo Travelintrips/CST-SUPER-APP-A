@@ -11,6 +11,7 @@ import {
   CheckCircle, Trophy, Zap, Timer, Shield,
 } from "lucide-react";
 import { Link } from "wouter";
+import { ArrowLeft } from "lucide-react";
 
 const pct = (n: string | null | undefined) =>
   n == null ? "—" : `${Number(n).toFixed(1)}%`;
@@ -92,6 +93,8 @@ export default function VendorPerformancePage() {
       <div className="p-4 md:p-6 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
+            <Link href="/logistics-vendors"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
+
             <h1 className="text-2xl font-bold flex items-center gap-2">
               <Star className="h-6 w-6 text-yellow-500" />
               Vendor Performance & Rating

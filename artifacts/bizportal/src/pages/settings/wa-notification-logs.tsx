@@ -17,6 +17,8 @@ import {
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { id as localeID } from "date-fns/locale";
+import { ArrowLeft } from "lucide-react";
+import { Link } from "wouter";
 
 const DRIVER_CONTEXTS = [
   "fulfillment-driver-assigned",
@@ -160,6 +162,8 @@ export default function WaNotificationLogsPage() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
+            <Link href="/settings"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
+
             <h1 className="text-2xl font-bold flex items-center gap-2">
               <MessageCircle className="w-6 h-6 text-green-600" />
               Monitor WA Driver

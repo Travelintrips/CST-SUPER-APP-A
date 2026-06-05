@@ -1,6 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
-import { seedAccountingDefaults } from "./lib/accountingSeed";
+import { seedAccountingDefaults, seedAdditionalTaxes } from "./lib/accountingSeed";
 import { seedLogisticsServiceItems } from "./lib/seedLogisticsItems";
 import { seedCatalogProducts } from "./lib/seedCatalogProducts";
 import { seedDemoData, seedDemoDrivers } from "./lib/seedDemoData";
@@ -64,10 +64,12 @@ import { expireStaleApprovals } from "./lib/aiGovernance.js";
 import { startDbBackupScheduler } from "./lib/dbBackup.js";
 import { initAlertsBroadcast } from "./lib/alertsBroadcast.js";
 import { warmupMailer } from "./lib/mailer.js";
-import { runSportCenterMigration } from "./modules/sport-center/migration.js";
+import { runSportCenterMigration, runSportCenterAccountCorrection } from "./modules/sport-center/migration.js";
 import { startRecurringExpenseWorker } from "./modules/sport-center/recurringExpenseWorker.js";
+import { startExpenseReminderWorker } from "./lib/expenseReminderWorker.js";
 import { runCostCenterMigration } from "./lib/costCenterMigration.js";
 import { runDriverPodMigration, runDriverAssignmentMigration } from "./routes/driver.js";
+import { runProductVolumeCbmMigration } from "./routes/ecommerce.js";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 
@@ -229,6 +231,18 @@ async function runCriticalPreStartMigrations() {
       END IF;
     END $$;
   `);
+
+  // Add volume_cbm to products (CBM langsung untuk item kapas)
+  await db.execute(sql`
+    DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'products' AND column_name = 'volume_cbm'
+      ) THEN
+        ALTER TABLE products ADD COLUMN volume_cbm NUMERIC(12,4);
+      END IF;
+    END $$;
+  `);
 }
 
 async function startServer() {
@@ -274,6 +288,7 @@ async function startServer() {
   startWorkflowWorker();
   startDriverJobWorker();
   startRecurringExpenseWorker();
+  startExpenseReminderWorker();
   startDbBackupScheduler();
   startWaRetryWorker();
 
@@ -339,6 +354,7 @@ async function startServer() {
     .then(() => runWithRetry("Service template migration", runServiceTemplateMigration))
     .then(() => runWithRetry("Cost Center migration", runCostCenterMigration))
     .then(() => runWithRetry("Sport Center migration", runSportCenterMigration))
+    .then(() => runWithRetry("Sport Center account correction", runSportCenterAccountCorrection))
     .then(() => runWithRetry("Driver POD migration", runDriverPodMigration))
     .then(() => runWithRetry("Driver assignment migration", runDriverAssignmentMigration))
     .then(() => runWithRetry("Vendor company assignments migration", runVendorCompanyAssignmentsMigration))
@@ -347,6 +363,9 @@ async function startServer() {
     }))
     .then(() => seedAccountingDefaults().catch((err) => {
       logger.error({ err }, "Accounting seed failed");
+    }))
+    .then(() => seedAdditionalTaxes().catch((err) => {
+      logger.warn({ err }, "Additional tax seed failed (non-fatal)");
     }))
     .then(() => seedUom().catch((err) => {
       logger.warn({ err }, "UOM seed failed (non-fatal)");

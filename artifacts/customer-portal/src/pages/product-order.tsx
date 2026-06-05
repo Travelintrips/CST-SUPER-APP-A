@@ -29,6 +29,8 @@ interface PortalProduct {
   id: number; name: string; sku: string; price: number;
   unit: string | null; description: string | null;
   imageUrl: string | null; subcategory: string | null; stock: number;
+  weightKg: number | null; lengthCm: number | null; widthCm: number | null;
+  heightCm: number | null; goodsType: string | null;
 }
 
 interface CartItem { product: PortalProduct; qty: number; }
@@ -44,6 +46,7 @@ interface TruckingForm {
   pickupDate: string; pickupTime: string;
   pickupAddress: string; deliveryAddress: string;
   contactName: string; contactPhone: string;
+  notes: string;
   // calculator mode
   origin: string; destination: string;
   weight: string; length: string; width: string; height: string;
@@ -77,10 +80,22 @@ const SERVICES: ServiceItem[] = [
 const INCOTERMS = ["EXW", "FCA", "FOB", "CIF", "DAP", "DDP", "CPT", "CIP"];
 const GOODS_TYPES = ["General Cargo", "Kopi / Hasil Bumi", "Elektronik", "Perishable", "Kimia / B3", "Furniture", "Mesin & Spare-part", "Lainnya"];
 
+const VEHICLE_CAPACITIES_PO = [
+  { type: "CDE",     label: "CDE — Engkel Kecil",   desc: "s/d 1.500 kg",  maxKg: 1_500    },
+  { type: "CDD",     label: "CDD — Engkel Besar",   desc: "s/d 3.000 kg",  maxKg: 3_000    },
+  { type: "Fuso",    label: "Fuso — Truk Medium",   desc: "s/d 8.000 kg",  maxKg: 8_000    },
+  { type: "Wingbox", label: "Wingbox — Truk Besar", desc: "s/d 20.000 kg", maxKg: 20_000   },
+  { type: "Trailer", label: "Trailer",               desc: "> 20.000 kg",   maxKg: Infinity },
+];
+function suggestVehiclePO(weightKg: number): { type: string; label: string; desc: string } {
+  for (const v of VEHICLE_CAPACITIES_PO) { if (weightKg <= v.maxKg) return v; }
+  return VEHICLE_CAPACITIES_PO[VEHICLE_CAPACITIES_PO.length - 1];
+}
+
 const EMPTY_TRUCKING: TruckingForm = {
   mode: "detail",
   pickupDate: "", pickupTime: "", pickupAddress: "", deliveryAddress: "",
-  contactName: "", contactPhone: "",
+  contactName: "", contactPhone: "", notes: "",
   origin: "", destination: "", weight: "", length: "", width: "", height: "",
   goodsType: "", incoterms: "FOB",
 };
@@ -110,6 +125,22 @@ async function submitOrder(body: unknown): Promise<{ orderNumber: string }> {
     throw new Error((err as { message?: string }).message ?? "Gagal mengirim pesanan");
   }
   return res.json();
+}
+
+// ── Vehicle comparison helpers ─────────────────────────────────────────────────
+
+const VEHICLE_RATES_PO: Record<string, { rate: number; min: number; maxKg: number }> = {
+  CDE:     { rate: 3_500, min: 200_000,   maxKg: 1_500      },
+  CDD:     { rate: 2_800, min: 350_000,   maxKg: 3_000      },
+  Fuso:    { rate: 2_200, min: 800_000,   maxKg: 8_000      },
+  Wingbox: { rate: 1_800, min: 2_500_000, maxKg: 20_000     },
+  Trailer: { rate: 1_500, min: 5_000_000, maxKg: Infinity   },
+};
+
+function offlineEstimatePerVehicle(weightKg: number, vehicleType: string, volW: number): number {
+  const chargeable = Math.max(weightKg, volW);
+  const r = VEHICLE_RATES_PO[vehicleType] ?? VEHICLE_RATES_PO["CDD"];
+  return Math.max(r.min, Math.round(chargeable * r.rate));
 }
 
 // ── Simple trucking cost estimator (offline) ──────────────────────────────────
@@ -160,6 +191,41 @@ export default function ProductOrderPage() {
   const [truckingForm, setTruckingForm] = useState<TruckingForm>(EMPTY_TRUCKING);
   const [estimating, setEstimating] = useState(false);
   const [truckingEstimate, setTruckingEstimate] = useState<number | null>(null);
+  const [vehicleComparison, setVehicleComparison] = useState<Array<{ type: string; label: string; desc: string; estimate: number; suitable: boolean }> | null>(null);
+  const [apiRates, setApiRates] = useState<Array<{ type: string; label: string; description: string; max_kg: string | null; rate_per_kg: string; min_price: string }> | null>(null);
+  const [deliveryAddressError, setDeliveryAddressError] = useState(false);
+  const [checkoutAddressError, setCheckoutAddressError] = useState(false);
+  const [companyOrigin, setCompanyOrigin] = useState<{ name: string; address: string; originCity: string; originAirport: string; originPort: string } | null>(null);
+
+  useEffect(() => {
+    fetch(`${BASE}/api/trucking-rates`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (Array.isArray(d) && d.length > 0) setApiRates(d); })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetch(`${BASE}/api/settings/company-pickup-address`)
+      .then(r => r.ok ? r.json() : null)
+      .then((d: { companyName: string; companyAddress: string; originCity?: string; originAirport?: string; originPort?: string } | null) => {
+        setCompanyOrigin(d?.companyAddress ? {
+          name: d.companyName, address: d.companyAddress,
+          originCity: d.originCity ?? "Jakarta",
+          originAirport: d.originAirport ?? "CGK",
+          originPort: d.originPort ?? "Tanjung Priok, Jakarta",
+        } : { name: "CST Logistics", address: "Jl. Logistik No. 1, Jakarta", originCity: "Jakarta", originAirport: "CGK", originPort: "Tanjung Priok, Jakarta" });
+      })
+      .catch(() => setCompanyOrigin({ name: "CST Logistics", address: "Jl. Logistik No. 1, Jakarta", originCity: "Jakarta", originAirport: "CGK", originPort: "Tanjung Priok, Jakarta" }));
+  }, []);
+
+  useEffect(() => {
+    if (!companyOrigin) return;
+    setTruckingForm(f => ({
+      ...f,
+      pickupAddress: f.pickupAddress || companyOrigin.address,
+      origin: f.origin || companyOrigin.originCity,
+    }));
+  }, [companyOrigin]);
 
   useEffect(() => {
     fetch(`${BASE}/api/portal-product/templates`)
@@ -205,9 +271,51 @@ export default function ProductOrderPage() {
     setCart(prev => prev.filter(i => i.product.id !== productId));
   }
 
+  // ── Auto-compute cart shipping specs ────────────────────────────────────────
+  const cartHasWeight = cart.some(i => i.product.weightKg != null);
+  const cartAutoWeight = cartHasWeight
+    ? cart.reduce((sum, item) => sum + (item.product.weightKg ?? 0) * item.qty, 0)
+    : cart.reduce((sum, item) => sum + item.qty, 0); // fallback: 1 kg per qty
+
+  // Find item with largest volume for auto-dimensions
+  const cartDimItem = cart.reduce<CartItem | null>((best, item) => {
+    const vol = (item.product.lengthCm ?? 0) * (item.product.widthCm ?? 0) * (item.product.heightCm ?? 0);
+    const bestVol = best ? (best.product.lengthCm ?? 0) * (best.product.widthCm ?? 0) * (best.product.heightCm ?? 0) : 0;
+    return vol > bestVol ? item : best;
+  }, null);
+  const cartHasDims = cartDimItem != null &&
+    (cartDimItem.product.lengthCm ?? 0) > 0 &&
+    (cartDimItem.product.widthCm ?? 0) > 0 &&
+    (cartDimItem.product.heightCm ?? 0) > 0;
+
+  // Auto goods type: prefer product-level goodsType, then derive from subcategory
+  const cartAutoGoodsType = (() => {
+    const explicit = cart.find(i => i.product.goodsType)?.product.goodsType;
+    if (explicit) return explicit;
+    const sub = cart[0]?.product.subcategory?.toLowerCase() ?? "";
+    if (sub.includes("elektronik")) return "Elektronik";
+    if (sub.includes("kopi") || sub.includes("bumi") || sub.includes("tani")) return "Kopi / Hasil Bumi";
+    if (sub.includes("mesin") || sub.includes("spare")) return "Mesin & Spare-part";
+    if (sub.includes("furniture") || sub.includes("furni")) return "Furniture";
+    if (sub.includes("kimia") || sub.includes("b3")) return "Kimia / B3";
+    return "General Cargo";
+  })();
+  const cartTotalQty = cart.reduce((s, i) => s + i.qty, 0);
+
   function handleSelectService(svc: ServiceItem) {
     if (svc.isTrucking) {
-      setTruckingForm(EMPTY_TRUCKING);
+      const autoWeight = Math.round(cartAutoWeight * 1000) / 1000;
+      setTruckingForm({
+        ...EMPTY_TRUCKING,
+        mode: "calculator",
+        origin: companyOrigin?.originCity ?? "Jakarta",
+        pickupAddress: companyOrigin?.address ?? "",
+        weight: String(autoWeight > 0 ? autoWeight : cartTotalQty),
+        length: cartHasDims ? String(cartDimItem!.product.lengthCm!) : "",
+        width:  cartHasDims ? String(cartDimItem!.product.widthCm!)  : "",
+        height: cartHasDims ? String(cartDimItem!.product.heightCm!) : "",
+        goodsType: cartAutoGoodsType,
+      });
       setTruckingEstimate(null);
       setStep("trucking");
     } else {
@@ -218,25 +326,70 @@ export default function ProductOrderPage() {
 
   function handleEstimateTrucking() {
     setEstimating(true);
+    setVehicleComparison(null);
     setTimeout(() => {
-      const est = estimateTruckingCost(truckingForm);
-      setTruckingEstimate(est);
+      const w  = parseFloat(truckingForm.weight) || 0;
+      const l  = parseFloat(truckingForm.length) || 0;
+      const wi = parseFloat(truckingForm.width)  || 0;
+      const h  = parseFloat(truckingForm.height) || 0;
+      const volW = (l && wi && h) ? (l * wi * h) / 4000 : 0;
+      const vehicleList = (apiRates && apiRates.length > 0)
+        ? apiRates.map(r => ({
+            type:   r.type,
+            label:  r.label,
+            desc:   r.description,
+            maxKg:  r.max_kg != null ? Number(r.max_kg) : Infinity,
+            rate:   Number(r.rate_per_kg),
+            min:    Number(r.min_price),
+          }))
+        : Object.entries(VEHICLE_RATES_PO).map(([type, r]) => ({
+            type,
+            label: VEHICLE_CAPACITIES_PO.find(v => v.type === type)?.label ?? type,
+            desc:  VEHICLE_CAPACITIES_PO.find(v => v.type === type)?.desc ?? "",
+            maxKg: r.maxKg,
+            rate:  r.rate,
+            min:   r.min,
+          }));
+      const results = vehicleList.map(v => {
+        const chargeable = Math.max(w, volW);
+        return {
+          type:     v.type,
+          label:    v.label,
+          desc:     v.desc,
+          estimate: Math.max(v.min, Math.round(chargeable * v.rate)),
+          suitable: w <= v.maxKg,
+        };
+      });
+      setVehicleComparison(results);
+      // auto-set estimate for the suggested vehicle
+      const suggested = w > 0 ? suggestVehiclePO(w).type : null;
+      const found = results.find(r => r.type === suggested && r.suitable) ?? results.find(r => r.suitable);
+      if (found) setTruckingEstimate(found.estimate);
       setEstimating(false);
-    }, 600);
+    }, 500);
   }
 
   function handleConfirmTrucking() {
+    if (truckingForm.mode === "detail" && !truckingForm.deliveryAddress.trim()) {
+      setDeliveryAddressError(true);
+      toast({ title: "Alamat Pengiriman wajib diisi", variant: "destructive" });
+      return;
+    }
     const cost = truckingEstimate;
     const summary = truckingForm.mode === "calculator"
       ? `${truckingForm.origin || "Asal"} → ${truckingForm.destination || "Tujuan"}, ${truckingForm.weight} kg`
-      : `${truckingForm.pickupAddress || "Pickup"} → ${truckingForm.deliveryAddress || "Delivery"}, ${truckingForm.pickupDate}`;
+      : `${truckingForm.pickupAddress || "Pickup"} → ${truckingForm.deliveryAddress || "Delivery"}`;
     setSelectedService({ serviceId: "trucking", serviceName: "Trucking", estimatedCost: cost, summaryLine: summary, detail: truckingForm });
     setStep("checkout");
   }
 
   async function handleSubmit() {
-    if (!customerName.trim() || !email.trim() || !phone.trim() || !address.trim()) {
+    if (!customerName.trim() || !email.trim() || !phone.trim()) {
       toast({ title: "Isi semua kolom data pemesan", variant: "destructive" }); return;
+    }
+    if (!address.trim()) {
+      setCheckoutAddressError(true);
+      toast({ title: "Alamat Pengiriman wajib diisi", variant: "destructive" }); return;
     }
     const formErrors = validateTemplatePayload(template, dynamicValues);
     if (formErrors.length > 0) { toast({ title: formErrors[0], variant: "destructive" }); return; }
@@ -458,21 +611,23 @@ export default function ProductOrderPage() {
             <div className="border rounded-xl p-5 bg-card space-y-4">
               <h2 className="font-semibold text-sm flex items-center gap-2"><MapPin className="w-4 h-4 text-orange-500" /> Detail Pickup & Delivery</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <Label className="text-xs flex items-center gap-1"><Calendar className="w-3 h-3" /> Tanggal Pickup</Label>
-                  <Input type="date" value={truckingForm.pickupDate} onChange={e => setTruckingForm(f => ({ ...f, pickupDate: e.target.value }))} />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs flex items-center gap-1"><Clock className="w-3 h-3" /> Jam Pickup</Label>
-                  <Input type="time" value={truckingForm.pickupTime} onChange={e => setTruckingForm(f => ({ ...f, pickupTime: e.target.value }))} />
-                </div>
                 <div className="space-y-1.5 sm:col-span-2">
-                  <Label className="text-xs">Alamat Pickup <span className="text-destructive">*</span></Label>
-                  <Textarea rows={2} placeholder="Jl. ..., Kota, Provinsi" value={truckingForm.pickupAddress} onChange={e => setTruckingForm(f => ({ ...f, pickupAddress: e.target.value }))} />
+                  <Label className="text-xs flex items-center gap-1.5">
+                    <MapPin className="w-3 h-3 text-orange-500" /> Alamat Pickup
+                    <span className="ml-auto text-[10px] font-semibold text-orange-600 bg-orange-100 border border-orange-200 rounded px-1.5 py-0.5">Otomatis</span>
+                  </Label>
+                  <div className="bg-orange-50 border border-orange-200 rounded-lg p-2.5">
+                    <p className="text-xs font-semibold text-slate-800">{companyOrigin?.name ?? "CST Logistics"}</p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">{companyOrigin?.address ?? "Jl. Logistik No. 1, Jakarta"}</p>
+                    <p className="text-[10px] text-orange-600 mt-1">Tim kami yang akan menjemput barang dari lokasi ini.</p>
+                  </div>
                 </div>
                 <div className="space-y-1.5 sm:col-span-2">
                   <Label className="text-xs">Alamat Pengiriman <span className="text-destructive">*</span></Label>
-                  <Textarea rows={2} placeholder="Jl. ..., Kota, Provinsi" value={truckingForm.deliveryAddress} onChange={e => setTruckingForm(f => ({ ...f, deliveryAddress: e.target.value }))} />
+                  <Textarea rows={2} placeholder="Jl. ..., Kota, Provinsi" value={truckingForm.deliveryAddress}
+                    className={deliveryAddressError ? "border-destructive focus-visible:ring-destructive" : ""}
+                    onChange={e => { setDeliveryAddressError(false); setTruckingForm(f => ({ ...f, deliveryAddress: e.target.value })); }} />
+                  {deliveryAddressError && <p className="text-[11px] text-destructive">Alamat pengiriman wajib diisi.</p>}
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs">Nama Kontak</Label>
@@ -482,80 +637,151 @@ export default function ProductOrderPage() {
                   <Label className="text-xs">No. Telepon Kontak</Label>
                   <Input type="tel" placeholder="08xxxxxxxxxx" value={truckingForm.contactPhone} onChange={e => setTruckingForm(f => ({ ...f, contactPhone: e.target.value }))} />
                 </div>
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label className="text-xs">Catatan (opsional)</Label>
+                  <Textarea rows={2} placeholder="Instruksi khusus, info tambahan untuk tim pengiriman..." value={truckingForm.notes} onChange={e => setTruckingForm(f => ({ ...f, notes: e.target.value }))} />
+                </div>
               </div>
               <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 text-xs text-orange-700">
                 💡 Estimasi biaya akan dikonfirmasi oleh tim setelah pesanan masuk.
               </div>
               <Button className="w-full bg-orange-600 hover:bg-orange-700" onClick={handleConfirmTrucking}
-                disabled={!truckingForm.pickupAddress.trim() || !truckingForm.deliveryAddress.trim()}>
+                disabled={!truckingForm.deliveryAddress.trim()}>
                 Tambahkan ke Pesanan <ArrowRight className="w-4 h-4 ml-2" />
               </Button>
             </div>
           )}
 
-          {/* Calculator Mode */}
+          {/* Calculator Mode — customer hanya isi Kota Tujuan */}
           {truckingForm.mode === "calculator" && (
             <div className="border rounded-xl p-5 bg-card space-y-4">
-              <h2 className="font-semibold text-sm flex items-center gap-2"><Calculator className="w-4 h-4 text-orange-500" /> Kalkulator Estimasi Biaya</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <Label className="text-xs flex items-center gap-1"><MapPin className="w-3 h-3" /> Kota Asal <span className="text-destructive">*</span></Label>
-                  <Input placeholder="Jakarta" value={truckingForm.origin} onChange={e => setTruckingForm(f => ({ ...f, origin: e.target.value }))} />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs flex items-center gap-1"><MapPin className="w-3 h-3" /> Kota Tujuan <span className="text-destructive">*</span></Label>
-                  <Input placeholder="Surabaya" value={truckingForm.destination} onChange={e => setTruckingForm(f => ({ ...f, destination: e.target.value }))} />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs flex items-center gap-1"><Weight className="w-3 h-3" /> Berat (kg) <span className="text-destructive">*</span></Label>
-                  <Input type="number" min={0} placeholder="100" value={truckingForm.weight} onChange={e => setTruckingForm(f => ({ ...f, weight: e.target.value }))} />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Jenis Barang</Label>
-                  <Select value={truckingForm.goodsType} onValueChange={v => setTruckingForm(f => ({ ...f, goodsType: v }))}>
-                    <SelectTrigger><SelectValue placeholder="Pilih jenis" /></SelectTrigger>
-                    <SelectContent>{GOODS_TYPES.map(g => <SelectItem key={g} value={g}>{g}</SelectItem>)}</SelectContent>
-                  </Select>
-                </div>
-                <div className="sm:col-span-2">
-                  <Label className="text-xs flex items-center gap-1 mb-1.5"><Ruler className="w-3 h-3" /> Dimensi (cm) — P × L × T</Label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {(["length", "width", "height"] as const).map((key, i) => (
-                      <Input key={key} type="number" min={0} placeholder={["Panjang", "Lebar", "Tinggi"][i]}
-                        value={truckingForm[key]} onChange={e => setTruckingForm(f => ({ ...f, [key]: e.target.value }))} />
-                    ))}
-                  </div>
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Incoterms</Label>
-                  <Select value={truckingForm.incoterms} onValueChange={v => setTruckingForm(f => ({ ...f, incoterms: v }))}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>{INCOTERMS.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
-                  </Select>
-                </div>
+              <h2 className="font-semibold text-sm flex items-center gap-2">
+                <Calculator className="w-4 h-4 text-orange-500" /> Estimasi Biaya Trucking
+              </h2>
+
+              {/* Spesifikasi otomatis dari keranjang */}
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 space-y-2">
+                <p className="text-[11px] font-semibold text-emerald-700 flex items-center gap-1.5">
+                  <Package className="w-3.5 h-3.5" /> Spesifikasi dihitung otomatis dari pesanan Anda
+                </p>
+                {(() => {
+                  const wKg = parseFloat(truckingForm.weight) || 0;
+                  const sugVehicle = wKg > 0 ? suggestVehiclePO(wKg) : null;
+                  return (
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Total Berat</span>
+                        <span className="font-semibold text-slate-800">
+                          {truckingForm.weight} kg
+                          {!cartHasWeight && (
+                            <span className="ml-1 text-[10px] text-amber-600 font-normal">(estimasi)</span>
+                          )}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Jenis Barang</span>
+                        <span className="font-semibold text-slate-800">{truckingForm.goodsType || "General Cargo"}</span>
+                      </div>
+                      {cartHasDims && (
+                        <div className="flex justify-between col-span-2">
+                          <span className="text-slate-500">Dimensi</span>
+                          <span className="font-semibold text-slate-800">
+                            {truckingForm.length} × {truckingForm.width} × {truckingForm.height} cm
+                          </span>
+                        </div>
+                      )}
+                      <div className="flex justify-between col-span-2">
+                        <span className="text-slate-500">Kota Asal</span>
+                        <span className="font-semibold text-slate-800">{truckingForm.origin || companyOrigin?.originCity || "Jakarta"}</span>
+                      </div>
+                      {sugVehicle && (
+                        <div className="flex justify-between col-span-2 pt-1 border-t border-emerald-100">
+                          <span className="text-slate-500 flex items-center gap-1">
+                            <Truck className="w-3 h-3 text-orange-500" /> Kendaraan Disarankan
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <span className="text-orange-500 font-bold text-[10px]">★</span>
+                            <span className="font-semibold text-orange-700">{sugVehicle.type}</span>
+                            <span className="text-slate-400 text-[10px]">({sugVehicle.desc})</span>
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Satu-satunya input: Kota Tujuan */}
+              <div className="space-y-1.5">
+                <Label className="text-sm font-semibold flex items-center gap-1">
+                  <MapPin className="w-4 h-4 text-primary" />
+                  Kota / Alamat Tujuan <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  placeholder="Contoh: Surabaya, Bandung, Medan..."
+                  value={truckingForm.destination}
+                  onChange={e => { setTruckingForm(f => ({ ...f, destination: e.target.value })); setVehicleComparison(null); }}
+                  className="border-primary/40 focus:border-primary text-base"
+                  autoFocus
+                />
+                <p className="text-[11px] text-muted-foreground">Isi kota atau alamat tujuan pengiriman Anda</p>
               </div>
 
               <Button variant="outline" className="w-full border-orange-400 text-orange-600 hover:bg-orange-50"
-                disabled={!truckingForm.origin || !truckingForm.destination || !truckingForm.weight || estimating}
+                disabled={!truckingForm.destination.trim() || estimating}
                 onClick={handleEstimateTrucking}>
-                {estimating ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Menghitung...</> : <><Calculator className="w-4 h-4 mr-2" /> Hitung Estimasi</>}
+                {estimating
+                  ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Menghitung...</>
+                  : <><Calculator className="w-4 h-4 mr-2" /> Bandingkan Semua Kendaraan</>}
               </Button>
 
-              {truckingEstimate !== null && (
-                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 space-y-1">
-                  <p className="text-xs text-emerald-600 font-medium">Estimasi Biaya Trucking</p>
-                  <p className="text-2xl font-bold text-emerald-700">{formatCurrency(truckingEstimate)}</p>
-                  <p className="text-xs text-emerald-500">
-                    {truckingForm.origin} → {truckingForm.destination} · {truckingForm.weight} kg
-                    {truckingForm.length && truckingForm.width && truckingForm.height
-                      ? ` · ${truckingForm.length}×${truckingForm.width}×${truckingForm.height} cm` : ""}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground mt-1">*Estimasi indikatif. Biaya final dikonfirmasi tim logistik.</p>
+              {vehicleComparison && (
+                <div className="rounded-xl border overflow-hidden">
+                  <div className="bg-slate-50 px-4 py-2.5 border-b flex items-center justify-between">
+                    <p className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+                      <Calculator className="w-3.5 h-3.5" /> Perbandingan Kendaraan
+                    </p>
+                    <p className="text-[10px] text-slate-400">
+                      {truckingForm.origin || companyOrigin?.originCity || "Asal"} → {truckingForm.destination} · {truckingForm.weight} kg
+                    </p>
+                  </div>
+                  <div className="divide-y">
+                    {vehicleComparison.map(v => {
+                      const isSelected = truckingEstimate === v.estimate;
+                      const isSuggested = suggestVehiclePO(parseFloat(truckingForm.weight)||0).type === v.type;
+                      return (
+                        <button
+                          key={v.type}
+                          type="button"
+                          disabled={!v.suitable}
+                          className={`w-full text-left px-4 py-3 flex items-center gap-3 transition-colors ${isSelected ? "bg-orange-50" : "hover:bg-slate-50"} ${!v.suitable ? "opacity-40 cursor-not-allowed" : "cursor-pointer"}`}
+                          onClick={() => { if (!v.suitable) return; setTruckingEstimate(v.estimate); }}
+                        >
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              {isSuggested && <span className="text-orange-500 text-xs font-bold">★</span>}
+                              <span className={`text-sm font-semibold ${isSelected ? "text-orange-700" : "text-slate-700"}`}>{v.type}</span>
+                              <span className="text-xs text-slate-400">{v.desc}</span>
+                              {isSuggested && <span className="text-[10px] bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded-full font-semibold">Disarankan</span>}
+                              {!v.suitable && <span className="text-[10px] bg-red-100 text-red-500 px-1.5 py-0.5 rounded-full font-semibold">Melebihi kapasitas</span>}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className={`text-sm font-bold ${isSelected ? "text-orange-600" : "text-slate-700"}`}>{formatCurrency(v.estimate)}</span>
+                            {isSelected && <span className="w-2 h-2 rounded-full bg-orange-500" />}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="bg-slate-50 px-4 py-2 border-t">
+                    <p className="text-[10px] text-slate-400">Klik kendaraan untuk memilih. Biaya final dikonfirmasi tim logistik.</p>
+                  </div>
                 </div>
               )}
 
               <Button className="w-full bg-orange-600 hover:bg-orange-700"
-                disabled={!truckingForm.origin || !truckingForm.destination || !truckingForm.weight}
+                disabled={!truckingForm.destination.trim()}
                 onClick={handleConfirmTrucking}>
                 {truckingEstimate ? "Tambahkan ke Pesanan" : "Tambahkan (Harga Menyusul)"}
                 <ArrowRight className="w-4 h-4 ml-2" />
@@ -699,7 +925,11 @@ export default function ProductOrderPage() {
               </div>
               <div className="space-y-1.5 sm:col-span-2">
                 <Label className="text-xs">Alamat Pengiriman <span className="text-destructive">*</span></Label>
-                <Input value={address} onChange={e => setAddress(e.target.value)} placeholder="Jl. ..., Kota, Provinsi" />
+                <Input value={address}
+                  className={checkoutAddressError ? "border-destructive focus-visible:ring-destructive" : ""}
+                  onChange={e => { setCheckoutAddressError(false); setAddress(e.target.value); }}
+                  placeholder="Jl. ..., Kota, Provinsi" />
+                {checkoutAddressError && <p className="text-[11px] text-destructive">Alamat pengiriman wajib diisi.</p>}
               </div>
               <div className="space-y-1.5 sm:col-span-2">
                 <Label className="text-xs">Catatan Tambahan (opsional)</Label>

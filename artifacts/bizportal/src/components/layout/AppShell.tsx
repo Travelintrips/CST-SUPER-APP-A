@@ -122,6 +122,7 @@ const IS_DEV = import.meta.env.DEV;
 
 interface AppShellProps {
   children: ReactNode;
+  noPadding?: boolean;
 }
 
 interface FlatItem {
@@ -150,7 +151,7 @@ const ALL_ROLES = ["manager", "admin", "owner", "ecommerce", "trading", "logisti
 const getKey = (item: NavItem): string =>
   item.type === "group" ? item.basePath : item.href;
 
-export function AppShell({ children }: AppShellProps) {
+export function AppShell({ children, noPadding }: AppShellProps) {
   const [location] = useLocation();
   const { t } = useLanguage();
   const { activeCompany, isConsolidated } = useCompany();
@@ -304,6 +305,7 @@ export function AppShell({ children }: AppShellProps) {
       icon: Activity,
       roles: ["admin", "owner", "trading"],
       children: [
+        { titleKey: "Biaya Rutin", href: "/expense/routine", icon: Wallet, roles: ["admin", "owner"] },
         { titleKey: "expenseList", href: "/expense", icon: Receipt, roles: ["admin", "owner"] },
         { titleKey: "expenseCategories", href: "/expense/categories", icon: Tags, roles: ["admin", "owner"] },
         { titleKey: "expenseReports", href: "/expense/reports", icon: BarChart2, roles: ["admin", "owner"] },
@@ -337,6 +339,7 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "Dashboard Holding", href: "/holding/dashboard", icon: BarChart2, devOnly: true },
         { titleKey: "Laporan L/R Holding", href: "/holding/pl-report", icon: TrendingUp, devOnly: true },
         { titleKey: "Laporan Arus Kas", href: "/holding/cashflow-report", icon: Wallet, devOnly: true },
+        { titleKey: "Executive Dashboard", href: "/executive", icon: Landmark, roles: ["admin", "owner"] },
       ],
     },
 
@@ -435,6 +438,7 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "Product Templates", href: "/settings/product-templates", icon: Layers },
         { titleKey: "Service Templates", href: "/settings/service-templates", icon: Layers },
         { titleKey: "Secrets & Env Vars", href: "/settings/secrets", icon: KeyRound, roles: ["admin", "owner"] },
+        { titleKey: "Status Sistem", href: "/system-health", icon: Activity, roles: ["admin", "owner"] },
       ],
     },
   ];
@@ -857,7 +861,7 @@ export function AppShell({ children }: AppShellProps) {
               </DropdownMenu>
             </div>
           </div>
-          <div className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8">
+          <div className={noPadding ? "flex-1 overflow-hidden flex flex-col" : "flex-1 overflow-auto p-4 sm:p-6 lg:p-8"}>
             {children}
           </div>
         </main>

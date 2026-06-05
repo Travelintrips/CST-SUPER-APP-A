@@ -24,6 +24,12 @@ import { RecentActivitiesWidget } from "@/components/dashboard/RecentActivitiesW
 import { AiInsightsWidget } from "@/components/dashboard/AiInsightsWidget";
 import { OrderPipelineWidget } from "@/components/dashboard/OrderPipelineWidget";
 import { QuickActionsWidget } from "@/components/dashboard/QuickActionsWidget";
+import { SportCenterWidget } from "@/components/dashboard/SportCenterWidget";
+import { PosWidget } from "@/components/dashboard/PosWidget";
+import { AccountingWidget } from "@/components/dashboard/AccountingWidget";
+import { LogisticsWidget } from "@/components/dashboard/LogisticsWidget";
+import { PurchasingWidget } from "@/components/dashboard/PurchasingWidget";
+import { SalesWidget } from "@/components/dashboard/SalesWidget";
 
 interface ResponseTimeEntry {
   timestamp: string;
@@ -1035,7 +1041,7 @@ export default function DashboardPage() {
 
           <StatCard
             title={t.pos.txCount}
-            href="/pos"
+            href="/kasir"
             icon={<Activity className="h-4 w-4 text-amber-500" />}
             isLoading={isLoading}
             value={formatNumber(summary?.todayTransactions || 0)}
@@ -1112,6 +1118,12 @@ export default function DashboardPage() {
 
         {/* ── Dashboard Widgets ── */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <SalesWidget />
+          <SportCenterWidget />
+          <PosWidget />
+          <AccountingWidget />
+          <LogisticsWidget />
+          <PurchasingWidget />
           <TasksWidget />
           <RecentActivitiesWidget />
           <AiInsightsWidget />

@@ -57,6 +57,30 @@ export interface PostingInput {
   lines: PostingLine[];
 }
 
+/**
+ * Resolve akun pendapatan Sport Center booking (4-1017) dari COA.
+ * Fallback ke salesIncomeAccountId jika belum di-seed.
+ */
+async function resolveSportCenterBookingAccountId(
+  companyId: number | null | undefined,
+  fallbackId: number | null | undefined,
+): Promise<number | null> {
+  const cFilter = companyId ?? 1;
+  let [row] = await db
+    .select({ id: chartOfAccountsTable.id })
+    .from(chartOfAccountsTable)
+    .where(sql`${chartOfAccountsTable.code} = '4-1017' AND ${chartOfAccountsTable.companyId} = ${cFilter}`)
+    .limit(1);
+  if (!row) {
+    [row] = await db
+      .select({ id: chartOfAccountsTable.id })
+      .from(chartOfAccountsTable)
+      .where(sql`${chartOfAccountsTable.code} = '4-1017'`)
+      .limit(1);
+  }
+  return row?.id ?? fallbackId ?? null;
+}
+
 /** Resolve cost center ID by code. Returns null if not found (backward-compat). */
 export async function resolveCostCenterId(
   code: string,
@@ -954,13 +978,25 @@ export async function postSportCenterBooking(args: {
     const settings = await ensureAccountingSettings(args.companyId ?? 1);
 
     const debitAccountId = settings.defaultCashAccountId ?? settings.defaultBankAccountId;
-    const creditAccountId = settings.salesIncomeAccountId;
+    const creditAccountId = await resolveSportCenterBookingAccountId(args.companyId, settings.salesIncomeAccountId);
     const journalId = settings.cashJournalId ?? settings.bankJournalId;
     const journalCode = settings.cashJournalId ? "CSH" : "BNK";
 
     if (!debitAccountId || !creditAccountId || !journalId) {
       logger.warn(
-        { bookingId: args.bookingId },
+        {
+          bookingId: args.bookingId,
+          companyId: args.companyId,
+          settingsId: settings.id,
+          defaultCashAccountId: settings.defaultCashAccountId,
+          defaultBankAccountId: settings.defaultBankAccountId,
+          salesIncomeAccountId: settings.salesIncomeAccountId,
+          cashJournalId: settings.cashJournalId,
+          bankJournalId: settings.bankJournalId,
+          debitAccountId,
+          creditAccountId,
+          journalId,
+        },
         "Skipping Sport Center booking post: akun kas/pendapatan atau jurnal belum dikonfigurasi",
       );
       return;
@@ -1021,7 +1057,7 @@ export async function reverseSportCenterBooking(args: {
     if (args.amountReversed <= 0) return;
 
     const settings = await ensureAccountingSettings(args.companyId ?? 1);
-    const debitAccountId = settings.salesIncomeAccountId;       // Pendapatan (di-debit untuk reversal)
+    const debitAccountId = await resolveSportCenterBookingAccountId(args.companyId, settings.salesIncomeAccountId); // Pendapatan (di-debit untuk reversal)
     const creditAccountId = settings.defaultCashAccountId ?? settings.defaultBankAccountId; // Kas (di-kredit untuk reversal)
     const journalId = settings.cashJournalId ?? settings.bankJournalId;
     const journalCode = settings.cashJournalId ? "CSH" : "BNK";
@@ -1541,7 +1577,7 @@ export async function postSportCenterBookingWithTax(args: {
   try {
     const settings = await ensureAccountingSettings(args.companyId ?? 1);
     const cashAccountId = settings.defaultCashAccountId ?? settings.defaultBankAccountId;
-    const incomeAccountId = settings.salesIncomeAccountId;
+    const incomeAccountId = await resolveSportCenterBookingAccountId(args.companyId, settings.salesIncomeAccountId);
     const journalId = settings.cashJournalId ?? settings.bankJournalId;
     const journalCode = settings.cashJournalId ? "CSH" : "BNK";
 
@@ -1629,7 +1665,7 @@ export async function postSportCenterBookingRefundDirect(args: {
   try {
     const settings = await ensureAccountingSettings(args.companyId ?? 1);
     const cashAccountId = settings.defaultCashAccountId ?? settings.defaultBankAccountId;
-    const incomeAccountId = settings.salesIncomeAccountId;
+    const incomeAccountId = await resolveSportCenterBookingAccountId(args.companyId, settings.salesIncomeAccountId);
     const journalId = settings.cashJournalId ?? settings.bankJournalId;
     const journalCode = settings.cashJournalId ? "CSH" : "BNK";
 

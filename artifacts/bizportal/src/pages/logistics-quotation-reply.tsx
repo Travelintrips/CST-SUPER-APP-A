@@ -42,8 +42,9 @@ import {
   Clock,
   Inbox,
   Reply,
-  Phone,
+  Phone, ArrowLeft,
 } from "lucide-react";
+import { Link } from "wouter";
 
 const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -348,6 +349,8 @@ export default function LogisticsQuotationReplyPage() {
         <div className="flex items-center gap-3">
           <MessageCircle className="h-6 w-6 text-green-600" />
           <div>
+            <Link href="/logistics/rfq"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
+
             <h1 className="text-2xl font-bold tracking-tight">Balasan Quotation via WhatsApp</h1>
             <p className="text-sm text-muted-foreground">
               Kirim quotation ke customer & lihat pesan masuk dari vendor/customer

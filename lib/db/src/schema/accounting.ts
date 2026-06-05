@@ -33,7 +33,9 @@ export const journalTypeEnum = pgEnum("journal_type", [
   "general",
 ]);
 
-export const taxKindEnum = pgEnum("tax_kind", ["sale", "purchase"]);
+export const taxKindEnum = pgEnum("tax_kind", ["sale", "purchase", "withholding"]);
+
+export const cutTypeEnum = pgEnum("cut_type", ["self_borne", "withholding"]);
 
 export const accountingEntryStatusEnum = pgEnum("accounting_entry_status", [
   "draft",
@@ -115,6 +117,7 @@ export const accountingTaxesTable = pgTable("accounting_taxes", {
   name: text("name").notNull(),
   rate: numeric("rate", { precision: 6, scale: 3 }).notNull(),
   kind: taxKindEnum("kind").notNull(),
+  cutType: cutTypeEnum("cut_type").notNull().default("self_borne"),
   accountId: integer("account_id")
     .notNull()
     .references(() => chartOfAccountsTable.id, { onDelete: "restrict" }),
@@ -333,3 +336,31 @@ export type InsertJournal = z.infer<typeof insertJournalSchema>;
 export type InsertTax = z.infer<typeof insertTaxSchema>;
 export type InsertEntry = z.infer<typeof insertEntrySchema>;
 export type InsertEntryLine = z.infer<typeof insertEntryLineSchema>;
+
+export const transactionTaxesTable = pgTable("transaction_taxes", {
+  id: serial("id").primaryKey(),
+  companyId: integer("company_id").notNull(),
+  transactionType: text("transaction_type").notNull(),
+  transactionId: integer("transaction_id").notNull(),
+  transactionRef: text("transaction_ref"),
+  taxId: integer("tax_id").notNull().references(() => accountingTaxesTable.id, { onDelete: "restrict" }),
+  taxName: text("tax_name").notNull(),
+  taxRate: numeric("tax_rate", { precision: 6, scale: 3 }).notNull(),
+  cutType: text("cut_type").notNull().default("self_borne"),
+  baseAmount: numeric("base_amount", { precision: 14, scale: 2 }).notNull(),
+  taxAmount: numeric("tax_amount", { precision: 14, scale: 2 }).notNull(),
+  accountId: integer("account_id").references(() => chartOfAccountsTable.id, { onDelete: "set null" }),
+  period: text("period").notNull(),
+  status: text("status").notNull().default("pending"),
+  paidAt: timestamp("paid_at"),
+  reportedAt: timestamp("reported_at"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (t) => ({
+  txUniq: uniqueIndex("tx_taxes_tx_uniq").on(t.transactionType, t.transactionId, t.taxId),
+  companyPeriodIdx: index("tx_taxes_company_period_idx").on(t.companyId, t.period),
+  statusIdx: index("tx_taxes_status_idx").on(t.status),
+}));
+
+export type TransactionTax = typeof transactionTaxesTable.$inferSelect;

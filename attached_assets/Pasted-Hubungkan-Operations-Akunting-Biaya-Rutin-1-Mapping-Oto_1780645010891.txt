@@ -1,0 +1,54 @@
+Hubungkan Operations → Akunting (Biaya Rutin)
+1. Mapping Otomatis Kategori → Akun
+Buat tabel expense_categories atau gunakan yang sudah ada:
+Kolom: category_name, default_debit_account, default_credit_account, tax_type
+Setiap kategori otomatis mengisi akun debit/kredit:
+Entertainment → Debit: 5-1300-Biaya Hiburan / Kredit: Kas/Bank
+Makan & Minum → Debit: 5-1400-Biaya Konsumsi / Kredit: Kas/Bank
+Sewa Kantor → Debit: 5-2000-Biaya Sewa / Kredit: Kas/Bank
+Utilitas → Debit: 5-2200-Biaya Utilitas / Kredit: Kas/Bank
+Peralatan & ATK → Debit: 5-2100-Biaya Peralatan / Kredit: Kas/Bank
+Lain-lain → Debit: 5-2300-Biaya Lain-lain / Kredit: Kas/Bank
+2. Mapping Sumber Dana → Akun
+Pilihan “Sumber Dana” otomatis mengisi akun kredit:
+Bank (Transfer) → Kas Bank
+Cash → Kas Kecil
+Setiap perubahan sumber dana langsung update akun kredit di form.
+3. Vendor/Karyawan
+Jika diisi, sistem bisa otomatis menambahkan detail:
+Vendor → nominal dan pajak default sesuai kategori vendor
+Karyawan → untuk reimbursement atau kasbon → debit otomatis ke Piutang / Biaya terkait
+Field opsional tetap bisa diisi manual.
+4. Pajak
+Pilihan Pajak otomatis terisi dari kategori:
+Misal kategori Makan & Minum → default: Tanpa Pajak
+Kategori Freight / jasa → default: PPh 21 / PPh 23 / PPh Final
+Tax amount dihitung otomatis saat user input nominal.
+5. Posting Jurnal Otomatis
+Saat klik “Catat & Posting Sekarang”, sistem otomatis generate jurnal:
+Debit → akun biaya sesuai kategori
+Kredit → akun kas/bank sesuai sumber dana
+Pajak → akun pajak terkait jika ada
+Semua field lain (nominal, tanggal, vendor/karyawan, pajak) diambil otomatis dari mapping.
+6. Integrasi Real-time
+Auto-refetch data di form untuk update akun dan pajak setiap 30 detik.
+Opsional: SSE / WebSocket push untuk notifikasi instan saat kategori, vendor, atau pajak baru di-seed.
+7. Preset / Template
+Buat template untuk pengeluaran rutin agar cepat input:
+Pilih template → kategori, akun debit/kredit, pajak, nominal default terisi otomatis
+User tetap bisa override field jika transaksi khusus.
+8. Validasi
+Nominal > 0
+Sumber Dana valid
+Pajak sesuai kategori
+Vendor/Karyawan jika diisi → validasi terhadap master data
+
+💡 Hasil Akhir yang Diharapkan
+
+Form Biaya Rutin di Operations bisa mengisi otomatis:
+Akun debit sesuai kategori
+Akun kredit sesuai sumber dana
+Pajak sesuai mapping
+Vendor/Karyawan relevan
+Posting → otomatis generate jurnal ke modul Akunting
+Data real-time dan siap dipakai untuk laporan SPT atau monitoring.

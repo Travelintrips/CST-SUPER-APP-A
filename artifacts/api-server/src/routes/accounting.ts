@@ -48,6 +48,9 @@ import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStat
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getAdminWa } from "../lib/adminWa.js";
 import { notifyPaymentConfirmation } from "../lib/enterpriseWorkflowNotify.js";
+import { transactionTaxesTable } from "@workspace/db";
+import { recordTransactionTax } from "../lib/taxAutoService.js";
+import { handleTaxSse, broadcastTaxUpdate } from "../lib/taxSseBroadcast.js";
 
 function serializeCompany(c: typeof companiesTable.$inferSelect) {
   return { ...c, createdAt: c.createdAt.toISOString() };
@@ -384,7 +387,7 @@ router.get("/taxes", async (req, res) => {
 });
 
 router.post("/taxes", async (req, res) => {
-  const { name, rate, kind, accountId, isActive } = req.body ?? {};
+  const { name, rate, kind, cutType, accountId, isActive } = req.body ?? {};
   const companyId = resolveCompanyId(req);
   if (!name || rate === undefined || !kind || !accountId)
     return res
@@ -401,6 +404,7 @@ router.post("/taxes", async (req, res) => {
       name,
       rate: String(rate),
       kind,
+      cutType: cutType ?? "self_borne",
       accountId: Number(accountId),
       isActive: isActive ?? true,
     })
@@ -415,6 +419,7 @@ router.patch("/taxes/:id", async (req, res) => {
   if (req.body?.name !== undefined) patch["name"] = req.body.name;
   if (req.body?.rate !== undefined) patch["rate"] = String(req.body.rate);
   if (req.body?.kind !== undefined) patch["kind"] = req.body.kind;
+  if (req.body?.cutType !== undefined) patch["cutType"] = req.body.cutType;
   if (req.body?.accountId !== undefined)
     patch["accountId"] = Number(req.body.accountId);
   if (req.body?.isActive !== undefined) patch["isActive"] = req.body.isActive;
@@ -1250,6 +1255,124 @@ router.get("/partner-balances", async (_req, res) => {
   return res.json({ ar, ap, totalAr, totalAp });
 });
 
+/**
+ * GET /accounting/dashboard-kpi
+ * Ringkasan akuntansi untuk widget dashboard utama.
+ * Returns: cashBalance, totalAr, totalAp,
+ *          overdueInvoices, overdueBills, overdueArAmount, overdueApAmount,
+ *          monthRevenue, monthExpense
+ */
+router.get("/dashboard-kpi", async (req, res) => {
+  const companyId = resolveCompanyId(req);
+
+  const companyFilter = companyId
+    ? sql`AND ael.company_id = ${companyId}`
+    : sql``;
+  const sdCompanyFilter = companyId
+    ? sql`AND sd.company_id = ${companyId}`
+    : sql``;
+  const pdCompanyFilter = companyId
+    ? sql`AND pd.company_id = ${companyId}`
+    : sql``;
+
+  const now = new Date();
+  const reqYear  = req.query.year  ? Number(req.query.year)  : now.getFullYear();
+  const reqMonth = req.query.month ? Number(req.query.month) : now.getMonth() + 1;
+  const periodYear  = Number.isFinite(reqYear)  && reqYear  > 2000 ? reqYear  : now.getFullYear();
+  const periodMonth = Number.isFinite(reqMonth) && reqMonth >= 1 && reqMonth <= 12 ? reqMonth : now.getMonth() + 1;
+
+  const monthStart = new Date(periodYear, periodMonth - 1, 1).toISOString().slice(0, 10);
+  const monthEnd   = new Date(periodYear, periodMonth, 0).toISOString().slice(0, 10);
+
+  const [balances, overdueAr, overdueAp, monthPL] = await Promise.all([
+    // Cash/bank + total piutang + total utang (all-time posted entries)
+    db.execute(sql`
+      SELECT
+        COALESCE(SUM(
+          CASE WHEN coa.type::text = 'asset'
+            AND (lower(coa.name) LIKE '%kas%' OR lower(coa.name) LIKE '%cash%' OR lower(coa.name) LIKE '%bank%')
+          THEN COALESCE(ael.debit, 0) - COALESCE(ael.credit, 0) ELSE 0 END
+        ), 0) AS cash_balance,
+        COALESCE(SUM(
+          CASE WHEN lower(coa.name) LIKE '%piutang%' AND coa.type::text = 'asset'
+          THEN COALESCE(ael.debit, 0) - COALESCE(ael.credit, 0) ELSE 0 END
+        ), 0) AS total_ar,
+        COALESCE(SUM(
+          CASE WHEN (lower(coa.name) LIKE '%utang%' OR lower(coa.name) LIKE '%payable%') AND coa.type::text = 'liability'
+          THEN COALESCE(ael.credit, 0) - COALESCE(ael.debit, 0) ELSE 0 END
+        ), 0) AS total_ap
+      FROM accounting_entry_lines ael
+      JOIN chart_of_accounts coa ON coa.id = ael.account_id
+      JOIN accounting_entries ae ON ae.id = ael.entry_id
+      WHERE ae.status::text = 'posted'
+        ${companyFilter}
+    `),
+
+    // Overdue invoices (invoiced, unpaid/partial, past due_date)
+    db.execute(sql`
+      SELECT
+        COUNT(*)::int AS count,
+        COALESCE(SUM(sd.grand_total - COALESCE(sd.amount_paid, 0)), 0)::float AS amount
+      FROM sales_documents sd
+      WHERE sd.invoice_status = 'invoiced'
+        AND sd.payment_status IN ('unpaid', 'partial')
+        AND sd.status != 'cancelled'
+        AND sd.due_date IS NOT NULL
+        AND sd.due_date < CURRENT_DATE
+        ${sdCompanyFilter}
+    `),
+
+    // Overdue bills (billed, unpaid/partial, past due_date)
+    db.execute(sql`
+      SELECT
+        COUNT(*)::int AS count,
+        COALESCE(SUM(pd.grand_total - COALESCE(pd.amount_paid, 0)), 0)::float AS amount
+      FROM purchase_documents pd
+      WHERE pd.bill_status = 'billed'
+        AND pd.payment_status IN ('unpaid', 'partial')
+        AND pd.status != 'cancelled'
+        AND pd.due_date IS NOT NULL
+        AND pd.due_date < CURRENT_DATE::text
+        ${pdCompanyFilter}
+    `),
+
+    // Month P&L
+    db.execute(sql`
+      SELECT
+        COALESCE(SUM(CASE WHEN coa.type::text = 'revenue'
+          THEN COALESCE(ael.credit, 0) - COALESCE(ael.debit, 0) ELSE 0 END), 0) AS month_revenue,
+        COALESCE(SUM(CASE WHEN coa.type::text = 'expense'
+          THEN COALESCE(ael.debit, 0) - COALESCE(ael.credit, 0) ELSE 0 END), 0) AS month_expense
+      FROM accounting_entry_lines ael
+      JOIN chart_of_accounts coa ON coa.id = ael.account_id
+      JOIN accounting_entries ae ON ae.id = ael.entry_id
+      WHERE ae.status::text = 'posted'
+        AND ae.entry_date BETWEEN ${monthStart} AND ${monthEnd}
+        ${companyFilter}
+    `),
+  ]);
+
+  const bal = (balances.rows[0] ?? {}) as Record<string, unknown>;
+  const arRow = (overdueAr.rows[0] ?? {}) as Record<string, unknown>;
+  const apRow = (overdueAp.rows[0] ?? {}) as Record<string, unknown>;
+  const pl = (monthPL.rows[0] ?? {}) as Record<string, unknown>;
+
+  res.json({
+    cashBalance:       Number(bal["cash_balance"] ?? 0),
+    totalAr:           Number(bal["total_ar"] ?? 0),
+    totalAp:           Number(bal["total_ap"] ?? 0),
+    overdueInvoices:   Number(arRow["count"] ?? 0),
+    overdueArAmount:   Number(arRow["amount"] ?? 0),
+    overdueBills:      Number(apRow["count"] ?? 0),
+    overdueApAmount:   Number(apRow["amount"] ?? 0),
+    monthRevenue:      Number(pl["month_revenue"] ?? 0),
+    monthExpense:      Number(pl["month_expense"] ?? 0),
+    monthNetPL:        Number(pl["month_revenue"] ?? 0) - Number(pl["month_expense"] ?? 0),
+    periodYear,
+    periodMonth,
+  });
+});
+
 router.post("/payments/:id/void", async (req, res) => {
   const id = Number(req.params.id);
   if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
@@ -2016,25 +2139,25 @@ router.get("/holding/summary", async (req, res) => {
 
   const result = await db.execute(sql`
     SELECT
-      COALESCE(SUM(CASE WHEN coa.type = 'revenue' THEN COALESCE(ael.credit, 0) - COALESCE(ael.debit, 0) ELSE 0 END), 0) AS revenue,
-      COALESCE(SUM(CASE WHEN coa.type = 'expense' THEN COALESCE(ael.debit, 0) - COALESCE(ael.credit, 0) ELSE 0 END), 0) AS expense,
+      COALESCE(SUM(CASE WHEN coa.type::text = 'revenue' THEN COALESCE(ael.credit, 0) - COALESCE(ael.debit, 0) ELSE 0 END), 0) AS revenue,
+      COALESCE(SUM(CASE WHEN coa.type::text = 'expense' THEN COALESCE(ael.debit, 0) - COALESCE(ael.credit, 0) ELSE 0 END), 0) AS expense,
       COALESCE(SUM(
-        CASE WHEN coa.type = 'asset'
+        CASE WHEN coa.type::text = 'asset'
           AND (lower(coa.name) LIKE '%kas%' OR lower(coa.name) LIKE '%cash%' OR lower(coa.name) LIKE '%bank%')
         THEN COALESCE(ael.debit, 0) - COALESCE(ael.credit, 0) ELSE 0 END
       ), 0) AS cash_balance,
       COALESCE(SUM(
-        CASE WHEN lower(coa.name) LIKE '%piutang%' AND coa.type = 'asset'
+        CASE WHEN lower(coa.name) LIKE '%piutang%' AND coa.type::text = 'asset'
         THEN COALESCE(ael.debit, 0) - COALESCE(ael.credit, 0) ELSE 0 END
       ), 0) AS receivable,
       COALESCE(SUM(
-        CASE WHEN (lower(coa.name) LIKE '%utang%' OR lower(coa.name) LIKE '%payable%') AND coa.type = 'liability'
+        CASE WHEN (lower(coa.name) LIKE '%utang%' OR lower(coa.name) LIKE '%payable%') AND coa.type::text = 'liability'
         THEN COALESCE(ael.credit, 0) - COALESCE(ael.debit, 0) ELSE 0 END
       ), 0) AS payable
     FROM accounting_entry_lines ael
     JOIN chart_of_accounts coa ON coa.id = ael.account_id
     JOIN accounting_entries ae ON ae.id = ael.entry_id
-    WHERE ae.status = 'posted'
+    WHERE ae.status::text = 'posted'
       AND ael.company_id = ANY(${companyIdsArr})
       ${dateFilter}
   `);
@@ -2097,25 +2220,25 @@ router.get("/holding/breakdown", async (req, res) => {
   const result = await db.execute(sql`
     SELECT
       ael.company_id,
-      COALESCE(SUM(CASE WHEN coa.type = 'revenue' THEN COALESCE(ael.credit, 0) - COALESCE(ael.debit, 0) ELSE 0 END), 0) AS revenue,
-      COALESCE(SUM(CASE WHEN coa.type = 'expense' THEN COALESCE(ael.debit, 0) - COALESCE(ael.credit, 0) ELSE 0 END), 0) AS expense,
+      COALESCE(SUM(CASE WHEN coa.type::text = 'revenue' THEN COALESCE(ael.credit, 0) - COALESCE(ael.debit, 0) ELSE 0 END), 0) AS revenue,
+      COALESCE(SUM(CASE WHEN coa.type::text = 'expense' THEN COALESCE(ael.debit, 0) - COALESCE(ael.credit, 0) ELSE 0 END), 0) AS expense,
       COALESCE(SUM(
-        CASE WHEN coa.type = 'asset'
+        CASE WHEN coa.type::text = 'asset'
           AND (lower(coa.name) LIKE '%kas%' OR lower(coa.name) LIKE '%cash%' OR lower(coa.name) LIKE '%bank%')
         THEN COALESCE(ael.debit, 0) - COALESCE(ael.credit, 0) ELSE 0 END
       ), 0) AS cash_balance,
       COALESCE(SUM(
-        CASE WHEN lower(coa.name) LIKE '%piutang%' AND coa.type = 'asset'
+        CASE WHEN lower(coa.name) LIKE '%piutang%' AND coa.type::text = 'asset'
         THEN COALESCE(ael.debit, 0) - COALESCE(ael.credit, 0) ELSE 0 END
       ), 0) AS receivable,
       COALESCE(SUM(
-        CASE WHEN (lower(coa.name) LIKE '%utang%' OR lower(coa.name) LIKE '%payable%') AND coa.type = 'liability'
+        CASE WHEN (lower(coa.name) LIKE '%utang%' OR lower(coa.name) LIKE '%payable%') AND coa.type::text = 'liability'
         THEN COALESCE(ael.credit, 0) - COALESCE(ael.debit, 0) ELSE 0 END
       ), 0) AS payable
     FROM accounting_entry_lines ael
     JOIN chart_of_accounts coa ON coa.id = ael.account_id
     JOIN accounting_entries ae ON ae.id = ael.entry_id
-    WHERE ae.status = 'posted'
+    WHERE ae.status::text = 'posted'
       AND ael.company_id = ANY(${companyIdsArr})
       ${dateFilter}
     GROUP BY ael.company_id
@@ -2252,12 +2375,12 @@ router.get("/holding/pl-monthly", async (req, res) => {
     SELECT
       TO_CHAR(ae.entry_date, 'YYYY-MM') AS month,
       ael.company_id,
-      COALESCE(SUM(CASE WHEN coa.type = 'revenue' THEN COALESCE(ael.credit, 0) - COALESCE(ael.debit, 0) ELSE 0 END), 0) AS revenue,
-      COALESCE(SUM(CASE WHEN coa.type = 'expense' THEN COALESCE(ael.debit, 0) - COALESCE(ael.credit, 0) ELSE 0 END), 0) AS expense
+      COALESCE(SUM(CASE WHEN coa.type::text = 'revenue' THEN COALESCE(ael.credit, 0) - COALESCE(ael.debit, 0) ELSE 0 END), 0) AS revenue,
+      COALESCE(SUM(CASE WHEN coa.type::text = 'expense' THEN COALESCE(ael.debit, 0) - COALESCE(ael.credit, 0) ELSE 0 END), 0) AS expense
     FROM accounting_entry_lines ael
     JOIN chart_of_accounts coa ON coa.id = ael.account_id
     JOIN accounting_entries ae ON ae.id = ael.entry_id
-    WHERE ae.status = 'posted'
+    WHERE ae.status::text = 'posted'
       AND ael.company_id = ANY(${companyIdsArr})
       ${dateFilter}
     GROUP BY month, ael.company_id
@@ -2324,14 +2447,14 @@ router.get("/holding/cashflow-monthly", async (req, res) => {
       TO_CHAR(ae.entry_date, 'YYYY-MM') AS month,
       ael.company_id,
       -- Arus Operasi: penerimaan dari pendapatan
-      COALESCE(SUM(CASE WHEN coa.type = 'revenue'
+      COALESCE(SUM(CASE WHEN coa.type::text = 'revenue'
         THEN COALESCE(ael.credit, 0) - COALESCE(ael.debit, 0) ELSE 0 END), 0) AS op_inflow,
       -- Arus Operasi: pembayaran untuk beban
-      COALESCE(SUM(CASE WHEN coa.type = 'expense'
+      COALESCE(SUM(CASE WHEN coa.type::text = 'expense'
         THEN COALESCE(ael.debit, 0) - COALESCE(ael.credit, 0) ELSE 0 END), 0) AS op_outflow,
       -- Arus Investasi: perubahan aset tetap & investasi
       COALESCE(SUM(CASE
-        WHEN coa.type = 'asset' AND (
+        WHEN coa.type::text = 'asset' AND (
           lower(coa.name) LIKE '%aset tetap%' OR lower(coa.name) LIKE '%fixed asset%'
           OR lower(coa.name) LIKE '%peralatan%' OR lower(coa.name) LIKE '%kendaraan%'
           OR lower(coa.name) LIKE '%bangunan%' OR lower(coa.name) LIKE '%tanah%'
@@ -2341,8 +2464,8 @@ router.get("/holding/cashflow-monthly", async (req, res) => {
         THEN COALESCE(ael.credit, 0) - COALESCE(ael.debit, 0) ELSE 0 END), 0) AS inv_net,
       -- Arus Pendanaan: perubahan modal & pinjaman jangka panjang
       COALESCE(SUM(CASE
-        WHEN (coa.type = 'equity')
-          OR (coa.type = 'liability' AND (
+        WHEN (coa.type::text = 'equity')
+          OR (coa.type::text = 'liability' AND (
             lower(coa.name) LIKE '%pinjaman%' OR lower(coa.name) LIKE '%hutang bank%'
             OR lower(coa.name) LIKE '%utang bank%' OR lower(coa.name) LIKE '%kredit bank%'
             OR lower(coa.name) LIKE '%modal%' OR lower(coa.name) LIKE '%saham%'
@@ -2350,14 +2473,14 @@ router.get("/holding/cashflow-monthly", async (req, res) => {
         THEN COALESCE(ael.credit, 0) - COALESCE(ael.debit, 0) ELSE 0 END), 0) AS fin_net,
       -- Perubahan kas & bank bersih
       COALESCE(SUM(CASE
-        WHEN coa.type = 'asset' AND (
+        WHEN coa.type::text = 'asset' AND (
           lower(coa.name) LIKE '%kas%' OR lower(coa.name) LIKE '%cash%' OR lower(coa.name) LIKE '%bank%'
         )
         THEN COALESCE(ael.debit, 0) - COALESCE(ael.credit, 0) ELSE 0 END), 0) AS cash_change
     FROM accounting_entry_lines ael
     JOIN chart_of_accounts coa ON coa.id = ael.account_id
     JOIN accounting_entries ae ON ae.id = ael.entry_id
-    WHERE ae.status = 'posted'
+    WHERE ae.status::text = 'posted'
       AND ael.company_id = ANY(${companyIdsArr})
       ${dateFilter}
     GROUP BY month, ael.company_id
@@ -2657,24 +2780,24 @@ router.get("/holding/groups/:id/cashflow", async (req, res) => {
   const rows = await db.execute(sql`
     SELECT
       ae.company_id,
-      COALESCE(SUM(CASE WHEN coa.type = 'revenue'
+      COALESCE(SUM(CASE WHEN coa.type::text = 'revenue'
         THEN COALESCE(ael.credit, 0) - COALESCE(ael.debit, 0) ELSE 0 END), 0) AS op_inflow,
-      COALESCE(SUM(CASE WHEN coa.type = 'expense'
+      COALESCE(SUM(CASE WHEN coa.type::text = 'expense'
         THEN COALESCE(ael.debit, 0) - COALESCE(ael.credit, 0) ELSE 0 END), 0) AS op_outflow,
-      COALESCE(SUM(CASE WHEN coa.type = 'asset'
+      COALESCE(SUM(CASE WHEN coa.type::text = 'asset'
         AND (lower(coa.name) SIMILAR TO '%(aset tetap|peralatan|kendaraan|bangunan|tanah|mesin|investasi|penyertaan)%')
         THEN COALESCE(ael.credit, 0) - COALESCE(ael.debit, 0) ELSE 0 END), 0) AS inv_net,
-      COALESCE(SUM(CASE WHEN (coa.type = 'equity')
-        OR (coa.type = 'liability' AND (lower(coa.name) LIKE '%pinjaman%' OR lower(coa.name) LIKE '%hutang bank%'
+      COALESCE(SUM(CASE WHEN (coa.type::text = 'equity')
+        OR (coa.type::text = 'liability' AND (lower(coa.name) LIKE '%pinjaman%' OR lower(coa.name) LIKE '%hutang bank%'
           OR lower(coa.name) LIKE '%modal%' OR lower(coa.name) LIKE '%saham%'))
         THEN COALESCE(ael.credit, 0) - COALESCE(ael.debit, 0) ELSE 0 END), 0) AS fin_net,
-      COALESCE(SUM(CASE WHEN coa.type = 'asset'
+      COALESCE(SUM(CASE WHEN coa.type::text = 'asset'
         AND (lower(coa.name) LIKE '%kas%' OR lower(coa.name) LIKE '%cash%' OR lower(coa.name) LIKE '%bank%')
         THEN COALESCE(ael.debit, 0) - COALESCE(ael.credit, 0) ELSE 0 END), 0) AS cash_change
     FROM accounting_entry_lines ael
     JOIN accounting_entries ae ON ae.id = ael.entry_id
     JOIN chart_of_accounts coa ON coa.id = ael.account_id
-    WHERE ae.status = 'posted'
+    WHERE ae.status::text = 'posted'
       AND ae.company_id = ANY(${companyIdsArr})
       ${dateFilter}
     GROUP BY ae.company_id
@@ -2844,7 +2967,7 @@ router.post("/gsheet/push", async (req, res) => {
       COALESCE(SUM(ael.debit), 0) - COALESCE(SUM(ael.credit), 0) as balance
     FROM chart_of_accounts coa
     LEFT JOIN accounting_entry_lines ael ON ael.account_id = coa.id
-    LEFT JOIN accounting_entries ae ON ae.id = ael.entry_id AND ae.status = 'posted'
+    LEFT JOIN accounting_entries ae ON ae.id = ael.entry_id AND ae.status::text = 'posted'
     WHERE coa.company_id ${companyId ? sql`= ${companyId}` : sql`IS NULL`}
     GROUP BY coa.code, coa.name, coa.type
     ORDER BY coa.code
@@ -2873,7 +2996,7 @@ router.post("/gsheet/push", async (req, res) => {
     FROM accounting_entry_lines ael
     JOIN accounting_entries ae ON ae.id = ael.entry_id
     JOIN chart_of_accounts coa ON coa.id = ael.account_id
-    WHERE ae.status = 'posted'
+    WHERE ae.status::text = 'posted'
       AND coa.company_id ${companyId ? sql`= ${companyId}` : sql`IS NULL`}
     ORDER BY coa.code, ae.date, ae.entry_number, ael.id
   `);
@@ -3011,6 +3134,213 @@ router.post("/gsheet/pull", async (req, res) => {
 
   logger.info({ spreadsheetId, companyId, results }, "GSheet pull completed");
   return res.json({ ok: true, spreadsheetId, ...results });
+});
+
+// ── Transaction Taxes (Otomasi Pajak & SPT) ──────────────────────────────────
+router.get("/tax-transactions", async (req, res) => {
+  const companyId = resolveCompanyId(req) ?? 1;
+  const { period, status, type, page = "1", limit = "50" } = req.query as Record<string, string>;
+
+  const conds: SQL[] = [sql`${transactionTaxesTable.companyId} = ${companyId}`];
+  if (period) conds.push(sql`${transactionTaxesTable.period} = ${period}`);
+  if (status) conds.push(sql`${transactionTaxesTable.status} = ${status}`);
+  if (type) conds.push(sql`${transactionTaxesTable.transactionType} = ${type}`);
+
+  const pageN = Math.max(1, parseInt(page) || 1);
+  const limitN = Math.min(200, parseInt(limit) || 50);
+  const offset = (pageN - 1) * limitN;
+
+  const rows = await db
+    .select()
+    .from(transactionTaxesTable)
+    .where(and(...conds))
+    .orderBy(desc(transactionTaxesTable.createdAt))
+    .limit(limitN)
+    .offset(offset);
+
+  const [{ total }] = await db
+    .select({ total: sql<number>`cast(count(*) as int)` })
+    .from(transactionTaxesTable)
+    .where(and(...conds));
+
+  return res.json({
+    data: rows.map((r) => ({
+      ...r,
+      baseAmount: Number(r.baseAmount),
+      taxAmount: Number(r.taxAmount),
+      taxRate: Number(r.taxRate),
+      createdAt: r.createdAt.toISOString(),
+      updatedAt: r.updatedAt.toISOString(),
+      paidAt: r.paidAt?.toISOString() ?? null,
+      reportedAt: r.reportedAt?.toISOString() ?? null,
+    })),
+    total,
+    page: pageN,
+    limit: limitN,
+  });
+});
+
+router.get("/tax-report", async (req, res) => {
+  const companyId = resolveCompanyId(req) ?? 1;
+  const { period_from, period_to, period } = req.query as Record<string, string>;
+
+  const conds: SQL[] = [sql`${transactionTaxesTable.companyId} = ${companyId}`];
+  if (period) conds.push(sql`${transactionTaxesTable.period} = ${period}`);
+  if (period_from) conds.push(sql`${transactionTaxesTable.period} >= ${period_from}`);
+  if (period_to) conds.push(sql`${transactionTaxesTable.period} <= ${period_to}`);
+
+  const rows = await db
+    .select({
+      period: transactionTaxesTable.period,
+      taxName: transactionTaxesTable.taxName,
+      taxRate: transactionTaxesTable.taxRate,
+      cutType: transactionTaxesTable.cutType,
+      transactionType: transactionTaxesTable.transactionType,
+      status: transactionTaxesTable.status,
+      count: sql<number>`cast(count(*) as int)`,
+      totalBase: sql<number>`cast(sum(base_amount) as numeric)`,
+      totalTax: sql<number>`cast(sum(tax_amount) as numeric)`,
+    })
+    .from(transactionTaxesTable)
+    .where(and(...conds))
+    .groupBy(
+      transactionTaxesTable.period,
+      transactionTaxesTable.taxName,
+      transactionTaxesTable.taxRate,
+      transactionTaxesTable.cutType,
+      transactionTaxesTable.transactionType,
+      transactionTaxesTable.status,
+    )
+    .orderBy(desc(transactionTaxesTable.period));
+
+  const summary = { totalPPN: 0, totalPPh: 0, totalTax: 0, pending: 0, paid: 0, reported: 0 };
+  for (const r of rows) {
+    const tax = Number(r.totalTax);
+    summary.totalTax += tax;
+    if (r.taxName.toLowerCase().includes("ppn")) summary.totalPPN += tax;
+    else summary.totalPPh += tax;
+    if (r.status === "paid") summary.paid += tax;
+    else if (r.status === "reported") summary.reported += tax;
+    else summary.pending += tax;
+  }
+
+  return res.json({ rows, summary });
+});
+
+router.get("/tax-report/export", async (req, res) => {
+  const companyId = resolveCompanyId(req) ?? 1;
+  const { period_from, period_to, period } = req.query as Record<string, string>;
+
+  const conds: SQL[] = [sql`${transactionTaxesTable.companyId} = ${companyId}`];
+  if (period) conds.push(sql`${transactionTaxesTable.period} = ${period}`);
+  if (period_from) conds.push(sql`${transactionTaxesTable.period} >= ${period_from}`);
+  if (period_to) conds.push(sql`${transactionTaxesTable.period} <= ${period_to}`);
+
+  const rows = await db
+    .select()
+    .from(transactionTaxesTable)
+    .where(and(...conds))
+    .orderBy(transactionTaxesTable.period, transactionTaxesTable.createdAt);
+
+  const header = "Periode,Jenis Transaksi,Referensi,Nama Pajak,Tarif (%),Cara Potong,DPP (Base),Pajak,Status,Tanggal Dibuat";
+  const lines = rows.map((r) =>
+    [
+      r.period,
+      r.transactionType,
+      r.transactionRef ?? "",
+      r.taxName,
+      Number(r.taxRate).toFixed(3),
+      r.cutType,
+      Number(r.baseAmount).toFixed(2),
+      Number(r.taxAmount).toFixed(2),
+      r.status,
+      r.createdAt.toISOString().slice(0, 10),
+    ]
+      .map((v) => `"${String(v).replace(/"/g, '""')}"`)
+      .join(","),
+  );
+
+  const csv = [header, ...lines].join("\n");
+  const filename = `laporan-pajak-${period ?? period_from ?? "all"}.csv`;
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  return res.send("\uFEFF" + csv);
+});
+
+router.patch("/tax-transactions/:id/mark-paid", async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
+  const [row] = await db
+    .update(transactionTaxesTable)
+    .set({ status: "paid", paidAt: new Date(), updatedAt: new Date() })
+    .where(eq(transactionTaxesTable.id, id))
+    .returning();
+  if (!row) return res.status(404).json({ message: "Data tidak ditemukan" });
+  broadcastTaxUpdate({
+    event: "tax_marked",
+    period: row.period ?? undefined,
+    companyId: row.companyId ?? undefined,
+    timestamp: new Date().toISOString(),
+  });
+  return res.json({ ok: true, data: { ...row, baseAmount: Number(row.baseAmount), taxAmount: Number(row.taxAmount) } });
+});
+
+router.patch("/tax-transactions/:id/mark-reported", async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
+  const [row] = await db
+    .update(transactionTaxesTable)
+    .set({ status: "reported", reportedAt: new Date(), updatedAt: new Date() })
+    .where(eq(transactionTaxesTable.id, id))
+    .returning();
+  if (!row) return res.status(404).json({ message: "Data tidak ditemukan" });
+  broadcastTaxUpdate({
+    event: "tax_marked",
+    period: row.period ?? undefined,
+    companyId: row.companyId ?? undefined,
+    timestamp: new Date().toISOString(),
+  });
+  return res.json({ ok: true, data: { ...row, baseAmount: Number(row.baseAmount), taxAmount: Number(row.taxAmount) } });
+});
+
+router.post("/tax-transactions", async (req, res) => {
+  const companyId = resolveCompanyId(req) ?? 1;
+  const { transactionType, transactionId, transactionRef, baseAmount, subType } = req.body as Record<string, unknown>;
+  if (!transactionType || !transactionId || !baseAmount) {
+    return res.status(400).json({ message: "transactionType, transactionId, baseAmount wajib diisi" });
+  }
+  await recordTransactionTax({
+    companyId,
+    transactionType: transactionType as "logistic_order" | "sales_order" | "purchase_order" | "expense" | "other",
+    transactionId: Number(transactionId),
+    transactionRef: transactionRef as string | null,
+    baseAmount: Number(baseAmount),
+    subType: subType as string | null,
+  });
+  return res.json({ ok: true });
+});
+
+router.patch("/tax-transactions/bulk-mark", async (req, res) => {
+  const companyId = resolveCompanyId(req) ?? 1;
+  const { ids, status } = req.body as { ids: number[]; status: string };
+  if (!ids?.length || !["paid", "reported", "pending"].includes(status)) {
+    return res.status(400).json({ message: "ids[] dan status (paid|reported|pending) wajib diisi" });
+  }
+  const patch: Record<string, unknown> = { status, updatedAt: new Date() };
+  if (status === "paid") patch.paidAt = new Date();
+  if (status === "reported") patch.reportedAt = new Date();
+  await db.update(transactionTaxesTable).set(patch).where(inArray(transactionTaxesTable.id, ids));
+  broadcastTaxUpdate({
+    event: "tax_marked",
+    companyId,
+    count: ids.length,
+    timestamp: new Date().toISOString(),
+  });
+  return res.json({ ok: true, updated: ids.length });
+});
+
+router.get("/tax-stream", (req, res) => {
+  handleTaxSse(req, res);
 });
 
 export default router;

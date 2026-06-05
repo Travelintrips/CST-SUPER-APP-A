@@ -40,7 +40,8 @@ import {
   type Customer,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Building2, Pencil, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, Building2, Pencil, Plus, Trash2 } from "lucide-react";
+import { Link } from "wouter";
 import { useLanguage } from "@/contexts/LanguageContext";
 
 type Company = { id: number; companyName: string; companyCode: string; isActive: boolean; isHolding: boolean };
@@ -238,6 +239,7 @@ export default function CustomersPage() {
     <AppShell>
       <div className="flex flex-col gap-6">
         <div className="flex items-center justify-between">
+          <Link href="/sales"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
           <div>
             <h1 className="text-2xl font-bold">Customers</h1>
             <p className="text-sm text-muted-foreground">Kelola data pelanggan.</p>

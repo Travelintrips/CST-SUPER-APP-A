@@ -226,6 +226,10 @@ export async function runSportCenterMigration(): Promise<void> {
         ADD COLUMN IF NOT EXISTS tax_rate    NUMERIC(5,2)  NOT NULL DEFAULT 0,
         ADD COLUMN IF NOT EXISTS tax_amount  NUMERIC(14,2) NOT NULL DEFAULT 0
     `);
+    await db.execute(sql`
+      ALTER TABLE sport_payments
+        ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'SPORT_CENTER'
+    `);
 
     // Fase 3: tabel maintenance request (integrasi Purchase — Fase 4 upgrade)
     await db.execute(sql`
@@ -410,6 +414,14 @@ export async function runSportCenterMigration(): Promise<void> {
       ALTER TABLE sport_center_bookings ADD COLUMN IF NOT EXISTS payment_status TEXT NOT NULL DEFAULT 'unpaid';
       ALTER TABLE sport_center_bookings ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
       ALTER TABLE sport_center_bookings ADD COLUMN IF NOT EXISTS customer_phone TEXT;
+    `).catch(() => { /* tabel lama mungkin sudah tidak ada */ });
+
+    await db.execute(sql`
+      ALTER TABLE sport_center_bookings ALTER COLUMN customer_email DROP NOT NULL;
+    `).catch(() => { /* kolom mungkin sudah nullable atau tidak ada */ });
+
+    await db.execute(sql`
+      ALTER TABLE sport_bookings ADD COLUMN IF NOT EXISTS customer_email TEXT;
     `);
 
     await db.execute(sql`
@@ -418,7 +430,9 @@ export async function runSportCenterMigration(): Promise<void> {
           SELECT 1 FROM pg_constraint
           WHERE conname = 'sport_center_bookings_booking_code_key'
         ) THEN
-          ALTER TABLE sport_center_bookings ADD CONSTRAINT sport_center_bookings_booking_code_key UNIQUE (booking_code);
+          IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='sport_center_bookings') THEN
+            ALTER TABLE sport_center_bookings ADD CONSTRAINT sport_center_bookings_booking_code_key UNIQUE (booking_code);
+          END IF;
         END IF;
       END $$;
     `);
@@ -458,9 +472,134 @@ export async function runSportCenterMigration(): Promise<void> {
       logger.warn({ err: pullErr }, "Sport Center migration: pull legacy bookings gagal (non-fatal)");
     }
 
+    // ── Backfill customer_email dari sport_customers → sport_bookings lama ────
+    // Idempoten: hanya update baris yang customer_email masih NULL tapi customer_id sudah ada.
+    const backfillResult = await db.execute(sql`
+      UPDATE sport_bookings sb
+      SET    customer_email = sc.email,
+             updated_at     = NOW()
+      FROM   sport_customers sc
+      WHERE  sb.customer_id  = sc.id
+        AND  sc.email        IS NOT NULL
+        AND  sc.email        <> ''
+        AND  (sb.customer_email IS NULL OR sb.customer_email = '')
+    `);
+    const backfilled = (backfillResult as { rowCount?: number }).rowCount ?? 0;
+    if (backfilled > 0) {
+      logger.info({ backfilled }, "Sport Center migration: customer_email backfill selesai");
+    } else {
+      logger.info("Sport Center migration: customer_email backfill — tidak ada baris yang perlu diisi");
+    }
+    // Backfill: sync existing sport_payments ke accounting_payments (idempoten)
+    try {
+      await db.execute(sql`
+        INSERT INTO accounting_payments (
+          company_id, payment_number, payment_type, status, amount,
+          journal_id, partner_name, date, ref, memo, source_type, source_doc_id, created_at
+        )
+        SELECT
+          sp.company_id,
+          'PAY/' || EXTRACT(YEAR FROM sp.paid_at)::text || '/' || LPAD(ROW_NUMBER() OVER (ORDER BY sp.paid_at, sp.id)::text, 4, '0'),
+          'inbound',
+          'posted',
+          sp.amount,
+          COALESCE(
+            (SELECT id FROM accounting_journals
+             WHERE (sp.company_id IS NULL OR company_id = sp.company_id)
+               AND type = 'cash' LIMIT 1),
+            (SELECT id FROM accounting_journals
+             WHERE (sp.company_id IS NULL OR company_id = sp.company_id)
+               AND type = 'bank' LIMIT 1),
+            (SELECT id FROM accounting_journals LIMIT 1)
+          ),
+          COALESCE(
+            (SELECT customer_name FROM sport_bookings WHERE id = sp.booking_id LIMIT 1),
+            (SELECT name FROM sport_members WHERE id = sp.member_id LIMIT 1),
+            'Sport Center'
+          ),
+          COALESCE(sp.paid_at::date, NOW()::date),
+          sp.payment_number,
+          CASE sp.payment_type
+            WHEN 'membership' THEN 'Pembayaran membership sport center'
+            ELSE 'Pembayaran booking sport center'
+          END,
+          'sport_center',
+          sp.id,
+          sp.created_at
+        FROM sport_payments sp
+        WHERE sp.status = 'paid'
+          AND NOT EXISTS (
+            SELECT 1 FROM accounting_payments ap
+            WHERE ap.source_type = 'sport_center'
+              AND ap.source_doc_id = sp.id
+          )
+          AND COALESCE(
+            (SELECT id FROM accounting_journals
+             WHERE (sp.company_id IS NULL OR company_id = sp.company_id)
+               AND type IN ('cash','bank') LIMIT 1),
+            NULL
+          ) IS NOT NULL
+      `);
+      logger.info("Sport Center migration: backfill accounting_payments selesai");
+    } catch (backfillErr) {
+      logger.warn({ err: backfillErr }, "Sport Center migration: backfill accounting_payments gagal (non-fatal)");
+    }
+
     logger.info("Sport Center migration: selesai");
   } catch (err) {
     logger.error({ err }, "Sport Center migration: gagal");
     throw err;
+  }
+}
+
+/**
+ * Koreksi journal entry Sport Center yang salah masuk ke akun 4-1010
+ * (Pendapatan Jasa Freight) — pindahkan ke 4-1017 (Pendapatan Booking Sport Center).
+ * Idempoten: jika sudah tidak ada baris yang salah, skip.
+ */
+export async function runSportCenterAccountCorrection(): Promise<void> {
+  try {
+    const SPORT_CENTER_SOURCES = [
+      "sport_center_booking",
+      "sport_center_booking_reversal",
+      "sport_center_booking_refund",
+      "sport_center_booking_refund_direct",
+      "sport_center_refund",
+    ];
+
+    const result = await db.execute(sql`
+      WITH
+        acct_freight AS (
+          SELECT id, company_id FROM chart_of_accounts WHERE code = '4-1010'
+        ),
+        acct_sc AS (
+          SELECT id, company_id FROM chart_of_accounts WHERE code = '4-1017'
+        ),
+        bad_lines AS (
+          SELECT ael.id AS line_id,
+                 asc2.id AS correct_account_id
+          FROM accounting_entry_lines ael
+          JOIN accounting_entries ae ON ae.id = ael.entry_id
+          JOIN acct_freight af
+            ON af.id = ael.account_id
+               AND (af.company_id = ae.company_id OR af.company_id IS NULL)
+          JOIN acct_sc asc2
+            ON (asc2.company_id = ae.company_id OR asc2.company_id IS NULL)
+          WHERE ae.source::text = ANY(ARRAY[${sql.raw(SPORT_CENTER_SOURCES.map(s => `'${s}'`).join(","))}])
+        )
+      UPDATE accounting_entry_lines ael
+        SET account_id = bad_lines.correct_account_id
+      FROM bad_lines
+      WHERE ael.id = bad_lines.line_id
+    `);
+
+    const affected = (result as { rowCount?: number }).rowCount ?? 0;
+    if (affected > 0) {
+      logger.info({ affected }, "Sport Center account correction: dipindahkan dari 4-1010 → 4-1017");
+    } else {
+      logger.info("Sport Center account correction: tidak ada baris yang perlu dikoreksi");
+    }
+  } catch (err) {
+    logger.warn({ err }, "Sport Center account correction: gagal (non-fatal)");
   }
 }

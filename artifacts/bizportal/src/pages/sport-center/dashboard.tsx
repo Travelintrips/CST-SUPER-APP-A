@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useLocation } from "wouter";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -14,7 +15,7 @@ import {
   Activity, AlertCircle, Building2, Wifi, WifiOff,
   Dumbbell, ShoppingBag, RefreshCw, CloudUpload, CheckCircle2,
   XCircle, Database, BookOpen, Flame, CheckCheck, BarChart2,
-  ArrowDownRight, Zap, Filter,
+  ArrowDownRight, Zap, Filter, ChevronLeft, ChevronRight, ChevronDown,
 } from "lucide-react";
 import { fetchSportCenterData, type SportCenterSupabaseData } from "@/lib/sportCenterSupabase";
 import { supabase } from "@/lib/supabaseClient";
@@ -77,24 +78,54 @@ interface HeatmapRow { hour: string; booking_count: number; }
 
 export default function SportCenterDashboard() {
   const qc = useQueryClient();
+  const [, navigate] = useLocation();
   const { activeCompanyId } = useCompany();
   const esRef = useRef<EventSource | null>(null);
+  const bookingTableRef = useRef<HTMLDivElement | null>(null);
   const [realtimeCount, setRealtimeCount] = useState(0);
   const [supabaseConnected, setSupabaseConnected] = useState(false);
+  const [cardFilter, setCardFilter] = useState<string | null>(null);
   const { costCenters, selectedId: costCenterId, setSelectedId: setCostCenterId, selectedLabel: costCenterLabel } = useSportCostCenter();
+
+  // ── State: expandable card ────────────────────────────────────────────────
+  const [expandedCard, setExpandedCard] = useState<string | null>(null);
+
+  const handleCardClick = (cardId: string) => {
+    setExpandedCard(prev => (prev === cardId ? null : cardId));
+  };
+
+  // ── State: KPI date picker ────────────────────────────────────────────────
+  const todayStr = new Date().toISOString().split("T")[0];
+  const [kpiDate, setKpiDate] = useState<string>(todayStr);
+
+  const kpiDateLabel = (() => {
+    const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1);
+    const tomorrow  = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
+    if (kpiDate === todayStr) return "Hari Ini";
+    if (kpiDate === yesterday.toISOString().split("T")[0]) return "Kemarin";
+    if (kpiDate === tomorrow.toISOString().split("T")[0]) return "Besok";
+    return new Intl.DateTimeFormat("id-ID", { day: "2-digit", month: "short", year: "numeric" }).format(new Date(kpiDate));
+  })();
+
+  const shiftDate = (days: number) => {
+    const d = new Date(kpiDate);
+    d.setDate(d.getDate() + days);
+    setKpiDate(d.toISOString().split("T")[0]);
+  };
 
   // ── Query 0: KPI Live realtime ────────────────────────────────────────────
   const { data: kpiLive, isLoading: kpiLoading } = useQuery<KpiLiveData>({
-    queryKey: ["sport-center-kpi-live", activeCompanyId, costCenterId],
+    queryKey: ["sport-center-kpi-live", activeCompanyId, costCenterId, kpiDate],
     queryFn: async () => {
       const qs = new URLSearchParams();
       if (activeCompanyId) qs.set("companyId", String(activeCompanyId));
       if (costCenterId) qs.set("costCenterId", String(costCenterId));
+      qs.set("date", kpiDate);
       const r = await fetch(`/api/sport-center/kpi-live?${qs}`, { credentials: "include" });
       if (!r.ok) throw new Error("Gagal memuat KPI live");
       return r.json() as Promise<KpiLiveData>;
     },
-    refetchInterval: 30_000,
+    refetchInterval: kpiDate === todayStr ? 30_000 : false,
   });
 
   // ── Query Heatmap: Jam Ramai ──────────────────────────────────────────────
@@ -137,6 +168,37 @@ export default function SportCenterDashboard() {
     retry: 1,
   });
 
+  // ── Query: Semua booking dari Supabase (lazy — hanya saat expandedCard === 'totalBooking') ──
+  interface AllBookingRow {
+    booking_code: string | null;
+    customer_name: string | null;
+    facility_name: string | null;
+    date: string | null;
+    start_time: string | null;
+    end_time: string | null;
+    status: string | null;
+    payment_status: string | null;
+    total_price: number | null;
+    created_at: string | null;
+  }
+  const {
+    data: allBookingsData,
+    isLoading: allBookingsLoading,
+  } = useQuery<AllBookingRow[]>({
+    queryKey: ["sport-center-supabase-all-bookings"],
+    queryFn: async () => {
+      if (!supabase) return [];
+      const { data, error } = await supabase
+        .from("sport_center_bookings")
+        .select("booking_code, customer_name, facility_name, date, start_time, end_time, status, payment_status, total_price, created_at")
+        .order("created_at", { ascending: false });
+      if (error) throw new Error(error.message);
+      return (data ?? []) as AllBookingRow[];
+    },
+    enabled: expandedCard === "totalBooking",
+    staleTime: 30_000,
+  });
+
   // ── Realtime: SSE dari API server ─────────────────────────────────────────
   useEffect(() => {
     const qs = activeCompanyId ? `?companyId=${activeCompanyId}` : "";
@@ -163,9 +225,19 @@ export default function SportCenterDashboard() {
     if (!supabase) return;
     const channel = supabase
       .channel("sport-center-dashboard-rt")
-      .on("postgres_changes", { event: "*", schema: "public", table: "sport_center_bookings" }, () => {
+      .on("postgres_changes", { event: "*", schema: "public", table: "sport_center_bookings" }, (payload) => {
         qc.invalidateQueries({ queryKey: ["sport-center-supabase"] });
+        qc.invalidateQueries({ queryKey: ["sport-center-supabase-bookings-raw"] });
         setRealtimeCount((c) => c + 1);
+        // Auto-push perubahan individual ke local DB tanpa perlu manual sync
+        const row = (payload as { new?: Record<string, unknown> }).new;
+        if (row && row.booking_code) {
+          void fetch("/api/sport-center/sync/push-bookings", {
+            method: "POST", credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ bookings: [row], companyId: activeCompanyId }),
+          });
+        }
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "sport_center_services" }, () => {
         qc.invalidateQueries({ queryKey: ["sport-center-supabase"] });
@@ -179,7 +251,7 @@ export default function SportCenterDashboard() {
         setSupabaseConnected(status === "SUBSCRIBED");
       });
     return () => { void supabase.removeChannel(channel); };
-  }, [qc]);
+  }, [qc, activeCompanyId]);
 
   // ── Merge: Supabase jadi sumber utama, lokal sebagai fallback ─────────────
   const hasSupaBookings = (supaData?.totalBookings ?? 0) > 0 || (supaData?.recentBookings?.length ?? 0) > 0;
@@ -197,6 +269,38 @@ export default function SportCenterDashboard() {
   const byStatus       = hasSupaBookings ? (supaData?.byStatus       ?? []) : (localData?.byStatus       ?? []);
   const topFacilities  = hasSupaBookings ? (supaData?.topFacilities  ?? []) : (localData?.topFacilities  ?? []);
   const recentBookings = hasSupaBookings ? (supaData?.recentBookings ?? []) : (localData?.recentBookings ?? []);
+
+  useEffect(() => {
+    if (cardFilter && cardFilter !== "all" && bookingTableRef.current) {
+      setTimeout(() => {
+        bookingTableRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 80);
+    }
+  }, [cardFilter]);
+
+  const CARD_FILTER_LABEL: Record<string, string> = {
+    all:     "Semua Booking",
+    today:   "Booking Hari Ini",
+    pending: "Belum Bayar",
+  };
+
+  const displayBookings = useMemo(() => {
+    if (!cardFilter || cardFilter === "all") return recentBookings;
+    if (cardFilter === "today") {
+      return recentBookings.filter((b) =>
+        String(b.booking_date ?? "").startsWith(todayStr),
+      );
+    }
+    if (cardFilter === "pending") {
+      const pendingStatus     = ["pending", "pending_payment"];
+      const pendingPayStatus  = ["pending", "pending_payment", "unpaid"];
+      return recentBookings.filter((b) =>
+        pendingStatus.includes(String(b.status ?? "")) ||
+        pendingPayStatus.includes(String(b.payment_status ?? "")),
+      );
+    }
+    return recentBookings;
+  }, [cardFilter, recentBookings, todayStr]);
 
   const isLoading = localLoading && supaLoading;
 
@@ -225,6 +329,46 @@ export default function SportCenterDashboard() {
     },
     refetchInterval: 30_000,
   });
+
+  // ── Auto-push: Supabase → local saat local kosong ────────────────────────
+  const pushBookingsDone = useRef(false);
+  const pushBookings = useMutation({
+    mutationFn: async (bookings: unknown[]) => {
+      const r = await fetch("/api/sport-center/sync/push-bookings", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bookings, companyId: activeCompanyId }),
+      });
+      if (!r.ok) throw new Error("Push gagal");
+      return r.json();
+    },
+    onSuccess: (res) => {
+      if (res.pushed > 0) {
+        qc.invalidateQueries({ queryKey: ["sport-center-dashboard"] });
+        qc.invalidateQueries({ queryKey: ["sport-center-kpi-live"] });
+        void refetchSync();
+      }
+    },
+  });
+
+  useEffect(() => {
+    if (pushBookingsDone.current) return;
+    if (!supaData) return;
+    const localCount = syncData?.local?.bookings ?? null;
+    if (localCount === null) return;                          // belum load sync status
+    if (localCount > 0) { pushBookingsDone.current = true; return; } // sudah ada data lokal
+    const rawBookings = supaData.recentBookings;             // SupabaseBooking raw via recentBookings
+    if (!rawBookings || rawBookings.length === 0) return;
+    pushBookingsDone.current = true;
+    if (!supabase) return;
+    supabase
+      .from("sport_center_bookings")
+      .select("booking_code, customer_name, customer_phone, customer_email, facility_name, date, start_time, end_time, total_hours, total_price, status, payment_status, notes, created_at")
+      .then(({ data }) => {
+        if (data && data.length > 0) void pushBookings.mutateAsync(data);
+      })
+      .catch(() => {});
+  }, [supaData, syncData, activeCompanyId]);
 
   // ── Mutations: trigger resync manual ─────────────────────────────────────
   const resyncFacilities = useMutation({
@@ -272,7 +416,11 @@ export default function SportCenterDashboard() {
 
   const syncBusy = resyncFacilities.isPending || resyncAll.isPending || resyncBookings.isPending;
 
-  const stats = [
+  const stats: {
+    title: string; value: string | number;
+    icon: React.ElementType; color: string; bg: string; sub: string;
+    filter?: string; href?: string; expand?: string;
+  }[] = [
     {
       title: "Total Booking",
       value: totalBookings,
@@ -280,22 +428,7 @@ export default function SportCenterDashboard() {
       color: "text-blue-400",
       bg: "bg-blue-900/20",
       sub: `Dari Supabase${hasSupaBookings ? " ✓" : " (lokal)"}`,
-    },
-    {
-      title: "Booking Hari Ini",
-      value: todayBookings,
-      icon: Clock,
-      color: "text-purple-400",
-      bg: "bg-purple-900/20",
-      sub: "Dari PostgreSQL lokal",
-    },
-    {
-      title: "Belum Bayar",
-      value: pendingPayment,
-      icon: AlertCircle,
-      color: "text-yellow-400",
-      bg: "bg-yellow-900/20",
-      sub: "pending / pending_payment",
+      expand: "totalBooking",
     },
     {
       title: "Pelanggan Unik",
@@ -304,6 +437,7 @@ export default function SportCenterDashboard() {
       color: "text-emerald-400",
       bg: "bg-emerald-900/20",
       sub: "DISTINCT customer_phone",
+      href: "/sport-center/customers",
     },
     {
       title: "Layanan Aktif",
@@ -312,6 +446,7 @@ export default function SportCenterDashboard() {
       color: "text-pink-400",
       bg: "bg-pink-900/20",
       sub: "sport_center_services",
+      href: "/sport-center/facilities",
     },
     {
       title: "Revenue Bulan Ini",
@@ -320,6 +455,7 @@ export default function SportCenterDashboard() {
       color: "text-green-400",
       bg: "bg-green-900/20",
       sub: "Bulan berjalan",
+      href: "/sport-center/payments",
     },
     {
       title: "Total Revenue",
@@ -328,14 +464,34 @@ export default function SportCenterDashboard() {
       color: "text-cyan-400",
       bg: "bg-cyan-900/20",
       sub: "SUM(total_price)",
+      href: "/sport-center/reports",
     },
     {
       title: "Booking per Status",
-      value: byStatus.length,
+      value: byStatus.reduce((s, r) => s + Number(r.count), 0),
       icon: ShoppingBag,
       color: "text-orange-400",
       bg: "bg-orange-900/20",
       sub: `${byStatus.length} status berbeda`,
+      href: "/sport-center/bookings",
+    },
+    {
+      title: "Booking Hari Ini",
+      value: todayBookings,
+      icon: Clock,
+      color: "text-purple-400",
+      bg: "bg-purple-900/20",
+      sub: "klik untuk filter tabel",
+      filter: "today",
+    },
+    {
+      title: "Belum Bayar",
+      value: pendingPayment,
+      icon: AlertCircle,
+      color: "text-yellow-400",
+      bg: "bg-yellow-900/20",
+      sub: "klik untuk filter tabel",
+      filter: "pending",
     },
   ];
 
@@ -396,14 +552,46 @@ export default function SportCenterDashboard() {
 
         {/* ── FASE 6D-G: KPI Hari Ini (Live) ──────────────────────────────── */}
         <div>
-          <div className="flex items-center gap-2 mb-3">
-            <Zap className="h-4 w-4 text-yellow-400" />
-            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">KPI Hari Ini — Live</h2>
-            {realtimeCount > 0 && (
-              <Badge className="bg-yellow-900/40 text-yellow-300 border-yellow-600 text-xs">
-                {realtimeCount} update realtime
-              </Badge>
-            )}
+          <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+            <div className="flex items-center gap-2">
+              <Zap className="h-4 w-4 text-yellow-400" />
+              <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">KPI — Live</h2>
+              {kpiDate === todayStr && realtimeCount > 0 && (
+                <Badge className="bg-yellow-900/40 text-yellow-300 border-yellow-600 text-xs">
+                  {realtimeCount} update realtime
+                </Badge>
+              )}
+              {kpiDate !== todayStr && (
+                <Badge className="bg-slate-700 text-slate-300 border-slate-600 text-xs">
+                  Histori
+                </Badge>
+              )}
+            </div>
+            {/* Date navigator */}
+            <div className="flex items-center gap-1">
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => shiftDate(-1)}>
+                <ChevronLeft className="h-3.5 w-3.5" />
+              </Button>
+              <div className="relative">
+                <span className="px-3 py-1 text-xs font-medium bg-accent/40 border border-border/60 rounded-md text-foreground min-w-[90px] text-center block">
+                  {kpiDateLabel}
+                </span>
+                <input
+                  type="date"
+                  value={kpiDate}
+                  onChange={(e) => e.target.value && setKpiDate(e.target.value)}
+                  className="absolute inset-0 opacity-0 cursor-pointer w-full"
+                />
+              </div>
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => shiftDate(1)}>
+                <ChevronRight className="h-3.5 w-3.5" />
+              </Button>
+              {kpiDate !== todayStr && (
+                <Button variant="ghost" size="sm" className="h-7 text-xs text-yellow-400 hover:text-yellow-300 px-2" onClick={() => setKpiDate(todayStr)}>
+                  Hari Ini
+                </Button>
+              )}
+            </div>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
             {kpiLoading ? (
@@ -412,7 +600,10 @@ export default function SportCenterDashboard() {
               ))
             ) : (
               <>
-                <Card className="border-border/60 bg-blue-950/20">
+                <Card
+                  className="border-border/60 bg-blue-950/20 cursor-pointer hover:bg-blue-950/40 hover:border-blue-800/60 transition-all duration-150 group"
+                  onClick={() => navigate("/sport-center/payments")}
+                >
                   <CardContent className="p-4">
                     <div className="flex items-center gap-2 mb-1">
                       <DollarSign className="h-3.5 w-3.5 text-blue-400 shrink-0" />
@@ -422,7 +613,10 @@ export default function SportCenterDashboard() {
                     <p className="text-xs text-muted-foreground mt-0.5">dari accounting</p>
                   </CardContent>
                 </Card>
-                <Card className="border-border/60 bg-purple-950/20">
+                <Card
+                  className="border-border/60 bg-purple-950/20 cursor-pointer hover:bg-purple-950/40 hover:border-purple-800/60 transition-all duration-150 group"
+                  onClick={() => navigate("/sport-center/bookings")}
+                >
                   <CardContent className="p-4">
                     <div className="flex items-center gap-2 mb-1">
                       <CalendarDays className="h-3.5 w-3.5 text-purple-400 shrink-0" />
@@ -432,7 +626,10 @@ export default function SportCenterDashboard() {
                     <p className="text-xs text-muted-foreground mt-0.5">{kpiLive?.active_bookings_now ?? 0} aktif sekarang</p>
                   </CardContent>
                 </Card>
-                <Card className="border-border/60 bg-emerald-950/20">
+                <Card
+                  className="border-border/60 bg-emerald-950/20 cursor-pointer hover:bg-emerald-950/40 hover:border-emerald-800/60 transition-all duration-150 group"
+                  onClick={() => navigate("/sport-center/bookings")}
+                >
                   <CardContent className="p-4">
                     <div className="flex items-center gap-2 mb-1">
                       <CheckCheck className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
@@ -442,7 +639,10 @@ export default function SportCenterDashboard() {
                     <p className="text-xs text-muted-foreground mt-0.5">sudah check-in</p>
                   </CardContent>
                 </Card>
-                <Card className="border-border/60 bg-orange-950/20">
+                <Card
+                  className="border-border/60 bg-orange-950/20 cursor-pointer hover:bg-orange-950/40 hover:border-orange-800/60 transition-all duration-150 group"
+                  onClick={() => navigate("/sport-center/reports")}
+                >
                   <CardContent className="p-4">
                     <div className="flex items-center gap-2 mb-1">
                       <Flame className="h-3.5 w-3.5 text-orange-400 shrink-0" />
@@ -452,7 +652,10 @@ export default function SportCenterDashboard() {
                     <p className="text-xs text-muted-foreground mt-0.5">{kpiLive?.occupied_hours_today ?? 0}h / {kpiLive?.available_hours_today ?? 0}h</p>
                   </CardContent>
                 </Card>
-                <Card className={`border-border/60 ${(kpiLive?.net_profit_today ?? 0) >= 0 ? "bg-teal-950/20" : "bg-red-950/20"}`}>
+                <Card
+                  className={`border-border/60 cursor-pointer transition-all duration-150 group ${(kpiLive?.net_profit_today ?? 0) >= 0 ? "bg-teal-950/20 hover:bg-teal-950/40 hover:border-teal-800/60" : "bg-red-950/20 hover:bg-red-950/40 hover:border-red-800/60"}`}
+                  onClick={() => navigate("/sport-center/profitability")}
+                >
                   <CardContent className="p-4">
                     <div className="flex items-center gap-2 mb-1">
                       <TrendingUp className={`h-3.5 w-3.5 shrink-0 ${(kpiLive?.net_profit_today ?? 0) >= 0 ? "text-teal-400" : "text-red-400"}`} />
@@ -464,7 +667,10 @@ export default function SportCenterDashboard() {
                     <p className="text-xs text-muted-foreground mt-0.5">net (revenue − refund)</p>
                   </CardContent>
                 </Card>
-                <Card className="border-border/60 bg-red-950/20">
+                <Card
+                  className="border-border/60 bg-red-950/20 cursor-pointer hover:bg-red-950/40 hover:border-red-800/60 transition-all duration-150 group"
+                  onClick={() => navigate("/sport-center/payments")}
+                >
                   <CardContent className="p-4">
                     <div className="flex items-center gap-2 mb-1">
                       <ArrowDownRight className="h-3.5 w-3.5 text-red-400 shrink-0" />
@@ -520,22 +726,163 @@ export default function SportCenterDashboard() {
           </div>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {stats.map((s) => (
-              <Card key={s.title} className="border-border/60">
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs text-muted-foreground mb-1 truncate">{s.title}</p>
-                      <p className="text-xl font-bold text-foreground">{s.value}</p>
-                      <p className="text-xs text-muted-foreground mt-1 truncate">{s.sub}</p>
+            {stats.map((s) => {
+              const isActive = s.filter != null && cardFilter === s.filter;
+              const isExpanded = s.expand != null && expandedCard === s.expand;
+              return (
+                <Card
+                  key={s.title}
+                  className={`border-border/60 cursor-pointer transition-all duration-150 group ${
+                    isExpanded
+                      ? "border-blue-500/60 bg-blue-900/10 ring-1 ring-blue-500/30"
+                      : isActive
+                        ? "border-yellow-500/60 bg-yellow-900/10 ring-1 ring-yellow-500/30"
+                        : "hover:border-border hover:bg-accent/30"
+                  }`}
+                  onClick={() => {
+                    if (s.expand != null) {
+                      handleCardClick(s.expand);
+                    } else if (s.filter != null) {
+                      setCardFilter(cardFilter === s.filter ? null : s.filter);
+                    } else if (s.href) {
+                      navigate(s.href);
+                    }
+                  }}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <p className="text-xs text-muted-foreground truncate group-hover:text-foreground/70 transition-colors">{s.title}</p>
+                          {s.filter != null && (
+                            <span className={`text-[9px] font-semibold px-1 py-0.5 rounded border leading-none shrink-0 ${
+                              isActive
+                                ? "bg-yellow-900/60 text-yellow-300 border-yellow-600"
+                                : "bg-muted/60 text-muted-foreground border-border/60"
+                            }`}>FILTER</span>
+                          )}
+                          {s.expand != null && (
+                            <span className={`text-[9px] font-semibold px-1 py-0.5 rounded border leading-none shrink-0 ${
+                              isExpanded
+                                ? "bg-blue-900/60 text-blue-300 border-blue-600"
+                                : "bg-muted/60 text-muted-foreground border-border/60"
+                            }`}>DETAIL</span>
+                          )}
+                        </div>
+                        <p className={`text-xl font-bold ${isExpanded ? "text-blue-300" : isActive ? "text-yellow-300" : "text-foreground"}`}>{s.value}</p>
+                        <p className="text-xs text-muted-foreground mt-1 truncate">{s.sub}</p>
+                      </div>
+                      <div className={`p-2 rounded-lg ml-2 shrink-0 ${isExpanded ? "bg-blue-900/40" : isActive ? "bg-yellow-900/40" : s.bg} group-hover:scale-110 transition-transform`}>
+                        {s.expand != null ? (
+                          <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${isExpanded ? "rotate-180 text-blue-400" : s.color}`} />
+                        ) : (
+                          <s.icon className={`h-4 w-4 ${isExpanded ? "text-blue-400" : isActive ? "text-yellow-400" : s.color}`} />
+                        )}
+                      </div>
                     </div>
-                    <div className={`p-2 rounded-lg ml-2 shrink-0 ${s.bg}`}>
-                      <s.icon className={`h-4 w-4 ${s.color}`} />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+
+        )}
+
+        {/* ── Expandable Detail: Total Booking ─────────────────────────────── */}
+        {!isLoading && expandedCard === "totalBooking" && (
+          <div className="border border-blue-700/40 rounded-xl bg-blue-950/10">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-blue-700/30">
+              <div className="flex items-center gap-2">
+                <CalendarDays className="h-4 w-4 text-blue-400" />
+                <span className="text-sm font-semibold text-blue-300">Detail Semua Booking</span>
+                {!allBookingsLoading && allBookingsData && (
+                  <Badge className="bg-blue-900/40 text-blue-300 border-blue-600 text-xs">
+                    {allBookingsData.length} booking
+                  </Badge>
+                )}
+              </div>
+              <button
+                onClick={() => setExpandedCard(null)}
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded hover:bg-muted/40"
+              >
+                Tutup ✕
+              </button>
+            </div>
+
+            {allBookingsLoading ? (
+              <div className="p-4 space-y-2">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <div key={i} className="h-10 rounded-lg bg-muted/20 animate-pulse" />
+                ))}
+              </div>
+            ) : !allBookingsData || allBookingsData.length === 0 ? (
+              <div className="py-10 text-center text-muted-foreground text-sm">
+                Belum ada data booking di Supabase.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-blue-700/20 bg-blue-950/20">
+                      {["Kode", "Pelanggan", "Fasilitas", "Tanggal", "Jam", "Status", "Pembayaran", "Total"].map(h => (
+                        <th key={h} className="text-left py-2.5 px-3 text-blue-300/70 font-medium whitespace-nowrap">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {allBookingsData.map((b, i) => {
+                      const statusKey = (b.status ?? "").toLowerCase();
+                      const statusCls = STATUS_COLOR[statusKey] ?? "bg-gray-800/40 text-gray-300 border-gray-600";
+                      const statusLbl = STATUS_LABEL[statusKey] ?? (b.status ?? "-");
+                      const payKey = (b.payment_status ?? "").toLowerCase();
+                      const payCls = payKey === "paid" || payKey === "completed"
+                        ? "bg-emerald-900/40 text-emerald-300 border-emerald-600"
+                        : payKey === "pending" || payKey === "unpaid"
+                          ? "bg-yellow-900/40 text-yellow-300 border-yellow-600"
+                          : "bg-gray-800/40 text-gray-300 border-gray-600";
+                      const timeRange = (b.start_time || b.end_time)
+                        ? `${b.start_time ?? "?"} – ${b.end_time ?? "?"}`
+                        : "-";
+                      return (
+                        <tr
+                          key={b.booking_code ?? i}
+                          className="border-b border-blue-700/10 hover:bg-blue-950/20 transition-colors"
+                        >
+                          <td className="py-2 px-3 font-mono text-blue-300/80 whitespace-nowrap">{b.booking_code ?? "-"}</td>
+                          <td className="py-2 px-3 text-foreground max-w-[140px] truncate">{b.customer_name ?? "-"}</td>
+                          <td className="py-2 px-3 text-muted-foreground max-w-[120px] truncate">{b.facility_name ?? "-"}</td>
+                          <td className="py-2 px-3 text-muted-foreground whitespace-nowrap">{b.date ? fmtDate(b.date) : "-"}</td>
+                          <td className="py-2 px-3 text-muted-foreground whitespace-nowrap">{timeRange}</td>
+                          <td className="py-2 px-3">
+                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] font-medium ${statusCls}`}>
+                              {statusLbl}
+                            </span>
+                          </td>
+                          <td className="py-2 px-3">
+                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] font-medium ${payCls}`}>
+                              {b.payment_status ?? "-"}
+                            </span>
+                          </td>
+                          <td className="py-2 px-3 text-right font-semibold text-foreground whitespace-nowrap">
+                            {idr(Number(b.total_price ?? 0))}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t border-blue-700/30 bg-blue-950/20">
+                      <td colSpan={7} className="py-2 px-3 text-xs text-blue-300/70 font-medium">
+                        Total ({allBookingsData.length} booking)
+                      </td>
+                      <td className="py-2 px-3 text-right font-bold text-blue-300 whitespace-nowrap">
+                        {idr(allBookingsData.reduce((s, b) => s + Number(b.total_price ?? 0), 0))}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
           </div>
         )}
 
@@ -546,12 +893,17 @@ export default function SportCenterDashboard() {
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                 <Activity className="h-4 w-4" /> Booking per Status
+                <span className="text-xs font-normal opacity-50 ml-1">— klik untuk filter</span>
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
                 {byStatus.map((s) => (
-                  <div key={s.status} className="flex items-center justify-between">
+                  <div
+                    key={s.status}
+                    className="flex items-center justify-between cursor-pointer hover:bg-accent/30 -mx-2 px-2 py-1 rounded-md transition-colors"
+                    onClick={() => navigate(`/sport-center/bookings?status=${s.status}`)}
+                  >
                     <Badge className={`text-xs border ${STATUS_COLOR[s.status] ?? "bg-muted text-muted-foreground border-border"}`}>
                       {STATUS_LABEL[s.status] ?? s.status}
                     </Badge>
@@ -595,12 +947,44 @@ export default function SportCenterDashboard() {
         </div>
 
         {/* ── Booking Terbaru ───────────────────────────────────────────────── */}
-        <Card className="border-border/60">
+        <div ref={bookingTableRef} className="scroll-mt-6">
+        <Card className={`border-border/60 transition-all ${cardFilter ? "border-yellow-500/40" : ""}`}>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              <CalendarDays className="h-4 w-4" /> Booking Terbaru
-              <span className="text-xs font-normal ml-1 opacity-60">(5 terbaru berdasarkan created_at)</span>
-            </CardTitle>
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                <CalendarDays className="h-4 w-4" /> Booking Terbaru
+                {cardFilter ? (
+                  <Badge className="bg-yellow-900/40 text-yellow-300 border-yellow-600 text-xs ml-1">
+                    Filter: {CARD_FILTER_LABEL[cardFilter] ?? cardFilter}
+                  </Badge>
+                ) : (
+                  <span className="text-xs font-normal ml-1 opacity-60">— klik kartu di atas untuk filter</span>
+                )}
+              </CardTitle>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">
+                  {displayBookings.length} dari {recentBookings.length} booking
+                </span>
+                {cardFilter && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-2 text-xs text-yellow-400 hover:text-yellow-300 hover:bg-yellow-900/30"
+                    onClick={() => setCardFilter(null)}
+                  >
+                    <XCircle className="h-3 w-3 mr-1" /> Hapus filter
+                  </Button>
+                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground"
+                  onClick={() => navigate("/sport-center/bookings")}
+                >
+                  Lihat semua →
+                </Button>
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
@@ -613,7 +997,7 @@ export default function SportCenterDashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {recentBookings.map((b, idx) => (
+                  {displayBookings.map((b, idx) => (
                     <tr key={String(b.id ?? idx)} className="border-b border-border/20 hover:bg-muted/30">
                       <td className="py-2 px-3 font-mono text-xs text-muted-foreground">
                         {String(b.booking_number ?? b.id ?? "-")}
@@ -633,10 +1017,12 @@ export default function SportCenterDashboard() {
                       </td>
                     </tr>
                   ))}
-                  {recentBookings.length === 0 && (
+                  {displayBookings.length === 0 && (
                     <tr>
                       <td colSpan={6} className="py-8 text-center text-muted-foreground text-sm">
-                        Belum ada booking
+                        {cardFilter
+                          ? `Tidak ada booking dengan filter "${CARD_FILTER_LABEL[cardFilter] ?? cardFilter}"`
+                          : "Belum ada booking"}
                       </td>
                     </tr>
                   )}
@@ -645,6 +1031,7 @@ export default function SportCenterDashboard() {
             </div>
           </CardContent>
         </Card>
+        </div>
         {/* ── FASE 6D-F: Heatmap Jam Ramai ────────────────────────────────── */}
         {(heatmapData?.length ?? 0) > 0 && (
           <Card className="border-border/60">

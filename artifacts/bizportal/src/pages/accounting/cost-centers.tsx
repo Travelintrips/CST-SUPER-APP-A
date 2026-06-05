@@ -9,8 +9,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCompany } from "@/contexts/CompanyContext";
-import { Layers, Plus, Pencil, Trash2 } from "lucide-react";
+import { ArrowLeft, Layers, Plus, Pencil, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { Link } from "wouter";
 
 interface CostCenter {
   id: number;
@@ -117,6 +118,8 @@ export default function CostCentersPage() {
       <div className="space-y-6 p-6">
         <div className="flex items-center justify-between">
           <div>
+            <Link href="/accounting"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
+
             <h1 className="text-2xl font-bold flex items-center gap-2">
               <Layers className="h-6 w-6" />Master Cost Center
             </h1>

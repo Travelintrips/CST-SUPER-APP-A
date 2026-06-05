@@ -971,6 +971,71 @@ logisticOrdersRouter.get("/summary", async (_req: Request, res: Response) => {
   });
 });
 
+// GET /api/logistic/orders/dashboard-kpi — widget stats (session auth)
+logisticOrdersRouter.get("/dashboard-kpi", async (req: Request, res: Response) => {
+  if (!await requireClerkUser(req, res)) return;
+
+  const [phases, today, revenue] = await Promise.all([
+    // Count active orders by pipeline phase
+    db.execute(sql`
+      SELECT
+        SUM(CASE WHEN status IN ('Order Received','Admin Review')
+          THEN 1 ELSE 0 END)::int AS pre_ops,
+        SUM(CASE WHEN status IN ('RFQ Sent','Quote Received','Customer Approval','Vendor Confirmed')
+          THEN 1 ELSE 0 END)::int AS quotation,
+        SUM(CASE WHEN status IN ('In Progress','Pickup','In Transit','Arrived','Delivered')
+          THEN 1 ELSE 0 END)::int AS in_transit,
+        SUM(CASE WHEN status IN ('POD Uploaded','Invoice Issued','Payment Received')
+          THEN 1 ELSE 0 END)::int AS billing,
+        SUM(CASE WHEN status = 'Completed' THEN 1 ELSE 0 END)::int AS completed_all,
+        SUM(CASE WHEN status = 'Cancelled' THEN 1 ELSE 0 END)::int AS cancelled_all,
+        COUNT(*)::int AS total_all
+      FROM logistic_orders
+    `),
+
+    // Today activity
+    db.execute(sql`
+      SELECT
+        SUM(CASE WHEN created_at >= CURRENT_DATE THEN 1 ELSE 0 END)::int AS new_today,
+        SUM(CASE WHEN status = 'Completed' AND updated_at >= CURRENT_DATE THEN 1 ELSE 0 END)::int AS completed_today,
+        SUM(CASE WHEN status NOT IN ('Completed','Cancelled')
+          AND updated_at < NOW() - INTERVAL '7 days' THEN 1 ELSE 0 END)::int AS stalled
+      FROM logistic_orders
+    `),
+
+    // Revenue pipeline (active non-cancelled, non-completed)
+    db.execute(sql`
+      SELECT
+        COALESCE(SUM(grand_total::numeric),0)::float AS active_revenue,
+        COALESCE(SUM(CASE WHEN status='Completed' AND updated_at >= DATE_TRUNC('month',NOW())
+          THEN grand_total::numeric ELSE 0 END),0)::float AS month_completed_revenue
+      FROM logistic_orders
+      WHERE status NOT IN ('Cancelled')
+    `),
+  ]);
+
+  const p = (phases.rows[0] ?? {}) as Record<string,unknown>;
+  const t = (today.rows[0] ?? {}) as Record<string,unknown>;
+  const r = (revenue.rows[0] ?? {}) as Record<string,unknown>;
+
+  return res.json({
+    phases: {
+      preOps:    Number(p["pre_ops"]    ?? 0),
+      quotation: Number(p["quotation"]  ?? 0),
+      inTransit: Number(p["in_transit"] ?? 0),
+      billing:   Number(p["billing"]    ?? 0),
+    },
+    completedAll:         Number(p["completed_all"] ?? 0),
+    cancelledAll:         Number(p["cancelled_all"] ?? 0),
+    totalAll:             Number(p["total_all"]     ?? 0),
+    newToday:             Number(t["new_today"]       ?? 0),
+    completedToday:       Number(t["completed_today"] ?? 0),
+    stalled:              Number(t["stalled"]          ?? 0),
+    activeRevenue:        Number(r["active_revenue"]          ?? 0),
+    monthCompletedRevenue:Number(r["month_completed_revenue"] ?? 0),
+  });
+});
+
 // PUT /api/logistic/orders/trucking-rates — admin only
 // Protected by requirePortalAdmin: caller must present a valid Supabase Bearer token
 // belonging to an email on the server-side PORTAL_ADMIN_EMAILS allowlist.
@@ -1403,6 +1468,23 @@ logisticOrdersRouter.put("/:id/status", async (req: Request, res: Response) => {
     newValue: { status },
     ipAddress: req.ip ?? null,
   }).catch(() => {});
+
+  if (status === "Completed" || status === "Delivered") {
+    const logTax = Number(updated.tax ?? 0);
+    const logBase = Number(updated.grandTotal ?? 0) - logTax;
+    if (logBase > 0) {
+      import("../lib/taxAutoService.js").then(({ recordTransactionTax }) => {
+        void recordTransactionTax({
+          companyId: updated.companyId ?? 1,
+          transactionType: "logistic_order",
+          transactionId: updated.id,
+          transactionRef: updated.orderNumber,
+          baseAmount: logBase,
+          taxAmount: logTax > 0 ? logTax : undefined,
+        });
+      }).catch(() => {});
+    }
+  }
 
   // Audit trail: catat di order_status_history + order_audit_logs
   logOrderStatusChange({

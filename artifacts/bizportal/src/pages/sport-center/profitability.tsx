@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useLocation } from "wouter";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,7 +18,7 @@ import { useCompany } from "@/contexts/CompanyContext";
 import {
   TrendingUp, TrendingDown, DollarSign, Users, CalendarDays,
   RefreshCw, BarChart2, ArrowUpRight, ArrowDownRight, Activity,
-  Trophy, Target, Percent, Zap, Filter,
+  Trophy, Target, Percent, Zap, Filter, ArrowLeft,
 } from "lucide-react";
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid,
@@ -151,6 +152,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function SportCenterProfitability() {
+  const [, navigate] = useLocation();
   const { activeCompanyId } = useCompany();
   const qc = useQueryClient();
   const esRef = useRef<EventSource | null>(null);
@@ -215,6 +217,9 @@ export default function SportCenterProfitability() {
         {/* Header */}
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3">
+            <Button variant="ghost" size="icon" onClick={() => navigate("/sport-center/dashboard")} className="h-8 w-8 shrink-0">
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
             <div className="p-2 bg-emerald-900/40 rounded-lg">
               <Trophy className="h-5 w-5 text-emerald-400" />
             </div>

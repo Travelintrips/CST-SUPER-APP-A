@@ -20,7 +20,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Package, ShoppingBag, Boxes, Plus, Pencil, Trash2, RefreshCw,
-  Warehouse, AlertTriangle, ChefHat, TrendingUp, Sparkles,
+  Warehouse, AlertTriangle, ChefHat, TrendingUp, Sparkles, ArrowLeft,
 } from "lucide-react";
 
 const idr = (n: number) =>
@@ -280,6 +280,8 @@ export default function ThaiTeaPurchasePage() {
       <div className="p-6 space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
+            <Link href="/purchase"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
+
             <h1 className="text-2xl font-bold flex items-center gap-2">
               <ChefHat className="h-6 w-6 text-amber-400" />
               Pembelian Bahan Thai Tea

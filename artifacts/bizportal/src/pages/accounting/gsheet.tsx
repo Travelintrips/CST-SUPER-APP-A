@@ -8,8 +8,9 @@ import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Sheet, Upload, Download, RefreshCw, ExternalLink, CheckCircle2,
-  AlertCircle, Loader2, TableIcon, FileSpreadsheet, Info,
+  AlertCircle, Loader2, TableIcon, FileSpreadsheet, Info, ArrowLeft,
 } from "lucide-react";
+import { Link } from "wouter";
 
 type Config = { spreadsheetId: string | null };
 type PushResult = { ok: boolean; spreadsheetId: string; spreadsheetUrl: string; pushed: { accounts: number; entries: number; lines: number } };
@@ -77,6 +78,8 @@ export default function AccountingGSheetPage() {
         <div className="flex items-center gap-3">
           <FileSpreadsheet className="w-7 h-7 text-green-600" />
           <div>
+            <Link href="/accounting"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
+
             <h1 className="text-xl font-bold text-slate-800">Sinkronisasi Google Sheets</h1>
             <p className="text-sm text-slate-500">Push data akuntansi ke Sheets, pull perubahan kembali ke database</p>
           </div>

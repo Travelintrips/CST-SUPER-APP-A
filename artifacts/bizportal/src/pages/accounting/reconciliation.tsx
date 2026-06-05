@@ -13,8 +13,9 @@ import {
   useListAccountingEntryLines,
   getListAccountingEntryLinesQueryKey,
 } from "@workspace/api-client-react";
-import { CheckCircle2, Circle, GitMerge, Printer, Download } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Circle, GitMerge, Printer, Download } from "lucide-react";
 import { exportXlsx, printWindow } from "@/lib/export";
+import { Link } from "wouter";
 
 const idr = (n: number) =>
   new Intl.NumberFormat("id-ID", { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(n);
@@ -129,6 +130,8 @@ export default function ReconciliationPage() {
       <div className="space-y-6 p-6">
         <div className="flex items-center justify-between">
           <div>
+            <Link href="/accounting"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
+
             <h1 className="text-2xl font-bold flex items-center gap-2">
               <GitMerge className="h-6 w-6" />
               Rekonsiliasi Bank

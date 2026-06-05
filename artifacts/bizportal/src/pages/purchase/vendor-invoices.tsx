@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { useCompany } from "@/contexts/CompanyContext";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2, Eye, ChevronLeft, Send, CheckCircle, FileText } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Eye, ChevronLeft, Send, CheckCircle, FileText } from "lucide-react";
 import { toast } from "sonner";
 
 const idr = (n: number) => new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
@@ -131,6 +131,8 @@ export function VendorInvoiceEditorPage() {
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="sm" onClick={() => navigate("/purchase/vendor-invoices")}><ChevronLeft className="h-4 w-4" /></Button>
           <div className="flex-1">
+            <Link href="/purchase/vendors"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
+
             <h1 className="text-2xl font-bold">{isNew ? "Buat Vendor Invoice" : `Invoice: ${vi?.invoiceNumber}`}</h1>
             {vi && (
               <div className="flex gap-2 mt-1">

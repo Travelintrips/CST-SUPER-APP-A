@@ -46,6 +46,7 @@ import {
   arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { ArrowLeft } from "lucide-react";
 
 interface ProductTemplateRow {
   id: number;
@@ -367,6 +368,8 @@ export default function ProductTemplatesPage() {
               <Layout className="w-5 h-5" />
             </div>
             <div>
+              <Link href="/settings"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
+
               <h1 className="text-xl font-semibold text-foreground">Product Template Engine</h1>
               <p className="text-sm text-muted-foreground">
                 Referensi template komoditas — custom fields, dokumen wajib, checklist, dan instruksi pengemasan per kategori barang.

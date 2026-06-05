@@ -10,7 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import {
+import { ArrowLeft,
   BarChart2, CheckCircle2, XCircle, Clock, Loader2, Truck,
   MessageCircle, Smartphone, FileCheck, Timer, TrendingUp, RefreshCw,
 } from "lucide-react";
@@ -128,6 +128,7 @@ export default function DriverAnalyticsDashboardPage() {
       <div className="max-w-5xl mx-auto space-y-5 p-4">
         {/* Filter bar */}
         <div className="flex items-center gap-3 flex-wrap">
+          <Link href="/logistics/drivers"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
           <div className="flex items-center gap-2">
             <span className="text-sm text-slate-500">Periode:</span>
             <Select value={days} onValueChange={setDays}>

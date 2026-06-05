@@ -33,6 +33,8 @@ import {
 } from "lucide-react";
 import { formatDistanceToNow, format } from "date-fns";
 import { id as idLocale } from "date-fns/locale";
+import { ArrowLeft } from "lucide-react";
+import { Link } from "wouter";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -234,6 +236,8 @@ export default function AiDecisionMemoryPage() {
           <div>
             <div className="flex items-center gap-2 mb-1">
               <Brain className="h-6 w-6 text-violet-600" />
+              <Link href="/settings"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
+
               <h1 className="text-2xl font-bold">Decision Memory Store</h1>
               <Badge variant="outline" className="text-xs border-violet-300 text-violet-700 bg-violet-50">
                 <Sparkles className="h-3 w-3 mr-1" />

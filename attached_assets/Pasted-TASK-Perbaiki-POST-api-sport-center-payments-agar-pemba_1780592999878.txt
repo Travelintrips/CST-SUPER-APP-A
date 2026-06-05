@@ -1,0 +1,51 @@
+TASK: Perbaiki POST /api/sport-center/payments agar pembayaran tercatat lengkap
+
+Tujuan:
+- Data pembayaran Sport Center tercatat di sport_payments, sport_bookings, Supabase, dan Accounting.
+- Dashboard revenue_today dan Total Booking konsisten.
+
+1. Database Migration
+- ALTER TABLE sport_payments ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'SPORT_CENTER';
+- Jalankan otomatis saat server start (idempoten).
+
+2. Endpoint: POST /api/sport-center/payments (artifacts/api-server/src/modules/sport-center/routes.ts)
+- Input:
+  - amount ATAU total_amount
+  - payment_method ATAU method
+  - payment_date opsional (YYYY-MM-DD)
+- Backend logic:
+  a. Insert ke sport_payments:
+     - Fields: booking_id, amount, payment_method, paid_at = COALESCE(payment_date, NOW()), source='SPORT_CENTER', payment_status='paid'
+  b. Update sport_bookings:
+     - Set payment_status='paid'
+  c. Supabase Sync:
+     - Panggil syncBookingUpsert() dengan payment_status='paid'
+     - Update sport_center_bookings di Supabase
+  d. Accounting:
+     - postSportCenterBooking() atau postSportCenterBookingWithTax() fire-and-forget
+     - Debit Kas ← Credit Pendapatan Sport Center
+     - companyId sesuai booking
+  e. Accounting Payments:
+     - insertAccountingPaymentForSportCenter() → muncul di halaman Accounting → Payments
+  f. Audit Log:
+     - Insert ke sport_audit_logs: booking_id, amount, method, payment_number, source
+  g. Error handling:
+     - catch(err) → console.error lengkap, tidak silent
+
+3. Dashboard
+- revenue_today di KPI Live query dari accounting_entries WHERE source='sport_center_booking'
+- Total Booking konsisten karena syncBookingUpsert() dipanggil setelah setiap pembayaran
+
+4. Middleware
+- requireAdmin, hanya admin BizPortal dapat akses
+
+5. Testing
+- Buat booking test → lakukan pembayaran
+- Cek:
+  - sport_payments record ada dengan source='SPORT_CENTER' dan status='paid'
+  - sport_bookings.payment_status='paid'
+  - Supabase sport_center_bookings update
+  - Accounting journal terbentuk
+  - Accounting Payments muncul di dashboard
+  - sport_audit_logs terisi
+  - Dashboard revenue_today dan Total Booking konsisten

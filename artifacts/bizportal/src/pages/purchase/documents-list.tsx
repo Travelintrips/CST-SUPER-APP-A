@@ -23,7 +23,7 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { usePrefetchOnHover } from "@/hooks/use-prefetch-on-hover";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Trash2, X } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, X } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useCompany } from "@/contexts/CompanyContext";
 
@@ -165,6 +165,7 @@ export default function PurchaseDocumentsListPage({ kind }: Props) {
     <AppShell>
       <div className="flex flex-col gap-6">
         <div className="flex items-center justify-between">
+          <Link href="/purchase"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
           <div>
             <h1 className="text-2xl font-bold">{title}</h1>
             <p className="text-sm text-muted-foreground">{desc}</p>

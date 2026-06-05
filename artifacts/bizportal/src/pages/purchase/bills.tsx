@@ -38,7 +38,7 @@ import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { CreditCard, FileText } from "lucide-react";
+import { ArrowLeft, CreditCard, FileText } from "lucide-react";
 
 const idr = (n: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
@@ -133,6 +133,7 @@ export default function PurchaseBillsPage() {
     <AppShell>
       <div className="flex flex-col gap-6">
         <div className="flex items-center justify-between flex-wrap gap-3">
+          <Link href="/purchase"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
           <div>
             <h1 className="text-2xl font-bold">Bills</h1>
             <p className="text-sm text-muted-foreground">Tagihan dari purchase orders.</p>

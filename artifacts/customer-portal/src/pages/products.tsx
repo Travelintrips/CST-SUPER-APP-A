@@ -29,6 +29,11 @@ interface Product {
   imageUrl: string | null;
   mediaItems: MediaItem[];
   categories: string[];
+  weightKg: number | null;
+  lengthCm: number | null;
+  widthCm: number | null;
+  heightCm: number | null;
+  goodsType: string | null;
 }
 
 
@@ -319,6 +324,11 @@ function ProductModal({ product, onClose }: { product: Product; onClose: () => v
         qty,
         unit: selectedUnit,
         productPrice: product.price,
+        weightKg: product.weightKg,
+        lengthCm: product.lengthCm,
+        widthCm: product.widthCm,
+        heightCm: product.heightCm,
+        goodsType: product.goodsType,
       },
       calculationResult: {},
       subtotal: product.price > 0 ? product.price * qty : 0,

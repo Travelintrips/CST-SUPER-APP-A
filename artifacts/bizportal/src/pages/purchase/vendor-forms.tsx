@@ -25,7 +25,7 @@ import {
   Clock, SendHorizonal, Pencil, CheckCircle, Package, Star, Building2, FileText,
   BarChart2, TrendingDown, TrendingUp, Minus, Award,
   Layers, ChevronDown, ChevronRight, AlertCircle, ClipboardList, PackageCheck, Info,
-  Search, DollarSign, CreditCard, BadgeCheck, ChevronsUpDown, Check,
+  Search, DollarSign, CreditCard, BadgeCheck, ChevronsUpDown, Check, ArrowLeft,
 } from "lucide-react";
 import {
   Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList,
@@ -44,6 +44,7 @@ import {
   TemplateChecklistRenderer,
   TemplateInstructionRenderer,
 } from "@/components/template";
+import { Link } from "wouter";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -1724,6 +1725,8 @@ function FormPreviewSheet({
               <div className="flex items-center gap-3 mb-2">
                 <span className="text-3xl leading-none">{emoji}</span>
                 <div>
+                  <Link href="/purchase/vendors"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
+
                   <h1 className="text-lg font-bold text-slate-800">Form Template — {template.label}</h1>
                   <p className="text-sm text-slate-500">Untuk: [Nama Vendor]</p>
                 </div>

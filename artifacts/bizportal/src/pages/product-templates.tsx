@@ -16,10 +16,11 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
-  Layers, Plus, Pencil, Copy, PowerOff, Power, Trash2, RefreshCw,
+  ArrowLeft, Layers, Plus, Pencil, Copy, PowerOff, Power, Trash2, RefreshCw,
   PackageCheck, FileText, ClipboardList, Wrench, GitBranch, AlertCircle,
   Search, CheckCircle2, XCircle, Info, RotateCcw,
 } from "lucide-react";
+import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { useSupabaseAuth } from "@/contexts/SupabaseAuthContext";
 
@@ -340,13 +341,16 @@ export default function ProductTemplatesPage() {
       <div className="p-6 max-w-6xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
+          <div className="flex items-center gap-3">
+            <Link href="/settings"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
+            <div>
             <h1 className="text-2xl font-bold flex items-center gap-2">
               <Layers className="w-6 h-6 text-primary" /> Product Templates
             </h1>
             <p className="text-sm text-muted-foreground mt-1">
               Kelola template komoditas — custom fields, dokumen, checklist, dan aturan validasi.
             </p>
+          </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <Button variant="outline" size="sm" onClick={load} disabled={loading}>

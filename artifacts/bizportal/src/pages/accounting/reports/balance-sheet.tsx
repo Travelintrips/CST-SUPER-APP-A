@@ -7,8 +7,9 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table";
 import { useGetBalanceSheet, getGetBalanceSheetQueryKey } from "@workspace/api-client-react";
 import { useCompany } from "@/contexts/CompanyContext";
-import { Wallet, Printer, Download } from "lucide-react";
+import { ArrowLeft, Wallet, Printer, Download } from "lucide-react";
 import { exportXlsx, printWindow } from "@/lib/export";
+import { Link } from "wouter";
 
 const idr = (n: number) => new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n);
 
@@ -49,6 +50,8 @@ export default function BalanceSheetPage() {
       <div className="space-y-6 p-6">
         <div className="flex items-center justify-between">
           <div>
+            <Link href="/accounting"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
+
             <h1 className="text-2xl font-bold flex items-center gap-2"><Wallet className="h-6 w-6" />Neraca (Balance Sheet)</h1>
             <p className="text-sm text-muted-foreground">Posisi keuangan per tanggal</p>
           </div>

@@ -25,6 +25,7 @@ import {
   TrendingDown,
   TrendingUp,
   Wallet,
+  ArrowLeft,
 } from "lucide-react";
 import {
   ComposedChart,
@@ -41,6 +42,7 @@ import {
   PieChart,
   Pie,
 } from "recharts";
+import { Link } from "wouter";
 
 function fmt(n: number) {
   return new Intl.NumberFormat("id-ID", {
@@ -307,6 +309,8 @@ export default function HoldingCashflowReportPage() {
             </div>
             <div>
               <div className="flex items-center gap-2 flex-wrap">
+                <Link href="/accounting"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
+
                 <h1 className="text-2xl font-bold tracking-tight">Laporan Arus Kas</h1>
                 <Badge className="bg-indigo-600/20 text-indigo-300 border border-indigo-500/40 text-xs font-mono">
                   <Layers className="h-3 w-3 mr-1" /> {holdingName}

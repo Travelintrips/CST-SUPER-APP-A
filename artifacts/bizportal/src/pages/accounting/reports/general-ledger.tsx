@@ -10,8 +10,9 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useGetGeneralLedger, useListAccounts, getGetGeneralLedgerQueryKey } from "@workspace/api-client-react";
 import { useCompany } from "@/contexts/CompanyContext";
-import { BookOpen, Printer, Download } from "lucide-react";
+import { ArrowLeft, BookOpen, Printer, Download } from "lucide-react";
 import { exportXlsx, printWindow } from "@/lib/export";
+import { Link } from "wouter";
 
 const idr = (n: number) => new Intl.NumberFormat("id-ID", { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(n);
 
@@ -54,6 +55,8 @@ export default function GeneralLedgerPage() {
       <div className="space-y-6 p-6">
         <div className="flex items-center justify-between">
           <div>
+            <Link href="/accounting"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
+
             <h1 className="text-2xl font-bold flex items-center gap-2"><BookOpen className="h-6 w-6" />Buku Besar (General Ledger)</h1>
             <p className="text-sm text-muted-foreground">Mutasi & saldo per akun</p>
           </div>

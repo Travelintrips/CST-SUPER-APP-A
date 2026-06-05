@@ -53,6 +53,21 @@ const DRAWER_SERVICES = [
 const GOODS_TYPES = ["General Cargo","Kopi / Hasil Bumi","Elektronik","Perishable","Kimia / B3","Furniture","Mesin & Spare-part","Lainnya"];
 const INCOTERMS   = ["EXW","FCA","FOB","CIF","DAP","DDP","CPT","CIP"];
 
+const VEHICLE_CAPACITIES = [
+  { type: "CDE",     label: "CDE — Engkel Kecil",  desc: "s/d 1.500 kg",  maxKg: 1_500       },
+  { type: "CDD",     label: "CDD — Engkel Besar",  desc: "s/d 3.000 kg",  maxKg: 3_000       },
+  { type: "Fuso",    label: "Fuso — Truk Medium",  desc: "s/d 8.000 kg",  maxKg: 8_000       },
+  { type: "Wingbox", label: "Wingbox — Truk Besar",desc: "s/d 20.000 kg", maxKg: 20_000      },
+  { type: "Trailer", label: "Trailer",              desc: "> 20.000 kg",   maxKg: Infinity    },
+];
+
+function suggestVehicleType(weightKg: number): string {
+  for (const v of VEHICLE_CAPACITIES) {
+    if (weightKg <= v.maxKg) return v.type;
+  }
+  return "Trailer";
+}
+
 // ── Cart item detail lines ────────────────────────────────────────────────────
 
 function getItemDetails(item: CartItem): string[] {
@@ -161,6 +176,8 @@ function CartItemCard({ item, onRemove }: { item: CartItem; onRemove: (id: strin
 
 type DrawerView = "cart" | "service-catalog" | "trucking";
 
+const DEFAULT_PICKUP = "Jl. Logistik No. 1, Jakarta";
+
 export function CartDrawer() {
   const [open, setOpen]        = useState(false);
   const [view, setView]        = useState<DrawerView>("cart");
@@ -168,16 +185,85 @@ export function CartDrawer() {
   const [truckData, setTruckData] = useState<Record<string, string>>({});
   const [truckEstimate, setTruckEstimate] = useState<number | null>(null);
   const [truckEstimating, setTruckEstimating] = useState(false);
+  const [vehicleComparison, setVehicleComparison] = useState<Array<{ type: string; label: string; desc: string; estimate: number; suitable: boolean }> | null>(null);
+  const [deliveryAddressError, setDeliveryAddressError] = useState(false);
+  const [companyPickup, setCompanyPickup] = useState<{ name: string; address: string; originCity: string } | null>(null);
+  const [cartAutoFilled, setCartAutoFilled] = useState(false);
+  const [apiRates, setApiRates] = useState<Array<{ type: string; label: string; description: string; max_kg: string | null; rate_per_kg: string; min_price: string }> | null>(null);
   const [, setLocation]        = useLocation();
   const { toast }              = useToast();
 
   const { items, addItem, removeItem, clearCart, subtotal, tax, grandTotal, taxRate } = useCart();
+
+  function computeCartAutoFill(): { hasData: boolean; weight?: string; vehicleType?: string; length?: string; width?: string; height?: string; goodsType?: string } {
+    const productItems = items.filter(i => i.calculatorType === "product");
+    // Hitung berat: jika ada produk dengan weightKg, pakai itu; fallback: qty per item
+    const itemsWithWeight = productItems.filter(i => i.inputData.weightKg != null && Number(i.inputData.weightKg) > 0);
+    const hasWeightData = itemsWithWeight.length > 0;
+    const totalWeight = hasWeightData
+      ? itemsWithWeight.reduce((sum, i) => sum + Number(i.inputData.weightKg) * Number(i.inputData.qty ?? 1), 0)
+      : productItems.reduce((sum, i) => sum + Number(i.inputData.qty ?? 1), 0); // fallback 1 kg/unit
+
+    if (productItems.length === 0) return { hasData: false };
+
+    const dimItem = productItems.reduce((best: CartItem | null, item) => {
+      const vol = Number(item.inputData.lengthCm ?? 0) * Number(item.inputData.widthCm ?? 0) * Number(item.inputData.heightCm ?? 0) * Number(item.inputData.qty ?? 1);
+      const bestVol = best ? Number(best.inputData.lengthCm ?? 0) * Number(best.inputData.widthCm ?? 0) * Number(best.inputData.heightCm ?? 0) * Number(best.inputData.qty ?? 1) : 0;
+      return vol > bestVol ? item : best;
+    }, null);
+
+    const goodsItem = productItems.find(i => i.inputData.goodsType);
+    const roundedWeight = Math.round(totalWeight * 100) / 100;
+
+    return {
+      hasData: true,
+      weight:     roundedWeight > 0 ? String(roundedWeight) : "",
+      vehicleType: roundedWeight > 0 ? suggestVehicleType(roundedWeight) : "",
+      length:     dimItem?.inputData.lengthCm ? String(dimItem.inputData.lengthCm) : "",
+      width:      dimItem?.inputData.widthCm  ? String(dimItem.inputData.widthCm)  : "",
+      height:     dimItem?.inputData.heightCm ? String(dimItem.inputData.heightCm) : "",
+      goodsType:  goodsItem?.inputData.goodsType ? String(goodsItem.inputData.goodsType) : "",
+    };
+  }
 
   useEffect(() => {
     const handleOpen = () => { setOpen(true); setView("cart"); };
     window.addEventListener(OPEN_CART_EVENT, handleOpen);
     return () => window.removeEventListener(OPEN_CART_EVENT, handleOpen);
   }, []);
+
+  useEffect(() => {
+    fetch("/api/trucking-rates")
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (Array.isArray(d) && d.length > 0) setApiRates(d); })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (view !== "trucking") return;
+    try {
+      const saved = JSON.parse(localStorage.getItem("truck_pref") ?? "{}") as { destCity?: string; vehicleType?: string };
+      setTruckData(p => ({
+        ...p,
+        ...(saved.destCity   && !p.destCity    ? { destCity:    saved.destCity   } : {}),
+        ...(saved.vehicleType && !p.vehicleType ? { vehicleType: saved.vehicleType } : {}),
+      }));
+    } catch { /**/ }
+  }, [view]);
+
+  useEffect(() => {
+    if (view !== "trucking" || companyPickup) return;
+    fetch("/api/settings/company-pickup-address")
+      .then(r => r.ok ? r.json() : null)
+      .then((d: { companyName: string; companyAddress: string; originCity?: string } | null) => {
+        if (d?.companyAddress) {
+          setCompanyPickup({ name: d.companyName, address: d.companyAddress, originCity: d.originCity ?? "Jakarta" });
+        } else {
+          setCompanyPickup({ name: "CST Logistics", address: DEFAULT_PICKUP, originCity: "Jakarta" });
+        }
+      })
+      .catch(() => setCompanyPickup({ name: "CST Logistics", address: DEFAULT_PICKUP, originCity: "Jakarta" }));
+  }, [view, companyPickup]);
 
   function close() { setOpen(false); }
 
@@ -194,16 +280,22 @@ export function CartDrawer() {
   }
 
   function handleAddTruckingItem() {
+    if (truckMode === "detail" && !truckData.deliveryAddress?.trim()) {
+      setDeliveryAddressError(true);
+      toast({ title: "Alamat Pengiriman wajib diisi", variant: "destructive" });
+      return;
+    }
     const name = truckMode === "detail" ? "Trucking — Pickup & Delivery" : "Trucking — Kargo";
+    const pickupAddr = companyPickup?.address ?? DEFAULT_PICKUP;
     addItem({
       category: "Trucking",
       serviceName: name,
       calculatorType: "trucking",
       inputData: truckMode === "detail"
-        ? { pickupCity: truckData.pickupAddress, destCity: truckData.deliveryAddress,
+        ? { pickupCity: pickupAddr, destCity: truckData.deliveryAddress,
             vehicleType: "CDD", pickupDate: truckData.pickupDate, pickupTime: truckData.pickupTime,
             receiver_name: truckData.contactName, receiver_phone: truckData.contactPhone }
-        : { ...truckData },
+        : { ...truckData, pickupCity: companyPickup?.originCity ?? "Jakarta" },
       calculationResult: truckEstimate ? { estimated_price: truckEstimate } : {},
       subtotal: 0,
     });
@@ -223,21 +315,57 @@ export function CartDrawer() {
     setLocation(cat ? `/book?cat=${cat}` : "/book");
   }
 
-  function handleEstimate() {
+  async function handleCompareVehicles() {
     setTruckEstimating(true);
-    const params = new URLSearchParams({ transport_mode: "TRUCKING" });
-    if (truckData.vehicleType) params.set("truck_type", truckData.vehicleType);
-    if (truckData.pickupCity)  params.set("origin", truckData.pickupCity);
-    if (truckData.destCity)    params.set("dest", truckData.destCity);
-    fetch(`/api/logistic/orders/estimate-price?${params}`)
-      .then(r => r.ok ? r.json() : Promise.reject())
-      .then((d: { estimated_price: number | null }) => {
-        if (d.estimated_price && d.estimated_price > 0) {
-          setTruckEstimate(d.estimated_price);
-        } else fallbackEstimate();
+    setVehicleComparison(null);
+    const w  = parseFloat(truckData.weight  || "0") || 0;
+    const l  = parseFloat(truckData.length  || "0") || 0;
+    const wi = parseFloat(truckData.width   || "0") || 0;
+    const h  = parseFloat(truckData.height  || "0") || 0;
+    const volW = (l && wi && h) ? (l * wi * h) / 4000 : 0;
+    const origin = companyPickup?.originCity ?? "Jakarta";
+
+    const vehicleList = (apiRates && apiRates.length > 0)
+      ? apiRates.map(r => ({
+          type:  r.type,
+          label: r.label,
+          desc:  r.description,
+          maxKg: r.max_kg != null ? Number(r.max_kg) : Infinity,
+        }))
+      : VEHICLE_CAPACITIES;
+
+    const results = await Promise.all(
+      vehicleList.map(async (v) => {
+        const suitable = w <= v.maxKg;
+        const offlineEst = (() => {
+          const chargeable = Math.max(w, volW);
+          const ar = apiRates?.find(r => r.type === v.type);
+          if (ar) return Math.max(Number(ar.min_price), Math.round(chargeable * Number(ar.rate_per_kg)));
+          return offlineEstimateForVehicle(w, v.type, volW);
+        })();
+        try {
+          const params = new URLSearchParams({ transport_mode: "TRUCKING", truck_type: v.type, origin });
+          if (truckData.destCity) params.set("dest", truckData.destCity);
+          const res = await fetch(`/api/logistic/orders/estimate-price?${params}`);
+          const d: { estimated_price: number | null } = await res.json();
+          const estimate = (d.estimated_price && d.estimated_price > 0) ? d.estimated_price : offlineEst;
+          return { type: v.type, label: v.label, desc: v.desc, estimate, suitable };
+        } catch {
+          return { type: v.type, label: v.label, desc: v.desc, estimate: offlineEst, suitable };
+        }
       })
-      .catch(fallbackEstimate)
-      .finally(() => setTruckEstimating(false));
+    );
+
+    setVehicleComparison(results);
+    const suggested = w > 0 ? suggestVehicleType(w) : null;
+    const targetType = truckData.vehicleType || suggested || "";
+    const found = results.find(r => r.type === targetType && r.suitable)
+      ?? results.find(r => r.suitable);
+    if (found) {
+      setTruckData(p => ({ ...p, vehicleType: found.type }));
+      setTruckEstimate(found.estimate);
+    }
+    setTruckEstimating(false);
   }
 
   function fallbackEstimate() {
@@ -247,6 +375,19 @@ export function CartDrawer() {
     const h  = parseFloat(truckData.height) || 0;
     const volW = (l && wi && h) ? (l * wi * h) / 4000 : 0;
     setTruckEstimate(Math.max(150_000, Math.round(Math.max(w, volW) * 2_500)));
+  }
+
+  function offlineEstimateForVehicle(weightKg: number, vehicleType: string, volW: number): number {
+    const chargeable = Math.max(weightKg, volW);
+    const rates: Record<string, { rate: number; min: number }> = {
+      CDE:     { rate: 3_500, min: 200_000   },
+      CDD:     { rate: 2_800, min: 350_000   },
+      Fuso:    { rate: 2_200, min: 800_000   },
+      Wingbox: { rate: 1_800, min: 2_500_000 },
+      Trailer: { rate: 1_500, min: 5_000_000 },
+    };
+    const r = rates[vehicleType] ?? rates["CDD"];
+    return Math.max(r.min, Math.round(chargeable * r.rate));
   }
 
   const grouped      = groupItems(items);
@@ -366,10 +507,25 @@ export function CartDrawer() {
                     key={svc.id}
                     onClick={() => {
                       if (svc.isTrucking) {
-                        setView("trucking");
-                        setTruckMode("detail");
-                        setTruckData({});
+                        const af = computeCartAutoFill();
                         setTruckEstimate(null);
+                        if (af.hasData) {
+                          setTruckData({
+                            weight:      af.weight      || "",
+                            vehicleType: af.vehicleType || "",
+                            length:      af.length      || "",
+                            width:       af.width       || "",
+                            height:      af.height      || "",
+                            goodsType:   af.goodsType   || "",
+                          });
+                          setTruckMode("calculator");
+                          setCartAutoFilled(true);
+                        } else {
+                          setTruckData({});
+                          setTruckMode("calculator");
+                          setCartAutoFilled(false);
+                        }
+                        setView("trucking");
                       } else {
                         handleNonTruckingService(svc.id);
                       }
@@ -402,7 +558,36 @@ export function CartDrawer() {
                 {(["detail", "calculator"] as const).map(mode => (
                   <button
                     key={mode}
-                    onClick={() => { setTruckMode(mode); setTruckEstimate(null); }}
+                    onClick={() => {
+                      setTruckEstimate(null);
+                      if (mode === "calculator") {
+                        const af = computeCartAutoFill();
+                        if (af.hasData) {
+                          setTruckData(prev => {
+                            const merged: Record<string, string> = {
+                              ...prev,
+                              weight:      af.weight      || prev.weight      || "",
+                              vehicleType: prev.vehicleType || "",
+                              length:      af.length      || prev.length      || "",
+                              width:       af.width       || prev.width       || "",
+                              height:      af.height      || prev.height      || "",
+                              goodsType:   af.goodsType   || prev.goodsType   || "",
+                            };
+                            const effectiveWeight = parseFloat(merged.weight) || 0;
+                            if (!merged.vehicleType && effectiveWeight > 0) {
+                              merged.vehicleType = suggestVehicleType(effectiveWeight);
+                            }
+                            return merged;
+                          });
+                          setCartAutoFilled(true);
+                        } else {
+                          setCartAutoFilled(false);
+                        }
+                      } else {
+                        setCartAutoFilled(false);
+                      }
+                      setTruckMode(mode);
+                    }}
                     className={`flex-1 py-2 px-2 rounded-md text-xs font-medium transition-colors flex items-center justify-center gap-1 ${truckMode === mode ? "bg-white shadow text-slate-800" : "text-slate-400 hover:text-slate-600"}`}
                   >
                     {mode === "detail" ? <><MapPin className="w-3 h-3" /> Pickup &amp; Delivery</> : <><Calculator className="w-3 h-3" /> Kalkulator Estimasi</>}
@@ -413,23 +598,35 @@ export function CartDrawer() {
               {/* Detail Form */}
               {truckMode === "detail" && (
                 <div className="space-y-3">
-                  <div className="grid grid-cols-2 gap-2.5">
-                    <div>
-                      <Label className="text-[11px] flex items-center gap-1 mb-1"><Calendar className="w-3 h-3" /> Tanggal Pickup</Label>
-                      <Input type="date" className="h-8 text-xs" value={truckData.pickupDate||""} onChange={e => setTruckData(p => ({ ...p, pickupDate: e.target.value }))} />
-                    </div>
-                    <div>
-                      <Label className="text-[11px] flex items-center gap-1 mb-1"><Clock className="w-3 h-3" /> Jam Pickup</Label>
-                      <Input type="time" className="h-8 text-xs" value={truckData.pickupTime||""} onChange={e => setTruckData(p => ({ ...p, pickupTime: e.target.value }))} />
+                  {/* Alamat Pickup — otomatis dari gudang CST Logistics, tidak bisa diubah customer */}
+                  <div>
+                    <Label className="text-[11px] mb-1 flex items-center gap-1">
+                      <MapPin className="w-3 h-3 text-orange-500" />
+                      Alamat Pickup
+                      <span className="ml-auto text-[10px] font-semibold bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded-full">Otomatis</span>
+                    </Label>
+                    <div className="rounded-lg border border-orange-200 bg-orange-50/70 px-3 py-2.5">
+                      <p className="text-[11px] font-semibold text-orange-700 leading-snug">
+                        🏭 {companyPickup?.name ?? "CST Logistics"}
+                      </p>
+                      <p className="text-[11px] text-orange-600 mt-0.5 leading-snug">
+                        {companyPickup?.address ?? DEFAULT_PICKUP}
+                      </p>
+                      <p className="text-[10px] text-orange-400 mt-1">
+                        Tim kami yang akan menentukan lokasi pengambilan barang
+                      </p>
                     </div>
                   </div>
+
                   <div>
-                    <Label className="text-[11px] mb-1 block">Alamat Pickup <span className="text-destructive">*</span></Label>
-                    <Textarea rows={2} placeholder="Jl. ..., Kota, Provinsi" className="text-xs resize-none" value={truckData.pickupAddress||""} onChange={e => setTruckData(p => ({ ...p, pickupAddress: e.target.value }))} />
-                  </div>
-                  <div>
-                    <Label className="text-[11px] mb-1 block">Alamat Pengiriman <span className="text-destructive">*</span></Label>
-                    <Textarea rows={2} placeholder="Jl. ..., Kota, Provinsi" className="text-xs resize-none" value={truckData.deliveryAddress||""} onChange={e => setTruckData(p => ({ ...p, deliveryAddress: e.target.value }))} />
+                    <Label className="text-[11px] mb-1 block">
+                      Alamat Pengiriman <span className="text-destructive">*</span>
+                    </Label>
+                    <Textarea rows={2} placeholder="Jl. ..., Kota, Provinsi — alamat tujuan pengiriman"
+                      className={`text-xs resize-none${deliveryAddressError ? " border-destructive focus-visible:ring-destructive" : ""}`}
+                      value={truckData.deliveryAddress||""}
+                      onChange={e => { setDeliveryAddressError(false); setTruckData(p => ({ ...p, deliveryAddress: e.target.value })); }} />
+                    {deliveryAddressError && <p className="text-[11px] text-destructive mt-1">Alamat pengiriman wajib diisi.</p>}
                   </div>
                   <div className="grid grid-cols-2 gap-2.5">
                     <div>
@@ -441,6 +638,10 @@ export function CartDrawer() {
                       <Input type="tel" className="h-8 text-xs" placeholder="08xxxxxxxxxx" value={truckData.contactPhone||""} onChange={e => setTruckData(p => ({ ...p, contactPhone: e.target.value }))} />
                     </div>
                   </div>
+                  <div>
+                    <Label className="text-[11px] mb-1 block">Catatan (opsional)</Label>
+                    <Textarea rows={2} placeholder="Instruksi khusus untuk tim pengiriman..." className="text-xs resize-none" value={truckData.notes||""} onChange={e => setTruckData(p => ({ ...p, notes: e.target.value }))} />
+                  </div>
                   <div className="bg-orange-50 border border-orange-200 rounded-lg p-2.5 text-[11px] text-orange-700">
                     💡 Estimasi biaya dikonfirmasi tim setelah pesanan masuk.
                   </div>
@@ -450,33 +651,119 @@ export function CartDrawer() {
               {/* Calculator Form */}
               {truckMode === "calculator" && (
                 <div className="space-y-3">
+                  {cartAutoFilled && (
+                    <div className="bg-sky-50 border border-sky-200 rounded-lg px-3 py-2 flex items-start gap-2">
+                      <span className="text-sky-500 mt-0.5 shrink-0">✦</span>
+                      <div>
+                        <p className="text-[11px] font-semibold text-sky-700">Diisi otomatis dari produk pesanan</p>
+                        <p className="text-[10px] text-sky-500 mt-0.5">Berat &amp; dimensi dihitung dari item di keranjang. Masukkan kota tujuan lalu klik Hitung Estimasi.</p>
+                      </div>
+                    </div>
+                  )}
                   <div className="grid grid-cols-2 gap-2.5">
                     <div>
-                      <Label className="text-[11px] mb-1 block flex items-center gap-1"><MapPin className="w-3 h-3" /> Kota Asal *</Label>
-                      <Input className="h-8 text-xs" placeholder="Jakarta" value={truckData.pickupCity||""} onChange={e => setTruckData(p => ({ ...p, pickupCity: e.target.value }))} />
+                      <Label className="text-[11px] mb-1 flex items-center gap-1">
+                        <MapPin className="w-3 h-3 text-orange-500" /> Kota Asal
+                        <span className="ml-auto text-[10px] font-semibold bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded-full">Otomatis</span>
+                      </Label>
+                      <div className="h-8 rounded-md border border-orange-200 bg-orange-50 px-3 flex items-center">
+                        <span className="text-xs font-medium text-orange-700">{companyPickup?.originCity ?? "Jakarta"}</span>
+                      </div>
                     </div>
                     <div>
                       <Label className="text-[11px] mb-1 block flex items-center gap-1"><MapPin className="w-3 h-3" /> Kota Tujuan *</Label>
-                      <Input className="h-8 text-xs" placeholder="Surabaya" value={truckData.destCity||""} onChange={e => setTruckData(p => ({ ...p, destCity: e.target.value }))} />
+                      <Input className="h-8 text-xs" placeholder="Surabaya" value={truckData.destCity||""} onChange={e => {
+                        const dc = e.target.value;
+                        setTruckData(p => ({ ...p, destCity: dc }));
+                        setVehicleComparison(null);
+                        try { localStorage.setItem("truck_pref", JSON.stringify({ destCity: dc, vehicleType: truckData.vehicleType ?? "" })); } catch { /**/ }
+                      }} />
                     </div>
                     <div>
-                      <Label className="text-[11px] mb-1 block">Berat (kg) *</Label>
-                      <Input type="number" min={0} className="h-8 text-xs" placeholder="100" value={truckData.weight||""} onChange={e => setTruckData(p => ({ ...p, weight: e.target.value }))} />
+                      <Label className="text-[11px] mb-1 flex items-center gap-1">
+                        Berat (kg) *
+                        {cartAutoFilled && <span className="ml-auto text-[10px] font-semibold bg-sky-100 text-sky-600 px-1.5 py-0.5 rounded-full">Otomatis</span>}
+                      </Label>
+                      <Input
+                        type="number" min={0} className="h-8 text-xs" placeholder="100"
+                        value={truckData.weight||""}
+                        onChange={e => {
+                          const w = e.target.value;
+                          setVehicleComparison(null);
+                          setTruckData(p => {
+                            const kg = parseFloat(w) || 0;
+                            const updates: Record<string, string> = { ...p, weight: w };
+                            if (kg > 0 && !p.vehicleType) {
+                              updates.vehicleType = suggestVehicleType(kg);
+                            }
+                            return updates;
+                          });
+                        }}
+                      />
                     </div>
                     <div>
-                      <Label className="text-[11px] mb-1 block">Jenis Kendaraan</Label>
-                      <Select value={truckData.vehicleType||undefined} onValueChange={v => setTruckData(p => ({ ...p, vehicleType: v }))}>
-                        <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Pilih" /></SelectTrigger>
-                        <SelectContent>{["CDE","CDD","Fuso","Wingbox","Trailer"].map(v => <SelectItem key={v} value={v} className="text-xs">{v}</SelectItem>)}</SelectContent>
-                      </Select>
+                      {(() => {
+                        const kg = parseFloat(truckData.weight || "0") || 0;
+                        const suggested = kg > 0 ? suggestVehicleType(kg) : null;
+                        return (
+                          <>
+                            <Label className="text-[11px] mb-1 flex items-center gap-1">
+                              Jenis Kendaraan
+                              {suggested && (
+                                <span className="ml-auto text-[10px] font-semibold bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded-full">
+                                  Saran: {suggested}
+                                </span>
+                              )}
+                            </Label>
+                            <Select value={truckData.vehicleType||undefined} onValueChange={v => setTruckData(p => ({ ...p, vehicleType: v }))}>
+                              <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Pilih kendaraan" /></SelectTrigger>
+                              <SelectContent>
+                                {VEHICLE_CAPACITIES.map(v => (
+                                  <SelectItem key={v.type} value={v.type} className="text-xs">
+                                    <span className="flex items-center gap-1.5">
+                                      {v.type === suggested && <span className="text-orange-500 font-bold">★</span>}
+                                      <span>{v.label}</span>
+                                      <span className="text-slate-400 text-[10px]">{v.desc}</span>
+                                    </span>
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </>
+                        );
+                      })()}
                     </div>
                   </div>
                   <div>
-                    <Label className="text-[11px] mb-1 block">Dimensi (cm) — P × L × T</Label>
+                    <Label className="text-[11px] mb-1 flex items-center gap-1">
+                      Dimensi (cm) — P × L × T
+                      {cartAutoFilled && (truckData.length || truckData.width || truckData.height) && (
+                        <span className="ml-auto text-[10px] font-semibold bg-sky-100 text-sky-600 px-1.5 py-0.5 rounded-full">Otomatis</span>
+                      )}
+                    </Label>
                     <div className="grid grid-cols-3 gap-1.5">
-                      <Input type="number" min={0} className="h-8 text-xs" placeholder="Panjang" value={truckData.length||""} onChange={e => setTruckData(p => ({ ...p, length: e.target.value }))} />
-                      <Input type="number" min={0} className="h-8 text-xs" placeholder="Lebar"   value={truckData.width||""}  onChange={e => setTruckData(p => ({ ...p, width:  e.target.value }))} />
-                      <Input type="number" min={0} className="h-8 text-xs" placeholder="Tinggi"  value={truckData.height||""} onChange={e => setTruckData(p => ({ ...p, height: e.target.value }))} />
+                      {cartAutoFilled && (truckData.length || truckData.width || truckData.height) ? (
+                        <>
+                          <div className="h-8 rounded-md border border-sky-200 bg-sky-50 px-3 flex items-center justify-between">
+                            <span className="text-xs font-medium text-sky-700">{truckData.length || "—"}</span>
+                            <span className="text-[9px] text-sky-400">P</span>
+                          </div>
+                          <div className="h-8 rounded-md border border-sky-200 bg-sky-50 px-3 flex items-center justify-between">
+                            <span className="text-xs font-medium text-sky-700">{truckData.width || "—"}</span>
+                            <span className="text-[9px] text-sky-400">L</span>
+                          </div>
+                          <div className="h-8 rounded-md border border-sky-200 bg-sky-50 px-3 flex items-center justify-between">
+                            <span className="text-xs font-medium text-sky-700">{truckData.height || "—"}</span>
+                            <span className="text-[9px] text-sky-400">T</span>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <Input type="number" min={0} className="h-8 text-xs" placeholder="Panjang" value={truckData.length||""} onChange={e => setTruckData(p => ({ ...p, length: e.target.value }))} />
+                          <Input type="number" min={0} className="h-8 text-xs" placeholder="Lebar"   value={truckData.width||""}  onChange={e => setTruckData(p => ({ ...p, width:  e.target.value }))} />
+                          <Input type="number" min={0} className="h-8 text-xs" placeholder="Tinggi"  value={truckData.height||""} onChange={e => setTruckData(p => ({ ...p, height: e.target.value }))} />
+                        </>
+                      )}
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-2.5">
@@ -499,20 +786,62 @@ export function CartDrawer() {
                   <Button
                     variant="outline" size="sm"
                     className="w-full border-orange-400 text-orange-600 hover:bg-orange-50 gap-2"
-                    disabled={!truckData.pickupCity || !truckData.destCity || !truckData.weight || truckEstimating}
-                    onClick={handleEstimate}
+                    disabled={!truckData.destCity || !truckData.weight || truckEstimating}
+                    onClick={handleCompareVehicles}
                   >
                     {truckEstimating
                       ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Menghitung...</>
-                      : <><Calculator className="w-3.5 h-3.5" /> Hitung Estimasi</>}
+                      : <><Calculator className="w-3.5 h-3.5" /> Bandingkan Semua Kendaraan</>}
                   </Button>
 
-                  {truckEstimate !== null && (
-                    <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 space-y-0.5">
-                      <p className="text-[11px] text-emerald-600 font-medium">Estimasi Biaya Trucking</p>
-                      <p className="text-xl font-bold text-emerald-700">{formatCurrency(truckEstimate)}</p>
-                      <p className="text-[11px] text-emerald-500">{truckData.pickupCity} → {truckData.destCity} · {truckData.weight} kg</p>
-                      <p className="text-[10px] text-slate-400 mt-1">*Estimasi indikatif. Biaya final dikonfirmasi tim logistik.</p>
+                  {vehicleComparison && (
+                    <div className="rounded-xl border overflow-hidden">
+                      <div className="bg-slate-50 px-3 py-2 border-b flex items-center justify-between">
+                        <p className="text-[11px] font-semibold text-slate-600 flex items-center gap-1.5">
+                          <Calculator className="w-3 h-3" /> Perbandingan Kendaraan
+                        </p>
+                        <p className="text-[10px] text-slate-400">*Estimasi indikatif</p>
+                      </div>
+                      <div className="divide-y">
+                        {vehicleComparison.map(v => {
+                          const isSelected = truckData.vehicleType === v.type;
+                          const suggested = parseFloat(truckData.weight||"0") > 0
+                            ? suggestVehicleType(parseFloat(truckData.weight))
+                            : null;
+                          const isSuggested = suggested === v.type;
+                          return (
+                            <button
+                              key={v.type}
+                              type="button"
+                              disabled={!v.suitable}
+                              className={`w-full text-left px-3 py-2.5 flex items-center gap-2.5 transition-colors ${isSelected ? "bg-orange-50" : "hover:bg-slate-50"} ${!v.suitable ? "opacity-40 cursor-not-allowed" : "cursor-pointer"}`}
+                              onClick={() => {
+                                if (!v.suitable) return;
+                                setTruckData(p => ({ ...p, vehicleType: v.type }));
+                                setTruckEstimate(v.estimate);
+                                try { localStorage.setItem("truck_pref", JSON.stringify({ destCity: truckData.destCity ?? "", vehicleType: v.type })); } catch { /**/ }
+                              }}
+                            >
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  {isSuggested && <span className="text-orange-500 text-[10px] font-bold">★</span>}
+                                  <span className={`text-xs font-semibold ${isSelected ? "text-orange-700" : "text-slate-700"}`}>{v.type}</span>
+                                  <span className="text-[10px] text-slate-400">{v.desc}</span>
+                                  {isSuggested && <span className="text-[9px] bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded-full font-semibold">Disarankan</span>}
+                                  {!v.suitable && <span className="text-[9px] bg-red-100 text-red-500 px-1.5 py-0.5 rounded-full font-semibold">Melebihi kapasitas</span>}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span className={`text-xs font-bold ${isSelected ? "text-orange-600" : "text-slate-700"}`}>{formatCurrency(v.estimate)}</span>
+                                {isSelected && <span className="w-2 h-2 rounded-full bg-orange-500 shrink-0" />}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className="bg-slate-50 px-3 py-1.5 border-t">
+                        <p className="text-[10px] text-slate-400">Klik kendaraan untuk memilih. Biaya final dikonfirmasi tim logistik.</p>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -570,7 +899,7 @@ export function CartDrawer() {
               disabled={
                 truckMode === "detail"
                   ? !truckData.pickupAddress?.trim() || !truckData.deliveryAddress?.trim()
-                  : !truckData.pickupCity || !truckData.destCity || !truckData.weight
+                  : !truckData.destCity || !truckData.weight
               }
               onClick={handleAddTruckingItem}
             >

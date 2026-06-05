@@ -93,7 +93,7 @@ export default defineConfig({
       },
       // BizPortal dev server — proxied so /bizportal/* works via main entry port
       "/bizportal": {
-        target: "http://localhost:3000",
+        target: "http://localhost:4200",
         changeOrigin: true,
         ws: true,
       },

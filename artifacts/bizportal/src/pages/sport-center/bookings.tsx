@@ -1,54 +1,82 @@
 import { useEffect, useRef, useState } from "react";
+import { useLocation } from "wouter";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCompany } from "@/contexts/CompanyContext";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Search, QrCode, CheckCircle2, XCircle, RefreshCw, Activity, DollarSign } from "lucide-react";
+import { Plus, Search, QrCode, CheckCircle2, XCircle, RefreshCw, Activity, DollarSign, ArrowLeft, CloudUpload, Database } from "lucide-react";
+import { supabase } from "@/lib/supabaseClient";
 
 const idr = (n: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
 
 const STATUS_LABEL: Record<string, string> = {
-  pending: "Pending", confirmed: "Konfirmasi", checked_in: "Check-In",
-  completed: "Selesai", cancelled: "Dibatalkan",
+  pending: "Pending",
+  pending_payment: "Menunggu Bayar",
+  confirmed: "Konfirmasi",
+  checked_in: "Check-In",
+  completed: "Selesai",
+  cancelled: "Dibatalkan",
 };
 const STATUS_COLOR: Record<string, string> = {
   pending: "bg-yellow-900/40 text-yellow-300 border-yellow-600",
+  pending_payment: "bg-orange-900/40 text-orange-300 border-orange-600",
   confirmed: "bg-blue-900/40 text-blue-300 border-blue-600",
   checked_in: "bg-purple-900/40 text-purple-300 border-purple-600",
   completed: "bg-emerald-900/40 text-emerald-300 border-emerald-600",
   cancelled: "bg-red-900/40 text-red-300 border-red-600",
 };
 const PAY_COLOR: Record<string, string> = {
-  unpaid: "bg-red-900/30 text-red-300 border-red-700",
-  paid: "bg-emerald-900/30 text-emerald-300 border-emerald-700",
-  partial: "bg-yellow-900/30 text-yellow-300 border-yellow-700",
+  pending:         "bg-orange-900/30 text-orange-300 border-orange-700",
+  pending_payment: "bg-amber-900/30 text-amber-300 border-amber-700",
+  unpaid:          "bg-red-900/30 text-red-300 border-red-700",
+  paid:            "bg-emerald-900/30 text-emerald-300 border-emerald-700",
+  partial:         "bg-yellow-900/30 text-yellow-300 border-yellow-700",
+};
+const PAY_LABEL: Record<string, string> = {
+  pending:         "Belum Bayar",
+  pending_payment: "Menunggu Bayar",
+  unpaid:          "Belum Bayar",
+  paid:            "Lunas",
+  partial:         "Sebagian",
 };
 
 type Booking = Record<string, unknown>;
 type Facility = { id: number; name: string; price_per_hour: number };
 
 export default function SportCenterBookings() {
+  const [, navigate] = useLocation();
   const qc = useQueryClient();
   const { activeCompanyId } = useCompany();
   const { toast } = useToast();
   const esRef = useRef<EventSource | null>(null);
 
-  const [statusFilter, setStatusFilter] = useState("all");
+
+  const [statusFilter, setStatusFilter] = useState(() =>
+    new URLSearchParams(window.location.search).get("status") ?? "all"
+  );
+
+  const [paymentFilter, setPaymentFilter] = useState(() =>
+    new URLSearchParams(window.location.search).get("payment") ?? "all"
+  );
+
+
   const [dateFilter, setDateFilter] = useState("");
-  const [search, setSearch] = useState("");
+  const [searchText, setSearchText] = useState("");
   const [page, setPage] = useState(1);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [realtimeCount, setRealtimeCount] = useState(0);
   const [payBooking, setPayBooking] = useState<Booking | null>(null);
   const [payForm, setPayForm] = useState({ method: "cash", notes: "" });
+  const pushDoneRef = useRef(false);
 
   const [form, setForm] = useState({
     customer_name: "", customer_phone: "", facility_id: "",
@@ -57,11 +85,12 @@ export default function SportCenterBookings() {
   });
 
   const { data, isLoading } = useQuery<{ data: Booking[]; total: number }>({
-    queryKey: ["sport-center-bookings", activeCompanyId, statusFilter, dateFilter, page],
+    queryKey: ["sport-center-bookings", activeCompanyId, statusFilter, paymentFilter, dateFilter, page],
     queryFn: async () => {
       const qs = new URLSearchParams();
       if (activeCompanyId) qs.set("companyId", String(activeCompanyId));
       if (statusFilter !== "all") qs.set("status", statusFilter);
+      if (paymentFilter !== "all") qs.set("payment_status", paymentFilter);
       if (dateFilter) qs.set("date", dateFilter);
       qs.set("page", String(page));
       const r = await fetch(`/api/sport-center/bookings?${qs}`, { credentials: "include" });
@@ -78,6 +107,111 @@ export default function SportCenterBookings() {
       return r.json();
     },
   });
+
+  // ── Supabase fallback (saat local kosong) ────────────────────────────────
+  const { data: supaBookings, isLoading: supaLoading } = useQuery<Booking[]>({
+    queryKey: ["sport-center-supabase-bookings-raw"],
+    queryFn: async () => {
+      if (!supabase) return [];
+      const { data, error } = await supabase
+        .from("sport_center_bookings")
+        .select("booking_code, customer_name, customer_phone, facility_name, date, start_time, end_time, total_hours, total_price, status, payment_status, notes, created_at")
+        .order("created_at", { ascending: false });
+      if (error || !data) return [];
+      return data.map((b: any) => ({
+        id: b.booking_code ?? "-",
+        booking_number: b.booking_code ?? "-",
+        customer_name: b.customer_name ?? "-",
+        customer_phone: b.customer_phone ?? "-",
+        facility_name: b.facility_name ?? "-",
+        booking_date: b.date ?? "-",
+        start_time: (b.start_time ?? "").slice(0, 5),
+        end_time: (b.end_time ?? "").slice(0, 5),
+        duration_hours: b.total_hours ?? 1,
+        total_amount: Number(b.total_price ?? 0),
+        status: b.status ?? "pending",
+        payment_status: b.payment_status ?? "unpaid",
+        notes: b.notes,
+        _from_supabase: true,
+      }));
+    },
+    enabled: !!supabase,
+  });
+
+  const localEmpty = !isLoading && (data?.data ?? []).length === 0;
+  const showingSupabase = localEmpty && (supaBookings ?? []).length > 0;
+
+  // ── Auto-push Supabase → local saat local kosong ──────────────────────────
+  const pushMutation = useMutation({
+    mutationFn: async (rows: Booking[]) => {
+      const rawRows = rows.map((b) => ({
+        booking_code: b.booking_number,
+        customer_name: b.customer_name,
+        customer_phone: b.customer_phone,
+        facility_name: b.facility_name,
+        date: b.booking_date,
+        start_time: b.start_time,
+        end_time: b.end_time,
+        total_hours: b.duration_hours,
+        total_price: b.total_amount,
+        status: b.status,
+        payment_status: b.payment_status,
+        notes: b.notes,
+        created_at: null,
+      }));
+      const r = await fetch("/api/sport-center/sync/push-bookings", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bookings: rawRows, companyId: activeCompanyId }),
+      });
+      if (!r.ok) throw new Error("Push gagal");
+      return r.json();
+    },
+    onSuccess: (res) => {
+      if (res.pushed > 0) {
+        toast({ title: `${res.pushed} booking Supabase berhasil disinkron ke lokal` });
+        qc.invalidateQueries({ queryKey: ["sport-center-bookings"] });
+      }
+    },
+  });
+
+  useEffect(() => {
+    if (pushDoneRef.current) return;
+    if (isLoading || supaLoading) return;
+    if (!showingSupabase) return;
+    if (!supaBookings || supaBookings.length === 0) return;
+    pushDoneRef.current = true;
+    void pushMutation.mutateAsync(supaBookings);
+  }, [isLoading, supaLoading, showingSupabase, supaBookings]);
+
+  // ── Supabase Realtime: auto-push INSERT/UPDATE ke local tanpa refresh ────────
+  useEffect(() => {
+    if (!supabase) return;
+    const channel = supabase
+      .channel("sport-center-bookings-rt")
+      .on("postgres_changes", { event: "*", schema: "public", table: "sport_center_bookings" }, (payload) => {
+        // Refresh tampilan Supabase fallback
+        qc.invalidateQueries({ queryKey: ["sport-center-supabase-bookings-raw"] });
+        setRealtimeCount((c) => c + 1);
+        // Push individual row ke local DB secara diam-diam
+        const row = (payload as { new?: Record<string, unknown> }).new;
+        if (row && row.booking_code) {
+          void fetch("/api/sport-center/sync/push-bookings", {
+            method: "POST", credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ bookings: [row], companyId: activeCompanyId }),
+          }).then((r) => {
+            if (r.ok) {
+              // Setelah push sukses, refresh tabel local
+              qc.invalidateQueries({ queryKey: ["sport-center-bookings"] });
+              pushDoneRef.current = true; // sudah ada data lokal
+            }
+          }).catch(() => {});
+        }
+      })
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [activeCompanyId, qc]);
 
   useEffect(() => {
     const qs = activeCompanyId ? `?companyId=${activeCompanyId}` : "";
@@ -167,24 +301,40 @@ export default function SportCenterBookings() {
     setForm((p) => ({ ...p, facility_id: facilityId, base_amount: String(price), total_amount: String(price) }));
   };
 
-  const filtered = (data?.data ?? []).filter((b: any) =>
-    !search ||
-    String(b.customer_name).toLowerCase().includes(search.toLowerCase()) ||
-    String(b.booking_number).toLowerCase().includes(search.toLowerCase()),
-  );
+  const displayRows: Booking[] = showingSupabase
+    ? (supaBookings ?? []).filter((b) =>
+        (!searchText || String(b.customer_name).toLowerCase().includes(searchText.toLowerCase()) || String(b.booking_number).toLowerCase().includes(searchText.toLowerCase())) &&
+        (statusFilter === "all" || b.status === statusFilter) &&
+        (!dateFilter || b.booking_date === dateFilter),
+      )
+    : (data?.data ?? []).filter((b: any) =>
+        !searchText ||
+        String(b.customer_name).toLowerCase().includes(searchText.toLowerCase()) ||
+        String(b.booking_number).toLowerCase().includes(searchText.toLowerCase()),
+      );
 
   return (
     <AppShell>
       <div className="p-6 space-y-4">
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">Bookings</h1>
-            <p className="text-sm text-muted-foreground">Kelola semua booking fasilitas</p>
+          <div className="flex items-center gap-3">
+            <Button variant="ghost" size="icon" onClick={() => navigate("/sport-center/dashboard")} className="h-8 w-8 shrink-0">
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+            <div>
+              <h1 className="text-2xl font-bold text-foreground">Bookings</h1>
+              <p className="text-sm text-muted-foreground">Kelola semua booking fasilitas</p>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             {realtimeCount > 0 && (
               <Badge className="bg-emerald-900/40 text-emerald-300 border-emerald-600 text-xs gap-1">
                 <Activity className="h-3 w-3" /> Live
+              </Badge>
+            )}
+            {showingSupabase && (
+              <Badge className="bg-blue-900/40 text-blue-300 border-blue-600 text-xs gap-1">
+                <Database className="h-3 w-3" /> Supabase
               </Badge>
             )}
             <Button onClick={() => setShowCreateDialog(true)} size="sm" className="gap-1">
@@ -193,20 +343,49 @@ export default function SportCenterBookings() {
           </div>
         </div>
 
+        {showingSupabase && (
+          <Alert className="border-blue-700/50 bg-blue-900/20">
+            <Database className="h-4 w-4 text-blue-400" />
+            <AlertDescription className="text-blue-300 text-sm">
+              Data dari Supabase (lokal belum tersinkron).{" "}
+              {pushMutation.isPending && <span className="text-yellow-300"><RefreshCw className="inline h-3 w-3 animate-spin mr-1" />Sedang sinkron ke lokal…</span>}
+              {pushMutation.isSuccess && <span className="text-emerald-300">✓ Berhasil disinkron ke lokal</span>}
+              {!pushMutation.isPending && !pushMutation.isSuccess && (
+                <Button variant="link" size="sm" className="text-blue-400 p-0 h-auto text-xs"
+                  onClick={() => { pushDoneRef.current = false; void pushMutation.mutateAsync(supaBookings ?? []); }}>
+                  <CloudUpload className="h-3 w-3 mr-1" /> Sinkron ke lokal
+                </Button>
+              )}
+            </AlertDescription>
+          </Alert>
+        )}
+
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative flex-1 min-w-[200px]">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input placeholder="Cari nama / no. booking…" value={search} onChange={(e) => setSearch(e.target.value)} className="pl-8" />
+            <Input placeholder="Cari nama / no. booking…" value={searchText} onChange={(e) => setSearchText(e.target.value)} className="pl-8" />
           </div>
           <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
-            <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Semua Status</SelectItem>
               <SelectItem value="pending">Pending</SelectItem>
+              <SelectItem value="pending_payment">Menunggu Bayar</SelectItem>
               <SelectItem value="confirmed">Konfirmasi</SelectItem>
               <SelectItem value="checked_in">Check-In</SelectItem>
               <SelectItem value="completed">Selesai</SelectItem>
               <SelectItem value="cancelled">Dibatalkan</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={paymentFilter} onValueChange={(v) => { setPaymentFilter(v); setPage(1); }}>
+            <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Semua Pembayaran</SelectItem>
+              <SelectItem value="pending">Belum Bayar</SelectItem>
+              <SelectItem value="pending_payment">Menunggu Bayar</SelectItem>
+              <SelectItem value="paid">Lunas</SelectItem>
+              <SelectItem value="partial">Sebagian</SelectItem>
+              <SelectItem value="unpaid">Tidak Bayar</SelectItem>
             </SelectContent>
           </Select>
           <Input type="date" value={dateFilter} onChange={(e) => { setDateFilter(e.target.value); setPage(1); }} className="w-40" />
@@ -229,11 +408,11 @@ export default function SportCenterBookings() {
                   </tr>
                 </thead>
                 <tbody>
-                  {isLoading ? (
+                  {(isLoading && supaLoading) ? (
                     <tr><td colSpan={9} className="py-10 text-center text-muted-foreground">Memuat…</td></tr>
-                  ) : filtered.length === 0 ? (
+                  ) : displayRows.length === 0 ? (
                     <tr><td colSpan={9} className="py-10 text-center text-muted-foreground">Tidak ada booking</td></tr>
-                  ) : filtered.map((b: any) => (
+                  ) : displayRows.map((b: any) => (
                     <tr key={b.id} className="border-b border-border/20 hover:bg-muted/20">
                       <td className="py-2.5 px-3 font-mono text-xs text-muted-foreground">{b.booking_number}</td>
                       <td className="py-2.5 px-3">
@@ -249,8 +428,8 @@ export default function SportCenterBookings() {
                         </Badge>
                       </td>
                       <td className="py-2.5 px-3">
-                        <Badge className={`text-xs border ${PAY_COLOR[b.payment_status as string] ?? ""}`}>
-                          {b.payment_status}
+                        <Badge className={`text-xs border ${PAY_COLOR[b.payment_status as string] ?? "bg-muted text-muted-foreground border-border"}`}>
+                          {PAY_LABEL[b.payment_status as string] ?? String(b.payment_status)}
                         </Badge>
                       </td>
                       <td className="py-2.5 px-3 font-medium text-foreground">{idr(Number(b.total_amount))}</td>

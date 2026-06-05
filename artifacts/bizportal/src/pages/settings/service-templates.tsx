@@ -20,10 +20,11 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import {
+import { ArrowLeft,
   Pencil, Copy, Power, Plus, Trash2, AlertTriangle, RefreshCw,
   FileText, CheckSquare, BookOpen, List, History, ChevronDown, ChevronRight,
 } from "lucide-react";
+import { Link } from "wouter";
 
 /* ─── Types ─────────────────────────────────────────────────────────────── */
 
@@ -602,6 +603,11 @@ export default function ServiceTemplatesPage() {
   return (
     <AppShell>
       <div className="p-6 space-y-4 max-w-7xl mx-auto">
+
+        <div className="flex items-center gap-3">
+          <Link href="/settings"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
+          <h1 className="text-xl font-semibold">Service Templates</h1>
+        </div>
 
         <div className="flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800 p-4 text-sm text-amber-800 dark:text-amber-300">
           <AlertTriangle className="h-5 w-5 mt-0.5 shrink-0" />

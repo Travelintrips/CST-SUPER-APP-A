@@ -7,7 +7,7 @@
  *   /pos-images/*      → API Server      :8080
  *   /q/*               → API Server      :8080  (short-link redirects)
  *   /s/*               → API Server      :8080
- *   /bizportal/*       → BizPortal       :18442
+ *   /bizportal/*       → BizPortal       :4200
 
  *   /sport-center/*    → 302 redirect to /bizportal/sport-center/* (served by BizPortal React Router)
 
@@ -34,12 +34,13 @@ const BASE_DELAY    = Number(process.env.GW_BASE_DELAY    ?? 200);
 
 const RETRYABLE_CODES = new Set(["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "ENOTFOUND"]);
 
-const API_PORT           = Number(process.env.API_PORT           ?? 8080);
+const API_PORT           = 8080;
 // BizPortal Vite runs at 4200
-const BIZPORTAL_PORT     = Number(process.env.BIZPORTAL_PORT ?? 4200);
+const BIZPORTAL_PORT     = 4200;
 // Customer portal Vite runs at 5173
-const CUSTOMER_PORT      = Number(process.env.CUSTOMER_PORT ?? 5173);
-const LOGISTIC_ORDER_PORT = Number(process.env.LOGISTIC_ORDER_PORT ?? 3001);
+const CUSTOMER_PORT      = 5173;
+// Logistic Order Vite runs at 3001
+const LOGISTIC_ORDER_PORT = 3001;
 
 const ROUTES = [
   { prefix: "/api",             upstream: { host: "localhost", port: API_PORT } },
@@ -93,6 +94,10 @@ const ROUTES = [
   { prefix: "/audit",               upstream: null, redirectMapTo: "/bizportal/audit",                redirectDefaultSuffix: "/" },
   { prefix: "/intelligence-alerts", upstream: null, redirectMapTo: "/bizportal/intelligence-alerts",  redirectDefaultSuffix: "/" },
   { prefix: "/ai-approvals",        upstream: null, redirectMapTo: "/bizportal/ai-approvals",         redirectDefaultSuffix: "/" },
+
+  // POS / Kasir — /pos is a legacy alias that redirects to /kasir
+  { prefix: "/kasir",           upstream: null, redirectMapTo: "/bizportal/kasir",            redirectDefaultSuffix: "/" },
+  { prefix: "/pos",             upstream: null, redirectMapTo: "/kasir",                      redirectDefaultSuffix: "/" },
 
   // Canvas artifact iframe hits /customer-portal/* — redirect to strip the prefix
   { prefix: "/customer-portal", upstream: null, redirectStrip: "/customer-portal" },

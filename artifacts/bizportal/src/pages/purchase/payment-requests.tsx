@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { useCompany } from "@/contexts/CompanyContext";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2, Eye, ChevronLeft, CheckCircle, XCircle, CreditCard, ArrowRight } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Eye, ChevronLeft, CheckCircle, XCircle, CreditCard, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
 
 const idr = (n: number) => new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
@@ -138,6 +138,8 @@ export function PaymentRequestEditorPage() {
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="sm" onClick={() => navigate("/purchase/payment-requests")}><ChevronLeft className="h-4 w-4" /></Button>
           <div className="flex-1">
+            <Link href="/purchase"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
+
             <h1 className="text-2xl font-bold">{isNew ? "Buat Payment Request" : `PAY: ${pr?.payReqNumber}`}</h1>
             {pr && <Badge variant={statusColor[pr.status] as "default" | "secondary" | "destructive" | "outline"}>{statusLabel[pr.status]}</Badge>}
           </div>

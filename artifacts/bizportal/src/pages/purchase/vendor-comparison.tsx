@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useLocation, useParams } from "wouter";
+import { Link, useLocation, useParams } from "wouter";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, Plus, CheckCircle, Trophy, Scale, TrendingDown, Package2, Info } from "lucide-react";
+import { ArrowLeft, ChevronLeft, Plus, CheckCircle, Trophy, Scale, TrendingDown, Package2, Info } from "lucide-react";
 import { toast } from "sonner";
 
 const idr = (n: number) => new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
@@ -167,6 +167,8 @@ export default function VendorComparisonPage() {
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="sm" onClick={() => navigate(`/purchase/rfq/${rfqId}`)}><ChevronLeft className="h-4 w-4" /></Button>
           <div className="flex-1">
+            <Link href="/purchase/vendors"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
+
             <h1 className="text-2xl font-bold">Perbandingan Vendor</h1>
             <p className="text-sm text-muted-foreground">RFQ: {(rfq as any)?.docNumber ?? `#${rfqId}`}</p>
           </div>
