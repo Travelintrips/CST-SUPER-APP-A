@@ -160,8 +160,18 @@ export default function ExpenseRoutinePage() {
     if (!selectedCat) return;
 
     const defaultTaxId = (selectedCat as any).defaultTaxId as number | null | undefined;
-    if (defaultTaxId) {
-      setTaxRateId(String(defaultTaxId));
+    const taxExists = defaultTaxId ? taxes.some((t) => t.id === defaultTaxId) : false;
+
+    // Fallback: jika defaultTaxId tidak valid/null → cari PPN Masukan 11% dari daftar pajak
+    const ppnMasukan = taxes.find((t) => t.name.toLowerCase().includes("ppn masukan 11"))
+      ?? taxes.find((t) => t.name.toLowerCase().includes("ppn masukan"));
+
+    const resolvedTaxId = (defaultTaxId && taxExists)
+      ? defaultTaxId
+      : ppnMasukan?.id ?? null;
+
+    if (resolvedTaxId) {
+      setTaxRateId(String(resolvedTaxId));
       setTaxAutoFilled(true);
     } else {
       if (taxAutoFilled) { setTaxRateId("none"); setTaxAutoFilled(false); }
@@ -190,7 +200,7 @@ export default function ExpenseRoutinePage() {
     } else {
       if (sourceAutoFilled) { setSourceAccountId("none"); setSourceAutoFilled(false); }
     }
-  }, [selectedCat?.id]);
+  }, [selectedCat?.id, taxes.length]);
 
   const amount = parseIDR(amountRaw);
   const selectedTax = taxes.find((t) => t.id.toString() === taxRateId);
