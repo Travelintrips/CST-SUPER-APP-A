@@ -29,61 +29,8 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-
-args = "fuser -k 5000/tcp 2>/dev/null; sleep 0.3; API_PORT=8080 CUSTOMER_PORT=5173 BIZPORTAL_PORT=3000 LOGISTIC_ORDER_PORT=3001 PORT=5000 node gateway.mjs"
+args = "fuser -k 5000/tcp 2>/dev/null; sleep 0.3; API_PORT=8080 CUSTOMER_PORT=5173 BIZPORTAL_PORT=4200 LOGISTIC_ORDER_PORT=3001 PORT=5000 node gateway.mjs"
 waitForPort = 5000
-
-[[workflows.workflow]]
-name = "API Server"
-author = "agent"
-
-[workflows.workflow.metadata]
-outputType = "console"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "cd artifacts/api-server && pnpm run dev"
-waitForPort = 8080
-
-[[workflows.workflow]]
-name = "BizPortal"
-author = "agent"
-
-[workflows.workflow.metadata]
-outputType = "console"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "cd artifacts/bizportal && PORT=3000 BASE_PATH=/bizportal/ pnpm run dev"
-waitForPort = 3000
-
-[[workflows.workflow]]
-name = "Customer Portal"
-author = "agent"
-
-[workflows.workflow.metadata]
-outputType = "console"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "cd artifacts/customer-portal && PORT=5173 BASE_PATH=/ pnpm run dev"
-waitForPort = 5173
-
-[[workflows.workflow]]
-name = "Logistic Order"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "cd artifacts/logistic-order && PORT=3001 BASE_PATH=/logistic-order/ pnpm run dev"
-waitForPort = 3001
-
-[workflows.workflow.metadata]
-outputType = "console"
-
-args = "fuser -k 5000/tcp 2>/dev/null; sleep 0.3; API_PORT=8080 CUSTOMER_PORT=5173 BIZPORTAL_PORT=3000 PORT=5000 node gateway.mjs"
-waitForPort = 5000
-
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
@@ -122,6 +69,10 @@ VAPID_EMAIL = "mailto:admin@cstlogistics.co.id"
 PORTAL_ADMIN_KEY = "admin123"
 USE_PRODUCT_TEMPLATE_ENGINE = "true"
 USE_SERVICE_TEMPLATE_ENGINE = "true"
+SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im56ZHdlaXB6Y2tmc3pjenpxdHV3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg0MDI4NDQsImV4cCI6MjA5Mzk3ODg0NH0.p9k3-qyRjPuXsHLizUrSRMyS-0yJAatUyjQU9NIIu1U"
+SUPABASE_DATABASE_URL = "postgresql://postgres.nzdweipzckfszczzqtuw:%24%23Admin12345%40%24@aws-1-ap-southeast-2.pooler.supabase.com:6543/postgres"
+SUPABASE_DATABASE_URL_DEV = "postgresql://postgres.xssrfshdrtdfupgqwfdw:admcst0012026@aws-1-ap-southeast-2.pooler.supabase.com:6543/postgres"
+SUPABASE_SERVICE_ROLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im56ZHdlaXB6Y2tmc3pjenpxdHV3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3ODQwMjg0NCwiZXhwIjoyMDkzOTc4ODQ0fQ.W0uM_UzGfF8Zy4PFQKhz6dKpEVDHS6_k9FtqoM9iGms"
 
 [userenv.development]
 ADMIN_EMAIL_DOMAINS = "example.com"
@@ -154,13 +105,10 @@ localPort = 8080
 externalPort = 8080
 
 [[ports]]
-<<<<<<< HEAD
-=======
 localPort = 8081
 externalPort = 8081
 
 [[ports]]
->>>>>>> 6d0b8cf8b1ead7f0bb7585711a2369fc3b42fe7e
 localPort = 18442
 externalPort = 3000
 
