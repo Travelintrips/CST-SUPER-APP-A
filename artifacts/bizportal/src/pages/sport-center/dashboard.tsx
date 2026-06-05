@@ -169,23 +169,6 @@ export default function SportCenterDashboard() {
   });
 
 
-  // ── Query: Revenue transactions (lazy — hanya saat expandedCard === 'revenueToday') ──
-  interface RevenueTxRow {
-    id: number;
-    payment_number: string | null;
-    booking_id: number | null;
-    amount: number;
-    payment_method: string | null;
-    paid_at: string | null;
-    payment_type: string | null;
-    status: string | null;
-    facility_name: string;
-    customer_name: string;
-    booking_number: string | null;
-    booking_date: string | null;
-    start_time: string | null;
-    end_time: string | null;
-
   // ── Query: Revenue Transactions (lazy — hanya saat expandedCard === 'revenue') ──────────
   interface RevenueTxRow {
     entry_id: number;
