@@ -151,6 +151,18 @@ const ALL_ROLES = ["manager", "admin", "owner", "ecommerce", "trading", "logisti
 const getKey = (item: NavItem): string =>
   item.type === "group" ? item.basePath : item.href;
 
+function applySortOrder<T extends { href: string }>(items: T[], order: string[] | undefined): T[] {
+  if (!order || order.length === 0) return items;
+  return [...items].sort((a, b) => {
+    const ia = order.indexOf(a.href);
+    const ib = order.indexOf(b.href);
+    if (ia === -1 && ib === -1) return 0;
+    if (ia === -1) return 1;
+    if (ib === -1) return -1;
+    return ia - ib;
+  });
+}
+
 export function AppShell({ children, noPadding }: AppShellProps) {
   const [location] = useLocation();
   const { t } = useLanguage();
@@ -479,7 +491,7 @@ export function AppShell({ children, noPadding }: AppShellProps) {
 
   const customRolePermissions = (dbUser as any)?.customRolePermissions as string[] | null | undefined;
 
-  const { hiddenItems, itemOrder, toggle: toggleHidden, reorder, reset: resetHidden } = useNavPreferences();
+  const { hiddenItems, itemOrder, childOrder, toggle: toggleHidden, reorder, reorderChildren, reset: resetHidden } = useNavPreferences();
   const [customizeMode, setCustomizeMode] = useState(false);
 
   const sensors = useSensors(
@@ -555,6 +567,14 @@ export function AppShell({ children, noPadding }: AppShellProps) {
     const newIdx = keys.indexOf(String(over.id));
     if (oldIdx === -1 || newIdx === -1) return;
     reorder(arrayMove(keys, oldIdx, newIdx));
+  };
+
+  const handleChildDragEnd = (basePath: string, orderedHrefs: string[]) => ({ active, over }: DragEndEvent) => {
+    if (!over || active.id === over.id) return;
+    const oldIdx = orderedHrefs.indexOf(String(active.id));
+    const newIdx = orderedHrefs.indexOf(String(over.id));
+    if (oldIdx === -1 || newIdx === -1) return;
+    reorderChildren(basePath, arrayMove(orderedHrefs, oldIdx, newIdx));
   };
 
   const isGroupActive = (g: GroupItem) => {
@@ -687,6 +707,37 @@ export function AppShell({ children, noPadding }: AppShellProps) {
     const visibleChildren = customizeMode
       ? roleFilteredChildren
       : roleFilteredChildren.filter((c) => !hiddenItems.includes(c.href));
+    const sortedChildren = applySortOrder(visibleChildren, childOrder[item.basePath]);
+
+    const renderChildItem = (c: typeof sortedChildren[0]) => {
+      const childHidden = hiddenItems.includes(c.href);
+      return (
+        <SidebarMenuSubItem key={c.href} className={cn(customizeMode && childHidden && "opacity-40")}>
+          <div className="flex items-center">
+            <SidebarMenuSubButton asChild isActive={isChildActive(c.href)} className="flex-1">
+              <Link href={c.href} className="flex items-center gap-2" data-testid={`nav-sub-${c.titleKey.toLowerCase().replace(/\s+/g, "-")}`}>
+                <c.icon size={14} />
+                <span className="flex-1">{getNavTitle(c.titleKey)}</span>
+                {c.href === "/sales/ai-drafts" && aiDraftCount > 0 && (
+                  <span className="ml-auto inline-flex items-center justify-center rounded-full bg-purple-600 px-1.5 py-0.5 text-[10px] font-bold text-white leading-none min-w-[18px]">
+                    {aiDraftCount}
+                  </span>
+                )}
+              </Link>
+            </SidebarMenuSubButton>
+            {customizeMode && (
+              <button
+                onClick={() => toggleHidden(c.href)}
+                className="shrink-0 p-0.5 rounded text-muted-foreground hover:text-foreground"
+                title={childHidden ? "Tampilkan" : "Sembunyikan"}
+              >
+                {childHidden ? <Eye size={11} /> : <EyeOff size={11} />}
+              </button>
+            )}
+          </div>
+        </SidebarMenuSubItem>
+      );
+    };
 
     return (
       <SidebarMenuItem key={item.basePath} className={cn(customizeMode && isHidden && "opacity-40")}>
@@ -714,35 +765,23 @@ export function AppShell({ children, noPadding }: AppShellProps) {
         </div>
         {open && (
           <SidebarMenuSub>
-            {visibleChildren.map((c) => {
-              const childHidden = hiddenItems.includes(c.href);
-              return (
-                <SidebarMenuSubItem key={c.href} className={cn(customizeMode && childHidden && "opacity-40")}>
-                  <div className="flex items-center">
-                    <SidebarMenuSubButton asChild isActive={isChildActive(c.href)} className="flex-1">
-                      <Link href={c.href} className="flex items-center gap-2" data-testid={`nav-sub-${c.titleKey.toLowerCase().replace(/\s+/g, "-")}`}>
-                        <c.icon size={14} />
-                        <span className="flex-1">{getNavTitle(c.titleKey)}</span>
-                        {c.href === "/sales/ai-drafts" && aiDraftCount > 0 && (
-                          <span className="ml-auto inline-flex items-center justify-center rounded-full bg-purple-600 px-1.5 py-0.5 text-[10px] font-bold text-white leading-none min-w-[18px]">
-                            {aiDraftCount}
-                          </span>
-                        )}
-                      </Link>
-                    </SidebarMenuSubButton>
-                    {customizeMode && (
-                      <button
-                        onClick={() => toggleHidden(c.href)}
-                        className="shrink-0 p-0.5 rounded text-muted-foreground hover:text-foreground"
-                        title={childHidden ? "Tampilkan" : "Sembunyikan"}
-                      >
-                        {childHidden ? <Eye size={11} /> : <EyeOff size={11} />}
-                      </button>
-                    )}
-                  </div>
-                </SidebarMenuSubItem>
-              );
-            })}
+            {customizeMode ? (
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleChildDragEnd(item.basePath, sortedChildren.map((c) => c.href))}
+              >
+                <SortableContext items={sortedChildren.map((c) => c.href)} strategy={verticalListSortingStrategy}>
+                  {sortedChildren.map((c) => (
+                    <SortableNavWrapper key={c.href} id={c.href}>
+                      {renderChildItem(c)}
+                    </SortableNavWrapper>
+                  ))}
+                </SortableContext>
+              </DndContext>
+            ) : (
+              sortedChildren.map(renderChildItem)
+            )}
           </SidebarMenuSub>
         )}
       </SidebarMenuItem>
@@ -759,16 +798,18 @@ export function AppShell({ children, noPadding }: AppShellProps) {
                 <Building2 size={18} />
               </div>
               <span className="text-lg font-bold tracking-tight flex-1">BizPortal</span>
-              <button
-                onClick={() => setCustomizeMode((m) => !m)}
-                className={cn(
-                  "p-1.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors",
-                  customizeMode && "bg-accent text-foreground"
-                )}
-                title="Sesuaikan tampilan menu"
-              >
-                <SlidersHorizontal size={14} />
-              </button>
+              {(["admin", "owner", "super_admin", "manager"] as string[]).includes(dbUser?.role as string) && (
+                <button
+                  onClick={() => setCustomizeMode((m) => !m)}
+                  className={cn(
+                    "p-1.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors",
+                    customizeMode && "bg-accent text-foreground"
+                  )}
+                  title="Sesuaikan tampilan menu"
+                >
+                  <SlidersHorizontal size={14} />
+                </button>
+              )}
             </div>
             {customizeMode && (
               <div className="mt-2 flex items-center justify-between gap-2 rounded-md bg-accent/60 px-2 py-1.5 text-[11px] text-muted-foreground">

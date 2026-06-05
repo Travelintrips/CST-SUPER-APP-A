@@ -1,0 +1,82 @@
+DRAG-AND-DROP SIDEBAR BIZPORTAL
+
+Tujuan:
+Membuat sidebar collapsible di BizPortal bisa diatur **drag-and-drop**, agar admin dapat menyesuaikan urutan parent dan child menu tanpa edit kode.
+
+---
+
+A. FRONTEND
+
+1. **UI Component**
+
+   * Gunakan library drag-and-drop, misal:
+
+     * `react-beautiful-dnd`
+     * `@dnd-kit/core`
+   * Parent menu → draggable
+   * Child menu → nested draggable / reorderable
+
+2. **Drag Event Handling**
+
+   * OnDragEnd → update urutan array menu di state frontend
+   * Highlight menu saat drag → UX jelas
+   * Collapsible parent tetap berfungsi
+
+3. **Save Order**
+
+   * Tombol “Save Sidebar Layout” → POST ke backend
+   * Payload contoh:
+
+     ```json
+     [
+       { "parent": "Dashboard", "order": 1, "children": [
+           { "label": "Overview", "order": 1 },
+           { "label": "Approvals", "order": 2 }
+         ]
+       },
+       { "parent": "Expense Management", "order": 2, "children": [...] }
+     ]
+     ```
+
+4. **Preview**
+
+   * Sidebar realtime update sesuai drag
+   * Child menu indentasi / collapsible tetap terlihat
+
+---
+
+B. BACKEND
+
+1. **Endpoint Save Layout**
+
+   * POST `/api/sidebar/layout/save`
+   * Payload = array urutan parent/child → simpan di database / config
+   * Update route / page mapping tetap valid
+   * Audit log → siapa mengubah layout dan timestamp
+
+2. **Load Layout**
+
+   * GET `/api/sidebar/layout` → frontend render sesuai order terakhir
+   * Default → fallback ke config awal jika belum ada layout tersimpan
+
+---
+
+C. TESTING / QA
+
+| No | Step             | Expected Result                                       |
+| -- | ---------------- | ----------------------------------------------------- |
+| 1  | Drag parent menu | Urutan parent berubah di UI saat drag                 |
+| 2  | Drag child menu  | Urutan child berubah, collapsible tetap berfungsi     |
+| 3  | Save layout      | Backend menyimpan urutan baru, audit log tercatat     |
+| 4  | Reload page      | Sidebar menampilkan urutan sesuai layout terakhir     |
+| 5  | Role check       | Hanya role admin / owner / manager bisa drag-and-drop |
+| 6  | Route check      | Semua page component tetap load sesuai child menu     |
+
+---
+
+Instruksi:
+
+* Frontend → implement drag-and-drop dengan `react-beautiful-dnd` atau `@dnd-kit/core`
+* Backend → buat endpoint save / load layout sidebar
+* Audit log untuk tracking perubahan
+* Test partial → drag parent & child → save → reload → order tersimpan
