@@ -208,9 +208,7 @@ export function AppShell({ children, noPadding }: AppShellProps) {
       roles: ["admin", "owner"],
     },
 
-
-    // ── 3. PRODUK & RECIPE/BOM ────────────────────────────────────────
-    // ── 1.5. EXCEPTION MANAGEMENT ─────────────────────────────────────
+    // ── EXCEPTION MANAGEMENT ──────────────────────────────────────────
     {
       type: "group",
       titleKey: "Exception Management",
@@ -269,59 +267,49 @@ export function AppShell({ children, noPadding }: AppShellProps) {
         { titleKey: "Purchase Request (PR)", href: "/purchase/pr", icon: ClipboardList },
         { titleKey: "rfq", href: "/purchase/rfq", icon: FileText },
         { titleKey: "purchaseOrders", href: "/purchase/orders", icon: ShoppingBag },
+        { titleKey: "vendors", href: "/purchase/vendors", icon: UserCircle },
+        { titleKey: "Approvals Pembelian", href: "/purchase/payment-requests", icon: ClipboardCheck },
         { titleKey: "Terima Barang (GRN)", href: "/purchase/gr", icon: PackageCheck },
         { titleKey: "Terima Barang Cepat", href: "/purchase/receive", icon: PackageOpen },
         { titleKey: "QC Inspection", href: "/purchase/qc", icon: ClipboardCheck },
         { titleKey: "Purchase Return", href: "/purchase/returns", icon: RotateCcw },
         { titleKey: "Vendor Invoice (AP)", href: "/purchase/vendor-invoices", icon: Receipt },
         { titleKey: "Vendor Bills", href: "/purchase/bills", icon: FileText },
-        { titleKey: "Payment Request", href: "/purchase/payment-requests", icon: Wallet },
         { titleKey: "Landed Cost", href: "/purchase/landed-costs", icon: Calculator },
-        { titleKey: "vendors", href: "/purchase/vendors", icon: UserCircle },
         { titleKey: "Vendor Forms", href: "/purchase/vendor-forms", icon: Send },
         { titleKey: "Audit Trail VMF", href: "/purchase/vmf-audit-trail", icon: Activity },
       ],
     },
 
-    // ── 5. LOGISTICS ──────────────────────────────────────────────────
+    // ── 5. OPERATIONS / LOGISTICS ─────────────────────────────────────
+    // Menggabungkan Operations (Trading) + Logistics dalam satu parent
     {
       type: "group",
-      titleKey: "logistics",
+      titleKey: "Operations / Logistics",
       basePath: "/logistics",
       icon: Truck,
-      roles: ["admin", "owner", "logistics"],
+      roles: ["admin", "owner", "logistics", "trading"],
       children: [
+        { titleKey: "trading", href: "/trading", icon: Package, roles: ["admin", "owner", "trading"] },
         { titleKey: "Operational Dashboard", href: "/operational-dashboard", icon: LayoutDashboard },
         { titleKey: "shipments", href: "/logistics", icon: Truck },
         { titleKey: "freightForwarding", href: "/logistics/freight", icon: Ship, companyCodes: ["CST"] },
-        { titleKey: "RFQ Vendor", href: "/logistics/rfq", icon: Send, companyCodes: ["CST"] },
-        { titleKey: "Request Quote", href: "/logistics/quote-requests", icon: FileText, companyCodes: ["CST"] },
         { titleKey: "portalOrders", href: "/logistics/portal-orders", icon: ClipboardList, companyCodes: ["CST"] },
+        { titleKey: "Manajemen Driver", href: "/logistics/drivers", icon: Users, companyCodes: ["CST"] },
         { titleKey: "Performa Driver", href: "/logistics/driver-performance", icon: BarChart2, companyCodes: ["CST"] },
         { titleKey: "Analytics Driver", href: "/logistics/drivers/analytics", icon: BarChart2, companyCodes: ["CST"] },
-        { titleKey: "Manajemen Driver", href: "/logistics/drivers", icon: Users, companyCodes: ["CST"] },
+        { titleKey: "RFQ Vendor", href: "/logistics/rfq", icon: Send, companyCodes: ["CST"] },
+        { titleKey: "Request Quote", href: "/logistics/quote-requests", icon: FileText, companyCodes: ["CST"] },
         { titleKey: "Balasan Quotation WA", href: "/logistics/quotation-reply", icon: MessageCircle, companyCodes: ["CST"] },
+        { titleKey: "AI Import Advisor", href: "/logistics/import-assistant", icon: Bot, companyCodes: ["CST"] },
         { titleKey: "Margin Rules", href: "/logistics/margin-rules", icon: Calculator },
         { titleKey: "Internal Tasks", href: "/logistics/internal-tasks", icon: ClipboardCheck },
-        { titleKey: "AI Import Advisor", href: "/logistics/import-assistant", icon: Bot, companyCodes: ["CST"] },
         { titleKey: "Pelanggan Portal", href: "/portal/customers", icon: Users },
         { titleKey: "Persetujuan Onboarding", href: "/portal/onboarding-approvals", icon: Users },
       ],
     },
 
-    // ── 6. OPERATIONS ─────────────────────────────────────────────────
-    {
-      type: "group",
-      titleKey: "Operations",
-      basePath: "/operations",
-      icon: Activity,
-      roles: ["admin", "owner", "trading"],
-      children: [
-        { titleKey: "trading", href: "/trading", icon: Package, roles: ["admin", "owner", "trading"] },
-      ],
-    },
-
-    // ── 6.5. EXPENSE MANAGEMENT ───────────────────────────────────────
+    // ── 6. EXPENSE MANAGEMENT ─────────────────────────────────────────
     {
       type: "group",
       titleKey: "Expense Management",
@@ -332,17 +320,29 @@ export function AppShell({ children, noPadding }: AppShellProps) {
         { titleKey: "Semua Pengeluaran", href: "/expense", icon: Receipt },
         { titleKey: "Biaya Rutin", href: "/expense/routine", icon: RotateCcw },
         { titleKey: "Kategori", href: "/expense/categories", icon: Tags },
-        { titleKey: "Laporan Expense", href: "/expense/reports", icon: BarChart2 },
         { titleKey: "Dashboard & Monitor", href: "/expense/dashboard", icon: LayoutDashboard },
         { titleKey: "Kasbon Karyawan", href: "/expense/kasbon", icon: Wallet },
         { titleKey: "Dana Talangan", href: "/expense/talangan", icon: DollarSign },
         { titleKey: "Vendor Installments", href: "/expense/vendor-installments", icon: CalendarDays },
         { titleKey: "Approvals", href: "/expense/approvals", icon: ClipboardCheck },
-        { titleKey: "Fixed Assets", href: "/expense/fixed-assets", icon: Landmark },
-        { titleKey: "Asset Depreciation", href: "/expense/asset-depreciation", icon: TrendingUp },
         { titleKey: "Vendor Payments", href: "/expense/vendor-payments", icon: Send },
         { titleKey: "Templates Expense", href: "/expense/templates", icon: Layers },
         { titleKey: "Budget & Kurs", href: "/expense/budget", icon: Calculator },
+        { titleKey: "Laporan Expense", href: "/expense/reports", icon: BarChart2 },
+      ],
+    },
+
+    // ── 6.5. ASSET MANAGEMENT ─────────────────────────────────────────
+    {
+      type: "group",
+      titleKey: "Asset Management",
+      basePath: "/assets",
+      icon: Landmark,
+      roles: ["admin", "owner", "manager"],
+      children: [
+        { titleKey: "Fixed Assets", href: "/expense/fixed-assets", icon: Landmark },
+        { titleKey: "Asset Depreciation", href: "/expense/asset-depreciation", icon: TrendingUp },
+        { titleKey: "Laporan Aset", href: "/expense/reports", icon: BarChart2 },
       ],
     },
 
@@ -351,7 +351,7 @@ export function AppShell({ children, noPadding }: AppShellProps) {
       type: "group",
       titleKey: "Finance",
       basePath: "/accounting",
-      icon: Landmark,
+      icon: BookOpen,
       roles: ["admin", "owner"],
       children: [
         { titleKey: "chartOfAccounts", href: "/accounting/accounts", icon: Landmark },
@@ -394,22 +394,27 @@ export function AppShell({ children, noPadding }: AppShellProps) {
       ],
     },
 
-    // ── 9. REPORTS ────────────────────────────────────────────────────
+    // ── 9. REPORTS & DASHBOARD ────────────────────────────────────────
     {
       type: "group",
-      titleKey: "Laporan",
+      titleKey: "Reports & Dashboard",
       basePath: "/reports",
       icon: BarChart2,
       roles: ["manager", "admin", "owner"],
       children: [
+        // Finance Reports
         { titleKey: "Laporan Penjualan B2B", href: "/reports/sales", icon: TrendingUp, roles: ["manager", "admin", "owner"] },
         { titleKey: "Laporan Pembelian", href: "/reports/purchase", icon: ShoppingBag, roles: ["admin", "owner"] },
         { titleKey: "AR Aging", href: "/reports/ar-aging", icon: Receipt, roles: ["admin", "owner"] },
         { titleKey: "AP Aging", href: "/reports/ap-aging", icon: FileText, roles: ["admin", "owner"] },
         { titleKey: "Valuasi Persediaan", href: "/reports/inventory-valuation", icon: PackageSearch, roles: ["admin", "owner"] },
+        // Operations Reports
         { titleKey: "Audit ERP", href: "/audit", icon: ClipboardCheck, roles: ["admin", "owner"] },
         { titleKey: "Audit Log Keamanan", href: "/reports/audit-log", icon: Shield, roles: ["admin", "owner"] },
         { titleKey: "Vendor Leaderboard", href: "/vendors", icon: Trophy, roles: ["manager", "admin", "owner"] },
+        // Sport Center Reports
+        { titleKey: "Laporan Sport Center", href: "/sport-center/reports", icon: Trophy, roles: ["admin", "owner", "manager"] },
+        { titleKey: "Profitabilitas Sport Center", href: "/sport-center/profitability", icon: TrendingUp, roles: ["admin", "owner"] },
       ],
     },
 
@@ -428,13 +433,11 @@ export function AppShell({ children, noPadding }: AppShellProps) {
         { titleKey: "Members", href: "/sport-center/members", icon: Users },
         { titleKey: "Pricing Rules", href: "/sport-center/pricing-rules", icon: Tags },
         { titleKey: "Pembayaran", href: "/sport-center/payments", icon: DollarSign },
-        { titleKey: "Laporan Revenue", href: "/sport-center/reports", icon: BarChart2 },
-        { titleKey: "Profitabilitas", href: "/sport-center/profitability", icon: TrendingUp },
         { titleKey: "Pengaturan", href: "/sport-center/settings", icon: Settings },
       ],
     },
 
-    // ── 9.5. NOTIFICATIONS ────────────────────────────────────────────
+    // ── NOTIFICATIONS ─────────────────────────────────────────────────
     {
       type: "group",
       titleKey: "Notifications",
@@ -447,19 +450,27 @@ export function AppShell({ children, noPadding }: AppShellProps) {
       ],
     },
 
-    // ── 10. ADMINISTRATION ────────────────────────────────────────────
+    // ── 10. ADMINISTRATION / SETTINGS ────────────────────────────────
     {
       type: "group",
-      titleKey: "Administration",
+      titleKey: "Administration / Settings",
       basePath: "/admin",
       icon: Shield,
       roles: ["admin", "owner"],
       children: [
+        // User Management
         { titleKey: "Pengguna", href: "/users", icon: UserCircle },
         { titleKey: "Manajemen Role", href: "/settings/roles", icon: ShieldCheck },
         { titleKey: "Aturan Approval", href: "/settings/approval-rules", icon: ClipboardCheck },
         { titleKey: "Struktur Organisasi", href: "/org", icon: Network },
-        { titleKey: "settings", href: "/settings", icon: Settings },
+        // Document Templates
+        { titleKey: "Product Templates", href: "/settings/product-templates", icon: Layers },
+        { titleKey: "Service Templates", href: "/settings/service-templates", icon: Layers },
+        // COA / Taxes / Payment Methods
+        { titleKey: "chartOfAccounts", href: "/accounting/accounts", icon: Landmark },
+        { titleKey: "taxes", href: "/accounting/taxes", icon: Receipt },
+        { titleKey: "payments", href: "/accounting/payments", icon: Wallet },
+        // Communications & Config
         { titleKey: "correspondences", href: "/correspondences", icon: Mail },
         { titleKey: "emailInbox", href: "/email-inbox", icon: MessageCircle },
         { titleKey: "WA Templates Logistik", href: "/settings/wa-templates", icon: MessageCircle },
@@ -468,8 +479,7 @@ export function AppShell({ children, noPadding }: AppShellProps) {
         { titleKey: "Image Manager", href: "/media", icon: ImageIcon },
         { titleKey: "Short Links", href: "/settings/short-links", icon: Link2 },
         { titleKey: "Konfigurasi Menu", href: "/settings/nav-company-config", icon: LayoutGrid },
-        { titleKey: "Product Templates", href: "/settings/product-templates", icon: Layers },
-        { titleKey: "Service Templates", href: "/settings/service-templates", icon: Layers },
+        { titleKey: "settings", href: "/settings", icon: Settings },
         { titleKey: "Secrets & Env Vars", href: "/settings/secrets", icon: KeyRound, roles: ["admin", "owner"] },
         { titleKey: "Status Sistem", href: "/system-health", icon: Activity, roles: ["admin", "owner"] },
       ],
