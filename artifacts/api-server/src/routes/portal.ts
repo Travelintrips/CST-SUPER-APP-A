@@ -1511,6 +1511,27 @@ router.get("/logistic-orders", requirePortalAuth, async (req, res) => {
   );
 });
 
+// GET /api/portal/product-orders — returns portal product orders for the customer (by email)
+router.get("/product-orders", requirePortalAuth, async (req, res) => {
+  const portalCustId = (req as Request & { portalCustomerId: number }).portalCustomerId;
+  const [customer] = await db.select().from(portalCustomersTable).where(eq(portalCustomersTable.id, portalCustId));
+  if (!customer) return res.status(401).json({ message: "Customer not found" });
+  const rows = await db.execute(sql`
+    SELECT id, order_number, status, grand_total, created_at, tracking_token, customer_name
+    FROM portal_product_orders
+    WHERE email = ${customer.email}
+    ORDER BY created_at DESC
+  `);
+  return res.json((rows.rows as Array<Record<string, unknown>>).map((r) => ({
+    id: r.id,
+    orderNumber: r.order_number,
+    status: r.status,
+    grandTotal: parseFloat(String(r.grand_total ?? "0")),
+    createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at),
+    trackingToken: r.tracking_token ?? null,
+  })));
+});
+
 // POST /api/portal/orders  — place a new order from the portal
 router.post("/orders", requirePortalAuth, async (req, res) => {
   const portalCustId = (req as Request & { portalCustomerId: number }).portalCustomerId;
