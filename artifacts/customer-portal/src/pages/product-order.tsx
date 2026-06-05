@@ -400,6 +400,11 @@ export default function ProductOrderPage() {
         productId: i.product.id, productName: i.product.name, productSku: i.product.sku,
         unit: i.product.unit ?? "pcs", unitPrice: i.product.price, qty: i.qty,
         subtotal: i.product.price * i.qty,
+        weightKg: i.product.weightKg ?? null,
+        lengthCm: i.product.lengthCm ?? null,
+        widthCm: i.product.widthCm ?? null,
+        heightCm: i.product.heightCm ?? null,
+        goodsType: i.product.goodsType ?? null,
       }));
       const result = await submitOrder({
         customerName: customerName.trim(), email: email.trim(), phone: phone.trim(),

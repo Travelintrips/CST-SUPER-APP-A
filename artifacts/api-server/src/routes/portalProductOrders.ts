@@ -67,7 +67,24 @@ db.execute(sql`
     ADD COLUMN IF NOT EXISTS invoice_token TEXT,
     ADD COLUMN IF NOT EXISTS tracking_token TEXT,
     ADD COLUMN IF NOT EXISTS payment_status TEXT DEFAULT 'unpaid',
-    ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ
+    ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()
+`).catch(() => {});
+
+// Add shipping spec columns to order items
+db.execute(sql`
+  ALTER TABLE portal_product_order_items
+    ADD COLUMN IF NOT EXISTS weight_kg NUMERIC(10, 3),
+    ADD COLUMN IF NOT EXISTS length_cm NUMERIC(10, 2),
+    ADD COLUMN IF NOT EXISTS width_cm NUMERIC(10, 2),
+    ADD COLUMN IF NOT EXISTS height_cm NUMERIC(10, 2),
+    ADD COLUMN IF NOT EXISTS goods_type TEXT
+`).catch(() => {});
+
+// Add vendor_phone to vendor responses table
+db.execute(sql`
+  ALTER TABLE portal_product_vendor_responses
+    ADD COLUMN IF NOT EXISTS vendor_phone TEXT
 `).catch(() => {});
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -148,6 +165,11 @@ function toItem(row: typeof portalProductOrderItemsTable.$inferSelect) {
     unitPrice: parseFloat(row.unitPrice),
     qty: row.qty,
     subtotal: parseFloat(row.subtotal),
+    weightKg: row.weightKg != null ? parseFloat(String(row.weightKg)) : null,
+    lengthCm: row.lengthCm != null ? parseFloat(String(row.lengthCm)) : null,
+    widthCm: row.widthCm != null ? parseFloat(String(row.widthCm)) : null,
+    heightCm: row.heightCm != null ? parseFloat(String(row.heightCm)) : null,
+    goodsType: row.goodsType ?? null,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -423,7 +445,7 @@ portalProductOrdersRouter.post("/orders", async (req: Request, res: Response) =>
     phone?: string;
     shippingAddress?: string;
     notes?: string;
-    items?: { productId?: number; productName: string; productSku?: string; unit?: string; unitPrice: number; qty: number; subtotal: number }[];
+    items?: { productId?: number; productName: string; productSku?: string; unit?: string; unitPrice: number; qty: number; subtotal: number; weightKg?: number | null; lengthCm?: number | null; widthCm?: number | null; heightCm?: number | null; goodsType?: string | null }[];
     productCategory?: string;
     templateId?: string;
     templateVersion?: string;
@@ -529,6 +551,11 @@ portalProductOrdersRouter.post("/orders", async (req: Request, res: Response) =>
     unitPrice: String(i.unitPrice),
     qty: i.qty,
     subtotal: String(i.subtotal),
+    weightKg: i.weightKg != null ? String(i.weightKg) : null,
+    lengthCm: i.lengthCm != null ? String(i.lengthCm) : null,
+    widthCm: i.widthCm != null ? String(i.widthCm) : null,
+    heightCm: i.heightCm != null ? String(i.heightCm) : null,
+    goodsType: i.goodsType ?? null,
   }));
   const insertedItems = await db.insert(portalProductOrderItemsTable).values(itemRows).returning();
 
@@ -679,6 +706,9 @@ portalProductOrdersRouter.put("/orders/:id/status", async (req: Request, res: Re
 
   if (!updated) return res.status(404).json({ message: "Order tidak ditemukan" });
 
+  // Stamp updated_at
+  await db.execute(sql`UPDATE portal_product_orders SET updated_at = NOW() WHERE id = ${id}`);
+
   const statusLabels: Record<string, string> = {
     "New Order":  "Order Baru ✅",
     "Confirmed":  "Dikonfirmasi ✅",
@@ -689,7 +719,6 @@ portalProductOrdersRouter.put("/orders/:id/status", async (req: Request, res: Re
   };
   const label = statusLabels[status.trim()] ?? status.trim();
 
-  let salesDocNumber: string | null = null;
   let invoiceToken: string | null = null;
   let invoiceUrl: string | null = null;
   const domain = getPreferredDomain();
@@ -701,7 +730,7 @@ portalProductOrdersRouter.put("/orders/:id/status", async (req: Request, res: Re
     }).catch((err: unknown) => logger.error({ err }, "maybeCreateSalesOrder failed"));
   }
 
-  // T004: Shipped → buat invoice link + kirim ke customer
+  // T004: Shipped → buat invoice link + kirim ke customer via WA + email fallback
   if (status.trim() === "Shipped" && existing.status !== "Shipped") {
     try {
       invoiceToken = await maybeCreateInvoiceLink(id);
@@ -710,17 +739,56 @@ portalProductOrdersRouter.put("/orders/:id/status", async (req: Request, res: Re
         const phone = updated.phone ?? null;
         if (phone) {
           const { sendViaService } = await import("../lib/waTransport.js");
-          const msg = `🧾 *Invoice Pesanan ${updated.orderNumber}*\n` +
+          const msg = `📦 *Pesanan Dikirim — ${updated.orderNumber}*\n` +
             `Halo ${updated.customerName}, pesanan Anda sedang dalam pengiriman!\n\n` +
-            `Silakan cek dan konfirmasi invoice Anda:\n${invoiceUrl}\n\n` +
-            `Terima kasih! 🙏`;
+            `🧾 Cek & konfirmasi invoice:\n${invoiceUrl}\n\n` +
+            `Terima kasih telah berbelanja! 🙏`;
           sendViaService(phone, msg).catch(() => undefined);
+        }
+        // Email fallback untuk Shipped
+        if (isSmtpConfigured() && updated.email) {
+          sendMail({
+            to: updated.email,
+            subject: `Pesanan Dikirim — ${updated.orderNumber}`,
+            html: `<h2>Pesanan Anda sedang dikirim! 🚚</h2>
+<p>Halo ${updated.customerName}, pesanan <strong>${updated.orderNumber}</strong> sudah dalam perjalanan.</p>
+<p>Silakan cek dan konfirmasi invoice Anda: <a href="${invoiceUrl}">${invoiceUrl}</a></p>`,
+          }).catch(() => undefined);
         }
       }
     } catch (err) {
       logger.error({ err }, "maybeCreateInvoiceLink failed");
     }
   }
+
+  // Completed → email fallback notifikasi selesai
+  if (status.trim() === "Completed" && existing.status !== "Completed") {
+    if (isSmtpConfigured() && updated.email) {
+      sendMail({
+        to: updated.email,
+        subject: `Pesanan Selesai — ${updated.orderNumber}`,
+        html: `<h2>Pesanan Anda telah selesai! 🎉</h2>
+<p>Halo ${updated.customerName}, pesanan <strong>${updated.orderNumber}</strong> telah selesai.</p>
+<p>Terima kasih telah berbelanja bersama kami. Sampai jumpa kembali! 🙏</p>`,
+      }).catch(() => undefined);
+    }
+  }
+
+  // SSE broadcast ke customer portal agar tracking live update
+  broadcastToPortal("order_status_update", {
+    orderNumber: updated.orderNumber,
+    status: status.trim(),
+    label,
+    updatedAt: new Date().toISOString(),
+  });
+
+  // SSE broadcast ke admin
+  broadcastToAdmins("product_order_status_update", {
+    orderId: id,
+    orderNumber: updated.orderNumber,
+    status: status.trim(),
+    label,
+  });
 
   sendProductOrderStatusUpdateWa({
     orderNumber: updated.orderNumber,
@@ -810,28 +878,77 @@ portalProductOrdersRouter.post("/orders/:id/confirm-payment", async (req: Reques
 
   await db.execute(sql`
     UPDATE portal_product_orders
-    SET payment_status = 'paid', paid_at = NOW()
+    SET payment_status = 'paid', paid_at = NOW(), updated_at = NOW()
     WHERE id = ${id}
   `);
 
-  if ((order as any).invoiceToken) {
+  const invToken = (order as any).invoiceToken as string | null;
+  if (invToken) {
     await db.execute(sql`
       UPDATE customer_invoice_links
       SET payment_status = 'paid', amount_paid = grand_total, confirmed_at = NOW()
-      WHERE token = ${(order as any).invoiceToken}
+      WHERE token = ${invToken}
     `);
   }
 
   const phone = order.phone ?? null;
+
+  // WA notifikasi pembayaran diterima
   if (phone) {
     const { sendViaService } = await import("../lib/waTransport.js");
-    const msg = `✅ *Pembayaran Dikonfirmasi*\n` +
+    const msg = `✅ *Pembayaran Dikonfirmasi*\n\n` +
       `Halo ${order.customerName}, pembayaran pesanan *${order.orderNumber}* telah kami terima.\n` +
-      `Terima kasih! 🙏`;
+      `Terima kasih! Pesanan Anda sedang kami proses. 🙏`;
     sendViaService(phone, msg).catch(() => undefined);
   }
 
+  // Email fallback untuk konfirmasi pembayaran
+  if (isSmtpConfigured() && order.email) {
+    sendMail({
+      to: order.email,
+      subject: `Pembayaran Dikonfirmasi — ${order.orderNumber}`,
+      html: `<h2>Pembayaran Anda telah diterima! ✅</h2>
+<p>Halo ${order.customerName}, pembayaran untuk pesanan <strong>${order.orderNumber}</strong> telah kami konfirmasi.</p>
+<p>Pesanan Anda akan segera kami proses. Terima kasih! 🙏</p>`,
+    }).catch(() => undefined);
+  }
+
+  // SSE broadcast ke admin dan customer portal
+  broadcastToAdmins("payment_confirmed", { orderId: id, orderNumber: order.orderNumber });
+  broadcastToPortal("order_status_update", {
+    orderNumber: order.orderNumber,
+    paymentStatus: "paid",
+    updatedAt: new Date().toISOString(),
+  });
+
   return res.json({ success: true, message: "Pembayaran dikonfirmasi" });
+});
+
+// ── POST /api/portal-product/orders/:id/regenerate-vendor-token — admin regenerate vendor link ──
+portalProductOrdersRouter.post("/orders/:id/regenerate-vendor-token", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const id = parseInt(String(req.params.id), 10);
+  if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
+
+  const [order] = await db.select({
+    id: portalProductOrdersTable.id,
+    orderNumber: portalProductOrdersTable.orderNumber,
+  }).from(portalProductOrdersTable).where(eq(portalProductOrdersTable.id, id));
+  if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
+
+  const domain = getPreferredDomain();
+  const newToken = signVendorResponseToken(order.orderNumber);
+  const vendorFormUrl = domain
+    ? `https://${domain}/vendor-product-approval/${order.orderNumber}?t=${newToken}`
+    : null;
+
+  return res.json({
+    success: true,
+    orderNumber: order.orderNumber,
+    vendorToken: newToken,
+    vendorFormUrl,
+    expiresIn: "7 hari",
+  });
 });
 
 // ── POST /api/portal-product/orders/:id/resend-invoice — kirim ulang invoice WA ──
@@ -904,7 +1021,7 @@ portalProductOrdersRouter.get("/vendor-access/:orderNumber", async (req: Request
 // ── POST /api/portal-product/vendor-response/:orderNumber ───────────────────
 portalProductOrdersRouter.post("/vendor-response/:orderNumber", async (req: Request, res: Response) => {
   const orderNumber = req.params["orderNumber"] as string;
-  const { vendorName, status, quotedPrice, notes, token } = req.body as Record<string, string>;
+  const { vendorName, vendorPhone, status, quotedPrice, notes, token } = req.body as Record<string, string>;
 
   const tok = String(token ?? String(req.query["t"] ?? "")).trim();
   if (!verifyVendorResponseToken(orderNumber, tok)) {
@@ -923,10 +1040,11 @@ portalProductOrdersRouter.post("/vendor-response/:orderNumber", async (req: Requ
   if (!order) return res.status(404).json({ error: "Order tidak ditemukan" });
 
   const qp = quotedPrice ? parseFloat(String(quotedPrice)) : null;
+  const vPhone = vendorPhone?.trim() || null;
 
   await db.execute(sql`
-    INSERT INTO portal_product_vendor_responses (order_number, order_id, vendor_name, status, quoted_price, notes)
-    VALUES (${orderNumber}, ${order.id}, ${vendorName ?? null}, ${status}, ${qp}, ${notes ?? null})
+    INSERT INTO portal_product_vendor_responses (order_number, order_id, vendor_name, vendor_phone, status, quoted_price, notes)
+    VALUES (${orderNumber}, ${order.id}, ${vendorName ?? null}, ${vPhone}, ${status}, ${qp}, ${notes ?? null})
   `);
 
   const items = await db.select({
@@ -940,6 +1058,16 @@ portalProductOrdersRouter.post("/vendor-response/:orderNumber", async (req: Requ
   const domain = getPreferredDomain() || "cstlogistic.co.id";
   const adminUrl = `https://${domain}/bizportal/logistics/portal-orders`;
 
+  // Kirim WA konfirmasi ke vendor
+  if (vPhone) {
+    const { sendViaService } = await import("../lib/waTransport.js");
+    const confirmMsg = status === "SETUJU"
+      ? `✅ *Penawaran Diterima*\n\nHalo ${vendorName || "Vendor"}, terima kasih!\n\nPenawaran Anda untuk order *${orderNumber}* telah kami terima.${qp ? `\n💰 Harga: Rp ${formatRupiah(qp)}` : ""}${notes ? `\n📝 Catatan: ${notes}` : ""}\n\nTim kami akan segera menindaklanjuti. 🙏`
+      : `❌ *Penolakan Diterima*\n\nHalo ${vendorName || "Vendor"}, kami telah menerima informasi bahwa Anda tidak dapat melayani order *${orderNumber}*.${notes ? `\n📝 Alasan: ${notes}` : ""}\n\nTerima kasih atas informasinya. 🙏`;
+    sendViaService(vPhone, confirmMsg).catch((e: unknown) => logger.error({ e }, "WA vendor confirmation failed"));
+  }
+
+  // WA notifikasi ke admin
   sendProductVendorResponseAdminWa({
     orderNumber,
     customerName: order.customerName,
@@ -955,6 +1083,15 @@ portalProductOrdersRouter.post("/vendor-response/:orderNumber", async (req: Requ
     })),
     adminUrl,
   }).catch((err: unknown) => logger.error({ err }, "Failed to send admin WA for product vendor response"));
+
+  // SSE broadcast ke admin
+  broadcastToAdmins("vendor_response", {
+    orderNumber,
+    vendorName: vendorName ?? "—",
+    status,
+    quotedPrice: qp,
+    submittedAt: new Date().toISOString(),
+  });
 
   return res.json({ success: true });
 });
