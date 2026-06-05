@@ -199,7 +199,7 @@ router.get("/", async (req: Request, res) => {
       u.name AS employee_name,
       u.email AS employee_email,
       dep.name AS employee_department,
-      dv.name AS employee_division
+      dv.name AS employee_division,
       u.name   AS user_name
     FROM cash_advances ca
     LEFT JOIN chart_of_accounts coa ON ca.cash_bank_account_id = coa.id

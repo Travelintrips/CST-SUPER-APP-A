@@ -421,21 +421,13 @@ export default function ExpenseListPage() {
                       <TableCell className="text-sm">{expAny.vendor?.name ?? expAny.user?.name ?? exp.vendorEmployee ?? "—"}</TableCell>
                       <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">{exp.description ?? "—"}</TableCell>
                       <TableCell>
-                        {cat ? (
-                          <Badge variant="secondary" className="text-xs">{cat.name}</Badge>
-                        ) : exp.categoryName ? (
-                          <Badge variant="secondary" className="text-xs">{exp.categoryName}</Badge>
-                        ) : <span className="text-xs text-muted-foreground">—</span>}
                         {expAny.categoryName
                           ? <Badge variant="secondary" className="text-xs">{expAny.categoryName}</Badge>
                           : cat ? <Badge variant="secondary" className="text-xs">{cat.name}</Badge>
                           : <span className="text-xs text-muted-foreground">—</span>}
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">
-                        {expAny.sourceAccount?.name ?? "—"}
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {exp.sourceAccountName ?? "—"}
+                        {expAny.sourceAccountName ?? expAny.sourceAccount?.name ?? "—"}
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-col gap-0.5">
