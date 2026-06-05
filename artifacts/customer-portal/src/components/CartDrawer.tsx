@@ -174,7 +174,16 @@ function CartItemCard({ item, onRemove }: { item: CartItem; onRemove: (id: strin
 
 // ── Main CartDrawer ───────────────────────────────────────────────────────────
 
-type DrawerView = "cart" | "service-catalog" | "trucking";
+type DrawerView = "cart" | "service-catalog" | "trucking" | "freight";
+type FreightSvcId = "sea" | "air" | "storage" | "customs" | "additional";
+
+const FREIGHT_SVC_META: Record<FreightSvcId, { name: string; calcType: string; color: string }> = {
+  sea:       { name: "Kargo Laut",         calcType: "sea_lcl",     color: "blue"    },
+  air:       { name: "Kargo Udara",        calcType: "air_freight", color: "sky"     },
+  storage:   { name: "Pergudangan",        calcType: "storage",     color: "emerald" },
+  customs:   { name: "Custom Clearance",   calcType: "customs",     color: "slate"   },
+  additional:{ name: "Asuransi & Lainnya", calcType: "additional",  color: "purple"  },
+};
 
 const DEFAULT_PICKUP = "Jl. Logistik No. 1, Jakarta";
 
@@ -190,6 +199,11 @@ export function CartDrawer() {
   const [companyPickup, setCompanyPickup] = useState<{ name: string; address: string; originCity: string } | null>(null);
   const [cartAutoFilled, setCartAutoFilled] = useState(false);
   const [apiRates, setApiRates] = useState<Array<{ type: string; label: string; description: string; max_kg: string | null; rate_per_kg: string; min_price: string }> | null>(null);
+  const [freightSvc, setFreightSvc]         = useState<FreightSvcId>("sea");
+  const [freightData, setFreightData]       = useState<Record<string, string>>({});
+  const [freightEstimate, setFreightEstimate] = useState<number | null>(null);
+  const [freightEstimating, setFreightEstimating] = useState(false);
+  const [freightAutoFilled, setFreightAutoFilled] = useState(false);
   const [, setLocation]        = useLocation();
   const { toast }              = useToast();
 
@@ -272,6 +286,9 @@ export function CartDrawer() {
     setTruckData({});
     setTruckEstimate(null);
     setTruckMode("detail");
+    setFreightData({});
+    setFreightEstimate(null);
+    setFreightAutoFilled(false);
   }
 
   function handleCheckout() {
