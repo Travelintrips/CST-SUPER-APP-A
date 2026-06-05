@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useLocation } from "wouter";
 import {
   X, Trash2, Plus, ShoppingCart, ArrowRight,
@@ -209,7 +209,26 @@ export function CartDrawer() {
   const [, setLocation]        = useLocation();
   const { toast }              = useToast();
 
-  const { items, addItem, removeItem, clearCart, subtotal, tax, grandTotal, taxRate } = useCart();
+  const { items, addItem, replaceItemByType, removeItem, clearCart, subtotal, tax, grandTotal, taxRate } = useCart();
+
+  const hasProductOnly = items.length > 0 && items.every(i => i.calculatorType === "product");
+
+  const [selectedShipping, setSelectedShipping] = useState<"darat" | "laut" | "udara" | null>(() => {
+    try { return (JSON.parse(localStorage.getItem("logistic_product_shipping") ?? "null") as { method?: string } | null)?.method as "darat" | "laut" | "udara" | null ?? null; }
+    catch { return null; }
+  });
+
+  const daratEstimate = useMemo(() => {
+    const productItems = items.filter(i => i.calculatorType === "product");
+    if (productItems.length === 0) return null;
+    const itemsWithWeight = productItems.filter(i => Number(i.inputData.weightKg ?? 0) > 0);
+    const totalWeight = itemsWithWeight.length > 0
+      ? itemsWithWeight.reduce((s, i) => s + Number(i.inputData.weightKg) * Number(i.inputData.qty ?? 1), 0)
+      : productItems.reduce((s, i) => s + Number(i.inputData.qty ?? 1), 0);
+    if (totalWeight <= 0) return null;
+    const vehicleType = suggestVehicleType(totalWeight);
+    return offlineEstimateForVehicle(totalWeight, vehicleType, 0);
+  }, [items]);
 
   function computeCartAutoFill(): { hasData: boolean; weight?: string; vehicleType?: string; length?: string; width?: string; height?: string; goodsType?: string } {
     const productItems = items.filter(i => i.calculatorType === "product");
@@ -268,7 +287,7 @@ export function CartDrawer() {
   }, [view]);
 
   useEffect(() => {
-    if ((view !== "trucking" && view !== "freight") || companyPickup) return;
+    if (!open || companyPickup) return;
     fetch("/api/settings/company-pickup-address")
       .then(r => r.ok ? r.json() : null)
       .then((d: { companyName: string; companyAddress: string; originCity?: string } | null) => {
@@ -282,7 +301,7 @@ export function CartDrawer() {
         setCompanyPickup({ name: "CST Logistics", address: DEFAULT_PICKUP, originCity: "Jakarta" });
         setCompanyFetchFailed(true);
       });
-  }, [view, companyPickup]);
+  }, [open, companyPickup]);
 
   function close() { setOpen(false); }
 
@@ -297,6 +316,20 @@ export function CartDrawer() {
   }
 
   function handleCheckout() {
+    if (hasProductOnly && !selectedShipping) {
+      toast({ title: "Pilih metode pengiriman terlebih dahulu", variant: "destructive" });
+      return;
+    }
+    if (hasProductOnly && selectedShipping) {
+      try {
+        localStorage.setItem("logistic_product_shipping", JSON.stringify({
+          method: selectedShipping,
+          estimate: selectedShipping === "darat" ? daratEstimate : null,
+          companyName: companyPickup?.name ?? "CST Logistics",
+          companyAddress: companyPickup?.address ?? DEFAULT_PICKUP,
+        }));
+      } catch { /**/ }
+    }
     close();
     setLocation("/book?step=3");
   }
@@ -309,7 +342,7 @@ export function CartDrawer() {
     }
     const name = truckMode === "detail" ? "Trucking — Pickup & Delivery" : "Trucking — Kargo";
     const pickupAddr = companyPickup?.address ?? DEFAULT_PICKUP;
-    addItem({
+    replaceItemByType({
       category: "Trucking",
       serviceName: name,
       calculatorType: "trucking",
@@ -321,7 +354,7 @@ export function CartDrawer() {
       calculationResult: truckEstimate ? { estimated_price: truckEstimate } : {},
       subtotal: 0,
     });
-    toast({ title: `${name} ditambahkan ke keranjang` });
+    toast({ title: `${name} diperbarui di keranjang` });
     setTruckData({});
     setTruckEstimate(null);
     setView("cart");
@@ -416,15 +449,15 @@ export function CartDrawer() {
     else if (freightSvc === "air")  name = "Kargo Udara";
     else if (freightSvc === "customs") name = `Custom Clearance — ${freightData.customsType || "Import"}`;
     else if (freightSvc === "additional") name = freightData.addlType || "Asuransi & Lainnya";
-    addItem({
-      id: crypto.randomUUID(),
-      name,
+    replaceItemByType({
+      serviceName: name,
       category: meta.name,
       calculatorType: meta.calcType,
       inputData: { ...freightData },
+      calculationResult: freightEstimate ? { estimated_price: freightEstimate } : {},
       subtotal: freightEstimate ?? 0,
     });
-    toast({ title: `${name} ditambahkan ke keranjang` });
+    toast({ title: `${name} diperbarui di keranjang` });
     setFreightData({});
     setFreightEstimate(null);
     setFreightAutoFilled(false);
@@ -600,12 +633,59 @@ export function CartDrawer() {
                     </div>
                   );
                 })}
-                <button
-                  onClick={openServiceCatalog}
-                  className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-slate-200 text-sm text-slate-400 hover:border-sky-300 hover:text-sky-600 hover:bg-sky-50/60 transition-colors"
-                >
-                  <Plus className="w-4 h-4" /> Tambah Layanan / Produk
-                </button>
+                {/* ── Metode Pengiriman (product-only cart) ── */}
+                {hasProductOnly ? (
+                  <div className="pt-1">
+                    <div className="flex items-center gap-2 mb-2.5 px-0.5">
+                      <Truck className="w-3.5 h-3.5 text-slate-400" />
+                      <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">
+                        Metode Pengiriman <span className="text-red-400">*</span>
+                      </span>
+                    </div>
+                    {/* Alamat Pengirim (otomatis) */}
+                    <div className="mb-3 rounded-lg border border-orange-200 bg-orange-50/80 px-3 py-2.5">
+                      <p className="text-[10px] font-bold text-orange-400 uppercase tracking-wide mb-1">Pengirim (Otomatis)</p>
+                      <p className="text-[11px] font-semibold text-orange-700 leading-snug">🏭 {companyPickup?.name ?? "CST Logistics"}</p>
+                      <p className="text-[11px] text-orange-600 mt-0.5 leading-snug">{companyPickup?.address ?? DEFAULT_PICKUP}</p>
+                    </div>
+                    <div className="space-y-2">
+                      {([
+                        { id: "darat" as const, name: "Pengiriman Darat",  Icon: Truck,  desc: "Trucking kota ke kota",    activeColor: "border-orange-400 bg-orange-50", iconColor: "text-orange-600", iconBg: "bg-orange-100", estimate: daratEstimate },
+                        { id: "laut"  as const, name: "Pengiriman Laut",   Icon: Ship,   desc: "Sea freight LCL / FCL",    activeColor: "border-blue-400 bg-blue-50",   iconColor: "text-blue-600",   iconBg: "bg-blue-100",   estimate: null },
+                        { id: "udara" as const, name: "Pengiriman Udara",  Icon: Plane,  desc: "Air freight ekspres",      activeColor: "border-sky-400 bg-sky-50",     iconColor: "text-sky-600",    iconBg: "bg-sky-100",    estimate: null },
+                      ]).map(m => (
+                        <button key={m.id} onClick={() => setSelectedShipping(m.id)}
+                          className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left ${selectedShipping === m.id ? m.activeColor + " shadow-sm" : "border-slate-200 bg-white hover:border-slate-300"}`}
+                        >
+                          <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${selectedShipping === m.id ? m.iconBg : "bg-slate-100"}`}>
+                            <m.Icon className={`w-5 h-5 ${selectedShipping === m.id ? m.iconColor : "text-slate-400"}`} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className={`text-sm font-semibold leading-tight ${selectedShipping === m.id ? "text-slate-900" : "text-slate-700"}`}>{m.name}</p>
+                            <p className="text-[11px] text-slate-400 mt-0.5">{m.desc}</p>
+                          </div>
+                          <div className="text-right shrink-0 flex flex-col items-end gap-1">
+                            {m.estimate ? (
+                              <p className="text-xs font-bold text-slate-800">{formatCurrency(m.estimate)}</p>
+                            ) : (
+                              <p className="text-[10px] text-slate-400 italic">Sesuai rute</p>
+                            )}
+                            <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${selectedShipping === m.id ? "border-primary bg-primary" : "border-slate-300 bg-white"}`}>
+                              {selectedShipping === m.id && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={openServiceCatalog}
+                    className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-slate-200 text-sm text-slate-400 hover:border-sky-300 hover:text-sky-600 hover:bg-sky-50/60 transition-colors"
+                  >
+                    <Plus className="w-4 h-4" /> Tambah Layanan / Produk
+                  </button>
+                )}
               </div>
             )
           )}
@@ -1374,17 +1454,39 @@ export function CartDrawer() {
                 <p className="text-[11px] text-slate-400 leading-snug">Harga akhir dikonfirmasi vendor setelah pesanan diterima.</p>
               )}
             </div>
+            {/* Shipping estimate row for product-only carts */}
+            {hasProductOnly && selectedShipping && (
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-500">Estimasi Ongkos Kirim</span>
+                <span className="font-medium text-slate-700">
+                  {selectedShipping === "darat" && daratEstimate
+                    ? formatCurrency(daratEstimate)
+                    : <span className="text-slate-400 text-xs italic">Sesuai rute</span>}
+                </span>
+              </div>
+            )}
+            {hasProductOnly && !selectedShipping && (
+              <p className="text-[11px] text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-center">
+                ⚠️ Pilih metode pengiriman sebelum checkout
+              </p>
+            )}
             <Button className="w-full gap-2 h-11 text-sm font-semibold" onClick={handleCheckout}>
               Lanjutkan ke Checkout <ArrowRight className="w-4 h-4" />
             </Button>
-            <div className="grid grid-cols-2 gap-2">
-              <Button variant="outline" className="gap-1.5 text-sm h-10" onClick={openServiceCatalog}>
-                <Truck className="w-3.5 h-3.5" /> Pilih Layanan
+            {hasProductOnly ? (
+              <Button variant="outline" className="w-full gap-1.5 text-sm h-10" onClick={() => { close(); setLocation("/products"); }}>
+                <Package className="w-3.5 h-3.5" /> Tambah Produk Lagi
               </Button>
-              <Button variant="outline" className="gap-1.5 text-sm h-10" onClick={() => { close(); setLocation("/products"); }}>
-                <Package className="w-3.5 h-3.5" /> Pilih Produk
-              </Button>
-            </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-2">
+                <Button variant="outline" className="gap-1.5 text-sm h-10" onClick={openServiceCatalog}>
+                  <Truck className="w-3.5 h-3.5" /> Pilih Layanan
+                </Button>
+                <Button variant="outline" className="gap-1.5 text-sm h-10" onClick={() => { close(); setLocation("/products"); }}>
+                  <Package className="w-3.5 h-3.5" /> Pilih Produk
+                </Button>
+              </div>
+            )}
           </div>
         )}
 
