@@ -819,6 +819,7 @@ export function CartDrawer() {
                                 if (!v.suitable) return;
                                 setTruckData(p => ({ ...p, vehicleType: v.type }));
                                 setTruckEstimate(v.estimate);
+                                try { localStorage.setItem("truck_pref", JSON.stringify({ destCity: truckData.destCity ?? "", vehicleType: v.type })); } catch { /**/ }
                               }}
                             >
                               <div className="flex-1 min-w-0">
