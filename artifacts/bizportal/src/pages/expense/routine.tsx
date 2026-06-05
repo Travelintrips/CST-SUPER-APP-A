@@ -139,6 +139,7 @@ export default function ExpenseRoutinePage() {
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "bank">("bank");
   const [taxRateId, setTaxRateId] = useState<string>("none");
   const [taxAutoFilled, setTaxAutoFilled] = useState(false);
+  const [amountAutoFilled, setAmountAutoFilled] = useState(false);
   const [notes, setNotes] = useState("");
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
 
@@ -149,7 +150,7 @@ export default function ExpenseRoutinePage() {
     return allCats.find((c) => c.code === selectedCode) ?? null;
   }, [selectedCode, presetMap, allCats]);
 
-  // Auto-fill tax from category when category changes
+  // Auto-fill tax & amount from category when category changes
   useEffect(() => {
     if (!selectedCat) return;
     const defaultTaxId = (selectedCat as any).defaultTaxId as number | null | undefined;
@@ -160,6 +161,16 @@ export default function ExpenseRoutinePage() {
       if (taxAutoFilled) {
         setTaxRateId("none");
         setTaxAutoFilled(false);
+      }
+    }
+    const defaultAmount = (selectedCat as any).defaultAmount as string | number | null | undefined;
+    if (defaultAmount && Number(defaultAmount) > 0) {
+      setAmountRaw(formatIDRInput(String(Math.round(Number(defaultAmount)))));
+      setAmountAutoFilled(true);
+    } else {
+      if (amountAutoFilled) {
+        setAmountRaw("");
+        setAmountAutoFilled(false);
       }
     }
   }, [selectedCat?.id]);
@@ -188,6 +199,7 @@ export default function ExpenseRoutinePage() {
       qc.invalidateQueries({ queryKey: getListExpensesQueryKey() });
       setAmountRaw(""); setVendorEmployee(""); setNotes("");
       setTaxRateId("none"); setTaxAutoFilled(false);
+      setAmountAutoFilled(false);
       setDate(today); setSelectedCode(null);
     },
     onError: (e: Error) => {
@@ -458,11 +470,18 @@ export default function ExpenseRoutinePage() {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <Label>Nominal (IDR) <span className="text-destructive">*</span></Label>
+                <Label className="flex items-center gap-1.5">
+                  Nominal (IDR) <span className="text-destructive">*</span>
+                  {amountAutoFilled && (
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 border-sky-600 text-sky-400">
+                      auto
+                    </Badge>
+                  )}
+                </Label>
                 <Input
                   placeholder="0"
                   value={amountRaw}
-                  onChange={(e) => setAmountRaw(formatIDRInput(e.target.value))}
+                  onChange={(e) => { setAmountRaw(formatIDRInput(e.target.value)); setAmountAutoFilled(false); }}
                   className="font-mono"
                 />
               </div>

@@ -44,6 +44,7 @@ const EMPTY_FORM = {
   expenseAccountId: null as number | null,
   payableAccountId: null as number | null,
   defaultTaxId: null as number | null,
+  defaultAmount: "" as string,
   requiresAttachment: false,
   isActive: true,
 };
@@ -80,6 +81,7 @@ export default function ExpenseCategoriesPage() {
       expenseAccountId: c.expenseAccountId ?? null,
       payableAccountId: c.payableAccountId ?? null,
       defaultTaxId: (c as any).defaultTaxId ?? null,
+      defaultAmount: (c as any).defaultAmount ? String(Number((c as any).defaultAmount)) : "",
       requiresAttachment: c.requiresAttachment,
       isActive: c.isActive,
     });
@@ -97,6 +99,7 @@ export default function ExpenseCategoriesPage() {
         expenseAccountId: form.expenseAccountId || undefined,
         payableAccountId: form.payableAccountId || undefined,
         defaultTaxId: form.defaultTaxId || undefined,
+        defaultAmount: form.defaultAmount ? Number(form.defaultAmount) : undefined,
         requiresAttachment: form.requiresAttachment,
         isActive: form.isActive,
       };
@@ -297,6 +300,18 @@ export default function ExpenseCategoriesPage() {
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">Saat kategori ini dipilih di form Biaya Rutin, pajak akan ter-isi otomatis.</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Harga Default (Auto-fill Nominal)</Label>
+              <Input
+                type="number"
+                min="0"
+                step="any"
+                placeholder="0 (kosong = tidak ada default)"
+                value={form.defaultAmount}
+                onChange={(e) => setForm((f) => ({ ...f, defaultAmount: e.target.value }))}
+              />
+              <p className="text-xs text-muted-foreground">Saat kategori ini dipilih di form Biaya Rutin, nominal akan ter-isi otomatis dengan nilai ini.</p>
             </div>
             <div className="flex items-center justify-between rounded-lg border border-border px-4 py-3">
               <div>

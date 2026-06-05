@@ -20,6 +20,7 @@ export const expenseCategoriesTable = pgTable("expense_categories", {
   expenseAccountId: integer("expense_account_id").references(() => chartOfAccountsTable.id, { onDelete: "set null" }),
   payableAccountId: integer("payable_account_id").references(() => chartOfAccountsTable.id, { onDelete: "set null" }),
   defaultTaxId: integer("default_tax_id").references(() => accountingTaxesTable.id, { onDelete: "set null" }),
+  defaultAmount: numeric("default_amount", { precision: 14, scale: 2 }),
   requiresAttachment: boolean("requires_attachment").notNull().default(false),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),

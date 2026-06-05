@@ -40,6 +40,11 @@ const BIZPORTAL_PORT     = Number(process.env.BIZPORTAL_PORT ?? 4200);
 // Customer portal Vite — configurable via env, defaults to 5173
 const CUSTOMER_PORT      = Number(process.env.CUSTOMER_PORT ?? 5173);
 // Logistic Order Vite — configurable via env, defaults to 3001
+// BizPortal Vite dev server
+const BIZPORTAL_PORT     = Number(process.env.BIZPORTAL_PORT ?? 3000);
+// Customer portal Vite dev server
+const CUSTOMER_PORT      = Number(process.env.CUSTOMER_PORT ?? 5173);
+// Logistic Order Vite dev server
 const LOGISTIC_ORDER_PORT = Number(process.env.LOGISTIC_ORDER_PORT ?? 3001);
 
 const ROUTES = [
