@@ -780,24 +780,30 @@ export function CartDrawer() {
                     <div>
                       <Label className="text-[11px] mb-1 flex items-center gap-1">
                         Berat (kg) *
-                        {cartAutoFilled && <span className="ml-auto text-[10px] font-semibold bg-sky-100 text-sky-600 px-1.5 py-0.5 rounded-full">Otomatis</span>}
+                        {cartAutoFilled && truckData.weight && <span className="ml-auto text-[10px] font-semibold bg-sky-100 text-sky-600 px-1.5 py-0.5 rounded-full">Otomatis</span>}
                       </Label>
-                      <Input
-                        type="number" min={0} className="h-8 text-xs" placeholder="100"
-                        value={truckData.weight||""}
-                        onChange={e => {
-                          const w = e.target.value;
-                          setVehicleComparison(null);
-                          setTruckData(p => {
-                            const kg = parseFloat(w) || 0;
-                            const updates: Record<string, string> = { ...p, weight: w };
-                            if (kg > 0 && !p.vehicleType) {
-                              updates.vehicleType = suggestVehicleType(kg);
-                            }
-                            return updates;
-                          });
-                        }}
-                      />
+                      {cartAutoFilled && truckData.weight ? (
+                        <div className="h-8 flex items-center px-2.5 bg-sky-50 border border-sky-200 rounded-md">
+                          <span className="text-xs font-semibold text-slate-800">{truckData.weight} kg</span>
+                        </div>
+                      ) : (
+                        <Input
+                          type="number" min={0} className="h-8 text-xs" placeholder="100"
+                          value={truckData.weight||""}
+                          onChange={e => {
+                            const w = e.target.value;
+                            setVehicleComparison(null);
+                            setTruckData(p => {
+                              const kg = parseFloat(w) || 0;
+                              const updates: Record<string, string> = { ...p, weight: w };
+                              if (kg > 0 && !p.vehicleType) {
+                                updates.vehicleType = suggestVehicleType(kg);
+                              }
+                              return updates;
+                            });
+                          }}
+                        />
+                      )}
                     </div>
                     <div>
                       {(() => {
@@ -1026,42 +1032,42 @@ export function CartDrawer() {
               {/* AIR FREIGHT */}
               {freightSvc === "air" && (
                 <div className="space-y-3">
-                  <div className="grid grid-cols-2 gap-2.5">
-                    <div>
-                      <Label className="text-[11px] mb-1 block">Bandara Asal *</Label>
-                      <Input className="h-8 text-xs" placeholder="CGK — Jakarta" value={freightData.originAirport||""} onChange={e => setFreightData(p => ({...p, originAirport: e.target.value}))} />
-                    </div>
-                    <div>
-                      <Label className="text-[11px] mb-1 block">Bandara Tujuan *</Label>
-                      <Input className="h-8 text-xs" placeholder="SIN — Singapore" value={freightData.destAirport||""} onChange={e => setFreightData(p => ({...p, destAirport: e.target.value}))} />
-                    </div>
-                    <div>
-                      <Label className="text-[11px] mb-1 flex items-center gap-1">
-                        Berat (kg) *
-                        {freightAutoFilled && freightData.weight && <span className="ml-auto text-[10px] font-semibold bg-sky-100 text-sky-600 px-1.5 py-0.5 rounded-full">Otomatis</span>}
-                      </Label>
-                      <Input type="number" min={0} className="h-8 text-xs" placeholder="100" value={freightData.weight||""} onChange={e => setFreightData(p => ({...p, weight: e.target.value}))} />
-                    </div>
-                    <div>
-                      <Label className="text-[11px] mb-1 block">Jenis Barang</Label>
-                      <Select value={freightData.goodsType||undefined} onValueChange={v => setFreightData(p => ({...p, goodsType: v}))}>
-                        <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Pilih" /></SelectTrigger>
-                        <SelectContent>{GOODS_TYPES.map(g => <SelectItem key={g} value={g} className="text-xs">{g}</SelectItem>)}</SelectContent>
-                      </Select>
+                  {/* Spesifikasi otomatis dari produk */}
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-2.5 space-y-1.5">
+                    <p className="text-[11px] font-semibold text-emerald-700">✈️ Data dikirim otomatis dari produk pesanan</p>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Bandara Asal</span>
+                        <span className="font-semibold text-slate-800">{freightData.originAirport || companyPickup?.originAirport || "CGK"} — Jakarta</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Negara Asal</span>
+                        <span className="font-semibold text-slate-800">Indonesia 🇮🇩</span>
+                      </div>
+                      {freightData.weight && (
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Total Berat</span>
+                          <span className="font-semibold text-slate-800">{freightData.weight} kg</span>
+                        </div>
+                      )}
+                      {freightData.goodsType && (
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Jenis Barang</span>
+                          <span className="font-semibold text-slate-800">{freightData.goodsType}</span>
+                        </div>
+                      )}
+                      {(freightData.length || freightData.width || freightData.height) && (
+                        <div className="flex justify-between col-span-2">
+                          <span className="text-slate-500">Dimensi (P×L×T)</span>
+                          <span className="font-semibold text-slate-800">{freightData.length||"—"} × {freightData.width||"—"} × {freightData.height||"—"} cm</span>
+                        </div>
+                      )}
                     </div>
                   </div>
+                  {/* Wajib diisi customer: Bandara Tujuan */}
                   <div>
-                    <Label className="text-[11px] mb-1 flex items-center gap-1">
-                      Dimensi (cm) — P × L × T
-                      {freightAutoFilled && (freightData.length || freightData.width || freightData.height) && (
-                        <span className="ml-auto text-[10px] font-semibold bg-sky-100 text-sky-600 px-1.5 py-0.5 rounded-full">Otomatis</span>
-                      )}
-                    </Label>
-                    <div className="grid grid-cols-3 gap-1.5">
-                      <Input type="number" min={0} className="h-8 text-xs" placeholder="Panjang" value={freightData.length||""} onChange={e => setFreightData(p => ({...p, length: e.target.value}))} />
-                      <Input type="number" min={0} className="h-8 text-xs" placeholder="Lebar"   value={freightData.width||""}  onChange={e => setFreightData(p => ({...p, width: e.target.value}))} />
-                      <Input type="number" min={0} className="h-8 text-xs" placeholder="Tinggi"  value={freightData.height||""} onChange={e => setFreightData(p => ({...p, height: e.target.value}))} />
-                    </div>
+                    <Label className="text-[11px] mb-1 font-semibold block">Bandara Tujuan *</Label>
+                    <Input className="h-8 text-xs border-primary/40 focus:border-primary" placeholder="Contoh: SIN — Singapore, KUL — Malaysia..." value={freightData.destAirport||""} onChange={e => setFreightData(p => ({...p, destAirport: e.target.value}))} autoFocus />
                   </div>
                   <div>
                     <Label className="text-[11px] mb-1 block">Incoterms</Label>
@@ -1070,6 +1076,16 @@ export function CartDrawer() {
                       <SelectContent>{INCOTERMS.map(t => <SelectItem key={t} value={t} className="text-xs">{t}</SelectItem>)}</SelectContent>
                     </Select>
                   </div>
+                  {/* Jenis Barang hanya tampil jika tidak ada dari produk */}
+                  {!freightData.goodsType && (
+                    <div>
+                      <Label className="text-[11px] mb-1 block">Jenis Barang</Label>
+                      <Select value={freightData.goodsType||undefined} onValueChange={v => setFreightData(p => ({...p, goodsType: v}))}>
+                        <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Pilih (opsional)" /></SelectTrigger>
+                        <SelectContent>{GOODS_TYPES.map(g => <SelectItem key={g} value={g} className="text-xs">{g}</SelectItem>)}</SelectContent>
+                      </Select>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1180,8 +1196,8 @@ export function CartDrawer() {
                                                "border-slate-400 text-slate-600 hover:bg-slate-50"
                   }`}
                   disabled={freightEstimating || (
-                    freightSvc === "sea"     ? !freightData.originCountry || !freightData.destCountry :
-                    freightSvc === "air"     ? !freightData.originAirport || !freightData.destAirport || !freightData.weight :
+                    freightSvc === "sea"     ? !freightData.destCountry :
+                    freightSvc === "air"     ? !freightData.destAirport :
                     freightSvc === "storage" ? !freightData.volume :
                     false
                   )}
