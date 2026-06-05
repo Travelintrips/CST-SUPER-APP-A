@@ -15,7 +15,7 @@
 - [Audit Trail System](audit-trail-system.md) — 4 new tables, helper lib, API routes, BizPortal page, hooks in logisticOrders/logisticRfq/customerQuoteFlow; routes.tsx is the real router (not App.tsx)
 - [Phase 3 Observability](phase3-observability.md) — audit trail di 3 service (rfq/invoice/payment via writeAuditLog → erp_audit_logs); exceptionService idempotent; exceptions di workflowWorker + vendorJobOrder; GET /api/system/governance-health admin-only
 - [Phase 5 Cleanup Decisions](phase5-cleanup.md) — shipments legacy table safe to drop (0 rows, dashboard.ts fixed to freightShipmentsTable); workflow_events safe to drop (0 rows, no callers); /inventory/warehouses deprecated (header added); logisticRfq.ts V1 KEEP (customer portal active); regression: scripts/regression-phase5.mjs (32/32)
-- [ws Package & Customer Portal Port](ws-port-config.md) — api-server needs ws in externals AND pnpm install; customer portal proxy runs on port 23434 (Replit auto-assigns PORT); Gateway needs CUSTOMER_PORT=23434
+- [Gateway Port Config](gateway-port-config.md) — BizPortal proxy on 3000→Replit-assigned, Customer Portal Vite on 5174; hardcode in gateway.mjs (env vars from workflow command override defaults)
 - [Supabase Storage Migration](supabase-storage-migration.md) — GCS→Supabase; DEV key fallback; bucket names; upload path format `/objects/uploads/<uuid>.<ext>`
 - [Zod build alias](zod-build-alias.md) — zod not hoisted to workspace root by pnpm; must alias in build.mjs pointing to pnpm store directory.
 - [FASE 4A Service Context WA](fase4a-service-context-wa.md) — buildServiceContext() di orderNotification.ts; serviceChecklistSummary embed header; renderTemplate auto-skip null; op_request pakai SERVICE_SCHEMAS untuk derive snapshot.

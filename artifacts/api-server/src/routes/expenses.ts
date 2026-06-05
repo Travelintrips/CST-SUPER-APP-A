@@ -13,7 +13,7 @@ import {
   accountingJournalsTable,
   accountingEntriesTable,
 } from "@workspace/db";
-import { requireAdmin } from "../lib/requireAdmin.js";
+import { requireAdmin, requireClerkUser } from "../lib/requireAdmin.js";
 import { postEntry } from "../lib/accounting.js";
 import { ensureAccountingSettings } from "../lib/accountingSeed.js";
 
@@ -62,7 +62,7 @@ export async function fixExpenseCategoryDefaultTax(): Promise<void> {
 
 const router = Router();
 router.use(async (req, res, next) => {
-  if (!(await requireAdmin(req, res))) return;
+  if (!(await requireClerkUser(req, res))) return;
   next();
 });
 
@@ -121,6 +121,7 @@ router.get("/categories", async (_req, res) => {
 });
 
 router.post("/categories", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
   const { name, code, expenseAccountId, payableAccountId, defaultTaxId, defaultAmount, defaultCoaId, requiresAttachment, isActive } = req.body ?? {};
   if (!name || !code) return res.status(400).json({ message: "name and code are required" });
   const [created] = await db
@@ -141,6 +142,7 @@ router.post("/categories", async (req, res) => {
 });
 
 router.patch("/categories/:id", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
   const id = Number(req.params.id);
   if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
   const { name, code, expenseAccountId, payableAccountId, defaultTaxId, defaultAmount, defaultCoaId, requiresAttachment, isActive } = req.body ?? {};
@@ -164,13 +166,15 @@ router.patch("/categories/:id", async (req, res) => {
 });
 
 router.delete("/categories/:id", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
   const id = Number(req.params.id);
   if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
   await db.delete(expenseCategoriesTable).where(eq(expenseCategoriesTable.id, id));
   return res.json({ message: "Deleted" });
 });
 
-router.post("/seed-categories", async (_req, res) => {
+router.post("/seed-categories", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
   const settings = await ensureAccountingSettings();
   const allAccounts = await db.select().from(chartOfAccountsTable);
   const byCode = new Map(allAccounts.map((a) => [a.code, a]));

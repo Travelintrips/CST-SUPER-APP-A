@@ -169,23 +169,6 @@ export default function SportCenterDashboard() {
   });
 
 
-  // ── Query: Revenue transactions (lazy — hanya saat expandedCard === 'revenueToday') ──
-  interface RevenueTxRow {
-    id: number;
-    payment_number: string | null;
-    booking_id: number | null;
-    amount: number;
-    payment_method: string | null;
-    paid_at: string | null;
-    payment_type: string | null;
-    status: string | null;
-    facility_name: string;
-    customer_name: string;
-    booking_number: string | null;
-    booking_date: string | null;
-    start_time: string | null;
-    end_time: string | null;
-
   // ── Query: Revenue Transactions (lazy — hanya saat expandedCard === 'revenue') ──────────
   interface RevenueTxRow {
     entry_id: number;
@@ -203,9 +186,11 @@ export default function SportCenterDashboard() {
     total_amount: string | null;
 
   }
+  type RevenueTxQueryResult = { data: RevenueTxRow[]; total: number };
   const {
     data: revenueTxData,
     isLoading: revenueTxLoading,
+  } = useQuery<RevenueTxQueryResult>({
 
   } = useQuery<RevenueTxRow[]>({
     queryKey: ["sport-center-revenue-tx", activeCompanyId, kpiDate],
@@ -227,7 +212,7 @@ export default function SportCenterDashboard() {
       qs.set("date", kpiDate);
       const r = await fetch(`/api/sport-center/revenue-transactions?${qs}`, { credentials: "include" });
       if (!r.ok) throw new Error("Gagal memuat transaksi revenue");
-      return r.json() as Promise<{ data: RevenueTxRow[]; total: number }>;
+      return r.json() as Promise<RevenueTxQueryResult>;
     },
     enabled: expandedCard === "revenue",
     staleTime: 30_000,
