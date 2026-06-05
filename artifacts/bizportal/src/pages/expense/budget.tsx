@@ -349,10 +349,10 @@ export default function ExpenseBudgetPage() {
                 </div>
                 <div>
                   <Label>Bulan (kosong = tahunan)</Label>
-                  <Select value={budgetForm.month} onValueChange={(v) => setBudgetForm({ ...budgetForm, month: v })}>
+                  <Select value={budgetForm.month || "__annual__"} onValueChange={(v) => setBudgetForm({ ...budgetForm, month: v === "__annual__" ? "" : v })}>
                     <SelectTrigger><SelectValue placeholder="Semua bulan" /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Tahunan</SelectItem>
+                      <SelectItem value="__annual__">Tahunan</SelectItem>
                       {MONTHS.map((m, i) => <SelectItem key={i + 1} value={String(i + 1)}>{m}</SelectItem>)}
                     </SelectContent>
                   </Select>
@@ -360,10 +360,10 @@ export default function ExpenseBudgetPage() {
               </div>
               <div>
                 <Label>Kategori (kosong = semua kategori)</Label>
-                <Select value={budgetForm.categoryId} onValueChange={(v) => setBudgetForm({ ...budgetForm, categoryId: v })}>
+                <Select value={budgetForm.categoryId || "__all__"} onValueChange={(v) => setBudgetForm({ ...budgetForm, categoryId: v === "__all__" ? "" : v })}>
                   <SelectTrigger><SelectValue placeholder="Semua kategori" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Semua Kategori</SelectItem>
+                    <SelectItem value="__all__">Semua Kategori</SelectItem>
                     {(categories as any[]).map((c: any) => (
                       <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
                     ))}

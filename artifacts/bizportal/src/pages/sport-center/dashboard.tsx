@@ -76,6 +76,36 @@ interface KpiLiveData {
 
 interface HeatmapRow { hour: string; booking_count: number; }
 
+interface RevenueTxRow {
+  entry_id: number;
+  payment_date: string;
+  amount: number;
+  ref: string | null;
+  booking_number: string | null;
+  customer_name: string | null;
+  facility_name: string | null;
+  booking_date: string | null;
+  start_time: string | null;
+  end_time: string | null;
+  status: string | null;
+  payment_status: string | null;
+  total_amount: string | null;
+}
+type RevenueTxQueryResult = { data: RevenueTxRow[]; total: number };
+
+interface AllBookingRow {
+  booking_code: string | null;
+  customer_name: string | null;
+  facility_name: string | null;
+  date: string | null;
+  start_time: string | null;
+  end_time: string | null;
+  status: string | null;
+  payment_status: string | null;
+  total_price: number | null;
+  created_at: string | null;
+}
+
 export default function SportCenterDashboard() {
   const qc = useQueryClient();
   const [, navigate] = useLocation();
@@ -170,23 +200,6 @@ export default function SportCenterDashboard() {
 
 
   // ── Query: Revenue Transactions (lazy — hanya saat expandedCard === 'revenue') ──────────
-  interface RevenueTxRow {
-    entry_id: number;
-    payment_date: string;
-    amount: number;
-    ref: string | null;
-    booking_number: string | null;
-    customer_name: string | null;
-    facility_name: string | null;
-    booking_date: string | null;
-    start_time: string | null;
-    end_time: string | null;
-    status: string | null;
-    payment_status: string | null;
-    total_amount: string | null;
-
-  }
-  type RevenueTxQueryResult = { data: RevenueTxRow[]; total: number };
   const {
     data: revenueTxData,
     isLoading: revenueTxLoading,
@@ -206,18 +219,6 @@ export default function SportCenterDashboard() {
   });
 
   // ── Query: Semua booking dari Supabase (lazy — hanya saat expandedCard === 'totalBooking') ──
-  interface AllBookingRow {
-    booking_code: string | null;
-    customer_name: string | null;
-    facility_name: string | null;
-    date: string | null;
-    start_time: string | null;
-    end_time: string | null;
-    status: string | null;
-    payment_status: string | null;
-    total_price: number | null;
-    created_at: string | null;
-  }
   const {
     data: allBookingsData,
     isLoading: allBookingsLoading,
