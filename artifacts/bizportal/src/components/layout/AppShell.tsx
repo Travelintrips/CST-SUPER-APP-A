@@ -305,11 +305,32 @@ export function AppShell({ children, noPadding }: AppShellProps) {
       icon: Activity,
       roles: ["admin", "owner", "trading"],
       children: [
-        { titleKey: "Biaya Rutin", href: "/expense/routine", icon: Wallet, roles: ["admin", "owner"] },
-        { titleKey: "expenseList", href: "/expense", icon: Receipt, roles: ["admin", "owner"] },
-        { titleKey: "expenseCategories", href: "/expense/categories", icon: Tags, roles: ["admin", "owner"] },
-        { titleKey: "expenseReports", href: "/expense/reports", icon: BarChart2, roles: ["admin", "owner"] },
         { titleKey: "trading", href: "/trading", icon: Package, roles: ["admin", "owner", "trading"] },
+      ],
+    },
+
+    // ── 6.5. EXPENSE MANAGEMENT ───────────────────────────────────────
+    {
+      type: "group",
+      titleKey: "Expense Management",
+      basePath: "/expense",
+      icon: Receipt,
+      roles: ["admin", "owner", "manager"],
+      children: [
+        { titleKey: "Semua Pengeluaran", href: "/expense", icon: Receipt },
+        { titleKey: "Biaya Rutin", href: "/expense/routine", icon: RotateCcw },
+        { titleKey: "Kategori", href: "/expense/categories", icon: Tags },
+        { titleKey: "Laporan Expense", href: "/expense/reports", icon: BarChart2 },
+        { titleKey: "Dashboard & Monitor", href: "/expense/dashboard", icon: LayoutDashboard },
+        { titleKey: "Kasbon Karyawan", href: "/expense/kasbon", icon: Wallet },
+        { titleKey: "Dana Talangan", href: "/expense/talangan", icon: DollarSign },
+        { titleKey: "Vendor Installments", href: "/expense/vendor-installments", icon: CalendarDays },
+        { titleKey: "Approvals", href: "/expense/approvals", icon: ClipboardCheck },
+        { titleKey: "Fixed Assets", href: "/expense/fixed-assets", icon: Landmark },
+        { titleKey: "Asset Depreciation", href: "/expense/asset-depreciation", icon: TrendingUp },
+        { titleKey: "Vendor Payments", href: "/expense/vendor-payments", icon: Send },
+        { titleKey: "Templates Expense", href: "/expense/templates", icon: Layers },
+        { titleKey: "Budget & Kurs", href: "/expense/budget", icon: Calculator },
       ],
     },
 
