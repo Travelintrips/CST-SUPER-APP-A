@@ -59,6 +59,14 @@ export default function CalculatorPage() {
 
   const qc = useQueryClient();
 
+  // Pre-select service from URL ?service=X
+  const initialService = useMemo<ServiceType>(() => {
+    if (typeof window === "undefined") return "";
+    const param = new URLSearchParams(window.location.search).get("service");
+    const valid: ServiceType[] = ["seaFreight","airFreight","customs","domestic","warehousing","projectCargo"];
+    return (valid.includes(param as ServiceType) ? param : "") as ServiceType;
+  }, []);
+
   const { data: ratesData } = useQuery<CalcRates>({
     queryKey: ["portal-calculator-rates"],
     queryFn: () => fetch("/api/portal/calculator-rates").then((r) => r.ok ? r.json() : null),
@@ -85,7 +93,7 @@ export default function CalculatorPage() {
     return () => es.close();
   }, [qc]);
 
-  const [service, setService] = useState<ServiceType>("");
+  const [service, setService] = useState<ServiceType>(initialService);
   const [origin, setOrigin] = useState("");
   const [destination, setDestination] = useState("");
   const [weight, setWeight] = useState("");

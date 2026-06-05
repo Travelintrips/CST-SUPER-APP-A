@@ -307,12 +307,15 @@ export function CartDrawer() {
 
   function handleNonTruckingService(id: string) {
     close();
-    const catMap: Record<string, string> = {
-      sea: "Freight", air: "Freight", storage: "Storage",
-      customs: "Customs", additional: "Additional",
+    const calcMap: Record<string, string> = {
+      sea:       "seaFreight",
+      air:       "airFreight",
+      storage:   "warehousing",
+      customs:   "customs",
+      additional:"projectCargo",
     };
-    const cat = catMap[id];
-    setLocation(cat ? `/book?cat=${cat}` : "/book");
+    const svc = calcMap[id];
+    setLocation(svc ? `/calculator?service=${svc}` : "/calculator");
   }
 
   async function handleCompareVehicles() {
@@ -537,11 +540,17 @@ export function CartDrawer() {
                       <div>
                         <p className="font-semibold text-sm leading-tight">{svc.name}</p>
                         <p className="text-[11px] opacity-70 mt-0.5 leading-snug">{svc.desc}</p>
-                        {svc.isTrucking && (
-                          <span className="inline-block mt-1.5 text-[10px] bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded-full font-medium">
-                            Kalkulator tersedia
-                          </span>
-                        )}
+                        <span className={`inline-block mt-1.5 text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                          svc.isTrucking
+                            ? "bg-orange-100 text-orange-700"
+                            : svc.id === "sea"       ? "bg-blue-100 text-blue-700"
+                            : svc.id === "air"       ? "bg-sky-100 text-sky-700"
+                            : svc.id === "storage"   ? "bg-emerald-100 text-emerald-700"
+                            : svc.id === "customs"   ? "bg-slate-100 text-slate-600"
+                            : "bg-purple-100 text-purple-700"
+                        }`}>
+                          Kalkulator tersedia
+                        </span>
                       </div>
                     </div>
                   </button>
