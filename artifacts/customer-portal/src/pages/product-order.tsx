@@ -192,9 +192,17 @@ export default function ProductOrderPage() {
   const [estimating, setEstimating] = useState(false);
   const [truckingEstimate, setTruckingEstimate] = useState<number | null>(null);
   const [vehicleComparison, setVehicleComparison] = useState<Array<{ type: string; label: string; desc: string; estimate: number; suitable: boolean }> | null>(null);
+  const [apiRates, setApiRates] = useState<Array<{ type: string; label: string; description: string; max_kg: string | null; rate_per_kg: string; min_price: string }> | null>(null);
   const [deliveryAddressError, setDeliveryAddressError] = useState(false);
   const [checkoutAddressError, setCheckoutAddressError] = useState(false);
   const [companyOrigin, setCompanyOrigin] = useState<{ name: string; address: string; originCity: string; originAirport: string; originPort: string } | null>(null);
+
+  useEffect(() => {
+    fetch(`${BASE}/api/trucking-rates`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (Array.isArray(d) && d.length > 0) setApiRates(d); })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     fetch(`${BASE}/api/settings/company-pickup-address`)
@@ -325,13 +333,33 @@ export default function ProductOrderPage() {
       const wi = parseFloat(truckingForm.width)  || 0;
       const h  = parseFloat(truckingForm.height) || 0;
       const volW = (l && wi && h) ? (l * wi * h) / 4000 : 0;
-      const results = Object.entries(VEHICLE_RATES_PO).map(([type, r]) => ({
-        type,
-        label: VEHICLE_CAPACITIES_PO.find(v => v.type === type)?.label ?? type,
-        desc:  VEHICLE_CAPACITIES_PO.find(v => v.type === type)?.desc ?? "",
-        estimate: offlineEstimatePerVehicle(w, type, volW),
-        suitable: w <= r.maxKg,
-      }));
+      const vehicleList = (apiRates && apiRates.length > 0)
+        ? apiRates.map(r => ({
+            type:   r.type,
+            label:  r.label,
+            desc:   r.description,
+            maxKg:  r.max_kg != null ? Number(r.max_kg) : Infinity,
+            rate:   Number(r.rate_per_kg),
+            min:    Number(r.min_price),
+          }))
+        : Object.entries(VEHICLE_RATES_PO).map(([type, r]) => ({
+            type,
+            label: VEHICLE_CAPACITIES_PO.find(v => v.type === type)?.label ?? type,
+            desc:  VEHICLE_CAPACITIES_PO.find(v => v.type === type)?.desc ?? "",
+            maxKg: r.maxKg,
+            rate:  r.rate,
+            min:   r.min,
+          }));
+      const results = vehicleList.map(v => {
+        const chargeable = Math.max(w, volW);
+        return {
+          type:     v.type,
+          label:    v.label,
+          desc:     v.desc,
+          estimate: Math.max(v.min, Math.round(chargeable * v.rate)),
+          suitable: w <= v.maxKg,
+        };
+      });
       setVehicleComparison(results);
       // auto-set estimate for the suggested vehicle
       const suggested = w > 0 ? suggestVehiclePO(w).type : null;

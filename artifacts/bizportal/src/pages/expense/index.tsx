@@ -22,7 +22,7 @@ import { usePrefetchOnHover } from "@/hooks/use-prefetch-on-hover";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useCompany } from "@/contexts/CompanyContext";
-import { ShoppingCart, Ship, Plus, Receipt, Search, Trash2, X, CalendarRange, Zap, Wallet, HandCoins, Building2, Landmark, Package, ShieldCheck, LayoutDashboard, Layers, PieChart } from "lucide-react";
+import { ShoppingCart, Ship, Plus, Receipt, Search, Trash2, X, CalendarRange, Zap, Wallet, HandCoins, Building2, Landmark, Package, ShieldCheck, LayoutDashboard, Layers, PieChart, Banknote, TrendingDown } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -218,6 +218,24 @@ export default function ExpenseListPage() {
               <div>
                 <p className="text-sm font-medium leading-tight">Aset Tetap</p>
                 <p className="text-xs text-muted-foreground">Penyusutan otomatis</p>
+              </div>
+            </div>
+          </Link>
+          <Link href="/expense/vendor-payments">
+            <div className="flex items-center gap-3 rounded-lg border bg-card px-4 py-3 hover:bg-muted/50 transition-colors cursor-pointer">
+              <Banknote size={18} className="text-emerald-400 shrink-0" />
+              <div>
+                <p className="text-sm font-medium leading-tight">Pembayaran Vendor</p>
+                <p className="text-xs text-muted-foreground">DR Hutang / CR Bank</p>
+              </div>
+            </div>
+          </Link>
+          <Link href="/expense/asset-depreciation">
+            <div className="flex items-center gap-3 rounded-lg border bg-card px-4 py-3 hover:bg-muted/50 transition-colors cursor-pointer">
+              <TrendingDown size={18} className="text-orange-400 shrink-0" />
+              <div>
+                <p className="text-sm font-medium leading-tight">Penyusutan Aset</p>
+                <p className="text-xs text-muted-foreground">DR Beban / CR Akum.</p>
               </div>
             </div>
           </Link>

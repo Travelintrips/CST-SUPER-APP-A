@@ -22,6 +22,7 @@ import {
   Package, Warehouse, Truck, FileCheck, Shield, FileText,
   Plus, Trash2, Edit2, Calculator, ShoppingCart, User, CheckCircle2,
 } from "lucide-react";
+import { CityAutocompleteInput } from "@/components/ui/city-autocomplete";
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   Ship, Plane, Download, Upload, MapPin, Home,
@@ -191,7 +192,7 @@ function calcResult(calcType: string, state: CalcState): Record<string, unknown>
 
 interface CompanyOrigin { name: string; address: string; originCity: string; originAirport: string; originPort: string; }
 
-function CalculatorForm({ item, onAdd, onBack, transportMode, truckType, origin, destination, companyOrigin }: {
+function CalculatorForm({ item, onAdd, onBack, transportMode, truckType, origin, destination, companyOrigin, initialState: initialCalcState }: {
   item: ServiceItem;
   onAdd: (data: Omit<CartItem, "cartId">) => void;
   onBack: () => void;
@@ -200,21 +201,31 @@ function CalculatorForm({ item, onAdd, onBack, transportMode, truckType, origin,
   origin?: string;
   destination?: string;
   companyOrigin?: CompanyOrigin;
+  initialState?: Record<string, string>;
 }) {
   const [state, setState] = useState<CalcState>({});
   const [autoRateFetching, setAutoRateFetching] = useState(false);
   const { toast } = useToast();
 
-  // Auto-fill origin airport/port from company defaults
+  // Auto-fill origin airport/port from company defaults, and product dims if provided
   useEffect(() => {
-    if (!companyOrigin) return;
-    if (item.calculatorType === "air_freight") {
-      setState(prev => ({ ...prev, originAirport: prev.originAirport || companyOrigin.originAirport }));
-    } else if (item.calculatorType === "sea_fcl") {
-      setState(prev => ({ ...prev, originPort: prev.originPort || companyOrigin.originPort }));
-    }
+    if (!companyOrigin && !initialCalcState) return;
+    setState(prev => {
+      const next = { ...prev };
+      if (companyOrigin) {
+        if (item.calculatorType === "air_freight") next.originAirport = prev.originAirport || companyOrigin.originAirport;
+        else if (item.calculatorType === "sea_fcl") next.originPort = prev.originPort || companyOrigin.originPort;
+      }
+      if (initialCalcState && item.calculatorType === "air_freight") {
+        if (initialCalcState.grossWeight && !next.grossWeight) next.grossWeight = initialCalcState.grossWeight;
+        if (initialCalcState.length && !next.length) next.length = initialCalcState.length;
+        if (initialCalcState.width && !next.width) next.width = initialCalcState.width;
+        if (initialCalcState.height && !next.height) next.height = initialCalcState.height;
+      }
+      return next;
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [companyOrigin, item.calculatorType]);
+  }, [companyOrigin, item.calculatorType, initialCalcState]);
 
   function set(key: string, val: string) {
     setState((prev) => ({ ...prev, [key]: val }));
@@ -298,7 +309,10 @@ function CalculatorForm({ item, onAdd, onBack, transportMode, truckType, origin,
                 <span className="text-xs font-semibold text-slate-800">{state.originAirport || companyOrigin?.originAirport || "CGK"}</span>
               </div>
             </div>
-            <div><Label className="text-xs">Destination Airport</Label><Input placeholder="SIN" value={state.destinationAirport||""} onChange={e => set("destinationAirport", e.target.value)} /></div>
+            <div>
+              <Label className="text-xs">Destination Airport</Label>
+              <CityAutocompleteInput type="airport" placeholder="Cari bandara tujuan..." value={state.destinationAirport||""} onChange={v => set("destinationAirport", v)} />
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div><Label className="text-xs">Gross Weight (kg)</Label><Input type="number" placeholder="0" value={state.grossWeight||""} onChange={e => set("grossWeight", e.target.value)} /></div>
@@ -330,7 +344,10 @@ function CalculatorForm({ item, onAdd, onBack, transportMode, truckType, origin,
                 <span className="text-xs font-semibold text-slate-800">{state.originPort || companyOrigin?.originPort || "Tanjung Priok, Jakarta"}</span>
               </div>
             </div>
-            <div><Label className="text-xs">Destination Port</Label><Input placeholder="SGSIN" value={state.destinationPort||""} onChange={e => set("destinationPort", e.target.value)} /></div>
+            <div>
+              <Label className="text-xs">Destination Port</Label>
+              <CityAutocompleteInput type="port" placeholder="Cari pelabuhan tujuan..." value={state.destinationPort||""} onChange={v => set("destinationPort", v)} />
+            </div>
           </div>
           <div><Label className="text-xs">Container Type</Label>
             <Select value={state.containerType||undefined} onValueChange={v => set("containerType", v)}>
@@ -377,8 +394,14 @@ function CalculatorForm({ item, onAdd, onBack, transportMode, truckType, origin,
 
         {ct === "trucking" && <>
           <div className="grid grid-cols-2 gap-3">
-            <div><Label className="text-xs">Pickup City</Label><Input placeholder="Jakarta" value={state.pickupCity||""} onChange={e => set("pickupCity", e.target.value)} /></div>
-            <div><Label className="text-xs">Destination City</Label><Input placeholder="Surabaya" value={state.destCity||""} onChange={e => set("destCity", e.target.value)} /></div>
+            <div>
+              <Label className="text-xs">Pickup City</Label>
+              <CityAutocompleteInput type="city" placeholder="Cari kota asal..." value={state.pickupCity||""} onChange={v => set("pickupCity", v)} />
+            </div>
+            <div>
+              <Label className="text-xs">Destination City</Label>
+              <CityAutocompleteInput type="city" placeholder="Cari kota tujuan..." value={state.destCity||""} onChange={v => set("destCity", v)} />
+            </div>
           </div>
           <div><Label className="text-xs">Vehicle Type</Label>
             <Select value={state.vehicleType||undefined} onValueChange={v => set("vehicleType", v)}>
@@ -494,6 +517,7 @@ export default function BookPage() {
 
   const [fromProduct, setFromProduct] = useState<{ name: string; qty: number; price: number; unit?: string } | null>(null);
   const [companyOrigin, setCompanyOrigin] = useState<CompanyOrigin | null>(null);
+  const [productDims, setProductDims] = useState<Record<string, string>>({});
 
   // Fetch company origin defaults (origin airport, port, city)
   useEffect(() => {
@@ -660,9 +684,30 @@ export default function BookPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const commodity = params.get("commodity");
+    const productId = params.get("productId");
     const qty = parseInt(params.get("qty") ?? "1", 10) || 1;
     const productPrice = parseFloat(params.get("productPrice") ?? "0") || 0;
     const unit = params.get("unit") ?? undefined;
+
+    // Fetch product weight/dims for auto-fill in CalculatorForm
+    if (productId) {
+      fetch(`/api/ecommerce/products/${productId}`)
+        .then(r => r.ok ? r.json() : null)
+        .then((p: { weightKg?: number | null; lengthCm?: number | null; widthCm?: number | null; heightCm?: number | null; goodsType?: string | null } | null) => {
+          if (!p) return;
+          const dims: Record<string, string> = {};
+          if (p.weightKg != null) dims.grossWeight = String(p.weightKg);
+          if (p.lengthCm != null) dims.length = String(p.lengthCm);
+          if (p.widthCm != null) dims.width = String(p.widthCm);
+          if (p.heightCm != null) dims.height = String(p.heightCm);
+          if (p.goodsType) {
+            dims.goodsType = p.goodsType;
+            setQuickTruckData(prev => ({ ...prev, goodsType: prev.goodsType || p.goodsType! }));
+          }
+          if (Object.keys(dims).length > 0) setProductDims(dims);
+        })
+        .catch(() => {});
+    }
 
     if (commodity) {
       setFromProduct({ name: commodity, qty, price: productPrice, unit });
@@ -1064,11 +1109,11 @@ export default function BookPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <Label className="text-xs flex items-center gap-1"><MapPin className="w-3 h-3" /> Kota Asal <span className="text-destructive">*</span></Label>
-                  <Input placeholder="Jakarta" value={quickTruckData.pickupCity||""} onChange={e => setQuickTruckData(p => ({ ...p, pickupCity: e.target.value }))} />
+                  <CityAutocompleteInput type="city" placeholder="Cari kota asal..." value={quickTruckData.pickupCity||""} onChange={v => setQuickTruckData(p => ({ ...p, pickupCity: v }))} />
                 </div>
                 <div>
                   <Label className="text-xs flex items-center gap-1"><MapPin className="w-3 h-3" /> Kota Tujuan <span className="text-destructive">*</span></Label>
-                  <Input placeholder="Surabaya" value={quickTruckData.destCity||""} onChange={e => setQuickTruckData(p => ({ ...p, destCity: e.target.value }))} />
+                  <CityAutocompleteInput type="city" placeholder="Cari kota tujuan..." value={quickTruckData.destCity||""} onChange={v => setQuickTruckData(p => ({ ...p, destCity: v }))} />
                 </div>
                 <div>
                   <Label className="text-xs">Berat (kg) <span className="text-destructive">*</span></Label>
@@ -1271,6 +1316,7 @@ export default function BookPage() {
               origin={customerForm.origin}
               destination={customerForm.destination}
               companyOrigin={companyOrigin ?? undefined}
+              initialState={Object.keys(productDims).length > 0 ? productDims : undefined}
             />
           )}
         </div>

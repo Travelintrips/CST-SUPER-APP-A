@@ -1,7 +1,7 @@
 import { db, suppliersTable, vendorCatalogItemsTable, waTemplateConfigsTable, logisticOrderRfqsTable, vendorMiniFormLinksTable } from "@workspace/db";
 import { eq, and, ilike, sql, desc } from "drizzle-orm";
 import { sendViaService as sendWhatsApp, sendMediaViaService } from "./waTransport.js";
-import { getAdminGroupWa } from "./adminWa";
+import { getAdminGroupWa, getAdminWa } from "./adminWa";
 import { getPreferredDomain } from "./domain";
 import { sendMail, isSmtpConfigured } from "./mailer";
 import { logger } from "./logger";
@@ -1438,13 +1438,16 @@ async function notifyAdmin(order: LogisticOrderData): Promise<void> {
   // Generate admin review link upfront — used in both WA and email
   const adminReviewUrl = await createAdminReviewLink(order.id).catch(() => "");
 
-  // order_new → hanya kirim ke Admin Group (bukan Admin Pribadi)
-  const [tplAdminGroup, adminGroupWa] = await Promise.all([
+  // order_new → kirim ke Admin Group; fallback ke Personal Admin WA jika group tidak dikonfigurasi
+  const [tplAdminGroup, adminGroupWa, personalAdminWa] = await Promise.all([
     getWaTemplateConfig("admin_group", "order_new", DEFAULT_TPL.admin_group.order_new),
     getAdminGroupWa(),
+    getAdminWa(),
   ]);
-  if (adminGroupWa) {
-    logger.info({ groupId: adminGroupWa, orderNumber: order.orderNumber }, "Sending group WA notification");
+  const targetAdminWa = adminGroupWa || personalAdminWa;
+  if (targetAdminWa) {
+    const isGroup = !!adminGroupWa;
+    logger.info({ target: targetAdminWa, isGroup, orderNumber: order.orderNumber }, "Sending admin WA notification");
     let groupActionUrl: string | undefined;
     if (order.publicRfqToken) {
       const domain = getPreferredDomain() || "cstlogistic.co.id";
@@ -1454,16 +1457,16 @@ async function notifyAdmin(order: LogisticOrderData): Promise<void> {
         refType: "order",
         refId: order.orderNumber,
       }).catch((err: unknown) => {
-        logger.warn({ err }, "group WA: failed to generate short link, using long URL");
+        logger.warn({ err }, "admin WA: failed to generate short link, using long URL");
         return longUrl;
       });
     }
     const wrappedActionUrl = groupActionUrl ? `_${groupActionUrl}_` : groupActionUrl;
-    sendWhatsApp(adminGroupWa, buildAdminGroupWaMessage(order, tplAdminGroup, wrappedActionUrl)).catch((err: unknown) =>
-      logger.error({ err }, "WA group notification failed")
+    sendWhatsApp(targetAdminWa, buildAdminGroupWaMessage(order, tplAdminGroup, wrappedActionUrl)).catch((err: unknown) =>
+      logger.error({ err }, "WA admin notification failed")
     );
   } else {
-    logger.info("Admin WA group not configured — skipping (set FONNTE_ADMIN_GROUP_ID or configure via admin panel)");
+    logger.warn("Admin WA not configured — skipping (set FONNTE_ADMIN_WA or FONNTE_ADMIN_GROUP_ID, or configure via admin panel)");
   }
 
   if (isSmtpConfigured()) {

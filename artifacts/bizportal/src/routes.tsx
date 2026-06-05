@@ -99,6 +99,8 @@ import TalanganPage from "@/pages/expense/talangan";
 import VendorInstallmentsPage from "@/pages/expense/vendor-installments";
 import BankLoansPage from "@/pages/expense/bank-loans";
 import FixedAssetsPage from "@/pages/expense/fixed-assets";
+import VendorPaymentsPage from "@/pages/expense/vendor-payments";
+import AssetDepreciationPage from "@/pages/expense/asset-depreciation";
 import ExpenseApprovalsPage from "@/pages/expense/approvals";
 import ExpenseDashboardPage from "@/pages/expense/dashboard";
 import ExpenseTemplatesPage from "@/pages/expense/templates";
@@ -118,6 +120,7 @@ import ShortLinksPage from "@/pages/settings/short-links";
 import WaTemplatesPage from "@/pages/settings/wa-templates";
 import EnterpriseWaTemplatesPage from "@/pages/settings/enterprise-wa-templates";
 import LogisticsUnitsPage from "@/pages/settings/logistics-units";
+import TruckingRatesPage from "@/pages/settings/trucking-rates";
 import SettingsRolesPage from "@/pages/settings-roles";
 import SettingsApprovalRulesPage from "@/pages/settings-approval-rules";
 import UsersPage from "@/pages/users";
@@ -330,6 +333,8 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/expense/vendor-installments" component={PR(VendorInstallmentsPage)} />
       <Route path="/expense/bank-loans" component={PR(BankLoansPage)} />
       <Route path="/expense/fixed-assets" component={PR(FixedAssetsPage)} />
+      <Route path="/expense/vendor-payments" component={PR(VendorPaymentsPage)} />
+      <Route path="/expense/asset-depreciation" component={PR(AssetDepreciationPage)} />
       <Route path="/expense/approvals" component={PR(ExpenseApprovalsPage)} />
       <Route path="/expense/dashboard" component={PR(ExpenseDashboardPage)} />
       <Route path="/expense/templates" component={PR(ExpenseTemplatesPage)} />
@@ -350,6 +355,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/settings/wa-templates" component={PR(WaTemplatesPage)} />
       <Route path="/settings/enterprise-wa-templates" component={PR(EnterpriseWaTemplatesPage)} />
       <Route path="/settings/logistics-units" component={PR(LogisticsUnitsPage)} />
+      <Route path="/settings/trucking-rates" component={PR(TruckingRatesPage)} />
       <Route path="/settings/ai-chatbot/knowledge" component={PR(AiChatbotKnowledgePage)} />
       <Route path="/settings/ai-chatbot" component={PR(AiChatbotSettingsPage)} />
       <Route path="/settings/ai-scan" component={PR(AiScanSettingsPage)} />

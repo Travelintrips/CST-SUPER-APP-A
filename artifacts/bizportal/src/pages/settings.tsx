@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import { User, Mail, Briefcase, Shield, MessageCircle, Save, Loader2, CheckCircle, Calculator, ChevronDown, ChevronUp, Package, Plus, X, Bot, Link2, RotateCcw, History, RefreshCw, Download, Layers, ExternalLink, FileText, Truck, ShoppingCart, Users, Building2, Ship, ArrowRight } from "lucide-react";
+import { User, Mail, Briefcase, Shield, MessageCircle, Save, Loader2, CheckCircle, Calculator, ChevronDown, ChevronUp, Package, Plus, X, Bot, Link2, RotateCcw, History, RefreshCw, Download, Layers, ExternalLink, FileText, Truck, ShoppingCart, Users, Building2, Ship, ArrowRight, Send, XCircle } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
@@ -623,6 +623,9 @@ function WhatsAppNotificationCard() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [testTarget, setTestTarget] = useState("");
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null);
 
   useEffect(() => {
     void (async () => {
@@ -660,6 +663,34 @@ function WhatsAppNotificationCard() {
       toast({ title: t.common.error, description: String(err), variant: "destructive" });
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleTestWa() {
+    const target = testTarget.trim() || adminWa.trim();
+    if (!target) {
+      toast({ title: "Isi nomor tujuan test terlebih dahulu", variant: "destructive" });
+      return;
+    }
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const res = await fetch("/api/settings/secrets/test-whatsapp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ target }),
+      });
+      const d = await res.json() as { ok?: boolean; message?: string };
+      if (res.ok && d.ok) {
+        setTestResult({ ok: true, msg: `Pesan test berhasil dikirim ke ${target}` });
+      } else {
+        setTestResult({ ok: false, msg: d.message ?? "Gagal mengirim" });
+      }
+    } catch (err) {
+      setTestResult({ ok: false, msg: String(err) });
+    } finally {
+      setTesting(false);
     }
   }
 
@@ -762,6 +793,43 @@ function WhatsAppNotificationCard() {
               )}
               {saving ? "Menyimpan..." : saved ? "Tersimpan!" : "Simpan"}
             </Button>
+
+            {/* ── Test WA Section ── */}
+            <div className="border-t pt-5 space-y-3">
+              <p className="text-sm font-medium text-foreground flex items-center gap-1.5">
+                <Send className="h-4 w-4 text-green-600" />
+                Kirim Test WhatsApp
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Verifikasi konfigurasi Fonnte dengan mengirim pesan test. Kosongkan untuk kirim ke Nomor Admin di atas.
+              </p>
+              <div className="flex gap-2 items-center">
+                <Input
+                  value={testTarget}
+                  onChange={(e) => { setTestTarget(e.target.value); setTestResult(null); }}
+                  placeholder={adminWa || "628xxxxxxxxxx"}
+                  className="h-8 text-sm max-w-[220px]"
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleTestWa}
+                  disabled={testing}
+                  className="gap-2 h-8 border-green-300 text-green-700 hover:bg-green-50"
+                >
+                  {testing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                  {testing ? "Mengirim..." : "Kirim Test"}
+                </Button>
+              </div>
+              {testResult && (
+                <div className={`flex items-start gap-2 text-xs rounded-md px-3 py-2 ${testResult.ok ? "bg-green-50 text-green-700 border border-green-200" : "bg-red-50 text-red-700 border border-red-200"}`}>
+                  {testResult.ok
+                    ? <CheckCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                    : <XCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />}
+                  {testResult.msg}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </CardContent>
@@ -2267,6 +2335,27 @@ export default function SettingsPage() {
                 <a href="/bizportal/settings/document-templates">
                   <Button variant="outline" size="sm">
                     <FileText className="w-4 h-4 mr-2" /> Kelola Template Dokumen
+                  </Button>
+                </a>
+              </CardContent>
+            </Card>
+          )}
+
+          {isAdmin && (
+            <Card className="col-span-1 md:col-span-3 bg-card border-border">
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Truck className="w-4 h-4 text-orange-500" /> Tarif Kendaraan Trucking
+                </CardTitle>
+                <CardDescription>
+                  Atur tarif per kg dan harga minimum untuk setiap jenis kendaraan (CDE, CDD, Fuso, Wingbox, Trailer).
+                  Tarif ini digunakan sebagai estimasi offline di Customer Portal.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <a href="/bizportal/settings/trucking-rates">
+                  <Button variant="outline" size="sm">
+                    <Truck className="w-4 h-4 mr-2 text-orange-500" /> Kelola Tarif Kendaraan
                   </Button>
                 </a>
               </CardContent>

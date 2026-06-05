@@ -5,20 +5,32 @@ import * as schema from "./schema";
 const { Pool } = pg;
 
 function resolveConnectionString(): string {
-  const candidates = [
-    process.env.DATABASE_URL,
-    process.env.SUPABASE_PG_URL,
-    process.env.SUPABASE_DATABASE_URL,
-  ];
+  const isProd = process.env.NODE_ENV === "production";
+
+  const candidates = isProd
+    ? [
+        process.env.SUPABASE_PG_URL,
+        process.env.SUPABASE_DATABASE_URL,
+        process.env.DATABASE_URL,
+      ]
+    : [
+        process.env.SUPABASE_DATABASE_URL_DEV,
+        process.env.SUPABASE_PG_URL,
+        process.env.SUPABASE_DATABASE_URL,
+        process.env.DATABASE_URL,
+      ];
 
   for (const url of candidates) {
     if (url && /^postgres(?:ql)?:\/\//i.test(url)) {
+      const label = isProd ? "production" : "development";
+      const masked = url.replace(/\/\/[^@]+@/, "//***@").split("?")[0];
+      console.log(`[db] env=${label} → ${masked}`);
       return url;
     }
   }
 
   throw new Error(
-    "No valid PostgreSQL connection string found. Set DATABASE_URL.",
+    "No valid PostgreSQL connection string found. Set SUPABASE_DATABASE_URL_DEV (dev) or SUPABASE_PG_URL (prod).",
   );
 }
 

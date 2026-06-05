@@ -51,6 +51,17 @@ import { notifyPaymentConfirmation } from "../lib/enterpriseWorkflowNotify.js";
 import { transactionTaxesTable } from "@workspace/db";
 import { recordTransactionTax } from "../lib/taxAutoService.js";
 import { handleTaxSse, broadcastTaxUpdate } from "../lib/taxSseBroadcast.js";
+import {
+  postKasbonJournal,
+  postKasbonRepaymentJournal,
+  postTalanganJournal,
+  postTalanganRepaymentJournal,
+  postLoanDisbursementJournal,
+  postLoanRepaymentJournal,
+  postAssetPurchaseJournal,
+  postDepreciationJournal,
+  getJournalMappingSummary,
+} from "../lib/journalMappingService.js";
 
 function serializeCompany(c: typeof companiesTable.$inferSelect) {
   return { ...c, createdAt: c.createdAt.toISOString() };
@@ -3341,6 +3352,102 @@ router.patch("/tax-transactions/bulk-mark", async (req, res) => {
 
 router.get("/tax-stream", (req, res) => {
   handleTaxSse(req, res);
+});
+
+// ── Journal Mapping Routes ────────────────────────────────────────────────────
+
+router.get("/journal-mapping/summary", requireAdmin, async (req, res) => {
+  const companyId = resolveCompanyId(req) ?? 1;
+  const summary = await getJournalMappingSummary(companyId);
+  return res.json(summary);
+});
+
+router.post("/journal-mapping/kasbon", requireAdmin, async (req, res) => {
+  const companyId = resolveCompanyId(req) ?? 1;
+  const { ref, description, amount, date, paymentMethod, repayment } = req.body as {
+    ref: string; description?: string; amount: number; date: string;
+    paymentMethod?: "cash" | "bank"; repayment?: boolean;
+  };
+  if (!ref || !amount || !date) return res.status(400).json({ message: "ref, amount, date wajib diisi" });
+
+  const fn = repayment ? postKasbonRepaymentJournal : postKasbonJournal;
+  const entry = await fn({ companyId, ref, description, amount, date: new Date(date), paymentMethod });
+  return res.json({ ok: true, entryId: entry.id, entryNumber: entry.entryNumber });
+});
+
+router.post("/journal-mapping/talangan", requireAdmin, async (req, res) => {
+  const companyId = resolveCompanyId(req) ?? 1;
+  const { ref, description, amount, date, paymentMethod, repayment } = req.body as {
+    ref: string; description?: string; amount: number; date: string;
+    paymentMethod?: "cash" | "bank"; repayment?: boolean;
+  };
+  if (!ref || !amount || !date) return res.status(400).json({ message: "ref, amount, date wajib diisi" });
+
+  const fn = repayment ? postTalanganRepaymentJournal : postTalanganJournal;
+  const entry = await fn({ companyId, ref, description, amount, date: new Date(date), paymentMethod });
+  return res.json({ ok: true, entryId: entry.id, entryNumber: entry.entryNumber });
+});
+
+router.post("/journal-mapping/loan-disbursement", requireAdmin, async (req, res) => {
+  const companyId = resolveCompanyId(req) ?? 1;
+  const { ref, description, principalAmount, adminFee, date, loanType, isLongTerm } = req.body as {
+    ref: string; description?: string; principalAmount: number; adminFee?: number;
+    date: string; loanType?: "bank" | "leasing"; isLongTerm?: boolean;
+  };
+  if (!ref || !principalAmount || !date) return res.status(400).json({ message: "ref, principalAmount, date wajib diisi" });
+
+  const entry = await postLoanDisbursementJournal({
+    companyId, ref, description, principalAmount, adminFee, date: new Date(date), loanType, isLongTerm,
+  });
+  return res.json({ ok: true, entryId: entry.id, entryNumber: entry.entryNumber });
+});
+
+router.post("/journal-mapping/loan-repayment", requireAdmin, async (req, res) => {
+  const companyId = resolveCompanyId(req) ?? 1;
+  const { ref, description, principalAmount, interestAmount, date, loanType, isLongTerm } = req.body as {
+    ref: string; description?: string; principalAmount: number; interestAmount: number;
+    date: string; loanType?: "bank" | "leasing"; isLongTerm?: boolean;
+  };
+  if (!ref || principalAmount == null || interestAmount == null || !date) {
+    return res.status(400).json({ message: "ref, principalAmount, interestAmount, date wajib diisi" });
+  }
+
+  const entry = await postLoanRepaymentJournal({
+    companyId, ref, description, principalAmount, interestAmount, date: new Date(date), loanType, isLongTerm,
+  });
+  return res.json({ ok: true, entryId: entry.id, entryNumber: entry.entryNumber });
+});
+
+router.post("/journal-mapping/asset-purchase", requireAdmin, async (req, res) => {
+  const companyId = resolveCompanyId(req) ?? 1;
+  const { ref, description, assetName, purchasePrice, date, paymentMethod, assetAccountId } = req.body as {
+    ref: string; description?: string; assetName: string; purchasePrice: number;
+    date: string; paymentMethod?: "cash" | "bank"; assetAccountId?: number;
+  };
+  if (!ref || !assetName || !purchasePrice || !date) {
+    return res.status(400).json({ message: "ref, assetName, purchasePrice, date wajib diisi" });
+  }
+
+  const entry = await postAssetPurchaseJournal({
+    companyId, ref, description, assetName, purchasePrice, date: new Date(date), paymentMethod, assetAccountId,
+  });
+  return res.json({ ok: true, entryId: entry.id, entryNumber: entry.entryNumber });
+});
+
+router.post("/journal-mapping/depreciation", requireAdmin, async (req, res) => {
+  const companyId = resolveCompanyId(req) ?? 1;
+  const { ref, description, assetName, depreciationAmount, date, accumAccountId } = req.body as {
+    ref: string; description?: string; assetName: string; depreciationAmount: number;
+    date: string; accumAccountId?: number;
+  };
+  if (!ref || !assetName || !depreciationAmount || !date) {
+    return res.status(400).json({ message: "ref, assetName, depreciationAmount, date wajib diisi" });
+  }
+
+  const entry = await postDepreciationJournal({
+    companyId, ref, description, assetName, depreciationAmount, date: new Date(date), accumAccountId,
+  });
+  return res.json({ ok: true, entryId: entry.id, entryNumber: entry.entryNumber });
 });
 
 export default router;
