@@ -24,13 +24,13 @@ args = "Gateway"
 name = "Gateway"
 author = "agent"
 
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "fuser -k 5000/tcp 2>/dev/null; sleep 0.3; PORT=5000 node gateway.mjs"
-waitForPort = 5000
-
 [workflows.workflow.metadata]
 outputType = "webview"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "fuser -k 5000/tcp 2>/dev/null; sleep 0.3; API_PORT=8080 CUSTOMER_PORT=5173 BIZPORTAL_PORT=3000 PORT=5000 node gateway.mjs"
+waitForPort = 5000
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
@@ -67,6 +67,8 @@ VAPID_PUBLIC_KEY = "BEAKgZOdT9HxFJLxVNxgtY-Dh2XzGptrjQwQibP2obUjPlLkfk0WR1TyzqbJ
 VAPID_PRIVATE_KEY = "Cu-0cxYEgT24fD8lVirlkz0qpFHj_kJNcGIj347kIJ4"
 VAPID_EMAIL = "mailto:admin@cstlogistics.co.id"
 PORTAL_ADMIN_KEY = "admin123"
+USE_PRODUCT_TEMPLATE_ENGINE = "true"
+USE_SERVICE_TEMPLATE_ENGINE = "true"
 
 [userenv.development]
 ADMIN_EMAIL_DOMAINS = "example.com"
@@ -84,17 +86,24 @@ externalPort = 3000
 
 [[ports]]
 localPort = 3001
+<<<<<<< HEAD
 externalPort = 3001
+=======
+externalPort = 3003
+>>>>>>> b7cae6a48bb7da71ef47e89ea492cfb1ec7bd1f1
 
 [[ports]]
 localPort = 3002
 externalPort = 3002
 
 [[ports]]
+<<<<<<< HEAD
 localPort = 4200
 externalPort = 3003
 
 [[ports]]
+=======
+>>>>>>> b7cae6a48bb7da71ef47e89ea492cfb1ec7bd1f1
 localPort = 5000
 externalPort = 80
 
@@ -115,10 +124,21 @@ localPort = 8081
 externalPort = 8081
 
 [[ports]]
+<<<<<<< HEAD
 localPort = 8082
 externalPort = 5000
 
 [[ports]]
+=======
+localPort = 8099
+externalPort = 5000
+
+[[ports]]
+localPort = 9000
+externalPort = 9000
+
+[[ports]]
+>>>>>>> b7cae6a48bb7da71ef47e89ea492cfb1ec7bd1f1
 localPort = 18442
 externalPort = 4200
 
