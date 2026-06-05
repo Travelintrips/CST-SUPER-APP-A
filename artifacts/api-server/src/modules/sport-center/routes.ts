@@ -394,11 +394,17 @@ router.get("/heatmap", async (req, res) => {
 router.get("/facilities", async (req, res) => {
   if (!await requireAdmin(req, res)) return;
   try {
-    const cId = req.query.companyId ? Number(req.query.companyId) : null;
-    const result = await db.execute(sql`SELECT * FROM sport_facilities WHERE (${cId}::int IS NULL OR company_id = ${cId}) ORDER BY sort_order ASC, id ASC`);
+    const raw = req.query.companyId;
+    const parsed = raw ? Number(raw) : NaN;
+    // companyId=0 (consolidated) or "all" or NaN → fetch semua company
+    const cId = (!isNaN(parsed) && parsed > 0) ? parsed : null;
+    const result = cId
+      ? await db.execute(sql`SELECT * FROM sport_facilities WHERE company_id = ${cId} ORDER BY sort_order ASC, id ASC`)
+      : await db.execute(sql`SELECT * FROM sport_facilities ORDER BY sort_order ASC, id ASC`);
     res.json(result.rows);
-  } catch {
-    res.status(500).json({ error: "Gagal" });
+  } catch (err) {
+    console.error("[sport-center] GET /facilities error:", err);
+    res.status(500).json({ error: "Gagal memuat fasilitas" });
   }
 });
 
