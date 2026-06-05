@@ -1,7 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { seedAccountingDefaults, seedAdditionalTaxes } from "./lib/accountingSeed";
-import { fixExpenseCategoryDefaultTax } from "./routes/expenses.js";
 import { seedLogisticsServiceItems } from "./lib/seedLogisticsItems";
 import { seedCatalogProducts } from "./lib/seedCatalogProducts";
 import { seedDemoData, seedDemoDrivers } from "./lib/seedDemoData";
@@ -367,9 +366,6 @@ async function startServer() {
     }))
     .then(() => seedAdditionalTaxes().catch((err) => {
       logger.warn({ err }, "Additional tax seed failed (non-fatal)");
-    }))
-    .then(() => fixExpenseCategoryDefaultTax().catch((err) => {
-      logger.warn({ err }, "Expense category default tax fix failed (non-fatal)");
     }))
     .then(() => seedUom().catch((err) => {
       logger.warn({ err }, "UOM seed failed (non-fatal)");
