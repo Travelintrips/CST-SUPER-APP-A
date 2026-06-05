@@ -672,7 +672,12 @@ export function CartDrawer() {
                     </div>
                     <div>
                       <Label className="text-[11px] mb-1 block flex items-center gap-1"><MapPin className="w-3 h-3" /> Kota Tujuan *</Label>
-                      <Input className="h-8 text-xs" placeholder="Surabaya" value={truckData.destCity||""} onChange={e => { setTruckData(p => ({ ...p, destCity: e.target.value })); setVehicleComparison(null); }} />
+                      <Input className="h-8 text-xs" placeholder="Surabaya" value={truckData.destCity||""} onChange={e => {
+                        const dc = e.target.value;
+                        setTruckData(p => ({ ...p, destCity: dc }));
+                        setVehicleComparison(null);
+                        try { localStorage.setItem("truck_pref", JSON.stringify({ destCity: dc, vehicleType: truckData.vehicleType ?? "" })); } catch { /**/ }
+                      }} />
                     </div>
                     <div>
                       <Label className="text-[11px] mb-1 flex items-center gap-1">
