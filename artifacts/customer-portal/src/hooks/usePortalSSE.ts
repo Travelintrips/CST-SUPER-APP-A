@@ -9,6 +9,8 @@ export type PortalSSEEvent =
   | "driver_location_update"
   | "price_sync"
   | "new_logistic_order"
+  | "order_status_update"
+  | "payment_confirmed"
   | string;
 
 type Handler = (data: unknown) => void;
