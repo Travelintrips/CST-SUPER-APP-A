@@ -639,7 +639,7 @@ export function CartDrawer() {
                     </div>
                     <div>
                       <Label className="text-[11px] mb-1 block flex items-center gap-1"><MapPin className="w-3 h-3" /> Kota Tujuan *</Label>
-                      <Input className="h-8 text-xs" placeholder="Surabaya" value={truckData.destCity||""} onChange={e => setTruckData(p => ({ ...p, destCity: e.target.value }))} />
+                      <Input className="h-8 text-xs" placeholder="Surabaya" value={truckData.destCity||""} onChange={e => { setTruckData(p => ({ ...p, destCity: e.target.value })); setVehicleComparison(null); }} />
                     </div>
                     <div>
                       <Label className="text-[11px] mb-1 flex items-center gap-1">
@@ -651,6 +651,7 @@ export function CartDrawer() {
                         value={truckData.weight||""}
                         onChange={e => {
                           const w = e.target.value;
+                          setVehicleComparison(null);
                           setTruckData(p => {
                             const kg = parseFloat(w) || 0;
                             const updates: Record<string, string> = { ...p, weight: w };
@@ -748,19 +749,60 @@ export function CartDrawer() {
                     variant="outline" size="sm"
                     className="w-full border-orange-400 text-orange-600 hover:bg-orange-50 gap-2"
                     disabled={!truckData.destCity || !truckData.weight || truckEstimating}
-                    onClick={handleEstimate}
+                    onClick={handleCompareVehicles}
                   >
                     {truckEstimating
                       ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Menghitung...</>
-                      : <><Calculator className="w-3.5 h-3.5" /> Hitung Estimasi</>}
+                      : <><Calculator className="w-3.5 h-3.5" /> Bandingkan Semua Kendaraan</>}
                   </Button>
 
-                  {truckEstimate !== null && (
-                    <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 space-y-0.5">
-                      <p className="text-[11px] text-emerald-600 font-medium">Estimasi Biaya Trucking</p>
-                      <p className="text-xl font-bold text-emerald-700">{formatCurrency(truckEstimate)}</p>
-                      <p className="text-[11px] text-emerald-500">{companyPickup?.originCity ?? "Jakarta"} → {truckData.destCity} · {truckData.weight} kg</p>
-                      <p className="text-[10px] text-slate-400 mt-1">*Estimasi indikatif. Biaya final dikonfirmasi tim logistik.</p>
+                  {vehicleComparison && (
+                    <div className="rounded-xl border overflow-hidden">
+                      <div className="bg-slate-50 px-3 py-2 border-b flex items-center justify-between">
+                        <p className="text-[11px] font-semibold text-slate-600 flex items-center gap-1.5">
+                          <Calculator className="w-3 h-3" /> Perbandingan Kendaraan
+                        </p>
+                        <p className="text-[10px] text-slate-400">*Estimasi indikatif</p>
+                      </div>
+                      <div className="divide-y">
+                        {vehicleComparison.map(v => {
+                          const isSelected = truckData.vehicleType === v.type;
+                          const suggested = parseFloat(truckData.weight||"0") > 0
+                            ? suggestVehicleType(parseFloat(truckData.weight))
+                            : null;
+                          const isSuggested = suggested === v.type;
+                          return (
+                            <button
+                              key={v.type}
+                              type="button"
+                              disabled={!v.suitable}
+                              className={`w-full text-left px-3 py-2.5 flex items-center gap-2.5 transition-colors ${isSelected ? "bg-orange-50" : "hover:bg-slate-50"} ${!v.suitable ? "opacity-40 cursor-not-allowed" : "cursor-pointer"}`}
+                              onClick={() => {
+                                if (!v.suitable) return;
+                                setTruckData(p => ({ ...p, vehicleType: v.type }));
+                                setTruckEstimate(v.estimate);
+                              }}
+                            >
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  {isSuggested && <span className="text-orange-500 text-[10px] font-bold">★</span>}
+                                  <span className={`text-xs font-semibold ${isSelected ? "text-orange-700" : "text-slate-700"}`}>{v.type}</span>
+                                  <span className="text-[10px] text-slate-400">{v.desc}</span>
+                                  {isSuggested && <span className="text-[9px] bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded-full font-semibold">Disarankan</span>}
+                                  {!v.suitable && <span className="text-[9px] bg-red-100 text-red-500 px-1.5 py-0.5 rounded-full font-semibold">Melebihi kapasitas</span>}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span className={`text-xs font-bold ${isSelected ? "text-orange-600" : "text-slate-700"}`}>{formatCurrency(v.estimate)}</span>
+                                {isSelected && <span className="w-2 h-2 rounded-full bg-orange-500 shrink-0" />}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className="bg-slate-50 px-3 py-1.5 border-t">
+                        <p className="text-[10px] text-slate-400">Klik kendaraan untuk memilih. Biaya final dikonfirmasi tim logistik.</p>
+                      </div>
                     </div>
                   )}
                 </div>
