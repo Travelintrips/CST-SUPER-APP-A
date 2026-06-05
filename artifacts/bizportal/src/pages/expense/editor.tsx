@@ -335,6 +335,7 @@ const STATUS_LABELS: Record<string, string> = {
   draft: "Draft",
   submitted: "Diajukan",
   approved: "Disetujui",
+  pending_approval: "Menunggu Approval",
   posted: "Diposting",
   paid: "Lunas",
   rejected: "Ditolak",
@@ -343,6 +344,7 @@ const STATUS_COLORS: Record<string, string> = {
   draft: "bg-slate-800 text-slate-300 border-slate-600",
   submitted: "bg-sky-900/40 text-sky-300 border-sky-600",
   approved: "bg-indigo-900/40 text-indigo-300 border-indigo-600",
+  pending_approval: "bg-amber-900/40 text-amber-300 border-amber-600",
   posted: "bg-emerald-900/40 text-emerald-300 border-emerald-600",
   paid: "bg-green-900/50 text-green-300 border-green-600",
   rejected: "bg-red-900/40 text-red-300 border-red-600",
@@ -394,6 +396,8 @@ export default function ExpenseEditorPage() {
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [rejectOpen, setRejectOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
+  const [payOpen, setPayOpen] = useState(false);
+  const [payMethod, setPayMethod] = useState<"bank" | "cash">("bank");
   const [autoFilled, setAutoFilled] = useState<Set<string>>(new Set());
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -473,7 +477,8 @@ export default function ExpenseEditorPage() {
   const selectedTax = taxes.find((t) => t.id === form.taxRateId);
   const subtotal = Math.round(form.qty * form.unitPrice * 100) / 100;
   const taxAmount = selectedTax ? Math.round(subtotal * selectedTax.rate / 100 * 100) / 100 : 0;
-  const total = subtotal + taxAmount;
+  const isWithholdingTax = selectedTax?.kind === "withholding";
+  const total = isWithholdingTax ? subtotal - taxAmount : subtotal + taxAmount;
 
   const canEdit = isNew || (expense?.status === "draft") || (expense?.status === "rejected");
   const locked = !canEdit;
@@ -668,7 +673,7 @@ export default function ExpenseEditorPage() {
               </Button>
             )}
             {!isNew && status === "posted" && (
-              <Button className="bg-green-700 hover:bg-green-600" onClick={() => doAction("pay")} disabled={actionMut.isPending}>
+              <Button className="bg-green-700 hover:bg-green-600" onClick={() => setPayOpen(true)} disabled={actionMut.isPending}>
                 <Banknote size={14} className="mr-1" />
                 Tandai Lunas
               </Button>
@@ -895,7 +900,9 @@ export default function ExpenseEditorPage() {
                   <Info size={15} className="text-emerald-400 mt-0.5 shrink-0" />
                   <div>
                     <p className="text-emerald-300 font-medium">Jurnal telah dibuat</p>
-                    <p className="text-muted-foreground text-xs">Entry ID #{expense.entryId}</p>
+                    <Link href={`/accounting/entries/${expense.entryId}`} className="text-xs text-primary hover:underline flex items-center gap-1 mt-0.5">
+                      <ExternalLink size={11} /> Lihat Jurnal Entry #{expense.entryId}
+                    </Link>
                   </div>
                 </CardContent>
               </Card>
@@ -1067,6 +1074,53 @@ export default function ExpenseEditorPage() {
               setRejectOpen(false);
               setRejectReason("");
             }}>Tolak</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Pay dialog */}
+      <Dialog open={payOpen} onOpenChange={setPayOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Konfirmasi Pembayaran</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <p className="text-sm text-muted-foreground">
+              Jurnal pembayaran akan dibuat: <span className="font-medium text-foreground">DR Hutang Usaha / CR Kas atau Bank</span>
+            </p>
+            <div className="space-y-1.5">
+              <Label>Metode Pembayaran</Label>
+              <Select value={payMethod} onValueChange={(v) => setPayMethod(v as "bank" | "cash")}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="bank">Transfer Bank</SelectItem>
+                  <SelectItem value="cash">Tunai / Kas</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {expense && (
+              <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
+                <span className="text-muted-foreground">Total dibayar: </span>
+                <span className="font-semibold">{idr(expense.total)}</span>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPayOpen(false)}>Batal</Button>
+            <Button className="bg-green-700 hover:bg-green-600" onClick={async () => {
+              await actionMut.mutateAsync({
+                id: Number(id),
+                data: { action: "pay" as any, paymentMethod: payMethod },
+              });
+              setPayOpen(false);
+              qc.invalidateQueries({ queryKey: getListExpensesQueryKey() });
+              toast({ title: t.common.success });
+            }} disabled={actionMut.isPending}>
+              <Banknote size={14} className="mr-1" />
+              Konfirmasi Lunas
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

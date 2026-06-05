@@ -2911,6 +2911,7 @@ export const ExpenseActionBodyAction = {
 export type ExpenseActionBody = {
   action: ExpenseActionBodyAction;
   reason?: string | null;
+  paymentMethod?: string | null;
 };
 
 export type ListPortalProductOrdersParams = {

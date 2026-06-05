@@ -3055,6 +3055,7 @@ paths:
               properties:
                 action: { type: string, enum: [submit, approve, reject, post, pay, reset] }
                 reason: { type: string, nullable: true }
+                paymentMethod: { type: string, nullable: true }
               required: [action]
       responses:
         "200":

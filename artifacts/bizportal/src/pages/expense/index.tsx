@@ -35,6 +35,7 @@ const STATUS_LABELS: Record<string, string> = {
   draft: "Draft",
   submitted: "Diajukan",
   approved: "Disetujui",
+  pending_approval: "Menunggu Approval",
   posted: "Diposting",
   paid: "Lunas",
   rejected: "Ditolak",
@@ -44,6 +45,7 @@ const STATUS_COLORS: Record<string, string> = {
   draft: "bg-slate-800 text-slate-300 border-slate-600",
   submitted: "bg-sky-900/40 text-sky-300 border-sky-600",
   approved: "bg-indigo-900/40 text-indigo-300 border-indigo-600",
+  pending_approval: "bg-amber-900/40 text-amber-300 border-amber-600",
   posted: "bg-emerald-900/40 text-emerald-300 border-emerald-600",
   paid: "bg-green-900/50 text-green-300 border-green-600",
   rejected: "bg-red-900/40 text-red-300 border-red-600",
@@ -53,6 +55,10 @@ const TYPE_LABELS: Record<string, string> = {
   vendor_bill: "Tagihan Vendor",
   reimbursement: "Reimburse",
   internal: "Internal",
+  routine: "Rutin / Kas",
+  kasbon: "Kasbon",
+  talangan: "Dana Talangan",
+  fixed_asset: "Aset Tetap",
 };
 
 const LS_STATUS_FILTER    = "expense_list_statusFilter";
