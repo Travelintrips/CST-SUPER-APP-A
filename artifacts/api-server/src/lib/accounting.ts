@@ -1013,6 +1013,17 @@ export async function postSportCenterBooking(args: {
       return;
     }
 
+    // Idempoten: skip jika jurnal sudah diposting untuk booking ini
+    const [existingEntry] = await db
+      .select()
+      .from(accountingEntriesTable)
+      .where(sql`${accountingEntriesTable.source} = 'sport_center_booking' AND ${accountingEntriesTable.sourceId} = ${args.bookingId}`)
+      .limit(1);
+    if (existingEntry) {
+      logger.info({ bookingId: args.bookingId }, "Sport center booking journal already posted — skipping");
+      return;
+    }
+
     const costCenterId = await resolveCostCenterId("SPORT_CENTER", args.companyId);
     const amt = round2(args.totalPrice);
     await postEntry(

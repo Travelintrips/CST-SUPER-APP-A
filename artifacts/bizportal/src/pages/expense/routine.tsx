@@ -72,6 +72,7 @@ async function postQuickExpense(payload: {
   date: string; categoryId: number; amount: number;
   vendorEmployee?: string; notes?: string;
   taxRateId?: number | null; paymentMethod: "cash" | "bank"; company?: number;
+  sourceAccountId?: number | null; debitAccountId?: number | null;
 }) {
   const res = await fetch(`/api/expenses/quick${payload.company ? `?company=${payload.company}` : ""}`, {
     method: "POST",
@@ -136,9 +137,14 @@ export default function ExpenseRoutinePage() {
   const [date, setDate] = useState(today);
   const [amountRaw, setAmountRaw] = useState("");
   const [vendorEmployee, setVendorEmployee] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState<"cash" | "bank">("bank");
+  const [paymentMethod] = useState<"cash" | "bank">("bank"); // derived below, kept for API compat
   const [taxRateId, setTaxRateId] = useState<string>("none");
   const [taxAutoFilled, setTaxAutoFilled] = useState(false);
+  const [amountAutoFilled, setAmountAutoFilled] = useState(false);
+  const [debitAccountId, setDebitAccountId] = useState<string>("none");
+  const [debitAutoFilled, setDebitAutoFilled] = useState(false);
+  const [sourceAccountId, setSourceAccountId] = useState<string>("none");
+  const [sourceAutoFilled, setSourceAutoFilled] = useState(false);
   const [notes, setNotes] = useState("");
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
 
@@ -149,20 +155,52 @@ export default function ExpenseRoutinePage() {
     return allCats.find((c) => c.code === selectedCode) ?? null;
   }, [selectedCode, presetMap, allCats]);
 
-  // Auto-fill tax from category when category changes
+  // Auto-fill tax, amount, debit account, source account from category
   useEffect(() => {
     if (!selectedCat) return;
+
     const defaultTaxId = (selectedCat as any).defaultTaxId as number | null | undefined;
-    if (defaultTaxId) {
-      setTaxRateId(String(defaultTaxId));
+    const taxExists = defaultTaxId ? taxes.some((t) => t.id === defaultTaxId) : false;
+
+    // Fallback: jika defaultTaxId tidak valid/null → cari PPN Masukan 11% dari daftar pajak
+    const ppnMasukan = taxes.find((t) => t.name.toLowerCase().includes("ppn masukan 11"))
+      ?? taxes.find((t) => t.name.toLowerCase().includes("ppn masukan"));
+
+    const resolvedTaxId = (defaultTaxId && taxExists)
+      ? defaultTaxId
+      : ppnMasukan?.id ?? null;
+
+    if (resolvedTaxId) {
+      setTaxRateId(String(resolvedTaxId));
       setTaxAutoFilled(true);
     } else {
-      if (taxAutoFilled) {
-        setTaxRateId("none");
-        setTaxAutoFilled(false);
-      }
+      if (taxAutoFilled) { setTaxRateId("none"); setTaxAutoFilled(false); }
     }
-  }, [selectedCat?.id]);
+
+    const defaultAmount = (selectedCat as any).defaultAmount as string | number | null | undefined;
+    if (defaultAmount && Number(defaultAmount) > 0) {
+      setAmountRaw(formatIDRInput(String(Math.round(Number(defaultAmount)))));
+      setAmountAutoFilled(true);
+    } else {
+      if (amountAutoFilled) { setAmountRaw(""); setAmountAutoFilled(false); }
+    }
+
+    const catDebitId = selectedCat.expenseAccountId as number | null | undefined;
+    if (catDebitId) {
+      setDebitAccountId(String(catDebitId));
+      setDebitAutoFilled(true);
+    } else {
+      if (debitAutoFilled) { setDebitAccountId("none"); setDebitAutoFilled(false); }
+    }
+
+    const catCoaId = (selectedCat as any).defaultCoaId as number | null | undefined;
+    if (catCoaId) {
+      setSourceAccountId(String(catCoaId));
+      setSourceAutoFilled(true);
+    } else {
+      if (sourceAutoFilled) { setSourceAccountId("none"); setSourceAutoFilled(false); }
+    }
+  }, [selectedCat?.id, taxes.length]);
 
   const amount = parseIDR(amountRaw);
   const selectedTax = taxes.find((t) => t.id.toString() === taxRateId);
@@ -170,13 +208,15 @@ export default function ExpenseRoutinePage() {
   const isWithholding = selectedTax?.kind === "withholding";
   const total = isWithholding ? amount - taxAmount : amount + taxAmount;
 
-  // Account name resolution
-  const debitAccName = selectedCat?.expenseAccountId
-    ? (accountById.get(selectedCat.expenseAccountId)?.name ?? `#${selectedCat.expenseAccountId}`)
-    : "—";
-  const debitAccCode = selectedCat?.expenseAccountId
-    ? (accountById.get(selectedCat.expenseAccountId)?.code ?? "")
-    : "";
+  // Account name resolution (use override state if set)
+  const effectiveDebitId = debitAccountId !== "none" ? Number(debitAccountId) : (selectedCat?.expenseAccountId ?? null);
+  const debitAccName = effectiveDebitId ? (accountById.get(effectiveDebitId)?.name ?? `#${effectiveDebitId}`) : "—";
+  const debitAccCode = effectiveDebitId ? (accountById.get(effectiveDebitId)?.code ?? "") : "";
+  const effectiveSourceId = sourceAccountId !== "none" ? Number(sourceAccountId) : null;
+  const sourceAccName = effectiveSourceId ? (accountById.get(effectiveSourceId)?.name ?? `#${effectiveSourceId}`) : null;
+  const sourceAccCode = effectiveSourceId ? (accountById.get(effectiveSourceId)?.code ?? "") : "";
+  // Derive cash vs bank from the selected source account name
+  const effectivePaymentMethod: "cash" | "bank" = sourceAccName?.toLowerCase().includes("kas") ? "cash" : "bank";
 
   const mutation = useMutation({
     mutationFn: postQuickExpense,
@@ -188,6 +228,9 @@ export default function ExpenseRoutinePage() {
       qc.invalidateQueries({ queryKey: getListExpensesQueryKey() });
       setAmountRaw(""); setVendorEmployee(""); setNotes("");
       setTaxRateId("none"); setTaxAutoFilled(false);
+      setAmountAutoFilled(false);
+      setDebitAccountId("none"); setDebitAutoFilled(false);
+      setSourceAccountId("none"); setSourceAutoFilled(false);
       setDate(today); setSelectedCode(null);
     },
     onError: (e: Error) => {
@@ -213,7 +256,9 @@ export default function ExpenseRoutinePage() {
       vendorEmployee: vendorEmployee || undefined,
       notes: notes || undefined,
       taxRateId: taxRateId !== "none" ? Number(taxRateId) : null,
-      paymentMethod, company: activeCompanyId ?? undefined,
+      paymentMethod: effectivePaymentMethod, company: activeCompanyId ?? undefined,
+      debitAccountId: debitAccountId !== "none" ? Number(debitAccountId) : null,
+      sourceAccountId: sourceAccountId !== "none" ? Number(sourceAccountId) : null,
     });
   };
 
@@ -222,7 +267,7 @@ export default function ExpenseRoutinePage() {
       const cat = allCats.find((c) => c.id === tpl.category_id);
       if (cat) setSelectedCode(cat.code);
     }
-    if (tpl.payment_method) setPaymentMethod(tpl.payment_method);
+    // paymentMethod now derived from source account, skip
     if (tpl.tax_rate_id) { setTaxRateId(String(tpl.tax_rate_id)); setTaxAutoFilled(false); }
     if (tpl.amount_preset) setAmountRaw(formatIDRInput(String(Math.round(Number(tpl.amount_preset)))));
     if (tpl.default_vendor) setVendorEmployee(tpl.default_vendor);
@@ -398,8 +443,9 @@ export default function ExpenseRoutinePage() {
                     <span className="text-foreground">{debitAccName}</span>
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    Kredit: <span className="text-foreground">{paymentMethod === "cash" ? "Kas (Tunai)" : "Bank"}</span>
-                    {" "}(dari sumber dana)
+                    Kredit: <span className="text-foreground font-mono">{sourceAccCode}</span>{" "}
+                    <span className="text-foreground">{sourceAccName ?? (effectivePaymentMethod === "cash" ? "Kas" : "Bank")}</span>
+                    {sourceAutoFilled && <span className="text-muted-foreground ml-1">(auto)</span>}
                   </p>
                   {(selectedCat as any).defaultTaxId && taxRateId !== "none" && selectedTax && (
                     <p className="text-xs text-amber-300 flex items-center gap-1">
@@ -434,14 +480,28 @@ export default function ExpenseRoutinePage() {
                 <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
               </div>
               <div className="space-y-1.5">
-                <Label>Sumber Dana (Kredit)</Label>
-                <Select value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as "cash" | "bank")}>
+                <Label className="flex items-center gap-1.5">
+                  Akun Sumber (Kredit)
+                  {sourceAutoFilled && (
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 border-sky-600 text-sky-400">
+                      auto
+                    </Badge>
+                  )}
+                </Label>
+                <Select
+                  value={sourceAccountId}
+                  onValueChange={(v) => { setSourceAccountId(v); setSourceAutoFilled(false); }}
+                >
                   <SelectTrigger>
-                    <SelectValue />
+                    <SelectValue placeholder="Pilih akun kas/bank..." />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="bank">🏦 Bank (Transfer)</SelectItem>
-                    <SelectItem value="cash">💵 Kas (Tunai)</SelectItem>
+                    <SelectItem value="none">— Pilih akun —</SelectItem>
+                    {accounts.filter((a) => a.type === "asset" && (a.name.toLowerCase().includes("kas") || a.name.toLowerCase().includes("bank"))).map((a) => (
+                      <SelectItem key={a.id} value={a.id.toString()}>
+                        {a.code} — {a.name}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -458,11 +518,18 @@ export default function ExpenseRoutinePage() {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <Label>Nominal (IDR) <span className="text-destructive">*</span></Label>
+                <Label className="flex items-center gap-1.5">
+                  Nominal (IDR) <span className="text-destructive">*</span>
+                  {amountAutoFilled && (
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 border-sky-600 text-sky-400">
+                      auto
+                    </Badge>
+                  )}
+                </Label>
                 <Input
                   placeholder="0"
                   value={amountRaw}
-                  onChange={(e) => setAmountRaw(formatIDRInput(e.target.value))}
+                  onChange={(e) => { setAmountRaw(formatIDRInput(e.target.value)); setAmountAutoFilled(false); }}
                   className="font-mono"
                 />
               </div>
@@ -492,6 +559,34 @@ export default function ExpenseRoutinePage() {
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+
+            {/* Akun Biaya (Debit) — auto-fill dari kategori, bisa diubah */}
+            <div className="space-y-1.5">
+              <Label className="flex items-center gap-1.5">
+                Akun Biaya (Debit)
+                {debitAutoFilled && (
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 border-emerald-600 text-emerald-400">
+                    auto
+                  </Badge>
+                )}
+              </Label>
+              <Select
+                value={debitAccountId}
+                onValueChange={(v) => { setDebitAccountId(v); setDebitAutoFilled(false); }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Pilih akun biaya..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">— Pilih akun —</SelectItem>
+                  {accounts.filter((a) => a.type === "expense").map((a) => (
+                    <SelectItem key={a.id} value={a.id.toString()}>
+                      {a.code} — {a.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             {/* Jurnal Preview */}
@@ -530,7 +625,9 @@ export default function ExpenseRoutinePage() {
                     </div>
                   )}
                   <div className="flex justify-between">
-                    <span className="text-rose-400">CR {paymentMethod === "cash" ? "Kas (Tunai)" : "Bank"}</span>
+                    <span className="text-rose-400">
+                      CR {sourceAccCode && `[${sourceAccCode}]`} {sourceAccName ?? (effectivePaymentMethod === "cash" ? "Kas (Tunai)" : "Bank")}
+                    </span>
                     <span className="font-mono">{idr(total)}</span>
                   </div>
                 </div>

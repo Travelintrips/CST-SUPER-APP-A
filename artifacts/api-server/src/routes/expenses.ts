@@ -19,12 +19,46 @@ import { ensureAccountingSettings } from "../lib/accountingSeed.js";
 
 const _expenseObjectStorage = new ObjectStorageService();
 
-// ── Boot migration: add default_tax_id to expense_categories ──────────────────
+// ── Boot migration: add default_tax_id & default_amount to expense_categories ──
 db.execute(sql`
   ALTER TABLE expense_categories
   ADD COLUMN IF NOT EXISTS default_tax_id integer
   REFERENCES accounting_taxes(id) ON DELETE SET NULL
 `).catch(() => {});
+db.execute(sql`
+  ALTER TABLE expense_categories
+  ADD COLUMN IF NOT EXISTS default_amount NUMERIC(14,2)
+`).catch(() => {});
+db.execute(sql`
+  ALTER TABLE expense_categories
+  ADD COLUMN IF NOT EXISTS default_coa_id integer REFERENCES chart_of_accounts(id) ON DELETE SET NULL
+`).catch(() => {});
+
+/**
+ * Jalankan setelah accounting seed — pastikan semua kategori punya default_tax_id valid.
+ * Kategori tanpa default_tax_id atau yg merujuk ke tax yg sudah dihapus → set ke PPN Masukan 11%.
+ * Idempoten.
+ */
+export async function fixExpenseCategoryDefaultTax(): Promise<void> {
+  const result = await db.execute(sql`
+    UPDATE expense_categories
+    SET default_tax_id = (
+      SELECT id FROM accounting_taxes
+      WHERE name ILIKE '%PPN Masukan 11%'
+      ORDER BY id LIMIT 1
+    )
+    WHERE (
+      default_tax_id IS NULL
+      OR default_tax_id NOT IN (SELECT id FROM accounting_taxes)
+    )
+    AND EXISTS (SELECT 1 FROM accounting_taxes WHERE name ILIKE '%PPN Masukan 11%')
+  `);
+  const fixed = (result as any).rowCount ?? 0;
+  if (fixed > 0) {
+    // eslint-disable-next-line no-console
+    console.info(`[expenseCategoryFix] ${fixed} kategori diupdate ke PPN Masukan 11%`);
+  }
+}
 
 const router = Router();
 router.use(async (req, res, next) => {
@@ -87,7 +121,7 @@ router.get("/categories", async (_req, res) => {
 });
 
 router.post("/categories", async (req, res) => {
-  const { name, code, expenseAccountId, payableAccountId, defaultTaxId, requiresAttachment, isActive } = req.body ?? {};
+  const { name, code, expenseAccountId, payableAccountId, defaultTaxId, defaultAmount, defaultCoaId, requiresAttachment, isActive } = req.body ?? {};
   if (!name || !code) return res.status(400).json({ message: "name and code are required" });
   const [created] = await db
     .insert(expenseCategoriesTable)
@@ -97,6 +131,8 @@ router.post("/categories", async (req, res) => {
       expenseAccountId: expenseAccountId ? Number(expenseAccountId) : null,
       payableAccountId: payableAccountId ? Number(payableAccountId) : null,
       defaultTaxId: defaultTaxId ? Number(defaultTaxId) : null,
+      defaultAmount: defaultAmount ? String(Number(defaultAmount)) : null,
+      defaultCoaId: defaultCoaId ? Number(defaultCoaId) : null,
       requiresAttachment: Boolean(requiresAttachment),
       isActive: isActive !== false,
     })
@@ -107,13 +143,15 @@ router.post("/categories", async (req, res) => {
 router.patch("/categories/:id", async (req, res) => {
   const id = Number(req.params.id);
   if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
-  const { name, code, expenseAccountId, payableAccountId, defaultTaxId, requiresAttachment, isActive } = req.body ?? {};
+  const { name, code, expenseAccountId, payableAccountId, defaultTaxId, defaultAmount, defaultCoaId, requiresAttachment, isActive } = req.body ?? {};
   const update: Record<string, unknown> = {};
   if (name !== undefined) update.name = String(name);
   if (code !== undefined) update.code = String(code).toUpperCase();
   if (expenseAccountId !== undefined) update.expenseAccountId = expenseAccountId ? Number(expenseAccountId) : null;
   if (payableAccountId !== undefined) update.payableAccountId = payableAccountId ? Number(payableAccountId) : null;
   if (defaultTaxId !== undefined) update.defaultTaxId = defaultTaxId ? Number(defaultTaxId) : null;
+  if (defaultAmount !== undefined) update.defaultAmount = defaultAmount ? String(Number(defaultAmount)) : null;
+  if (defaultCoaId !== undefined) update.defaultCoaId = defaultCoaId ? Number(defaultCoaId) : null;
   if (requiresAttachment !== undefined) update.requiresAttachment = Boolean(requiresAttachment);
   if (isActive !== undefined) update.isActive = Boolean(isActive);
   const [updated] = await db
@@ -146,9 +184,11 @@ router.post("/seed-categories", async (_req, res) => {
   const pph21 = taxByName.get("pph 21") ?? allTaxes.find((t) => t.name.toLowerCase().includes("pph 21"));
   const pphSewa = allTaxes.find((t) => t.name.toLowerCase().includes("sewa"));
 
+  const ppnMasukan = allTaxes.find((t) => t.name.toLowerCase().includes("ppn masukan 11")) ?? allTaxes.find((t) => t.name.toLowerCase().includes("ppn masukan"));
+
   type CatDef = {
     name: string; code: string; coaCode?: string;
-    requiresAttachment?: boolean; taxCode?: "pph23" | "pph21" | "pphSewa" | null;
+    requiresAttachment?: boolean; taxCode?: "pph23" | "pph21" | "pphSewa" | "ppnMasukan" | null;
   };
   const CATEGORIES: CatDef[] = [
     { name: "Biaya Trucking",         code: "TRUCKING",      taxCode: "pph23" },
@@ -161,21 +201,22 @@ router.post("/seed-categories", async (_req, res) => {
     { name: "Biaya Operasional",      code: "OPERATIONAL",   taxCode: "pph23" },
     { name: "Reimbursement Karyawan", code: "REIMBURSEMENT", requiresAttachment: true, taxCode: "pph21" },
     { name: "Biaya Vendor/Subcon",    code: "VENDOR",        taxCode: "pph23" },
-    // ── Preset Rutin ──────────────────────────────────────────────
-    { name: "Entertainment",          code: "ENTERTAINMENT", coaCode: "5-2060", taxCode: null },
-    { name: "Makan & Minum",          code: "MAKAN_MINUM",  coaCode: "5-2040", taxCode: null },
+    // ── Preset Rutin — default ke PPN Masukan 11% ─────────────────
+    { name: "Entertainment",          code: "ENTERTAINMENT", coaCode: "5-2060", taxCode: "ppnMasukan" },
+    { name: "Makan & Minum",          code: "MAKAN_MINUM",  coaCode: "5-2040", taxCode: "ppnMasukan" },
     { name: "Sewa Kantor",            code: "SEWA_KANTOR",  coaCode: "5-2020", taxCode: "pphSewa" },
-    { name: "Utilitas",               code: "UTILITAS",     coaCode: "5-2030", taxCode: null },
-    { name: "Peralatan & ATK",        code: "PERALATAN",    coaCode: "5-2090", taxCode: null },
-    { name: "Biaya Lain-lain",        code: "LAIN_LAIN",    coaCode: "5-3000", taxCode: null },
+    { name: "Utilitas",               code: "UTILITAS",     coaCode: "5-2030", taxCode: "ppnMasukan" },
+    { name: "Peralatan & ATK",        code: "PERALATAN",    coaCode: "5-2090", taxCode: "ppnMasukan" },
+    { name: "Biaya Lain-lain",        code: "LAIN_LAIN",    coaCode: "5-3000", taxCode: "ppnMasukan" },
   ];
 
   for (const cat of CATEGORIES) {
     const expAcc = cat.coaCode ? byCode.get(cat.coaCode) : opex;
     const defaultTaxId =
-      cat.taxCode === "pph23" ? (pph23?.id ?? null)
-      : cat.taxCode === "pph21" ? (pph21?.id ?? null)
-      : cat.taxCode === "pphSewa" ? (pphSewa?.id ?? null)
+      cat.taxCode === "pph23"      ? (pph23?.id ?? ppnMasukan?.id ?? null)
+      : cat.taxCode === "pph21"    ? (pph21?.id ?? ppnMasukan?.id ?? null)
+      : cat.taxCode === "pphSewa"  ? (pphSewa?.id ?? ppnMasukan?.id ?? null)
+      : cat.taxCode === "ppnMasukan" ? (ppnMasukan?.id ?? null)
       : null;
     await db
       .insert(expenseCategoriesTable)
@@ -188,8 +229,27 @@ router.post("/seed-categories", async (_req, res) => {
         requiresAttachment: cat.requiresAttachment ?? false,
         isActive: true,
       })
-      .onConflictDoNothing({ target: expenseCategoriesTable.code });
+      .onConflictDoUpdate({
+        target: expenseCategoriesTable.code,
+        set: { defaultTaxId: sql`EXCLUDED.default_tax_id` },
+        setWhere: sql`expense_categories.default_tax_id IS NULL OR expense_categories.default_tax_id NOT IN (SELECT id FROM accounting_taxes)`,
+      });
   }
+
+  // Fix semua kategori yg masih NULL/invalid default_tax_id → PPN Masukan 11%
+  await db.execute(sql`
+    UPDATE expense_categories
+    SET default_tax_id = (
+      SELECT id FROM accounting_taxes
+      WHERE name ILIKE '%PPN Masukan 11%'
+      ORDER BY id LIMIT 1
+    )
+    WHERE (
+      default_tax_id IS NULL
+      OR default_tax_id NOT IN (SELECT id FROM accounting_taxes)
+    )
+    AND EXISTS (SELECT 1 FROM accounting_taxes WHERE name ILIKE '%PPN Masukan 11%')
+  `);
 
   const rows = await db.select().from(expenseCategoriesTable).orderBy(expenseCategoriesTable.name);
   return res.json({ seeded: rows.length, categories: rows.map(serializeCategory) });
@@ -282,7 +342,7 @@ async function checkExpenseApprovalLimit(companyId: number | null, amount: numbe
 }
 
 router.post("/quick", async (req: Request, res) => {
-  const { date, categoryId, amount, vendorEmployee, notes, taxRateId, paymentMethod } = req.body ?? {};
+  const { date, categoryId, amount, vendorEmployee, notes, taxRateId, paymentMethod, sourceAccountId, debitAccountId } = req.body ?? {};
 
   if (!date) return res.status(400).json({ message: "Tanggal wajib diisi." });
   if (!categoryId) return res.status(400).json({ message: "Kategori wajib dipilih." });
@@ -295,15 +355,21 @@ router.post("/quick", async (req: Request, res) => {
   const [cat] = await db.select().from(expenseCategoriesTable).where(eq(expenseCategoriesTable.id, Number(categoryId)));
   if (!cat) return res.status(404).json({ message: "Kategori tidak ditemukan." });
 
-  const expenseAccountId = cat.expenseAccountId;
+  // debitAccountId override → from form dropdown, fallback to category default
+  const expenseAccountId = debitAccountId ? Number(debitAccountId) : cat.expenseAccountId;
   if (!expenseAccountId) {
     return res.status(400).json({ message: `Kategori "${cat.name}" belum punya akun biaya. Konfigurasi di halaman Kategori Expense.` });
   }
 
+  // sourceAccountId override → specific COA for cash/bank payment
+  let cashBankAccountId: number | null = sourceAccountId ? Number(sourceAccountId) : null;
+  if (!cashBankAccountId) {
+    const isCash = paymentMethod === "cash" || paymentMethod === "tunai";
+    cashBankAccountId = isCash
+      ? (settings.defaultCashAccountId ?? settings.defaultBankAccountId)
+      : (settings.defaultBankAccountId ?? settings.defaultCashAccountId);
+  }
   const isCash = paymentMethod === "cash" || paymentMethod === "tunai";
-  const cashBankAccountId = isCash
-    ? (settings.defaultCashAccountId ?? settings.defaultBankAccountId)
-    : (settings.defaultBankAccountId ?? settings.defaultCashAccountId);
   if (!cashBankAccountId) {
     return res.status(400).json({ message: "Akun Kas/Bank default belum dikonfigurasi di Pengaturan Akuntansi." });
   }

@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import {
   Menu, X, LogOut, LayoutDashboard, ShoppingCart, Shield,
   ChevronDown, Ship, FileCheck, Truck,
-  Search, Calculator, ChevronRight, MapPin, Phone, Info, ImagePlus, Loader2,
+  Search, Calculator, ChevronRight, MapPin, Phone, Info, ImagePlus, Loader2, ClipboardList,
 } from "lucide-react";
 import { isAuthenticated, removeAuthToken, isPortalAdmin } from "@/lib/auth";
 import { useGetPortalCompany } from "@workspace/api-client-react";
@@ -394,6 +394,12 @@ export function Navbar() {
                     {t("nav.dashboard")}
                   </button>
                 </Link>
+                <Link href="/orders">
+                  <button className={`flex items-center gap-1.5 px-[14px] py-[10px] text-[15px] font-semibold rounded-[14px] transition-all duration-200 whitespace-nowrap ${location === "/orders" ? "bg-[rgba(14,165,233,0.10)] text-[#0284C7]" : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"}`}>
+                    <ClipboardList className="h-3.5 w-3.5" />
+                    Pesanan Saya
+                  </button>
+                </Link>
                 <button
                   onClick={handleLogout}
                   className="flex items-center gap-1.5 px-[14px] py-[10px] text-[15px] font-semibold rounded-[14px] text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-all duration-200 whitespace-nowrap border border-slate-200"
@@ -579,6 +585,12 @@ export function Navbar() {
                     <Button variant="outline" className="w-full justify-start gap-2 rounded-[14px]">
                       <LayoutDashboard className="h-4 w-4" />
                       {t("nav.dashboard")}
+                    </Button>
+                  </Link>
+                  <Link href="/orders" onClick={() => setIsOpen(false)}>
+                    <Button variant="outline" className="w-full justify-start gap-2 rounded-[14px]">
+                      <ClipboardList className="h-4 w-4" />
+                      Pesanan Saya
                     </Button>
                   </Link>
                   <Button

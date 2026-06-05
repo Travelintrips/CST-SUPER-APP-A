@@ -1,0 +1,81 @@
+AUTOMATIC DEFAULT FOR EXPENSE CATEGORY — HARGA LAIN, HUTANG, PAJAK
+
+Tujuan:
+Saat admin pilih kategori di form Biaya Rutin, field terkait **Harga Lainnya, Akun Hutang, dan Pajak Default** otomatis terisi sesuai default kategori, tetapi tetap bisa diubah manual.
+
+---
+
+A. BACKEND
+
+1. **Tambah default field di schema kategori**
+
+   * `default_price_other?: number`
+   * `default_credit_account_id?: string`
+   * `default_tax_id?: string`
+   * Optional: `default_debit_account_id`, `default_coa_id`
+
+2. **Endpoint GET /api/category**
+
+   * Sertakan semua default field
+   * Response contoh:
+
+     ```json
+     {
+       "id": "cat001",
+       "name": "Makan & Minum",
+       "default_price_other": 50000,
+       "default_credit_account_id": "coa_123",
+       "default_tax_id": "tax_11",
+       "default_debit_account_id": "coa_456",
+       "default_coa_id": "bank_01"
+     }
+     ```
+
+3. **Endpoint PATCH / POST kategori**
+
+   * Pastikan default values bisa diubah atau ditetapkan saat buat kategori baru
+
+---
+
+B. FRONTEND
+
+1. **Auto-fill saat pilih kategori**
+
+   ```ts
+   priceOtherInput.value = category.default_price_other || 0
+   creditAccountDropdown.value = category.default_credit_account_id || ""
+   taxDropdown.value = category.default_tax_id || ""
+   debitAccountDropdown.value = category.default_debit_account_id || ""
+   sourceDropdown.value = category.default_coa_id || ""
+   ```
+
+2. **Override Manual**
+
+   * Admin tetap bisa ubah nilai setelah auto-fill
+   * Nilai override disimpan ke backend
+
+3. **Partial Test**
+
+   * Pilih kategori → dropdown & input terisi default
+   * Ubah manual → simpan → cek DB tercatat sesuai override
+
+---
+
+C. TESTING / QA
+
+| No | Step                          | Expected Result                                         |
+| -- | ----------------------------- | ------------------------------------------------------- |
+| 1  | Pilih kategori dengan default | Input Harga Lainnya, Akun Hutang, Pajak terisi otomatis |
+| 2  | Override manual               | Nilai override tersimpan di DB                          |
+| 3  | Pilih kategori tanpa default  | Dropdown tetap kosong / pilih manual                    |
+| 4  | Partial test                  | Tidak ganggu kategori / form lain, build & TS clean     |
+
+---
+
+Instruksi:
+
+* Tambahkan field default di backend schema kategori
+* Sertakan default values di GET category endpoint
+* Frontend form auto-fill input & dropdown saat kategori dipilih
+* Admin bisa override manual → simpan ke DB
+* Test partial: pilih kategori → input & dropdown auto-fill → override → simpan

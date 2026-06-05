@@ -564,6 +564,124 @@ router.delete("/products/:id", async (req, res) => {
   return res.json({ message: "Product deleted" });
 });
 
+// PATCH /api/ecommerce/products/:id/image — quick image-only update (BizPortal inline)
+router.patch("/products/:id/image", requireClerkUser, async (req, res) => {
+  const id = Number(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
+  const { imageUrl } = req.body ?? {};
+  if (typeof imageUrl !== "string") return res.status(400).json({ message: "imageUrl diperlukan" });
+  const normalized = normalizeImage(imageUrl);
+  const [existing] = await db.select({ id: productsTable.id, mediaItems: productsTable.mediaItems }).from(productsTable).where(eq(productsTable.id, id));
+  if (!existing) return res.status(404).json({ message: "Produk tidak ditemukan" });
+  let media: Array<{ type: string; url: string }> = [];
+  try { media = JSON.parse(existing.mediaItems ?? "[]"); } catch { /* empty */ }
+  const hasImage = media.some((m) => m.type === "image");
+  if (normalized && !hasImage) {
+    media = [{ type: "image", url: normalized }, ...media];
+  } else if (normalized && hasImage) {
+    media = media.map((m, i) => (i === 0 && m.type === "image") ? { ...m, url: normalized } : m);
+  } else if (!normalized) {
+    media = media.filter((m) => m.type !== "image");
+  }
+  await db.update(productsTable).set({
+    imageUrl: normalized,
+    mediaItems: JSON.stringify(media),
+  }).where(eq(productsTable.id, id));
+  broadcastToPortal("price_sync", { ts: Date.now() });
+  return res.json({ id, imageUrl: normalized });
+});
+
+// POST /api/ecommerce/products/scan-storage — scan Supabase portal-assets & match ke produk (admin)
+router.post("/products/scan-storage", requireClerkUser, async (req, res) => {
+  try {
+    const { createClient } = await import("@supabase/supabase-js");
+    const rawKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
+    const devKey = process.env.SUPABASE_SERVICE_ROLE_KEY_DEV ?? "";
+    const devUrl = process.env.SUPABASE_URL_DEV ?? "";
+    const supabaseKey = rawKey.length > 100 ? rawKey : devKey;
+    const rawUrl = rawKey.length > 100
+      ? (process.env.VITE_SUPABASE_URL ?? process.env.SUPABASE_URL ?? "")
+      : devUrl.replace(/\/rest\/v1\/?$/, "");
+    const supabaseUrl = rawUrl.startsWith("http") ? rawUrl : `https://${rawUrl}.supabase.co`;
+    if (!supabaseUrl || !supabaseKey) return res.status(503).json({ message: "Supabase belum dikonfigurasi" });
+
+    const WebSocket = (await import("ws")).default;
+    const sb = createClient(supabaseUrl, supabaseKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+      realtime: { transport: WebSocket as unknown as typeof globalThis.WebSocket },
+    });
+
+    const BUCKET = "public-assets";
+    const IMAGE_EXTS = new Set(["jpg", "jpeg", "png", "webp", "gif"]);
+
+    async function listAll(prefix: string): Promise<string[]> {
+      const { data } = await sb.storage.from(BUCKET).list(prefix, { limit: 1000 });
+      if (!data) return [];
+      const files: string[] = [];
+      for (const item of data) {
+        if (item.metadata || !item.id) {
+          const ext = item.name.split(".").pop()?.toLowerCase() ?? "";
+          if (IMAGE_EXTS.has(ext)) files.push(`${prefix ? prefix + "/" : ""}${item.name}`);
+        } else {
+          const sub = await listAll(`${prefix ? prefix + "/" : ""}${item.name}`);
+          files.push(...sub);
+        }
+      }
+      return files;
+    }
+
+    const allFiles = await listAll("portal-assets");
+    const products = await db.select({ id: productsTable.id, name: productsTable.name, imageUrl: productsTable.imageUrl }).from(productsTable);
+
+    const matched: Array<{ productId: number; productName: string; file: string; url: string }> = [];
+    for (const file of allFiles) {
+      const basename = file.split("/").pop() ?? "";
+      const noExt = basename.replace(/\.[^.]+$/, "").toLowerCase();
+      for (const p of products) {
+        if (p.imageUrl) continue;
+        const nameLower = p.name.toLowerCase().replace(/[^a-z0-9]/g, "");
+        const fileLower = noExt.replace(/[^a-z0-9]/g, "");
+        if (fileLower.includes(nameLower) || nameLower.includes(fileLower) || String(p.id) === noExt) {
+          matched.push({
+            productId: p.id,
+            productName: p.name,
+            file,
+            url: `/api/storage/public-objects/${file}`,
+          });
+          break;
+        }
+      }
+    }
+
+    return res.json({ files: allFiles.length, matched, allFiles: allFiles.map((f) => ({ file: f, url: `/api/storage/public-objects/${f}` })) });
+  } catch (err) {
+    return res.status(500).json({ message: String(err) });
+  }
+});
+
+// POST /api/ecommerce/products/apply-storage-images — terapkan hasil scan ke DB (admin)
+router.post("/products/apply-storage-images", requireClerkUser, async (req, res) => {
+  const { assignments } = req.body ?? {};
+  if (!Array.isArray(assignments)) return res.status(400).json({ message: "assignments harus array" });
+  let applied = 0;
+  for (const a of assignments) {
+    if (typeof a.productId !== "number" || typeof a.url !== "string") continue;
+    const normalized = normalizeImage(a.url);
+    if (!normalized) continue;
+    const [existing] = await db.select({ id: productsTable.id, mediaItems: productsTable.mediaItems }).from(productsTable).where(eq(productsTable.id, a.productId));
+    if (!existing) continue;
+    let media: Array<{ type: string; url: string }> = [];
+    try { media = JSON.parse(existing.mediaItems ?? "[]"); } catch { /* empty */ }
+    if (!media.some((m) => m.type === "image")) {
+      media = [{ type: "image", url: normalized }, ...media];
+    }
+    await db.update(productsTable).set({ imageUrl: normalized, mediaItems: JSON.stringify(media) }).where(eq(productsTable.id, a.productId));
+    applied++;
+  }
+  broadcastToPortal("price_sync", { ts: Date.now() });
+  return res.json({ applied });
+});
+
 // POST /api/ecommerce/seed-items — seed initial logistics service items (idempotent)
 router.post("/seed-items", async (_req, res) => {
   const LOGISTICS_CATEGORIES = [
