@@ -161,8 +161,17 @@ export default function ExpenseRoutinePage() {
 
     const defaultTaxId = (selectedCat as any).defaultTaxId as number | null | undefined;
     const taxExists = defaultTaxId ? taxes.some((t) => t.id === defaultTaxId) : false;
-    if (defaultTaxId && taxExists) {
-      setTaxRateId(String(defaultTaxId));
+
+    // Fallback: jika defaultTaxId tidak valid/null → cari PPN Masukan 11% dari daftar pajak
+    const ppnMasukan = taxes.find((t) => t.name.toLowerCase().includes("ppn masukan 11"))
+      ?? taxes.find((t) => t.name.toLowerCase().includes("ppn masukan"));
+
+    const resolvedTaxId = (defaultTaxId && taxExists)
+      ? defaultTaxId
+      : ppnMasukan?.id ?? null;
+
+    if (resolvedTaxId) {
+      setTaxRateId(String(resolvedTaxId));
       setTaxAutoFilled(true);
     } else {
       if (taxAutoFilled) { setTaxRateId("none"); setTaxAutoFilled(false); }
