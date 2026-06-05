@@ -538,7 +538,6 @@ export default function ExpenseEditorPage() {
     const body: any = {
       date: form.date,
       vendorEmployee: form.vendorEmployee || undefined,
-      vendorId: form.vendorId || undefined,
       expenseType: form.expenseType,
       categoryId: form.categoryId || undefined,
       description: form.description || undefined,
@@ -550,7 +549,6 @@ export default function ExpenseEditorPage() {
       notes: form.notes || undefined,
       expenseAccountId: form.expenseAccountId || undefined,
       payableAccountId: form.payableAccountId || undefined,
-      sourceAccountId: form.sourceAccountId || undefined,
       salesDocId: form.salesDocId || undefined,
       shipmentId: form.shipmentId || undefined,
       sourceAccountId: sourceAccountId ?? undefined,

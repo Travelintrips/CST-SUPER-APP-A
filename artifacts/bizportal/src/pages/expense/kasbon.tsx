@@ -136,11 +136,6 @@ export default function KasbonPage() {
     queryFn: () => apiFetch("/api/users"),
   });
 
-  const { data: userList = [] } = useQuery({
-    queryKey: ["users-list"],
-    queryFn: () => apiFetch("/api/users"),
-  });
-
   const [selected, setSelected] = useState<any | null>(null);
   const [detail, setDetail] = useState<any | null>(null);
 
@@ -161,7 +156,6 @@ export default function KasbonPage() {
   const [selectedUserId, setSelectedUserId] = useState<string>("");
   const [userSearchOpen, setUserSearchOpen] = useState(false);
   const [userSearch, setUserSearch] = useState("");
-  const [selectedUserId, setSelectedUserId] = useState("");
   const [amountRaw, setAmountRaw] = useState("");
   const [pm, setPm] = useState("bank");
   const [sourceAccountId, setSourceAccountId] = useState("");
@@ -181,7 +175,6 @@ export default function KasbonPage() {
       }
       qc.invalidateQueries({ queryKey: ["cash-advances", "kasbon"] });
       setShowForm(false); setPartyName(""); setSelectedUserId(""); setUserSearch(""); setAmountRaw(""); setNotes(""); setDate(today); setSourceAccountId(""); setCategory("");
-      setShowForm(false); setPartyName(""); setSelectedUserId(""); setAmountRaw(""); setNotes(""); setDate(today); setSourceAccountId("");
     },
     onError: (e: Error) => toast({ title: e.message, variant: "destructive" }),
   });
