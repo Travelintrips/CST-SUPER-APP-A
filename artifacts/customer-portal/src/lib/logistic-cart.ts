@@ -51,6 +51,14 @@ export function useCart() {
     setItems((prev) => [...prev, { ...item, cartId: crypto.randomUUID() }]);
   }
 
+  /** Ganti item yang sudah ada dengan calculatorType yang sama, atau tambah baru jika belum ada. */
+  function replaceItemByType(item: Omit<CartItem, "cartId">) {
+    setItems((prev) => {
+      const filtered = prev.filter((i) => i.calculatorType !== item.calculatorType);
+      return [...filtered, { ...item, cartId: crypto.randomUUID() }];
+    });
+  }
+
   function removeItem(cartId: string) {
     setItems((prev) => prev.filter((i) => i.cartId !== cartId));
   }
@@ -73,5 +81,5 @@ export function useCart() {
   const tax = Math.round(subtotal * taxRate * 100) / 100;
   const grandTotal = subtotal + tax;
 
-  return { items, addItem, removeItem, updateItem, clearCart, subtotal, tax, grandTotal, taxRate, hasFreightService };
+  return { items, addItem, replaceItemByType, removeItem, updateItem, clearCart, subtotal, tax, grandTotal, taxRate, hasFreightService };
 }

@@ -22,6 +22,10 @@ args = "Gateway"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
+args = "API Server"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
 args = "BizPortal"
 
 [[workflows.workflow.tasks]]
@@ -32,10 +36,6 @@ args = "Customer Portal"
 task = "workflow.run"
 args = "Logistic Order"
 
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "API Server"
-
 [[workflows.workflow]]
 name = "Gateway"
 author = "agent"
@@ -45,32 +45,44 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "fuser -k 5000/tcp 2>/dev/null; sleep 0.3; API_PORT=8080 CUSTOMER_PORT=5173 BIZPORTAL_PORT=4200 LOGISTIC_ORDER_PORT=3001 PORT=5000 node gateway.mjs"
+args = "fuser -k 5000/tcp 2>/dev/null; sleep 0.3; API_PORT=8080 CUSTOMER_PORT=5173 BIZPORTAL_PORT=3000 LOGISTIC_ORDER_PORT=3001 PORT=5000 node gateway.mjs"
 waitForPort = 5000
+
+[[workflows.workflow]]
+name = "API Server"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd artifacts/api-server && pnpm run dev"
+waitForPort = 8080
 
 [[workflows.workflow]]
 name = "BizPortal"
 author = "agent"
 
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "cd artifacts/bizportal && PORT=4200 BASE_PATH=/bizportal/ pnpm run dev"
-waitForPort = 4200
-
 [workflows.workflow.metadata]
 outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd artifacts/bizportal && PORT=3000 BASE_PATH=/bizportal/ pnpm run dev"
+waitForPort = 3000
 
 [[workflows.workflow]]
 name = "Customer Portal"
 author = "agent"
 
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "cd artifacts/customer-portal && PORT=5173 INTERNAL_PORT=5173 BASE_PATH=/ pnpm run dev"
-waitForPort = 5173
-
 [workflows.workflow.metadata]
 outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd artifacts/customer-portal && PORT=5173 BASE_PATH=/ pnpm run dev"
+waitForPort = 5173
 
 [[workflows.workflow]]
 name = "Logistic Order"
@@ -80,18 +92,6 @@ author = "agent"
 task = "shell.exec"
 args = "cd artifacts/logistic-order && PORT=3001 BASE_PATH=/logistic-order/ pnpm run dev"
 waitForPort = 3001
-
-[workflows.workflow.metadata]
-outputType = "console"
-
-[[workflows.workflow]]
-name = "API Server"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "cd artifacts/api-server && pnpm run dev"
-waitForPort = 8080
 
 [workflows.workflow.metadata]
 outputType = "console"
@@ -149,37 +149,37 @@ localPort = 3000
 externalPort = 3000
 
 [[ports]]
-localPort = 4200
-externalPort = 4200
-
-[[ports]]
 localPort = 5000
 externalPort = 80
 
 [[ports]]
-localPort = 5173
-externalPort = 5173
+localPort = 18442
+externalPort = 4200
+
+[[ports]]
+localPort = 18444
+externalPort = 3000
+
+[[ports]]
+localPort = 19368
+externalPort = 3001
+
+[[ports]]
+localPort = 21170
+externalPort = 6000
+
+[[ports]]
+localPort = 23434
+externalPort = 80
 
 [[ports]]
 localPort = 8080
 externalPort = 8080
 
 [[ports]]
-localPort = 18442
-externalPort = 3000
-
-[[ports]]
-localPort = 18444
-externalPort = 3002
-
-[[ports]]
-localPort = 19368
-externalPort = 4200
-
-[[ports]]
-localPort = 21170
-externalPort = 3001
-
-[[ports]]
-localPort = 23434
+localPort = 5173
 externalPort = 5173
+
+[[ports]]
+localPort = 3001
+externalPort = 3001
