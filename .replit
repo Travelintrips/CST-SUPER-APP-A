@@ -29,7 +29,11 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
+
 args = "fuser -k 5000/tcp 2>/dev/null; sleep 0.3; API_PORT=8080 CUSTOMER_PORT=5173 BIZPORTAL_PORT=3000 PORT=5000 node gateway.mjs"
+
+args = "node gateway.mjs"
+
 waitForPort = 5000
 
 [agent]
@@ -95,6 +99,27 @@ externalPort = 3003
 [[ports]]
 localPort = 5000
 externalPort = 80
+
+[[ports]]
+
+localPort = 18444
+externalPort = 3000
+
+[[ports]]
+localPort = 19368
+externalPort = 3001
+
+[[ports]]
+localPort = 21170
+externalPort = 6000
+
+[[ports]]
+localPort = 23434
+externalPort = 80
+
+[[ports]]
+localPort = 8080
+externalPort = 8080
 
 [[ports]]
 localPort = 5173
