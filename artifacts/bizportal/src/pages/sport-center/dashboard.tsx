@@ -759,8 +759,6 @@ export default function SportCenterDashboard() {
 
         {/* ── Expandable Detail: Revenue Transaksi ─────────────────────────── */}
         {!kpiLoading && (expandedCard === "revenue" || expandedCard === "revenueToday") && (
-        {/* ── Expandable Detail: Revenue Hari Ini ──────────────────────────── */}
-        {!kpiLoading && expandedCard === "revenue" && (
           <div className="border border-blue-700/40 rounded-xl bg-blue-950/10 transition-all">
             <div className="flex items-center justify-between px-4 py-3 border-b border-blue-700/30">
               <div className="flex items-center gap-2">
