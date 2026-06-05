@@ -325,20 +325,33 @@ export function CartDrawer() {
     const volW = (l && wi && h) ? (l * wi * h) / 4000 : 0;
     const origin = companyPickup?.originCity ?? "Jakarta";
 
+    const vehicleList = (apiRates && apiRates.length > 0)
+      ? apiRates.map(r => ({
+          type:  r.type,
+          label: r.label,
+          desc:  r.description,
+          maxKg: r.max_kg != null ? Number(r.max_kg) : Infinity,
+        }))
+      : VEHICLE_CAPACITIES;
+
     const results = await Promise.all(
-      VEHICLE_CAPACITIES.map(async (v) => {
+      vehicleList.map(async (v) => {
         const suitable = w <= v.maxKg;
+        const offlineEst = (() => {
+          const chargeable = Math.max(w, volW);
+          const ar = apiRates?.find(r => r.type === v.type);
+          if (ar) return Math.max(Number(ar.min_price), Math.round(chargeable * Number(ar.rate_per_kg)));
+          return offlineEstimateForVehicle(w, v.type, volW);
+        })();
         try {
           const params = new URLSearchParams({ transport_mode: "TRUCKING", truck_type: v.type, origin });
           if (truckData.destCity) params.set("dest", truckData.destCity);
           const res = await fetch(`/api/logistic/orders/estimate-price?${params}`);
           const d: { estimated_price: number | null } = await res.json();
-          const estimate = (d.estimated_price && d.estimated_price > 0)
-            ? d.estimated_price
-            : offlineEstimateForVehicle(w, v.type, volW);
+          const estimate = (d.estimated_price && d.estimated_price > 0) ? d.estimated_price : offlineEst;
           return { type: v.type, label: v.label, desc: v.desc, estimate, suitable };
         } catch {
-          return { type: v.type, label: v.label, desc: v.desc, estimate: offlineEstimateForVehicle(w, v.type, volW), suitable };
+          return { type: v.type, label: v.label, desc: v.desc, estimate: offlineEst, suitable };
         }
       })
     );
