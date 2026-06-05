@@ -358,6 +358,7 @@ export function AppShell({ children, noPadding }: AppShellProps) {
         { titleKey: "journals", href: "/accounting/journals", icon: BookOpen },
         { titleKey: "journalEntry", href: "/accounting/entries", icon: FileText },
         { titleKey: "payments", href: "/accounting/payments", icon: Wallet },
+        { titleKey: "Penerimaan & Pengeluaran Lain", href: "/accounting/other-transactions", icon: ArrowLeftRight },
         { titleKey: "taxes", href: "/accounting/taxes", icon: Receipt },
         { titleKey: "Cost Center", href: "/accounting/cost-centers", icon: Layers },
         { titleKey: "trialBalance", href: "/accounting/reports/trial-balance", icon: FileSpreadsheet },

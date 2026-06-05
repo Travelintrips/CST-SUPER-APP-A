@@ -1511,6 +1511,132 @@ router.post("/payments/:id/void", async (req, res) => {
   }
 });
 
+// ============ Penerimaan & Pengeluaran Lain (Other Transactions) ==================
+
+router.get("/other-transactions", async (req, res) => {
+  const companyId = resolveCompanyId(req);
+  const limit = Math.min(Number(req.query.limit ?? 100), 500);
+  const offset = Number(req.query.offset ?? 0);
+  const cond = companyId
+    ? and(eq(accountingEntriesTable.companyId, companyId), ilike(accountingEntriesTable.description, "[OTH]%"))
+    : ilike(accountingEntriesTable.description, "[OTH]%");
+  const rows = await db
+    .select()
+    .from(accountingEntriesTable)
+    .where(cond)
+    .orderBy(desc(accountingEntriesTable.date), desc(accountingEntriesTable.id))
+    .limit(limit)
+    .offset(offset);
+  const result = await Promise.all(rows.map(async (entry) => {
+    const lines = await db
+      .select({
+        id: accountingEntryLinesTable.id,
+        accountId: accountingEntryLinesTable.accountId,
+        debit: accountingEntryLinesTable.debit,
+        credit: accountingEntryLinesTable.credit,
+        description: accountingEntryLinesTable.description,
+        accountName: chartOfAccountsTable.name,
+        accountCode: chartOfAccountsTable.code,
+      })
+      .from(accountingEntryLinesTable)
+      .leftJoin(chartOfAccountsTable, eq(accountingEntryLinesTable.accountId, chartOfAccountsTable.id))
+      .where(eq(accountingEntryLinesTable.entryId, entry.id));
+    return {
+      ...serializeEntry(entry),
+      lines: lines.map((l) => ({ ...l, debit: Number(l.debit ?? 0), credit: Number(l.credit ?? 0) })),
+    };
+  }));
+  return res.json(result);
+});
+
+router.post("/other-transactions", async (req, res) => {
+  const companyId = resolveCompanyId(req);
+  const { type, journalId, counterAccountId, amount, date: dateStr, description, ref } = req.body ?? {};
+  if (!type || !journalId || !counterAccountId || !amount || !dateStr)
+    return res.status(400).json({ message: "type, journalId, counterAccountId, amount, date wajib diisi" });
+  if (type !== "income" && type !== "expense")
+    return res.status(400).json({ message: "type harus 'income' atau 'expense'" });
+  const amt = Number(amount);
+  if (Number.isNaN(amt) || amt <= 0)
+    return res.status(400).json({ message: "amount harus angka positif" });
+  const date = new Date(dateStr);
+  if (Number.isNaN(date.getTime()))
+    return res.status(400).json({ message: "Tanggal tidak valid" });
+
+  const [journal] = await db.select().from(accountingJournalsTable).where(eq(accountingJournalsTable.id, Number(journalId)));
+  if (!journal) return res.status(404).json({ message: "Jurnal tidak ditemukan" });
+  if (journal.type !== "bank" && journal.type !== "cash")
+    return res.status(400).json({ message: "Jurnal harus bertipe bank atau cash" });
+
+  const settings = await ensureAccountingSettings(companyId);
+  const bankAccountId = journal.defaultDebitAccountId ?? settings.defaultBankAccountId;
+  if (!bankAccountId)
+    return res.status(400).json({ message: "Tidak ada akun kas/bank yang dikonfigurasi untuk jurnal ini" });
+
+  const [counterAccount] = await db.select().from(chartOfAccountsTable).where(eq(chartOfAccountsTable.id, Number(counterAccountId)));
+  if (!counterAccount) return res.status(404).json({ message: "Akun lawan tidak ditemukan" });
+
+  const desc = `[OTH] ${type === "income" ? "Penerimaan" : "Pengeluaran"}: ${description ?? counterAccount.name}`;
+  const round2 = (n: number) => Math.round(n * 100) / 100;
+  const lines: PostingLine[] = type === "income"
+    ? [
+        { accountId: bankAccountId, debit: round2(amt), credit: 0, description: `Penerimaan - ${description ?? ""}` },
+        { accountId: Number(counterAccountId), debit: 0, credit: round2(amt), description: `Pendapatan - ${counterAccount.name}` },
+      ]
+    : [
+        { accountId: Number(counterAccountId), debit: round2(amt), credit: 0, description: `Beban - ${counterAccount.name}` },
+        { accountId: bankAccountId, debit: 0, credit: round2(amt), description: `Pengeluaran - ${description ?? ""}` },
+      ];
+
+  try {
+    const entry = await postEntry(
+      { journalId: journal.id, date, ref: ref ?? null, description: desc, lines, source: "manual", companyId: companyId ?? 1 },
+      journal.code,
+    );
+    return res.status(201).json(serializeEntry(entry));
+  } catch (err: any) {
+    return res.status(500).json({ message: err?.message ?? "Gagal membuat transaksi" });
+  }
+});
+
+router.post("/other-transactions/:id/void", async (req, res) => {
+  const id = Number(req.params.id);
+  if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
+  const [entry] = await db.select().from(accountingEntriesTable).where(eq(accountingEntriesTable.id, id));
+  if (!entry) return res.status(404).json({ message: "Entri tidak ditemukan" });
+  if (!entry.description?.startsWith("[OTH]"))
+    return res.status(400).json({ message: "Bukan transaksi lain-lain" });
+  if (entry.status !== "posted")
+    return res.status(400).json({ message: "Hanya entri berstatus posted yang bisa dibatalkan" });
+
+  const origLines = await db.select().from(accountingEntryLinesTable).where(eq(accountingEntryLinesTable.entryId, id));
+  const [journal] = await db.select().from(accountingJournalsTable).where(eq(accountingJournalsTable.id, entry.journalId));
+
+  try {
+    await postEntry(
+      {
+        journalId: entry.journalId,
+        date: new Date(),
+        ref: `VOID-${entry.ref ?? entry.id}`,
+        description: `[BATAL] ${entry.description}`,
+        lines: origLines.map((l) => ({
+          accountId: l.accountId,
+          debit: Number(l.credit ?? 0),
+          credit: Number(l.debit ?? 0),
+          description: `Pembatalan: ${l.description ?? ""}`,
+        })),
+        source: "manual",
+        companyId: entry.companyId ?? 1,
+      },
+      journal?.code ?? "MISC",
+    );
+    await db.update(accountingEntriesTable).set({ status: "draft" }).where(eq(accountingEntriesTable.id, id));
+    return res.json({ ok: true });
+  } catch (err: any) {
+    return res.status(500).json({ message: err?.message ?? "Gagal membatalkan transaksi" });
+  }
+});
+
 // ============ Journal Entry Locking (Reverse / Reset-Draft / Cancel) ============
 
 /** POST /accounting/entries/:id/reverse — buat jurnal pembalik untuk entry yang sudah diposting */
