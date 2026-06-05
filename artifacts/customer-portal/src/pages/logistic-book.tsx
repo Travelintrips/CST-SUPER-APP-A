@@ -1642,12 +1642,21 @@ export default function BookPage() {
                 </div>
               </>)}
 
-              {/* ── Alamat Pengiriman — tampil hanya jika product order + ada layanan shipment ─── */}
-              {isProductOrder && hasShipmentInCart && (
+              {/* ── Alamat Pengiriman — tampil untuk semua product order ─── */}
+              {isProductOrder && (
                 <div className="col-span-2">
-                  <Label className="text-xs">Alamat Pengiriman (opsional)</Label>
-                  <Input placeholder="Jl. ..., Kota, Provinsi (kosongkan jika pickup)" value={f.shippingAddress} onChange={e => set("shippingAddress", e.target.value)} />
-                  <p className="text-[11px] text-muted-foreground mt-1">Terisi otomatis dari data layanan shipment. Kosongkan jika pickup sendiri.</p>
+                  <Label className="text-xs">
+                    Alamat Pengiriman{!hasShipmentInCart && <span className="text-destructive"> *</span>}
+                    {hasShipmentInCart && <span className="text-muted-foreground font-normal"> (opsional)</span>}
+                  </Label>
+                  <Input
+                    placeholder="Jl. ..., Kota, Provinsi"
+                    value={f.shippingAddress}
+                    onChange={e => set("shippingAddress", e.target.value)}
+                  />
+                  {hasShipmentInCart && (
+                    <p className="text-[11px] text-muted-foreground mt-1">Kosongkan jika pickup sendiri.</p>
+                  )}
                 </div>
               )}
 

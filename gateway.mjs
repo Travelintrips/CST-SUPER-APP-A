@@ -34,23 +34,10 @@ const BASE_DELAY    = Number(process.env.GW_BASE_DELAY    ?? 200);
 
 const RETRYABLE_CODES = new Set(["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "ENOTFOUND"]);
 
-const API_PORT           = Number(process.env.API_PORT ?? 8080);
-// BizPortal Vite runs at 3000
-const BIZPORTAL_PORT     = Number(process.env.BIZPORTAL_PORT ?? 3000);
-// Customer portal Vite runs at 5173
-const CUSTOMER_PORT      = Number(process.env.CUSTOMER_PORT ?? 5173);
-// Logistic Order Vite runs at 3001
-// BizPortal Vite — configurable via env, defaults to 4200
-const BIZPORTAL_PORT     = Number(process.env.BIZPORTAL_PORT ?? 4200);
-// Customer portal Vite — configurable via env, defaults to 5173
-const CUSTOMER_PORT      = Number(process.env.CUSTOMER_PORT ?? 5173);
-// Logistic Order Vite — configurable via env, defaults to 3001
-// BizPortal Vite dev server
-const BIZPORTAL_PORT     = Number(process.env.BIZPORTAL_PORT ?? 3000);
-// Customer portal Vite dev server
-const CUSTOMER_PORT      = Number(process.env.CUSTOMER_PORT ?? 5173);
-// Logistic Order Vite dev server
-const LOGISTIC_ORDER_PORT = Number(process.env.LOGISTIC_ORDER_PORT ?? 3001);
+const API_PORT            = Number(process.env.API_PORT            ?? 8080);
+const BIZPORTAL_PORT      = Number(process.env.BIZPORTAL_PORT      ?? 18442);
+const CUSTOMER_PORT       = Number(process.env.CUSTOMER_PORT       ?? 23434);
+const LOGISTIC_ORDER_PORT = Number(process.env.LOGISTIC_ORDER_PORT ?? 19368);
 
 const ROUTES = [
   { prefix: "/api",             upstream: { host: "localhost", port: API_PORT } },

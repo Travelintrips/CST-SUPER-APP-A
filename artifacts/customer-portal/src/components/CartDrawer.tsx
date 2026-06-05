@@ -209,7 +209,7 @@ export function CartDrawer() {
   const [, setLocation]        = useLocation();
   const { toast }              = useToast();
 
-  const { items, addItem, removeItem, clearCart, subtotal, tax, grandTotal, taxRate } = useCart();
+  const { items, addItem, replaceItemByType, removeItem, clearCart, subtotal, tax, grandTotal, taxRate } = useCart();
 
   function computeCartAutoFill(): { hasData: boolean; weight?: string; vehicleType?: string; length?: string; width?: string; height?: string; goodsType?: string } {
     const productItems = items.filter(i => i.calculatorType === "product");
@@ -309,7 +309,7 @@ export function CartDrawer() {
     }
     const name = truckMode === "detail" ? "Trucking — Pickup & Delivery" : "Trucking — Kargo";
     const pickupAddr = companyPickup?.address ?? DEFAULT_PICKUP;
-    addItem({
+    replaceItemByType({
       category: "Trucking",
       serviceName: name,
       calculatorType: "trucking",
@@ -321,7 +321,7 @@ export function CartDrawer() {
       calculationResult: truckEstimate ? { estimated_price: truckEstimate } : {},
       subtotal: 0,
     });
-    toast({ title: `${name} ditambahkan ke keranjang` });
+    toast({ title: `${name} diperbarui di keranjang` });
     setTruckData({});
     setTruckEstimate(null);
     setView("cart");
@@ -416,15 +416,15 @@ export function CartDrawer() {
     else if (freightSvc === "air")  name = "Kargo Udara";
     else if (freightSvc === "customs") name = `Custom Clearance — ${freightData.customsType || "Import"}`;
     else if (freightSvc === "additional") name = freightData.addlType || "Asuransi & Lainnya";
-    addItem({
-      id: crypto.randomUUID(),
-      name,
+    replaceItemByType({
+      serviceName: name,
       category: meta.name,
       calculatorType: meta.calcType,
       inputData: { ...freightData },
+      calculationResult: freightEstimate ? { estimated_price: freightEstimate } : {},
       subtotal: freightEstimate ?? 0,
     });
-    toast({ title: `${name} ditambahkan ke keranjang` });
+    toast({ title: `${name} diperbarui di keranjang` });
     setFreightData({});
     setFreightEstimate(null);
     setFreightAutoFilled(false);
