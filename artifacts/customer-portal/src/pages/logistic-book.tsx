@@ -297,11 +297,21 @@ function CalculatorForm({ item, onAdd, onBack, transportMode, truckType, origin,
           <Calculator className="w-4 h-4 text-accent" /> Calculator
         </div>
 
+        {hasAnyAuto && (
+          <div className="flex gap-2 bg-blue-50 border border-blue-200 rounded-lg px-4 py-3">
+            <Sparkles className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-xs font-semibold text-blue-700">Diisi otomatis dari produk pesanan</p>
+              <p className="text-xs text-blue-600 mt-0.5">Berat &amp; dimensi dihitung dari item di keranjang. Lengkapi detail lainnya lalu klik Hitung Estimasi.</p>
+            </div>
+          </div>
+        )}
+
         {ct === "air_freight" && <>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label className="text-xs flex items-center gap-1">
-                Origin Airport
+                Bandara Asal
                 <span className="ml-auto text-[10px] font-semibold text-orange-600 bg-orange-100 border border-orange-200 rounded px-1.5 py-0.5">Otomatis</span>
               </Label>
               <div className="flex items-center gap-2 bg-orange-50 border border-orange-200 rounded-md px-3 py-2 mt-1">
@@ -310,19 +320,29 @@ function CalculatorForm({ item, onAdd, onBack, transportMode, truckType, origin,
               </div>
             </div>
             <div>
-              <Label className="text-xs">Destination Airport</Label>
+              <Label className="text-xs">Bandara Tujuan <span className="text-destructive">*</span></Label>
               <CityAutocompleteInput type="airport" placeholder="Cari bandara tujuan..." value={state.destinationAirport||""} onChange={v => set("destinationAirport", v)} />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <div><Label className="text-xs">Gross Weight (kg)</Label><Input type="number" placeholder="0" value={state.grossWeight||""} onChange={e => set("grossWeight", e.target.value)} /></div>
+            {hasAutoWeight
+              ? <AutoReadOnly label="Gross Weight (kg)" value={state.grossWeight||""} />
+              : <div><Label className="text-xs">Gross Weight (kg)</Label><Input type="number" placeholder="0" value={state.grossWeight||""} onChange={e => set("grossWeight", e.target.value)} /></div>
+            }
             <div><Label className="text-xs">Quantity (pcs)</Label><Input type="number" placeholder="1" value={state.quantity||""} onChange={e => set("quantity", e.target.value)} /></div>
           </div>
           <div className="grid grid-cols-3 gap-3">
-            <div><Label className="text-xs">Length (cm)</Label><Input type="number" placeholder="0" value={state.length||""} onChange={e => set("length", e.target.value)} /></div>
-            <div><Label className="text-xs">Width (cm)</Label><Input type="number" placeholder="0" value={state.width||""} onChange={e => set("width", e.target.value)} /></div>
-            <div><Label className="text-xs">Height (cm)</Label><Input type="number" placeholder="0" value={state.height||""} onChange={e => set("height", e.target.value)} /></div>
+            {hasAutoDims ? <>
+              <AutoReadOnly label="Panjang (cm)" value={state.length||""} />
+              <AutoReadOnly label="Lebar (cm)" value={state.width||""} />
+              <AutoReadOnly label="Tinggi (cm)" value={state.height||""} />
+            </> : <>
+              <div><Label className="text-xs">Length (cm)</Label><Input type="number" placeholder="0" value={state.length||""} onChange={e => set("length", e.target.value)} /></div>
+              <div><Label className="text-xs">Width (cm)</Label><Input type="number" placeholder="0" value={state.width||""} onChange={e => set("width", e.target.value)} /></div>
+              <div><Label className="text-xs">Height (cm)</Label><Input type="number" placeholder="0" value={state.height||""} onChange={e => set("height", e.target.value)} /></div>
+            </>}
           </div>
+          {hasAutoGoods && <AutoReadOnly label="Jenis Barang" value={state.goodsType||""} />}
           <div><Label className="text-xs">Rate per Kg (IDR)</Label><Input type="number" placeholder="0" value={state.ratePerKg||""} onChange={e => set("ratePerKg", e.target.value)} /></div>
           {(parseFloat(state.grossWeight)||0) > 0 && (parseFloat(state.ratePerKg)||0) > 0 && (
             <div className="text-xs text-muted-foreground bg-background rounded p-3 space-y-1">
@@ -336,7 +356,7 @@ function CalculatorForm({ item, onAdd, onBack, transportMode, truckType, origin,
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label className="text-xs flex items-center gap-1">
-                Origin Port
+                Pelabuhan Asal
                 <span className="ml-auto text-[10px] font-semibold text-orange-600 bg-orange-100 border border-orange-200 rounded px-1.5 py-0.5">Otomatis</span>
               </Label>
               <div className="flex items-center gap-2 bg-orange-50 border border-orange-200 rounded-md px-3 py-2 mt-1">
@@ -345,10 +365,21 @@ function CalculatorForm({ item, onAdd, onBack, transportMode, truckType, origin,
               </div>
             </div>
             <div>
-              <Label className="text-xs">Destination Port</Label>
+              <Label className="text-xs">Pelabuhan Tujuan <span className="text-destructive">*</span></Label>
               <CityAutocompleteInput type="port" placeholder="Cari pelabuhan tujuan..." value={state.destinationPort||""} onChange={v => set("destinationPort", v)} />
             </div>
           </div>
+          {(hasAutoWeight || hasAutoDims || hasAutoGoods) && (
+            <div className="grid grid-cols-2 gap-3">
+              {hasAutoWeight && <AutoReadOnly label="Berat (kg)" value={state.grossWeight||""} />}
+              {hasAutoGoods && <AutoReadOnly label="Jenis Barang" value={state.goodsType||""} />}
+              {hasAutoDims && <>
+                <AutoReadOnly label="Panjang (cm)" value={state.length||""} />
+                <AutoReadOnly label="Lebar (cm)" value={state.width||""} />
+                <AutoReadOnly label="Tinggi (cm)" value={state.height||""} />
+              </>}
+            </div>
+          )}
           <div><Label className="text-xs">Container Type</Label>
             <Select value={state.containerType||undefined} onValueChange={v => set("containerType", v)}>
               <SelectTrigger><SelectValue placeholder="Select container" /></SelectTrigger>
@@ -365,9 +396,16 @@ function CalculatorForm({ item, onAdd, onBack, transportMode, truckType, origin,
 
         {ct === "sea_lcl" && <>
           <div className="grid grid-cols-2 gap-3">
-            <div><Label className="text-xs">CBM</Label><Input type="number" placeholder="0" value={state.cbm||""} onChange={e => set("cbm", e.target.value)} /></div>
-            <div><Label className="text-xs">Weight (kg)</Label><Input type="number" placeholder="0" value={state.weight||""} onChange={e => set("weight", e.target.value)} /></div>
+            {hasAutoDims
+              ? <AutoReadOnly label="CBM" value={state.cbm||""} />
+              : <div><Label className="text-xs">CBM</Label><Input type="number" placeholder="0" value={state.cbm||""} onChange={e => set("cbm", e.target.value)} /></div>
+            }
+            {hasAutoWeight
+              ? <AutoReadOnly label="Berat (kg)" value={state.weight||state.grossWeight||""} />
+              : <div><Label className="text-xs">Weight (kg)</Label><Input type="number" placeholder="0" value={state.weight||""} onChange={e => set("weight", e.target.value)} /></div>
+            }
           </div>
+          {hasAutoGoods && <AutoReadOnly label="Jenis Barang" value={state.goodsType||""} />}
           <div className="grid grid-cols-2 gap-3">
             <div><Label className="text-xs">Rate per CBM (IDR)</Label><Input type="number" placeholder="0" value={state.ratePerCbm||""} onChange={e => set("ratePerCbm", e.target.value)} /></div>
             <div><Label className="text-xs">Minimum Charge (IDR)</Label><Input type="number" placeholder="0" value={state.minimumCharge||""} onChange={e => set("minimumCharge", e.target.value)} /></div>
@@ -395,14 +433,26 @@ function CalculatorForm({ item, onAdd, onBack, transportMode, truckType, origin,
         {ct === "trucking" && <>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label className="text-xs">Pickup City</Label>
-              <CityAutocompleteInput type="city" placeholder="Cari kota asal..." value={state.pickupCity||""} onChange={v => set("pickupCity", v)} />
+              <Label className="text-xs flex items-center gap-1">
+                Kota Asal
+                <span className="ml-auto text-[10px] font-semibold text-orange-600 bg-orange-100 border border-orange-200 rounded px-1.5 py-0.5">Otomatis</span>
+              </Label>
+              <div className="flex items-center gap-2 bg-orange-50 border border-orange-200 rounded-md px-3 py-2 mt-1">
+                <MapPin className="w-3.5 h-3.5 text-orange-500 shrink-0" />
+                <span className="text-xs font-semibold text-slate-800">{state.pickupCity || companyOrigin?.originCity || "Jakarta"}</span>
+              </div>
             </div>
             <div>
-              <Label className="text-xs">Destination City</Label>
+              <Label className="text-xs">Kota Tujuan <span className="text-destructive">*</span></Label>
               <CityAutocompleteInput type="city" placeholder="Cari kota tujuan..." value={state.destCity||""} onChange={v => set("destCity", v)} />
             </div>
           </div>
+          {(hasAutoWeight || hasAutoGoods) && (
+            <div className="grid grid-cols-2 gap-3">
+              {hasAutoWeight && <AutoReadOnly label="Berat (kg)" value={state.grossWeight||""} />}
+              {hasAutoGoods && <AutoReadOnly label="Jenis Barang" value={state.goodsType||""} />}
+            </div>
+          )}
           <div><Label className="text-xs">Vehicle Type</Label>
             <Select value={state.vehicleType||undefined} onValueChange={v => set("vehicleType", v)}>
               <SelectTrigger><SelectValue placeholder="Select vehicle" /></SelectTrigger>
