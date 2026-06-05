@@ -704,18 +704,51 @@ export default function ProductOrderPage() {
                 onClick={handleEstimateTrucking}>
                 {estimating
                   ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Menghitung...</>
-                  : <><Calculator className="w-4 h-4 mr-2" /> Hitung Estimasi Biaya</>}
+                  : <><Calculator className="w-4 h-4 mr-2" /> Bandingkan Semua Kendaraan</>}
               </Button>
 
-              {truckingEstimate !== null && (
-                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 space-y-1">
-                  <p className="text-xs text-emerald-600 font-medium">Estimasi Biaya Trucking</p>
-                  <p className="text-2xl font-bold text-emerald-700">{formatCurrency(truckingEstimate)}</p>
-                  <p className="text-xs text-emerald-500">
-                    {truckingForm.origin} → {truckingForm.destination} · {truckingForm.weight} kg
-                    {cartHasDims ? ` · ${truckingForm.length}×${truckingForm.width}×${truckingForm.height} cm` : ""}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground mt-1">*Estimasi indikatif. Biaya final dikonfirmasi tim logistik.</p>
+              {vehicleComparison && (
+                <div className="rounded-xl border overflow-hidden">
+                  <div className="bg-slate-50 px-4 py-2.5 border-b flex items-center justify-between">
+                    <p className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+                      <Calculator className="w-3.5 h-3.5" /> Perbandingan Kendaraan
+                    </p>
+                    <p className="text-[10px] text-slate-400">
+                      {truckingForm.origin || companyOrigin?.originCity || "Asal"} → {truckingForm.destination} · {truckingForm.weight} kg
+                    </p>
+                  </div>
+                  <div className="divide-y">
+                    {vehicleComparison.map(v => {
+                      const isSelected = truckingEstimate === v.estimate;
+                      const isSuggested = suggestVehiclePO(parseFloat(truckingForm.weight)||0).type === v.type;
+                      return (
+                        <button
+                          key={v.type}
+                          type="button"
+                          disabled={!v.suitable}
+                          className={`w-full text-left px-4 py-3 flex items-center gap-3 transition-colors ${isSelected ? "bg-orange-50" : "hover:bg-slate-50"} ${!v.suitable ? "opacity-40 cursor-not-allowed" : "cursor-pointer"}`}
+                          onClick={() => { if (!v.suitable) return; setTruckingEstimate(v.estimate); }}
+                        >
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              {isSuggested && <span className="text-orange-500 text-xs font-bold">★</span>}
+                              <span className={`text-sm font-semibold ${isSelected ? "text-orange-700" : "text-slate-700"}`}>{v.type}</span>
+                              <span className="text-xs text-slate-400">{v.desc}</span>
+                              {isSuggested && <span className="text-[10px] bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded-full font-semibold">Disarankan</span>}
+                              {!v.suitable && <span className="text-[10px] bg-red-100 text-red-500 px-1.5 py-0.5 rounded-full font-semibold">Melebihi kapasitas</span>}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className={`text-sm font-bold ${isSelected ? "text-orange-600" : "text-slate-700"}`}>{formatCurrency(v.estimate)}</span>
+                            {isSelected && <span className="w-2 h-2 rounded-full bg-orange-500" />}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="bg-slate-50 px-4 py-2 border-t">
+                    <p className="text-[10px] text-slate-400">Klik kendaraan untuk memilih. Biaya final dikonfirmasi tim logistik.</p>
+                  </div>
                 </div>
               )}
 
