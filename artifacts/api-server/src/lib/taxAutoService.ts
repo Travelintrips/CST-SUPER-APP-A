@@ -8,6 +8,9 @@ export type TxType =
   | "sales_order"
   | "purchase_order"
   | "expense"
+  | "bank_loan"
+  | "employee_advance"
+  | "fixed_asset"
   | "other";
 
 interface RecordTaxParams {
@@ -61,19 +64,43 @@ async function findTaxByKind(
   return rows[0] ?? null;
 }
 
+function subIncludes(sub: string, ...keywords: string[]): boolean {
+  return keywords.some((k) => sub.includes(k));
+}
+
 async function detectTax(
   companyId: number,
   txType: TxType,
   subType?: string | null,
 ): Promise<typeof accountingTaxesTable.$inferSelect | null> {
+  const sub = (subType ?? "").toLowerCase();
+
   switch (txType) {
-    case "logistic_order":
+    case "logistic_order": {
+      // PPh 15: khusus pelayaran laut / ocean / sea freight
+      if (subIncludes(sub, "laut", "sea", "ocean", "pelayaran", "kapal", "fcl", "lcl", "b/l", "bl", "mbl")) {
+        const isLN = subIncludes(sub, "ln", "luar negeri", "international", "overseas", "foreign");
+        if (isLN) {
+          return (
+            (await findTaxByName(companyId, "PPh 15 Pelayaran LN")) ??
+            (await findTaxByName(companyId, "Pelayaran LN")) ??
+            (await findTaxByName(companyId, "PPh 15"))
+          );
+        }
+        return (
+          (await findTaxByName(companyId, "PPh 15 Pelayaran DN")) ??
+          (await findTaxByName(companyId, "Pelayaran DN")) ??
+          (await findTaxByName(companyId, "PPh 15"))
+        );
+      }
+      // Default freight darat/udara → PPh Freight Paket 1,1%
       return (
         (await findTaxByName(companyId, "Freight Paket")) ??
         (await findTaxByName(companyId, "PPh Freight")) ??
         (await findTaxByName(companyId, "Freight")) ??
         (await findTaxByKind(companyId, "withholding"))
       );
+    }
 
     case "sales_order":
       return (
@@ -88,18 +115,46 @@ async function detectTax(
       );
 
     case "expense": {
-      const sub = (subType ?? "").toLowerCase();
-      if (sub.includes("gaji") || sub.includes("honor") || sub.includes("salary")) {
+      // Sewa → PPh 4(2) Final 10%
+      if (subIncludes(sub, "sewa", "rental", "sewa_kantor", "kantor")) {
+        return (
+          (await findTaxByName(companyId, "PPh 4(2)")) ??
+          (await findTaxByName(companyId, "PPh 4")) ??
+          (await findTaxByName(companyId, "PPh 23"))
+        );
+      }
+      // Gaji / honorarium → PPh 21
+      if (subIncludes(sub, "gaji", "honor", "salary", "tunjangan", "upah", "pph_21")) {
         return (
           (await findTaxByName(companyId, "PPh 21")) ??
           (await findTaxByKind(companyId, "withholding"))
         );
       }
+      // Luar negeri → PPh 26
+      if (subIncludes(sub, "luar negeri", "overseas", "foreign", "pph_26")) {
+        return (
+          (await findTaxByName(companyId, "PPh 26")) ??
+          (await findTaxByKind(companyId, "withholding"))
+        );
+      }
+      // Default jasa → PPh 23
       return (
         (await findTaxByName(companyId, "PPh 23")) ??
         (await findTaxByKind(companyId, "withholding"))
       );
     }
+
+    case "bank_loan":
+      // Bunga pinjaman → PPh 23 (bunga) atau PPh Final sesuai kebijakan
+      return (
+        (await findTaxByName(companyId, "PPh 23")) ??
+        (await findTaxByKind(companyId, "withholding"))
+      );
+
+    case "employee_advance":
+    case "fixed_asset":
+      // Kasbon & Aset Tetap umumnya tidak kena pajak otomatis
+      return null;
 
     default:
       return null;
@@ -121,7 +176,7 @@ export async function recordTransactionTax(params: RecordTaxParams): Promise<voi
 
     const tax = await detectTax(companyId, transactionType, subType);
     if (!tax) {
-      logger.warn(
+      logger.debug(
         { companyId, transactionType, transactionId },
         "[taxAutoService] No matching tax found, skipping",
       );
