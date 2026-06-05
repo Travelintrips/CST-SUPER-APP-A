@@ -266,7 +266,7 @@ export function CartDrawer() {
   }, [view]);
 
   useEffect(() => {
-    if (view !== "trucking" || companyPickup) return;
+    if ((view !== "trucking" && view !== "freight") || companyPickup) return;
     fetch("/api/settings/company-pickup-address")
       .then(r => r.ok ? r.json() : null)
       .then((d: { companyName: string; companyAddress: string; originCity?: string } | null) => {
@@ -331,6 +331,7 @@ export function CartDrawer() {
     const af = computeCartAutoFill();
     if (af.hasData) {
       setFreightData({
+        originCountry: "Indonesia",
         weight: af.weight || "",
         length: af.length || "",
         width:  af.width  || "",
@@ -339,7 +340,7 @@ export function CartDrawer() {
       });
       setFreightAutoFilled(true);
     } else {
-      setFreightData({});
+      setFreightData({ originCountry: "Indonesia" });
       setFreightAutoFilled(false);
     }
     setView("freight");
@@ -969,21 +970,37 @@ export function CartDrawer() {
               {/* SEA FREIGHT */}
               {freightSvc === "sea" && (
                 <div className="space-y-3">
+                  {/* Negara Asal — selalu otomatis dari data perusahaan */}
                   <div className="grid grid-cols-2 gap-2.5">
                     <div>
-                      <Label className="text-[11px] mb-1 block">Negara Asal *</Label>
-                      <Input className="h-8 text-xs" placeholder="Indonesia" value={freightData.originCountry||""} onChange={e => setFreightData(p => ({...p, originCountry: e.target.value}))} />
+                      <Label className="text-[11px] mb-1 flex items-center gap-1">
+                        <MapPin className="w-3 h-3 text-orange-500" /> Negara Asal
+                        <span className="ml-auto text-[10px] font-semibold bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded-full">Otomatis</span>
+                      </Label>
+                      <div className="h-8 rounded-md border border-orange-200 bg-orange-50 px-3 flex items-center gap-1.5">
+                        <span className="text-xs font-medium text-orange-700">🇮🇩 Indonesia</span>
+                        {companyPickup?.originCity && <span className="text-[10px] text-orange-400 ml-auto">{companyPickup.originCity}</span>}
+                      </div>
                     </div>
                     <div>
-                      <Label className="text-[11px] mb-1 block">Negara Tujuan *</Label>
-                      <Input className="h-8 text-xs" placeholder="Singapore" value={freightData.destCountry||""} onChange={e => setFreightData(p => ({...p, destCountry: e.target.value}))} />
+                      <Label className="text-[11px] mb-1 font-semibold block">Negara Tujuan <span className="text-destructive">*</span></Label>
+                      <Input className="h-8 text-xs border-primary/40 focus:border-primary" placeholder="Singapore, Malaysia..." value={freightData.destCountry||""} onChange={e => setFreightData(p => ({...p, destCountry: e.target.value}))} autoFocus />
                     </div>
+                  </div>
+                  {/* Berat — read-only jika dari keranjang */}
+                  <div className="grid grid-cols-2 gap-2.5">
                     <div>
                       <Label className="text-[11px] mb-1 flex items-center gap-1">
                         Berat (kg)
                         {freightAutoFilled && freightData.weight && <span className="ml-auto text-[10px] font-semibold bg-sky-100 text-sky-600 px-1.5 py-0.5 rounded-full">Otomatis</span>}
                       </Label>
-                      <Input type="number" min={0} className="h-8 text-xs" placeholder="100" value={freightData.weight||""} onChange={e => setFreightData(p => ({...p, weight: e.target.value}))} />
+                      {freightAutoFilled && freightData.weight ? (
+                        <div className="h-8 flex items-center px-2.5 bg-sky-50 border border-sky-200 rounded-md">
+                          <span className="text-xs font-semibold text-slate-800">{freightData.weight} kg</span>
+                        </div>
+                      ) : (
+                        <Input type="number" min={0} className="h-8 text-xs" placeholder="100" value={freightData.weight||""} onChange={e => setFreightData(p => ({...p, weight: e.target.value}))} />
+                      )}
                     </div>
                     <div>
                       <Label className="text-[11px] mb-1 block">Jenis Pengiriman</Label>
@@ -997,6 +1014,7 @@ export function CartDrawer() {
                       </Select>
                     </div>
                   </div>
+                  {/* Dimensi — read-only jika dari keranjang */}
                   <div>
                     <Label className="text-[11px] mb-1 flex items-center gap-1">
                       Dimensi (cm) — P × L × T
@@ -1005,18 +1023,47 @@ export function CartDrawer() {
                       )}
                     </Label>
                     <div className="grid grid-cols-3 gap-1.5">
-                      <Input type="number" min={0} className="h-8 text-xs" placeholder="Panjang" value={freightData.length||""} onChange={e => setFreightData(p => ({...p, length: e.target.value}))} />
-                      <Input type="number" min={0} className="h-8 text-xs" placeholder="Lebar"   value={freightData.width||""}  onChange={e => setFreightData(p => ({...p, width: e.target.value}))} />
-                      <Input type="number" min={0} className="h-8 text-xs" placeholder="Tinggi"  value={freightData.height||""} onChange={e => setFreightData(p => ({...p, height: e.target.value}))} />
+                      {freightAutoFilled && (freightData.length || freightData.width || freightData.height) ? (
+                        <>
+                          <div className="h-8 rounded-md border border-sky-200 bg-sky-50 px-3 flex items-center justify-between">
+                            <span className="text-xs font-medium text-sky-700">{freightData.length || "—"}</span>
+                            <span className="text-[9px] text-sky-400">P</span>
+                          </div>
+                          <div className="h-8 rounded-md border border-sky-200 bg-sky-50 px-3 flex items-center justify-between">
+                            <span className="text-xs font-medium text-sky-700">{freightData.width || "—"}</span>
+                            <span className="text-[9px] text-sky-400">L</span>
+                          </div>
+                          <div className="h-8 rounded-md border border-sky-200 bg-sky-50 px-3 flex items-center justify-between">
+                            <span className="text-xs font-medium text-sky-700">{freightData.height || "—"}</span>
+                            <span className="text-[9px] text-sky-400">T</span>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <Input type="number" min={0} className="h-8 text-xs" placeholder="Panjang" value={freightData.length||""} onChange={e => setFreightData(p => ({...p, length: e.target.value}))} />
+                          <Input type="number" min={0} className="h-8 text-xs" placeholder="Lebar"   value={freightData.width||""}  onChange={e => setFreightData(p => ({...p, width: e.target.value}))} />
+                          <Input type="number" min={0} className="h-8 text-xs" placeholder="Tinggi"  value={freightData.height||""} onChange={e => setFreightData(p => ({...p, height: e.target.value}))} />
+                        </>
+                      )}
                     </div>
                   </div>
+                  {/* Jenis Barang — read-only jika dari keranjang */}
                   <div className="grid grid-cols-2 gap-2.5">
                     <div>
-                      <Label className="text-[11px] mb-1 block">Jenis Barang</Label>
-                      <Select value={freightData.goodsType||undefined} onValueChange={v => setFreightData(p => ({...p, goodsType: v}))}>
-                        <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Pilih" /></SelectTrigger>
-                        <SelectContent>{GOODS_TYPES.map(g => <SelectItem key={g} value={g} className="text-xs">{g}</SelectItem>)}</SelectContent>
-                      </Select>
+                      <Label className="text-[11px] mb-1 flex items-center gap-1">
+                        Jenis Barang
+                        {freightAutoFilled && freightData.goodsType && <span className="ml-auto text-[10px] font-semibold bg-sky-100 text-sky-600 px-1.5 py-0.5 rounded-full">Otomatis</span>}
+                      </Label>
+                      {freightAutoFilled && freightData.goodsType ? (
+                        <div className="h-8 flex items-center px-2.5 bg-sky-50 border border-sky-200 rounded-md">
+                          <span className="text-xs font-semibold text-slate-800">{freightData.goodsType}</span>
+                        </div>
+                      ) : (
+                        <Select value={freightData.goodsType||undefined} onValueChange={v => setFreightData(p => ({...p, goodsType: v}))}>
+                          <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Pilih" /></SelectTrigger>
+                          <SelectContent>{GOODS_TYPES.map(g => <SelectItem key={g} value={g} className="text-xs">{g}</SelectItem>)}</SelectContent>
+                        </Select>
+                      )}
                     </div>
                     <div>
                       <Label className="text-[11px] mb-1 block">Incoterms</Label>

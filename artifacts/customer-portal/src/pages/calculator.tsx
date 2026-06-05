@@ -6,9 +6,10 @@ import {
   Calculator, ArrowRight, Ship, Plane, Truck, Package,
   Warehouse, Globe, Info, RefreshCw, MessageCircle, Phone,
   Lock, CheckCircle2, ChevronRight, Sparkles, ArrowLeft,
-  Send, User, X,
+  Send, User, X, MapPin,
 } from "lucide-react";
 import { useLanguage } from "@/i18n/LanguageContext";
+import { CART_KEY, CartItem } from "@/lib/logistic-cart";
 
 type ServiceType = "seaFreight" | "airFreight" | "customs" | "domestic" | "warehousing" | "projectCargo" | "";
 
@@ -107,6 +108,61 @@ export default function CalculatorPage() {
   const [result, setResult] = useState<CalcResult | null>(null);
   const [error, setError] = useState("");
   const [calculated, setCalculated] = useState(false);
+
+  // Auto-fill: asal dari perusahaan, berat/dimensi/jenis dari keranjang
+  const [companyOrigin, setCompanyOrigin] = useState<string | null>(null);
+  const [cartAutoFill, setCartAutoFill] = useState<{
+    hasData: boolean; weight?: string; length?: string; width?: string; height?: string; goodsType?: string;
+  }>({ hasData: false });
+
+  useEffect(() => {
+    // 1. Auto-fill asal dari data perusahaan
+    fetch("/api/settings/company-pickup-address")
+      .then(r => r.ok ? r.json() : null)
+      .then((d: { companyName?: string; companyAddress?: string; originCity?: string } | null) => {
+        const city = d?.originCity ?? "Jakarta, Indonesia";
+        setCompanyOrigin(city);
+        setOrigin(prev => prev || city);
+      })
+      .catch(() => {
+        setCompanyOrigin("Jakarta, Indonesia");
+        setOrigin(prev => prev || "Jakarta, Indonesia");
+      });
+
+    // 2. Auto-fill berat/dimensi/jenis dari produk di keranjang
+    try {
+      const stored = localStorage.getItem(CART_KEY);
+      const cartItems: CartItem[] = stored ? JSON.parse(stored) : [];
+      const productItems = cartItems.filter(i => i.calculatorType === "product");
+      if (productItems.length > 0) {
+        const itemsWithWeight = productItems.filter(i => i.inputData.weightKg != null && Number(i.inputData.weightKg) > 0);
+        const totalWeight = itemsWithWeight.length > 0
+          ? itemsWithWeight.reduce((sum, i) => sum + Number(i.inputData.weightKg) * Number(i.inputData.qty ?? 1), 0)
+          : productItems.reduce((sum, i) => sum + Number(i.inputData.qty ?? 1), 0);
+        const dimItem = productItems.reduce((best: CartItem | null, item) => {
+          const vol = Number(item.inputData.lengthCm ?? 0) * Number(item.inputData.widthCm ?? 0) * Number(item.inputData.heightCm ?? 0) * Number(item.inputData.qty ?? 1);
+          const bestVol = best ? Number(best.inputData.lengthCm ?? 0) * Number(best.inputData.widthCm ?? 0) * Number(best.inputData.heightCm ?? 0) * Number(best.inputData.qty ?? 1) : 0;
+          return vol > bestVol ? item : best;
+        }, null);
+        const goodsItem = productItems.find(i => i.inputData.goodsType);
+        const roundedWeight = Math.round(totalWeight * 100) / 100;
+        const af = {
+          hasData: true,
+          weight:    roundedWeight > 0 ? String(roundedWeight) : "",
+          length:    dimItem?.inputData.lengthCm ? String(dimItem.inputData.lengthCm) : "",
+          width:     dimItem?.inputData.widthCm  ? String(dimItem.inputData.widthCm)  : "",
+          height:    dimItem?.inputData.heightCm ? String(dimItem.inputData.heightCm) : "",
+          goodsType: goodsItem?.inputData.goodsType ? String(goodsItem.inputData.goodsType) : "",
+        };
+        setCartAutoFill(af);
+        if (af.weight)    setWeight(af.weight);
+        if (af.length)    setLength(af.length);
+        if (af.width)     setWidth(af.width);
+        if (af.height)    setHeight(af.height);
+        if (af.goodsType) setCargoType(af.goodsType);
+      }
+    } catch { /**/ }
+  }, []);
 
   // Request Quote form state
   const [showQuoteForm, setShowQuoteForm] = useState(false);
@@ -483,6 +539,21 @@ export default function CalculatorPage() {
 
               <form onSubmit={handleCalculate} className="space-y-5">
 
+                {/* Auto-fill banner */}
+                {(companyOrigin || cartAutoFill.hasData) && (
+                  <div className="bg-sky-50 border border-sky-200 rounded-xl px-4 py-3 flex items-start gap-2.5">
+                    <span className="text-sky-500 mt-0.5 shrink-0 text-sm">✦</span>
+                    <div>
+                      <p className="text-[12px] font-semibold text-sky-700">Data diisi otomatis</p>
+                      <p className="text-[11px] text-sky-500 mt-0.5 leading-relaxed">
+                        {cartAutoFill.hasData
+                          ? "Asal dari data perusahaan · Berat, dimensi & jenis barang dari produk di keranjang. Hanya isi Tujuan."
+                          : "Asal diisi dari data perusahaan. Lengkapi tujuan & detail kargo."}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 {/* ── Step 1: Service Type ── */}
                 <div>
                   <div className="flex items-center gap-2 mb-3">
@@ -527,12 +598,37 @@ export default function CalculatorPage() {
                   </div>
                   <div className="grid sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="calc-label">{t("calculator.origin")}</label>
-                      <input type="text" value={origin} onChange={(e) => setOrigin(e.target.value)} placeholder={t("calculator.originPlaceholder")} className="calc-input" />
+                      <label className="calc-label flex items-center gap-1.5">
+                        <MapPin className="h-3 w-3 text-orange-500" />
+                        {t("calculator.origin")}
+                        {companyOrigin && (
+                          <span className="ml-auto inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-600 border border-orange-200">
+                            Otomatis
+                          </span>
+                        )}
+                      </label>
+                      {companyOrigin ? (
+                        <div className="calc-input flex items-center gap-2 bg-orange-50 border-orange-200 cursor-not-allowed select-none" style={{ color:"#C2410C" }}>
+                          <span className="text-sm">🇮🇩</span>
+                          <span className="font-medium">{origin}</span>
+                        </div>
+                      ) : (
+                        <input type="text" value={origin} onChange={(e) => setOrigin(e.target.value)} placeholder={t("calculator.originPlaceholder")} className="calc-input" />
+                      )}
                     </div>
                     <div>
-                      <label className="calc-label">{t("calculator.destination")}</label>
-                      <input type="text" value={destination} onChange={(e) => setDestination(e.target.value)} placeholder={t("calculator.destinationPlaceholder")} className="calc-input" />
+                      <label className="calc-label font-bold">
+                        {t("calculator.destination")} <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={destination}
+                        onChange={(e) => setDestination(e.target.value)}
+                        placeholder={t("calculator.destinationPlaceholder")}
+                        className="calc-input"
+                        style={{ borderColor: "#93C5FD" }}
+                        autoFocus={!!companyOrigin}
+                      />
                     </div>
                   </div>
                 </div>
@@ -546,14 +642,33 @@ export default function CalculatorPage() {
 
                   {/* Weight */}
                   <div className="mb-3">
-                    <label className="calc-label">{t("calculator.weight")}</label>
-                    <input type="number" min="0" step="0.1" value={weight} onChange={(e) => setWeight(e.target.value)} placeholder={t("calculator.weightPlaceholder")} className="calc-input" />
+                    <label className="calc-label flex items-center gap-2">
+                      {t("calculator.weight")}
+                      {cartAutoFill.hasData && cartAutoFill.weight && (
+                        <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-sky-100 text-sky-600 border border-sky-200">
+                          Otomatis
+                        </span>
+                      )}
+                    </label>
+                    {cartAutoFill.hasData && cartAutoFill.weight ? (
+                      <div className="calc-input flex items-center justify-between bg-sky-50 border-sky-200 cursor-not-allowed select-none">
+                        <span className="font-semibold text-slate-800">{weight} kg</span>
+                        <span className="text-[10px] text-sky-500">dari keranjang</span>
+                      </div>
+                    ) : (
+                      <input type="number" min="0" step="0.1" value={weight} onChange={(e) => setWeight(e.target.value)} placeholder={t("calculator.weightPlaceholder")} className="calc-input" />
+                    )}
                   </div>
 
                   {/* Dimensions */}
                   <div className="mb-3">
                     <label className="calc-label flex items-center gap-2">
                       {t("calculator.length")} × {t("calculator.width")} × {t("calculator.height")}
+                      {cartAutoFill.hasData && (cartAutoFill.length || cartAutoFill.width || cartAutoFill.height) && (
+                        <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-sky-100 text-sky-600 border border-sky-200">
+                          Otomatis
+                        </span>
+                      )}
                       {cbmAuto !== null && (
                         <span className="inline-flex items-center gap-1 text-[10.5px] font-semibold px-2 py-0.5 rounded-full" style={{ background:"#EFF6FF", color:"#1D4ED8", border:"1px solid #BFDBFE" }}>
                           <Sparkles className="h-2.5 w-2.5" />
@@ -561,19 +676,50 @@ export default function CalculatorPage() {
                         </span>
                       )}
                     </label>
-                    <div className="grid grid-cols-3 gap-2.5">
-                      <input type="number" min="0" step="0.1" value={length} onChange={(e) => setLength(e.target.value)} placeholder="P (cm)" className="calc-input" />
-                      <input type="number" min="0" step="0.1" value={width}  onChange={(e) => setWidth(e.target.value)}  placeholder="L (cm)" className="calc-input" />
-                      <input type="number" min="0" step="0.1" value={height} onChange={(e) => setHeight(e.target.value)} placeholder="T (cm)" className="calc-input" />
-                    </div>
+                    {cartAutoFill.hasData && (cartAutoFill.length || cartAutoFill.width || cartAutoFill.height) ? (
+                      <div className="grid grid-cols-3 gap-2.5">
+                        {[
+                          { val: length, label: "P" },
+                          { val: width,  label: "L" },
+                          { val: height, label: "T" },
+                        ].map(({ val, label }) => (
+                          <div key={label} className="calc-input flex items-center justify-between bg-sky-50 border-sky-200 cursor-not-allowed select-none">
+                            <span className="font-medium text-slate-700">{val || "—"}</span>
+                            <span className="text-[10px] text-sky-400">{label}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-3 gap-2.5">
+                        <input type="number" min="0" step="0.1" value={length} onChange={(e) => setLength(e.target.value)} placeholder="P (cm)" className="calc-input" />
+                        <input type="number" min="0" step="0.1" value={width}  onChange={(e) => setWidth(e.target.value)}  placeholder="L (cm)" className="calc-input" />
+                        <input type="number" min="0" step="0.1" value={height} onChange={(e) => setHeight(e.target.value)} placeholder="T (cm)" className="calc-input" />
+                      </div>
+                    )}
                   </div>
 
                   {/* Cargo type + value */}
                   <div className="grid sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="calc-label">{t("calculator.cargoType")}</label>
-                      <input type="text" list="cargo-type-list" value={cargoType} onChange={(e) => setCargoType(e.target.value)} placeholder={t("calculator.cargoPlaceholder")} className="calc-input" autoComplete="off" />
-                      {cargoTypes.length > 0 && <datalist id="cargo-type-list">{cargoTypes.map((ct) => <option key={ct} value={ct} />)}</datalist>}
+                      <label className="calc-label flex items-center gap-2">
+                        {t("calculator.cargoType")}
+                        {cartAutoFill.hasData && cartAutoFill.goodsType && (
+                          <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-sky-100 text-sky-600 border border-sky-200">
+                            Otomatis
+                          </span>
+                        )}
+                      </label>
+                      {cartAutoFill.hasData && cartAutoFill.goodsType ? (
+                        <div className="calc-input flex items-center justify-between bg-sky-50 border-sky-200 cursor-not-allowed select-none">
+                          <span className="font-medium text-slate-700">{cargoType}</span>
+                          <span className="text-[10px] text-sky-500">dari keranjang</span>
+                        </div>
+                      ) : (
+                        <>
+                          <input type="text" list="cargo-type-list" value={cargoType} onChange={(e) => setCargoType(e.target.value)} placeholder={t("calculator.cargoPlaceholder")} className="calc-input" autoComplete="off" />
+                          {cargoTypes.length > 0 && <datalist id="cargo-type-list">{cargoTypes.map((ct) => <option key={ct} value={ct} />)}</datalist>}
+                        </>
+                      )}
                     </div>
                     <div>
                       <label className="calc-label flex items-center gap-1.5">
