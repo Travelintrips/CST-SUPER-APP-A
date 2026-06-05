@@ -24,13 +24,13 @@ args = "Gateway"
 name = "Gateway"
 author = "agent"
 
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "fuser -k 5000/tcp 2>/dev/null; sleep 0.3; PORT=5000 node gateway.mjs"
-waitForPort = 5000
-
 [workflows.workflow.metadata]
 outputType = "webview"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "node kill-port.mjs 5000 2>/dev/null; sleep 0.3; PORT=5000 API_PORT=8080 BIZPORTAL_PORT=18442 CUSTOMER_PORT=5174 LOGISTIC_ORDER_PORT=19368 EXTRA_PORT=0 node gateway.mjs"
+waitForPort = 5000
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
@@ -67,6 +67,8 @@ VAPID_PUBLIC_KEY = "BEAKgZOdT9HxFJLxVNxgtY-Dh2XzGptrjQwQibP2obUjPlLkfk0WR1TyzqbJ
 VAPID_PRIVATE_KEY = "Cu-0cxYEgT24fD8lVirlkz0qpFHj_kJNcGIj347kIJ4"
 VAPID_EMAIL = "mailto:admin@cstlogistics.co.id"
 PORTAL_ADMIN_KEY = "admin123"
+USE_PRODUCT_TEMPLATE_ENGINE = "true"
+USE_SERVICE_TEMPLATE_ENGINE = "true"
 
 [userenv.development]
 ADMIN_EMAIL_DOMAINS = "example.com"
@@ -77,18 +79,6 @@ packages = ["freetype", "lcms2", "libimagequant", "libjpeg", "libtiff", "libwebp
 
 [objectStorage]
 defaultBucketID = "replit-objstore-e357cc66-19c3-4d73-9ca9-3069d78355d1"
-
-[[ports]]
-localPort = 3000
-externalPort = 3000
-
-[[ports]]
-localPort = 3001
-externalPort = 3001
-
-[[ports]]
-localPort = 3002
-externalPort = 3002
 
 [[ports]]
 localPort = 5000
@@ -109,19 +99,33 @@ externalPort = 8080
 [[ports]]
 localPort = 18442
 externalPort = 4200
+localPort = 8081
+externalPort = 8081
 
 [[ports]]
-localPort = 18444
+localPort = 8099
+externalPort = 5000
+
+[[ports]]
+localPort = 9000
+externalPort = 9000
+
+[[ports]]
+localPort = 18442
 externalPort = 3000
 
 [[ports]]
+localPort = 18444
+externalPort = 3002
+
+[[ports]]
 localPort = 19368
-externalPort = 3001
+externalPort = 4200
 
 [[ports]]
 localPort = 21170
-externalPort = 6000
+externalPort = 3001
 
 [[ports]]
 localPort = 23434
-externalPort = 80
+externalPort = 5173
