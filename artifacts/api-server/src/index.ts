@@ -1,6 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
-import { seedAccountingDefaults } from "./lib/accountingSeed";
+import { seedAccountingDefaults, seedAdditionalTaxes } from "./lib/accountingSeed";
 import { seedLogisticsServiceItems } from "./lib/seedLogisticsItems";
 import { seedCatalogProducts } from "./lib/seedCatalogProducts";
 import { seedDemoData, seedDemoDrivers } from "./lib/seedDemoData";
@@ -66,6 +66,7 @@ import { initAlertsBroadcast } from "./lib/alertsBroadcast.js";
 import { warmupMailer } from "./lib/mailer.js";
 import { runSportCenterMigration, runSportCenterAccountCorrection } from "./modules/sport-center/migration.js";
 import { startRecurringExpenseWorker } from "./modules/sport-center/recurringExpenseWorker.js";
+import { startExpenseReminderWorker } from "./lib/expenseReminderWorker.js";
 import { runCostCenterMigration } from "./lib/costCenterMigration.js";
 import { runDriverPodMigration, runDriverAssignmentMigration } from "./routes/driver.js";
 import { runProductVolumeCbmMigration } from "./routes/ecommerce.js";
@@ -287,6 +288,7 @@ async function startServer() {
   startWorkflowWorker();
   startDriverJobWorker();
   startRecurringExpenseWorker();
+  startExpenseReminderWorker();
   startDbBackupScheduler();
   startWaRetryWorker();
 
@@ -361,6 +363,9 @@ async function startServer() {
     }))
     .then(() => seedAccountingDefaults().catch((err) => {
       logger.error({ err }, "Accounting seed failed");
+    }))
+    .then(() => seedAdditionalTaxes().catch((err) => {
+      logger.warn({ err }, "Additional tax seed failed (non-fatal)");
     }))
     .then(() => seedUom().catch((err) => {
       logger.warn({ err }, "UOM seed failed (non-fatal)");

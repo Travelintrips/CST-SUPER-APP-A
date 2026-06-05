@@ -48,6 +48,9 @@ import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStat
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getAdminWa } from "../lib/adminWa.js";
 import { notifyPaymentConfirmation } from "../lib/enterpriseWorkflowNotify.js";
+import { transactionTaxesTable } from "@workspace/db";
+import { recordTransactionTax } from "../lib/taxAutoService.js";
+import { handleTaxSse, broadcastTaxUpdate } from "../lib/taxSseBroadcast.js";
 
 function serializeCompany(c: typeof companiesTable.$inferSelect) {
   return { ...c, createdAt: c.createdAt.toISOString() };
@@ -3131,6 +3134,213 @@ router.post("/gsheet/pull", async (req, res) => {
 
   logger.info({ spreadsheetId, companyId, results }, "GSheet pull completed");
   return res.json({ ok: true, spreadsheetId, ...results });
+});
+
+// ── Transaction Taxes (Otomasi Pajak & SPT) ──────────────────────────────────
+router.get("/tax-transactions", async (req, res) => {
+  const companyId = resolveCompanyId(req) ?? 1;
+  const { period, status, type, page = "1", limit = "50" } = req.query as Record<string, string>;
+
+  const conds: SQL[] = [sql`${transactionTaxesTable.companyId} = ${companyId}`];
+  if (period) conds.push(sql`${transactionTaxesTable.period} = ${period}`);
+  if (status) conds.push(sql`${transactionTaxesTable.status} = ${status}`);
+  if (type) conds.push(sql`${transactionTaxesTable.transactionType} = ${type}`);
+
+  const pageN = Math.max(1, parseInt(page) || 1);
+  const limitN = Math.min(200, parseInt(limit) || 50);
+  const offset = (pageN - 1) * limitN;
+
+  const rows = await db
+    .select()
+    .from(transactionTaxesTable)
+    .where(and(...conds))
+    .orderBy(desc(transactionTaxesTable.createdAt))
+    .limit(limitN)
+    .offset(offset);
+
+  const [{ total }] = await db
+    .select({ total: sql<number>`cast(count(*) as int)` })
+    .from(transactionTaxesTable)
+    .where(and(...conds));
+
+  return res.json({
+    data: rows.map((r) => ({
+      ...r,
+      baseAmount: Number(r.baseAmount),
+      taxAmount: Number(r.taxAmount),
+      taxRate: Number(r.taxRate),
+      createdAt: r.createdAt.toISOString(),
+      updatedAt: r.updatedAt.toISOString(),
+      paidAt: r.paidAt?.toISOString() ?? null,
+      reportedAt: r.reportedAt?.toISOString() ?? null,
+    })),
+    total,
+    page: pageN,
+    limit: limitN,
+  });
+});
+
+router.get("/tax-report", async (req, res) => {
+  const companyId = resolveCompanyId(req) ?? 1;
+  const { period_from, period_to, period } = req.query as Record<string, string>;
+
+  const conds: SQL[] = [sql`${transactionTaxesTable.companyId} = ${companyId}`];
+  if (period) conds.push(sql`${transactionTaxesTable.period} = ${period}`);
+  if (period_from) conds.push(sql`${transactionTaxesTable.period} >= ${period_from}`);
+  if (period_to) conds.push(sql`${transactionTaxesTable.period} <= ${period_to}`);
+
+  const rows = await db
+    .select({
+      period: transactionTaxesTable.period,
+      taxName: transactionTaxesTable.taxName,
+      taxRate: transactionTaxesTable.taxRate,
+      cutType: transactionTaxesTable.cutType,
+      transactionType: transactionTaxesTable.transactionType,
+      status: transactionTaxesTable.status,
+      count: sql<number>`cast(count(*) as int)`,
+      totalBase: sql<number>`cast(sum(base_amount) as numeric)`,
+      totalTax: sql<number>`cast(sum(tax_amount) as numeric)`,
+    })
+    .from(transactionTaxesTable)
+    .where(and(...conds))
+    .groupBy(
+      transactionTaxesTable.period,
+      transactionTaxesTable.taxName,
+      transactionTaxesTable.taxRate,
+      transactionTaxesTable.cutType,
+      transactionTaxesTable.transactionType,
+      transactionTaxesTable.status,
+    )
+    .orderBy(desc(transactionTaxesTable.period));
+
+  const summary = { totalPPN: 0, totalPPh: 0, totalTax: 0, pending: 0, paid: 0, reported: 0 };
+  for (const r of rows) {
+    const tax = Number(r.totalTax);
+    summary.totalTax += tax;
+    if (r.taxName.toLowerCase().includes("ppn")) summary.totalPPN += tax;
+    else summary.totalPPh += tax;
+    if (r.status === "paid") summary.paid += tax;
+    else if (r.status === "reported") summary.reported += tax;
+    else summary.pending += tax;
+  }
+
+  return res.json({ rows, summary });
+});
+
+router.get("/tax-report/export", async (req, res) => {
+  const companyId = resolveCompanyId(req) ?? 1;
+  const { period_from, period_to, period } = req.query as Record<string, string>;
+
+  const conds: SQL[] = [sql`${transactionTaxesTable.companyId} = ${companyId}`];
+  if (period) conds.push(sql`${transactionTaxesTable.period} = ${period}`);
+  if (period_from) conds.push(sql`${transactionTaxesTable.period} >= ${period_from}`);
+  if (period_to) conds.push(sql`${transactionTaxesTable.period} <= ${period_to}`);
+
+  const rows = await db
+    .select()
+    .from(transactionTaxesTable)
+    .where(and(...conds))
+    .orderBy(transactionTaxesTable.period, transactionTaxesTable.createdAt);
+
+  const header = "Periode,Jenis Transaksi,Referensi,Nama Pajak,Tarif (%),Cara Potong,DPP (Base),Pajak,Status,Tanggal Dibuat";
+  const lines = rows.map((r) =>
+    [
+      r.period,
+      r.transactionType,
+      r.transactionRef ?? "",
+      r.taxName,
+      Number(r.taxRate).toFixed(3),
+      r.cutType,
+      Number(r.baseAmount).toFixed(2),
+      Number(r.taxAmount).toFixed(2),
+      r.status,
+      r.createdAt.toISOString().slice(0, 10),
+    ]
+      .map((v) => `"${String(v).replace(/"/g, '""')}"`)
+      .join(","),
+  );
+
+  const csv = [header, ...lines].join("\n");
+  const filename = `laporan-pajak-${period ?? period_from ?? "all"}.csv`;
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  return res.send("\uFEFF" + csv);
+});
+
+router.patch("/tax-transactions/:id/mark-paid", async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
+  const [row] = await db
+    .update(transactionTaxesTable)
+    .set({ status: "paid", paidAt: new Date(), updatedAt: new Date() })
+    .where(eq(transactionTaxesTable.id, id))
+    .returning();
+  if (!row) return res.status(404).json({ message: "Data tidak ditemukan" });
+  broadcastTaxUpdate({
+    event: "tax_marked",
+    period: row.period ?? undefined,
+    companyId: row.companyId ?? undefined,
+    timestamp: new Date().toISOString(),
+  });
+  return res.json({ ok: true, data: { ...row, baseAmount: Number(row.baseAmount), taxAmount: Number(row.taxAmount) } });
+});
+
+router.patch("/tax-transactions/:id/mark-reported", async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
+  const [row] = await db
+    .update(transactionTaxesTable)
+    .set({ status: "reported", reportedAt: new Date(), updatedAt: new Date() })
+    .where(eq(transactionTaxesTable.id, id))
+    .returning();
+  if (!row) return res.status(404).json({ message: "Data tidak ditemukan" });
+  broadcastTaxUpdate({
+    event: "tax_marked",
+    period: row.period ?? undefined,
+    companyId: row.companyId ?? undefined,
+    timestamp: new Date().toISOString(),
+  });
+  return res.json({ ok: true, data: { ...row, baseAmount: Number(row.baseAmount), taxAmount: Number(row.taxAmount) } });
+});
+
+router.post("/tax-transactions", async (req, res) => {
+  const companyId = resolveCompanyId(req) ?? 1;
+  const { transactionType, transactionId, transactionRef, baseAmount, subType } = req.body as Record<string, unknown>;
+  if (!transactionType || !transactionId || !baseAmount) {
+    return res.status(400).json({ message: "transactionType, transactionId, baseAmount wajib diisi" });
+  }
+  await recordTransactionTax({
+    companyId,
+    transactionType: transactionType as "logistic_order" | "sales_order" | "purchase_order" | "expense" | "other",
+    transactionId: Number(transactionId),
+    transactionRef: transactionRef as string | null,
+    baseAmount: Number(baseAmount),
+    subType: subType as string | null,
+  });
+  return res.json({ ok: true });
+});
+
+router.patch("/tax-transactions/bulk-mark", async (req, res) => {
+  const companyId = resolveCompanyId(req) ?? 1;
+  const { ids, status } = req.body as { ids: number[]; status: string };
+  if (!ids?.length || !["paid", "reported", "pending"].includes(status)) {
+    return res.status(400).json({ message: "ids[] dan status (paid|reported|pending) wajib diisi" });
+  }
+  const patch: Record<string, unknown> = { status, updatedAt: new Date() };
+  if (status === "paid") patch.paidAt = new Date();
+  if (status === "reported") patch.reportedAt = new Date();
+  await db.update(transactionTaxesTable).set(patch).where(inArray(transactionTaxesTable.id, ids));
+  broadcastTaxUpdate({
+    event: "tax_marked",
+    companyId,
+    count: ids.length,
+    timestamp: new Date().toISOString(),
+  });
+  return res.json({ ok: true, updated: ids.length });
+});
+
+router.get("/tax-stream", (req, res) => {
+  handleTaxSse(req, res);
 });
 
 export default router;

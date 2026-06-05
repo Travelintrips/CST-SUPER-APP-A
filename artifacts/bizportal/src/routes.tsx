@@ -81,6 +81,7 @@ import AccountingBalanceSheetPage from "@/pages/accounting/reports/balance-sheet
 import AccountingFreightProfitabilityPage from "@/pages/accounting/reports/freight-profitability";
 import AccountingReconciliationPage from "@/pages/accounting/reconciliation";
 import AccountingGSheetPage from "@/pages/accounting/gsheet";
+import TaxReportPage from "@/pages/accounting/tax-report";
 import HoldingPage from "@/pages/HoldingPage";
 import ExecutiveDashboardPage from "@/pages/executive/dashboard";
 import HoldingDashboardPage from "@/pages/accounting/holding-dashboard";
@@ -92,6 +93,16 @@ import ExpenseListPage from "@/pages/expense/index";
 import ExpenseEditorPage from "@/pages/expense/editor";
 import ExpenseCategoriesPage from "@/pages/expense/categories";
 import ExpenseReportsPage from "@/pages/expense/reports";
+import ExpenseRoutinePage from "@/pages/expense/routine";
+import KasbonPage from "@/pages/expense/kasbon";
+import TalanganPage from "@/pages/expense/talangan";
+import VendorInstallmentsPage from "@/pages/expense/vendor-installments";
+import BankLoansPage from "@/pages/expense/bank-loans";
+import FixedAssetsPage from "@/pages/expense/fixed-assets";
+import ExpenseApprovalsPage from "@/pages/expense/approvals";
+import ExpenseDashboardPage from "@/pages/expense/dashboard";
+import ExpenseTemplatesPage from "@/pages/expense/templates";
+import ExpenseBudgetPage from "@/pages/expense/budget";
 // Correspondence
 import CorrespondencesPage from "@/pages/correspondences";
 import EmailInboxPage from "@/pages/email-inbox";
@@ -296,6 +307,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/accounting/cost-centers" component={PR(CostCentersPage)} />
       <Route path="/accounting/reconciliation" component={PR(AccountingReconciliationPage)} />
       <Route path="/accounting/gsheet" component={PR(AccountingGSheetPage)} />
+      <Route path="/accounting/tax-report" component={PR(TaxReportPage)} />
       <Route path="/accounting/reports/trial-balance" component={PR(AccountingTrialBalancePage)} />
       <Route path="/accounting/reports/general-ledger" component={PR(AccountingGeneralLedgerPage)} />
       <Route path="/accounting/reports/profit-loss" component={PR(AccountingProfitLossPage)} />
@@ -312,6 +324,16 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/expense/new" component={PR(ExpenseEditorPage)} />
       <Route path="/expense/categories" component={PR(ExpenseCategoriesPage)} />
       <Route path="/expense/reports" component={PR(ExpenseReportsPage)} />
+      <Route path="/expense/routine" component={PR(ExpenseRoutinePage)} />
+      <Route path="/expense/kasbon" component={PR(KasbonPage)} />
+      <Route path="/expense/talangan" component={PR(TalanganPage)} />
+      <Route path="/expense/vendor-installments" component={PR(VendorInstallmentsPage)} />
+      <Route path="/expense/bank-loans" component={PR(BankLoansPage)} />
+      <Route path="/expense/fixed-assets" component={PR(FixedAssetsPage)} />
+      <Route path="/expense/approvals" component={PR(ExpenseApprovalsPage)} />
+      <Route path="/expense/dashboard" component={PR(ExpenseDashboardPage)} />
+      <Route path="/expense/templates" component={PR(ExpenseTemplatesPage)} />
+      <Route path="/expense/budget" component={PR(ExpenseBudgetPage)} />
       <Route path="/expense/:id/edit" component={PR(ExpenseEditorPage)} />
       <Route path="/expense/:id" component={PR(ExpenseEditorPage)} />
       <Route path="/expense" component={PR(ExpenseListPage)} />

@@ -28,3 +28,4 @@
 - [FASE 6A Cost Center Framework](fase6a-cost-center.md) — cost_centers table + costCenterId on accounting_entries; resolveCostCenterId helper; all report endpoints support ?cost_center_id= filter; CRUD API + BizPortal master page.
 - [Express 5 Router Use Middleware Fix](express5-router-use-fix.md) — Express 5 router tanpa router.use() pertama menyebabkan sebagian route 404; fix: tambah no-op router.use() sebelum route pertama.
 - [Accounting Seed Fast-Path Bug](accounting-seed-fastpath.md) — fast-path di seedAccountingDefaults hanya cek COA count, skip journal+settings; fix: tambah journal count + null-settings check; direct SQL repair jika DB sudah jalan.
+- [Expense Fase 10-13](expense-fase10-13.md) — Reminder worker, dashboard, templates, budget+currency; apiFetch pattern; no useListChartOfAccounts in api-client.

@@ -127,6 +127,22 @@ async function submitOrder(body: unknown): Promise<{ orderNumber: string }> {
   return res.json();
 }
 
+// ── Vehicle comparison helpers ─────────────────────────────────────────────────
+
+const VEHICLE_RATES_PO: Record<string, { rate: number; min: number; maxKg: number }> = {
+  CDE:     { rate: 3_500, min: 200_000,   maxKg: 1_500      },
+  CDD:     { rate: 2_800, min: 350_000,   maxKg: 3_000      },
+  Fuso:    { rate: 2_200, min: 800_000,   maxKg: 8_000      },
+  Wingbox: { rate: 1_800, min: 2_500_000, maxKg: 20_000     },
+  Trailer: { rate: 1_500, min: 5_000_000, maxKg: Infinity   },
+};
+
+function offlineEstimatePerVehicle(weightKg: number, vehicleType: string, volW: number): number {
+  const chargeable = Math.max(weightKg, volW);
+  const r = VEHICLE_RATES_PO[vehicleType] ?? VEHICLE_RATES_PO["CDD"];
+  return Math.max(r.min, Math.round(chargeable * r.rate));
+}
+
 // ── Simple trucking cost estimator (offline) ──────────────────────────────────
 
 function estimateTruckingCost(form: TruckingForm): number | null {
@@ -175,6 +191,7 @@ export default function ProductOrderPage() {
   const [truckingForm, setTruckingForm] = useState<TruckingForm>(EMPTY_TRUCKING);
   const [estimating, setEstimating] = useState(false);
   const [truckingEstimate, setTruckingEstimate] = useState<number | null>(null);
+  const [vehicleComparison, setVehicleComparison] = useState<Array<{ type: string; label: string; desc: string; estimate: number; suitable: boolean }> | null>(null);
   const [deliveryAddressError, setDeliveryAddressError] = useState(false);
   const [checkoutAddressError, setCheckoutAddressError] = useState(false);
   const [companyOrigin, setCompanyOrigin] = useState<{ name: string; address: string; originCity: string; originAirport: string; originPort: string } | null>(null);
@@ -301,11 +318,27 @@ export default function ProductOrderPage() {
 
   function handleEstimateTrucking() {
     setEstimating(true);
+    setVehicleComparison(null);
     setTimeout(() => {
-      const est = estimateTruckingCost(truckingForm);
-      setTruckingEstimate(est);
+      const w  = parseFloat(truckingForm.weight) || 0;
+      const l  = parseFloat(truckingForm.length) || 0;
+      const wi = parseFloat(truckingForm.width)  || 0;
+      const h  = parseFloat(truckingForm.height) || 0;
+      const volW = (l && wi && h) ? (l * wi * h) / 4000 : 0;
+      const results = Object.entries(VEHICLE_RATES_PO).map(([type, r]) => ({
+        type,
+        label: VEHICLE_CAPACITIES_PO.find(v => v.type === type)?.label ?? type,
+        desc:  VEHICLE_CAPACITIES_PO.find(v => v.type === type)?.desc ?? "",
+        estimate: offlineEstimatePerVehicle(w, type, volW),
+        suitable: w <= r.maxKg,
+      }));
+      setVehicleComparison(results);
+      // auto-set estimate for the suggested vehicle
+      const suggested = w > 0 ? suggestVehiclePO(w).type : null;
+      const found = results.find(r => r.type === suggested && r.suitable) ?? results.find(r => r.suitable);
+      if (found) setTruckingEstimate(found.estimate);
       setEstimating(false);
-    }, 600);
+    }, 500);
   }
 
   function handleConfirmTrucking() {
@@ -659,7 +692,7 @@ export default function ProductOrderPage() {
                 <Input
                   placeholder="Contoh: Surabaya, Bandung, Medan..."
                   value={truckingForm.destination}
-                  onChange={e => setTruckingForm(f => ({ ...f, destination: e.target.value }))}
+                  onChange={e => { setTruckingForm(f => ({ ...f, destination: e.target.value })); setVehicleComparison(null); }}
                   className="border-primary/40 focus:border-primary text-base"
                   autoFocus
                 />

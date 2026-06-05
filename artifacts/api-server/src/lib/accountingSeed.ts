@@ -69,6 +69,8 @@ const COA_LEAF_TEMPLATES: SeedAccount[] = [
   { code: "1-1022", name: "Bank BNI",                         type: "asset",   parentCode: "1-1000" },
   { code: "1-1030", name: "Piutang Usaha",                    type: "asset",   parentCode: "1-1000" },
   { code: "1-1031", name: "Piutang Lainnya",                  type: "asset",   parentCode: "1-1000" },
+  { code: "1-1032", name: "Piutang Karyawan (Kasbon)",        type: "asset",   parentCode: "1-1000" },
+  { code: "1-1033", name: "Piutang Dana Talangan",            type: "asset",   parentCode: "1-1000" },
   { code: "1-1040", name: "Persediaan Barang",                type: "asset",   parentCode: "1-1000" },
   { code: "1-1050", name: "PPN Masukan",                      type: "asset",   parentCode: "1-1000" },
   { code: "1-1060", name: "Uang Muka Biaya",                  type: "asset",   parentCode: "1-1000" },
@@ -81,8 +83,12 @@ const COA_LEAF_TEMPLATES: SeedAccount[] = [
   { code: "2-1030", name: "Hutang Pajak Lainnya",             type: "liability", parentCode: "2-1000" },
   { code: "2-1040", name: "Uang Muka Pelanggan",              type: "liability", parentCode: "2-1000" },
   { code: "2-1045", name: "GR/IR Clearing (Barang Diterima/Belum Ditagih)", type: "liability", parentCode: "2-1000" },
+  { code: "2-1050", name: "Hutang Bank Jangka Pendek",        type: "liability", parentCode: "2-1000" },
+  { code: "2-1055", name: "Hutang Leasing Jangka Pendek",     type: "liability", parentCode: "2-1000" },
   // ── Kewajiban Jangka Panjang ──────────────────────────────
   { code: "2-2010", name: "Hutang Jangka Panjang",            type: "liability", parentCode: "2-2000" },
+  { code: "2-2020", name: "Hutang Bank Jangka Panjang",       type: "liability", parentCode: "2-2000" },
+  { code: "2-2030", name: "Hutang Leasing Jangka Panjang",    type: "liability", parentCode: "2-2000" },
   // ── Modal ─────────────────────────────────────────────────
   { code: "3-1010", name: "Modal Disetor",                    type: "equity",  parentCode: "3-1000" },
   // ── Laba / Rugi ───────────────────────────────────────────
@@ -149,6 +155,30 @@ async function applyRuntimeMigrations(): Promise<void> {
     `ALTER TABLE accounting_settings ADD COLUMN IF NOT EXISTS company_id INTEGER`,
     `ALTER TABLE accounting_settings ADD COLUMN IF NOT EXISTS grir_account_id INTEGER REFERENCES chart_of_accounts(id) ON DELETE SET NULL`,
     `ALTER TABLE accounting_settings ADD COLUMN IF NOT EXISTS gsheet_spreadsheet_id TEXT`,
+    `CREATE TABLE IF NOT EXISTS transaction_taxes (
+      id SERIAL PRIMARY KEY,
+      company_id INTEGER NOT NULL,
+      transaction_type TEXT NOT NULL,
+      transaction_id INTEGER NOT NULL,
+      transaction_ref TEXT,
+      tax_id INTEGER NOT NULL REFERENCES accounting_taxes(id),
+      tax_name TEXT NOT NULL,
+      tax_rate NUMERIC(6,3) NOT NULL,
+      cut_type TEXT NOT NULL DEFAULT 'self_borne',
+      base_amount NUMERIC(14,2) NOT NULL,
+      tax_amount NUMERIC(14,2) NOT NULL,
+      account_id INTEGER REFERENCES chart_of_accounts(id),
+      period TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      paid_at TIMESTAMP,
+      reported_at TIMESTAMP,
+      notes TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS tx_taxes_tx_uniq ON transaction_taxes(transaction_type, transaction_id, tax_id)`,
+    `CREATE INDEX IF NOT EXISTS tx_taxes_company_period_idx ON transaction_taxes(company_id, period)`,
+    `CREATE INDEX IF NOT EXISTS tx_taxes_status_idx ON transaction_taxes(status)`,
   ];
   for (const q of [...companyColMigrations, ...accountingColMigrations]) {
     try { await db.execute(sql.raw(q)); } catch { /* column/index already exists or duplicate */ }
@@ -680,6 +710,65 @@ async function seedExpenseCategories(
   if (validCats.length > 0) {
     await db.insert(expenseCategoriesTable).values(validCats).onConflictDoNothing();
     logger.info(`Accounting seed: seeded ${validCats.length} expense categories.`);
+  }
+}
+
+// ── Additional tax rates — runs unconditionally on every boot ────────────────
+const ADDITIONAL_TAX_TEMPLATES: {
+  name: string;
+  rate: string;
+  kind: "sale" | "purchase" | "withholding";
+  cutType: "self_borne" | "withholding";
+  accountBase: string;
+}[] = [
+  { name: "PPN Keluaran 12%",           rate: "12.000", kind: "sale",       cutType: "self_borne",  accountBase: "2-1020" },
+  { name: "PPN Masukan 12%",            rate: "12.000", kind: "purchase",   cutType: "self_borne",  accountBase: "1-1050" },
+  { name: "PPh 4(2) Sewa 10%",          rate: "10.000", kind: "withholding",cutType: "withholding", accountBase: "2-1030" },
+  { name: "PPh 15 Pelayaran DN 1,2%",   rate: "1.200",  kind: "withholding",cutType: "withholding", accountBase: "2-1030" },
+  { name: "PPh 15 Pelayaran LN 2,64%",  rate: "2.640",  kind: "withholding",cutType: "withholding", accountBase: "2-1030" },
+  { name: "PPh 26 20%",                 rate: "20.000", kind: "withholding",cutType: "withholding", accountBase: "2-1030" },
+];
+
+export async function seedAdditionalTaxes(): Promise<void> {
+  try {
+    for (const cid of ALL_COMPANY_IDS) {
+      const abbr = COMPANY_ABBR[cid]!;
+
+      const existingRows = await db
+        .select({ id: accountingTaxesTable.id, name: accountingTaxesTable.name })
+        .from(accountingTaxesTable)
+        .where(eq(accountingTaxesTable.companyId, cid));
+
+      const existingNames = new Set(existingRows.map((r) => r.name.trim().toLowerCase()));
+
+      for (const tpl of ADDITIONAL_TAX_TEMPLATES) {
+        if (existingNames.has(tpl.name.trim().toLowerCase())) continue;
+
+        const accountCode = `${tpl.accountBase}-${abbr}`;
+        const [accountRow] = await db
+          .select({ id: chartOfAccountsTable.id })
+          .from(chartOfAccountsTable)
+          .where(sql`${chartOfAccountsTable.code} = ${accountCode} AND ${chartOfAccountsTable.companyId} = ${cid}`)
+          .limit(1);
+
+        if (!accountRow) {
+          logger.warn({ accountCode, cid }, "seedAdditionalTaxes: account not found, skip");
+          continue;
+        }
+
+        await db.execute(sql.raw(`
+          INSERT INTO accounting_taxes (name, rate, kind, cut_type, account_id, company_id, is_active)
+          VALUES ('${tpl.name.replace(/'/g, "''")}', '${tpl.rate}', '${tpl.kind}', '${tpl.cutType}', ${accountRow.id}, ${cid}, true)
+          ON CONFLICT DO NOTHING
+        `));
+
+        logger.info({ name: tpl.name, cid, abbr }, "seedAdditionalTaxes: inserted new tax");
+      }
+    }
+
+    logger.info("seedAdditionalTaxes: done");
+  } catch (err) {
+    logger.warn({ err }, "seedAdditionalTaxes: failed (non-fatal)");
   }
 }
 

@@ -97,6 +97,14 @@ import { handleAlertSse } from "../lib/alertsBroadcast.js";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import sportCenterRouter from "../modules/sport-center/routes.js";
 import executiveRouter from "./executive.js";
+import cashAdvancesRouter from "./cashAdvances.js";
+import vendorInstallmentsRouter from "./vendorInstallments.js";
+import bankLoansRouter from "./bankLoans.js";
+import fixedAssetsRouter from "./fixedAssets.js";
+import expenseApprovalsRouter from "./expenseApprovals.js";
+import expenseDashboardRouter from "./expenseDashboard.js";
+import expenseTemplatesRouter from "./expenseTemplates.js";
+import expenseBudgetsRouter from "./expenseBudgets.js";
 
 import type { Request, Response } from "express";
 
@@ -227,6 +235,14 @@ router.use("/rbac", rbacRouter);
 router.use("/import-advisor", importAdvisorRouter);
 router.use("/sport-center", sportCenterRouter);
 router.use("/executive", executiveRouter);
+router.use("/cash-advances", cashAdvancesRouter);
+router.use("/vendor-installments", vendorInstallmentsRouter);
+router.use("/bank-loans", bankLoansRouter);
+router.use("/fixed-assets", fixedAssetsRouter);
+router.use("/expense-approvals", expenseApprovalsRouter);
+router.use("/expense-dashboard", expenseDashboardRouter);
+router.use("/expense-templates", expenseTemplatesRouter);
+router.use("/expense-config", expenseBudgetsRouter);
 
 router.get("/alerts/stream", async (req: Request, res: Response) => {
   const ok = await requireAdmin(req, res);
