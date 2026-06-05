@@ -69,6 +69,8 @@ const COA_LEAF_TEMPLATES: SeedAccount[] = [
   { code: "1-1022", name: "Bank BNI",                         type: "asset",   parentCode: "1-1000" },
   { code: "1-1030", name: "Piutang Usaha",                    type: "asset",   parentCode: "1-1000" },
   { code: "1-1031", name: "Piutang Lainnya",                  type: "asset",   parentCode: "1-1000" },
+  { code: "1-1032", name: "Piutang Karyawan (Kasbon)",        type: "asset",   parentCode: "1-1000" },
+  { code: "1-1033", name: "Piutang Dana Talangan",            type: "asset",   parentCode: "1-1000" },
   { code: "1-1040", name: "Persediaan Barang",                type: "asset",   parentCode: "1-1000" },
   { code: "1-1050", name: "PPN Masukan",                      type: "asset",   parentCode: "1-1000" },
   { code: "1-1060", name: "Uang Muka Biaya",                  type: "asset",   parentCode: "1-1000" },
@@ -81,8 +83,12 @@ const COA_LEAF_TEMPLATES: SeedAccount[] = [
   { code: "2-1030", name: "Hutang Pajak Lainnya",             type: "liability", parentCode: "2-1000" },
   { code: "2-1040", name: "Uang Muka Pelanggan",              type: "liability", parentCode: "2-1000" },
   { code: "2-1045", name: "GR/IR Clearing (Barang Diterima/Belum Ditagih)", type: "liability", parentCode: "2-1000" },
+  { code: "2-1050", name: "Hutang Bank Jangka Pendek",        type: "liability", parentCode: "2-1000" },
+  { code: "2-1055", name: "Hutang Leasing Jangka Pendek",     type: "liability", parentCode: "2-1000" },
   // ── Kewajiban Jangka Panjang ──────────────────────────────
   { code: "2-2010", name: "Hutang Jangka Panjang",            type: "liability", parentCode: "2-2000" },
+  { code: "2-2020", name: "Hutang Bank Jangka Panjang",       type: "liability", parentCode: "2-2000" },
+  { code: "2-2030", name: "Hutang Leasing Jangka Panjang",    type: "liability", parentCode: "2-2000" },
   // ── Modal ─────────────────────────────────────────────────
   { code: "3-1010", name: "Modal Disetor",                    type: "equity",  parentCode: "3-1000" },
   // ── Laba / Rugi ───────────────────────────────────────────

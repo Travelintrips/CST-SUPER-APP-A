@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { AppShell } from "@/components/layout/AppShell";
 import { useGetCurrentUser, getGetCurrentUserQueryKey } from "@workspace/api-client-react";
 import { useSupabaseAuth } from "@/contexts/SupabaseAuthContext";
@@ -9,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import { User, Mail, Briefcase, Shield, MessageCircle, Save, Loader2, CheckCircle, Calculator, ChevronDown, ChevronUp, Package, Plus, X, Bot, Link2, RotateCcw, History, RefreshCw, Download, Layers, ExternalLink, FileText } from "lucide-react";
+import { User, Mail, Briefcase, Shield, MessageCircle, Save, Loader2, CheckCircle, Calculator, ChevronDown, ChevronUp, Package, Plus, X, Bot, Link2, RotateCcw, History, RefreshCw, Download, Layers, ExternalLink, FileText, Truck, ShoppingCart, Users, Building2, Ship, ArrowRight } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
@@ -2050,6 +2051,65 @@ function WaLogsCard() {
   );
 }
 
+// ── Settings Stats Bar ────────────────────────────────────────────────────────
+
+interface QuickStats {
+  logisticOrders: number;
+  salesOrders: number;
+  customers: number;
+  vendors: number;
+  shipments: number;
+  staff: number;
+}
+
+const STAT_ITEMS = [
+  { key: "logisticOrders", label: "Logistic Orders", icon: Truck,         href: "/bizportal/logistic-orders",      color: "text-blue-500",   bg: "bg-blue-500/10" },
+  { key: "salesOrders",    label: "Sales Orders",    icon: ShoppingCart,   href: "/bizportal/sales/orders",         color: "text-emerald-500", bg: "bg-emerald-500/10" },
+  { key: "customers",      label: "Customers",       icon: Users,          href: "/bizportal/customers",            color: "text-violet-500",  bg: "bg-violet-500/10" },
+  { key: "vendors",        label: "Vendors",         icon: Building2,      href: "/bizportal/purchase/vendors",     color: "text-amber-500",   bg: "bg-amber-500/10" },
+  { key: "shipments",      label: "Shipments",       icon: Ship,           href: "/bizportal/freight/shipments",    color: "text-cyan-500",    bg: "bg-cyan-500/10" },
+  { key: "staff",          label: "Staff",           icon: User,           href: "/bizportal/org/users",            color: "text-rose-500",    bg: "bg-rose-500/10" },
+] as const;
+
+function SettingsStatsBar() {
+  const { data: stats, isLoading } = useQuery<QuickStats>({
+    queryKey: ["settings-quick-stats"],
+    queryFn: async () => {
+      const r = await fetch("/api/settings/quick-stats", { credentials: "include" });
+      if (!r.ok) throw new Error("Failed");
+      return r.json();
+    },
+    staleTime: 60_000,
+  });
+
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+      {STAT_ITEMS.map(({ key, label, icon: Icon, href, color, bg }) => (
+        <a
+          key={key}
+          href={href}
+          className="group rounded-xl border bg-card hover:border-primary/50 hover:shadow-md transition-all duration-150 p-4 flex flex-col gap-2 cursor-pointer"
+        >
+          <div className="flex items-center justify-between">
+            <div className={`rounded-lg p-2 ${bg}`}>
+              <Icon className={`h-4 w-4 ${color}`} />
+            </div>
+            <ArrowRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+          </div>
+          {isLoading ? (
+            <Skeleton className="h-7 w-12" />
+          ) : (
+            <p className="text-2xl font-bold tracking-tight text-foreground">
+              {(stats?.[key] ?? 0).toLocaleString("id-ID")}
+            </p>
+          )}
+          <p className="text-xs text-muted-foreground leading-tight">{label}</p>
+        </a>
+      ))}
+    </div>
+  );
+}
+
 export default function SettingsPage() {
   const { isAuthenticated } = useSupabaseAuth();
   const { data: dbUser, isLoading } = useGetCurrentUser({
@@ -2069,6 +2129,8 @@ export default function SettingsPage() {
           <h1 className="text-3xl font-bold tracking-tight text-foreground">Settings</h1>
           <p className="text-muted-foreground mt-2">Manage your account preferences and view your organizational role.</p>
         </div>
+
+        {isAdmin && <SettingsStatsBar />}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <Card className="col-span-1 md:col-span-2 bg-card border-border">

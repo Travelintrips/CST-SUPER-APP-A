@@ -141,17 +141,27 @@ router.post("/seed-categories", async (_req, res) => {
     { name: "Biaya Operasional", code: "OPERATIONAL" },
     { name: "Reimbursement Karyawan", code: "REIMBURSEMENT", requiresAttachment: true },
     { name: "Biaya Vendor/Subcon", code: "VENDOR" },
+    // ── Preset Rutin ────────────────────────────────────────────────
+    { name: "Entertainment", code: "ENTERTAINMENT", coaCode: "5-2060" },
+    { name: "Makan & Minum", code: "MAKAN_MINUM", coaCode: "5-2040" },
+    { name: "Sewa Kantor", code: "SEWA_KANTOR", coaCode: "5-2020" },
+    { name: "Utilitas", code: "UTILITAS", coaCode: "5-2030" },
+    { name: "Peralatan & ATK", code: "PERALATAN", coaCode: "5-2090" },
+    { name: "Biaya Lain-lain", code: "LAIN_LAIN", coaCode: "5-3000" },
   ];
 
   for (const cat of CATEGORIES) {
+    const expAcc = (cat as { coaCode?: string }).coaCode
+      ? byCode.get((cat as { coaCode?: string }).coaCode!)
+      : opex;
     await db
       .insert(expenseCategoriesTable)
       .values({
         name: cat.name,
         code: cat.code,
-        expenseAccountId: opex?.id ?? null,
+        expenseAccountId: expAcc?.id ?? opex?.id ?? null,
         payableAccountId: ap?.id ?? settings.apAccountId ?? null,
-        requiresAttachment: cat.requiresAttachment ?? false,
+        requiresAttachment: (cat as { requiresAttachment?: boolean }).requiresAttachment ?? false,
         isActive: true,
       })
       .onConflictDoNothing({ target: expenseCategoriesTable.code });
@@ -159,6 +169,256 @@ router.post("/seed-categories", async (_req, res) => {
 
   const rows = await db.select().from(expenseCategoriesTable).orderBy(expenseCategoriesTable.name);
   return res.json({ seeded: rows.length, categories: rows.map(serializeCategory) });
+});
+
+// ===================== Quick Expense (Expense Rutin) =====================
+// Direct cash/bank payment: DR Biaya, CR Kas/Bank (no AP step)
+
+// ─── Helper: post journal for a pending quick expense (called from approval route) ─
+export async function postQuickExpenseJournal(expenseId: number) {
+  const [expense] = await db.select().from(expensesTable).where(eq(expensesTable.id, expenseId));
+  if (!expense) throw new Error("Expense tidak ditemukan");
+
+  const companyId = expense.companyId ?? null;
+  const settings = await ensureAccountingSettings(companyId);
+
+  const expenseAccountId = expense.expenseAccountId;
+  if (!expenseAccountId) throw new Error("Akun biaya tidak ditemukan di record ini");
+
+  const isCash = expense.notes?.includes("cash") || false;
+  const cashBankAccountId =
+    (settings.defaultBankAccountId ?? settings.defaultCashAccountId);
+  if (!cashBankAccountId) throw new Error("Akun Kas/Bank default belum dikonfigurasi");
+
+  const amountN = Number(expense.subtotal);
+  const taxAmountN = Number(expense.taxAmount ?? 0);
+  const totalN = Number(expense.total);
+
+  const journalType = "bank";
+  const journals = await db.select().from(accountingJournalsTable)
+    .where(eq(accountingJournalsTable.type, journalType)).limit(1);
+  const fallback = !journals[0]
+    ? (await db.select().from(accountingJournalsTable).limit(1))[0]
+    : null;
+  const journal = journals[0] ?? fallback;
+  if (!journal) throw new Error("Jurnal kas/bank tidak ditemukan");
+
+  const lines = [
+    { accountId: expenseAccountId, debit: amountN, credit: 0, description: expense.description ?? "Biaya" },
+    ...(taxAmountN > 0 && settings.ppnInputAccountId
+      ? [{ accountId: settings.ppnInputAccountId, debit: taxAmountN, credit: 0, description: "PPN Masukan" }]
+      : []),
+    { accountId: cashBankAccountId, debit: 0, credit: totalN, description: "Bank" },
+  ];
+
+  const entry = await postEntry({
+    journalId: journal.id,
+    date: new Date(expense.date),
+    ref: expense.expenseNumber,
+    description: `${expense.expenseNumber} — ${expense.description ?? "Expense"}`,
+    source: "manual",
+    companyId,
+    lines,
+  }, journal.code);
+
+  await db.update(expensesTable)
+    .set({ entryId: entry.id, status: "posted", updatedAt: new Date() })
+    .where(eq(expensesTable.id, expenseId));
+  return entry;
+}
+
+// ─── Check approval limit ─────────────────────────────────────────────────────
+async function checkExpenseApprovalLimit(companyId: number | null, amount: number) {
+  const { sql: sqlFn } = await import("drizzle-orm");
+  const result = await db.execute(sqlFn.raw(`
+    SELECT * FROM expense_approval_limits
+    WHERE category = 'expense'
+      AND (company_id = ${companyId ?? "NULL"} OR company_id IS NULL)
+    ORDER BY company_id NULLS LAST
+    LIMIT 1
+  `));
+  const limit = result.rows[0] as any | undefined;
+  if (!limit) return { needsApproval: false, limit: null };
+  const maxAuto = parseFloat(limit.max_auto_approve ?? "0");
+  const needsApproval = maxAuto === 0 || amount > maxAuto;
+  return { needsApproval, limit };
+}
+
+router.post("/quick", async (req: Request, res) => {
+  const { date, categoryId, amount, vendorEmployee, notes, taxRateId, paymentMethod } = req.body ?? {};
+
+  if (!date) return res.status(400).json({ message: "Tanggal wajib diisi." });
+  if (!categoryId) return res.status(400).json({ message: "Kategori wajib dipilih." });
+  const amountN = Number(amount ?? 0);
+  if (!amountN || amountN <= 0) return res.status(400).json({ message: "Nominal harus lebih dari 0." });
+
+  const companyId = resolveCompanyId(req as Request);
+  const settings = await ensureAccountingSettings(companyId);
+
+  const [cat] = await db.select().from(expenseCategoriesTable).where(eq(expenseCategoriesTable.id, Number(categoryId)));
+  if (!cat) return res.status(404).json({ message: "Kategori tidak ditemukan." });
+
+  const expenseAccountId = cat.expenseAccountId;
+  if (!expenseAccountId) {
+    return res.status(400).json({ message: `Kategori "${cat.name}" belum punya akun biaya. Konfigurasi di halaman Kategori Expense.` });
+  }
+
+  const isCash = paymentMethod === "cash" || paymentMethod === "tunai";
+  const cashBankAccountId = isCash
+    ? (settings.defaultCashAccountId ?? settings.defaultBankAccountId)
+    : (settings.defaultBankAccountId ?? settings.defaultCashAccountId);
+  if (!cashBankAccountId) {
+    return res.status(400).json({ message: "Akun Kas/Bank default belum dikonfigurasi di Pengaturan Akuntansi." });
+  }
+
+  let taxAmountN = 0;
+  if (taxRateId) {
+    const [tax] = await db.select().from(accountingTaxesTable).where(eq(accountingTaxesTable.id, Number(taxRateId)));
+    if (tax) taxAmountN = Math.round(amountN * Number(tax.rate) / 100 * 100) / 100;
+  }
+  const totalN = Math.round((amountN + taxAmountN) * 100) / 100;
+
+  // ── Cek limit approval ────────────────────────────────────────────────────
+  const { needsApproval, limit } = await checkExpenseApprovalLimit(companyId, totalN);
+  const userId = (req as unknown as { userId?: string }).userId ?? null;
+
+  const expenseNumber = await nextExpenseNumber();
+
+  if (needsApproval && limit) {
+    // Simpan expense dengan status pending_approval, tunda jurnal
+    const [expense] = await db.insert(expensesTable).values({
+      companyId,
+      expenseNumber,
+      date: String(date),
+      vendorEmployee: vendorEmployee ? String(vendorEmployee) : null,
+      expenseType: "routine",
+      categoryId: Number(categoryId),
+      description: notes ? String(notes) : cat.name,
+      qty: "1",
+      unitPrice: String(amountN),
+      subtotal: String(amountN),
+      taxRateId: taxRateId ? Number(taxRateId) : null,
+      taxAmount: String(taxAmountN),
+      total: String(totalN),
+      currency: "IDR",
+      status: "pending_approval",
+      notes: notes ? String(notes) : null,
+      expenseAccountId,
+      payableAccountId: cat.payableAccountId ?? null,
+      createdById: userId,
+    }).returning();
+
+    // Ambil nama requester & approvers
+    let requesterName: string | null = null;
+    if (userId) {
+      const ur = await db.execute(sql`SELECT name FROM users WHERE id = ${userId} LIMIT 1`);
+      requesterName = (ur.rows[0] as any)?.name ?? null;
+    }
+    let l1Name: string | null = null, l2Name: string | null = null;
+    if (limit.l1_approver_id) {
+      const r = await db.execute(sql`SELECT name FROM users WHERE id = ${limit.l1_approver_id} LIMIT 1`);
+      l1Name = (r.rows[0] as any)?.name ?? null;
+    }
+    if (limit.l2_approver_id) {
+      const r = await db.execute(sql`SELECT name FROM users WHERE id = ${limit.l2_approver_id} LIMIT 1`);
+      l2Name = (r.rows[0] as any)?.name ?? null;
+    }
+
+    // Buat approval request
+    const desc = `${cat.name}${vendorEmployee ? ` / ${vendorEmployee}` : ""} — Rp ${new Intl.NumberFormat("id-ID").format(totalN)}`;
+    const ar = await db.execute(sql.raw(`
+      INSERT INTO expense_approval_requests
+        (company_id, ref_type, ref_id, description, amount, requester_id, requester_name,
+         status, l1_approver_id, l1_approver_name, l1_status,
+         l2_approver_id, l2_approver_name, l2_status)
+      VALUES
+        (${companyId ?? "NULL"}, 'expense', ${expense!.id},
+         '${desc.replace(/'/g, "''")}', ${totalN},
+         ${userId ? `'${userId}'` : "NULL"},
+         ${requesterName ? `'${requesterName.replace(/'/g, "''")}'` : "NULL"},
+         'pending',
+         ${limit.l1_approver_id ? `'${limit.l1_approver_id}'` : "NULL"},
+         ${l1Name ? `'${l1Name.replace(/'/g, "''")}'` : "NULL"},
+         ${limit.l1_approver_id ? "'pending'" : "NULL"},
+         ${limit.l2_approver_id ? `'${limit.l2_approver_id}'` : "NULL"},
+         ${l2Name ? `'${l2Name.replace(/'/g, "''")}'` : "NULL"},
+         ${limit.l2_approver_id ? "'pending'" : "NULL"})
+      RETURNING id
+    `));
+
+    // Kirim WA notifikasi ke grup admin
+    try {
+      const { getAdminGroupWa } = await import("../lib/adminWa.js");
+      const { sendWhatsApp } = await import("../lib/fonnte.js");
+      const adminGroup = await getAdminGroupWa();
+      const arId = (ar.rows[0] as any)?.id;
+      if (adminGroup) {
+        const approverInfo = l1Name ? `\nApprover L1: *${l1Name}*` : "";
+        const msg = `🔔 *Permintaan Approval Expense Baru*\n\nKategori: ${cat.name}\nDeskripsi: ${notes ?? cat.name}\nNominal: Rp ${new Intl.NumberFormat("id-ID").format(totalN)}\nPemohon: ${requesterName ?? userId ?? "-"}${approverInfo}\n\nBuka BizPortal → Expense → Approval untuk memproses.`;
+        sendWhatsApp(adminGroup, msg, { context: "expense_approval_request", refId: String(arId) }).catch(() => {});
+      }
+    } catch { /* non-fatal */ }
+
+    return res.status(201).json({
+      ...serializeExpense(expense!),
+      needsApproval: true,
+      message: `Expense menunggu persetujuan (melebihi limit auto-approve).`,
+    });
+  }
+
+  // ── Tidak perlu approval — posting langsung ───────────────────────────────
+  const [expense] = await db.insert(expensesTable).values({
+    companyId,
+    expenseNumber,
+    date: String(date),
+    vendorEmployee: vendorEmployee ? String(vendorEmployee) : null,
+    expenseType: "routine",
+    categoryId: Number(categoryId),
+    description: notes ? String(notes) : cat.name,
+    qty: "1",
+    unitPrice: String(amountN),
+    subtotal: String(amountN),
+    taxRateId: taxRateId ? Number(taxRateId) : null,
+    taxAmount: String(taxAmountN),
+    total: String(totalN),
+    currency: "IDR",
+    status: "posted",
+    notes: notes ? String(notes) : null,
+    expenseAccountId,
+    createdById: userId,
+  }).returning();
+
+  // Journal: DR Expense Account, [DR PPN Input], CR Kas/Bank
+  const journalType = isCash ? "cash" : "bank";
+  const journals = await db.select().from(accountingJournalsTable)
+    .where(eq(accountingJournalsTable.type, journalType)).limit(1);
+  const fallback = !journals[0]
+    ? (await db.select().from(accountingJournalsTable).where(eq(accountingJournalsTable.type, "bank")).limit(1))[0]
+    : null;
+  const journal = journals[0] ?? fallback;
+  if (!journal) return res.status(400).json({ message: "Jurnal kas/bank tidak ditemukan." });
+
+  const lines = [
+    { accountId: expenseAccountId, debit: amountN, credit: 0, description: cat.name },
+    ...(taxAmountN > 0 && settings.ppnInputAccountId
+      ? [{ accountId: settings.ppnInputAccountId, debit: taxAmountN, credit: 0, description: "PPN Masukan" }]
+      : []),
+    { accountId: cashBankAccountId, debit: 0, credit: totalN, description: isCash ? "Kas" : "Bank" },
+  ];
+
+  const entry = await postEntry({
+    journalId: journal.id,
+    date: new Date(expense!.date),
+    ref: expense!.expenseNumber,
+    description: `${expense!.expenseNumber} — ${cat.name}${vendorEmployee ? ` / ${vendorEmployee}` : ""}`,
+    source: "manual",
+    companyId,
+    lines,
+  }, journal.code);
+
+  await db.update(expensesTable).set({ entryId: entry.id }).where(eq(expensesTable.id, expense!.id));
+
+  return res.status(201).json({ ...serializeExpense({ ...expense!, entryId: entry.id }), needsApproval: false });
 });
 
 // ===================== Expense Summary / Reports =====================
