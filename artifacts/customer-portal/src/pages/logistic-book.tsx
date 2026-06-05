@@ -192,7 +192,7 @@ function calcResult(calcType: string, state: CalcState): Record<string, unknown>
 
 interface CompanyOrigin { name: string; address: string; originCity: string; originAirport: string; originPort: string; }
 
-function CalculatorForm({ item, onAdd, onBack, transportMode, truckType, origin, destination, companyOrigin }: {
+function CalculatorForm({ item, onAdd, onBack, transportMode, truckType, origin, destination, companyOrigin, initialState: initialCalcState }: {
   item: ServiceItem;
   onAdd: (data: Omit<CartItem, "cartId">) => void;
   onBack: () => void;
@@ -201,21 +201,31 @@ function CalculatorForm({ item, onAdd, onBack, transportMode, truckType, origin,
   origin?: string;
   destination?: string;
   companyOrigin?: CompanyOrigin;
+  initialState?: Record<string, string>;
 }) {
   const [state, setState] = useState<CalcState>({});
   const [autoRateFetching, setAutoRateFetching] = useState(false);
   const { toast } = useToast();
 
-  // Auto-fill origin airport/port from company defaults
+  // Auto-fill origin airport/port from company defaults, and product dims if provided
   useEffect(() => {
-    if (!companyOrigin) return;
-    if (item.calculatorType === "air_freight") {
-      setState(prev => ({ ...prev, originAirport: prev.originAirport || companyOrigin.originAirport }));
-    } else if (item.calculatorType === "sea_fcl") {
-      setState(prev => ({ ...prev, originPort: prev.originPort || companyOrigin.originPort }));
-    }
+    if (!companyOrigin && !initialCalcState) return;
+    setState(prev => {
+      const next = { ...prev };
+      if (companyOrigin) {
+        if (item.calculatorType === "air_freight") next.originAirport = prev.originAirport || companyOrigin.originAirport;
+        else if (item.calculatorType === "sea_fcl") next.originPort = prev.originPort || companyOrigin.originPort;
+      }
+      if (initialCalcState && item.calculatorType === "air_freight") {
+        if (initialCalcState.grossWeight && !next.grossWeight) next.grossWeight = initialCalcState.grossWeight;
+        if (initialCalcState.length && !next.length) next.length = initialCalcState.length;
+        if (initialCalcState.width && !next.width) next.width = initialCalcState.width;
+        if (initialCalcState.height && !next.height) next.height = initialCalcState.height;
+      }
+      return next;
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [companyOrigin, item.calculatorType]);
+  }, [companyOrigin, item.calculatorType, initialCalcState]);
 
   function set(key: string, val: string) {
     setState((prev) => ({ ...prev, [key]: val }));
@@ -507,6 +517,7 @@ export default function BookPage() {
 
   const [fromProduct, setFromProduct] = useState<{ name: string; qty: number; price: number; unit?: string } | null>(null);
   const [companyOrigin, setCompanyOrigin] = useState<CompanyOrigin | null>(null);
+  const [productDims, setProductDims] = useState<Record<string, string>>({});
 
   // Fetch company origin defaults (origin airport, port, city)
   useEffect(() => {
@@ -673,9 +684,30 @@ export default function BookPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const commodity = params.get("commodity");
+    const productId = params.get("productId");
     const qty = parseInt(params.get("qty") ?? "1", 10) || 1;
     const productPrice = parseFloat(params.get("productPrice") ?? "0") || 0;
     const unit = params.get("unit") ?? undefined;
+
+    // Fetch product weight/dims for auto-fill in CalculatorForm
+    if (productId) {
+      fetch(`/api/ecommerce/products/${productId}`)
+        .then(r => r.ok ? r.json() : null)
+        .then((p: { weightKg?: number | null; lengthCm?: number | null; widthCm?: number | null; heightCm?: number | null; goodsType?: string | null } | null) => {
+          if (!p) return;
+          const dims: Record<string, string> = {};
+          if (p.weightKg != null) dims.grossWeight = String(p.weightKg);
+          if (p.lengthCm != null) dims.length = String(p.lengthCm);
+          if (p.widthCm != null) dims.width = String(p.widthCm);
+          if (p.heightCm != null) dims.height = String(p.heightCm);
+          if (p.goodsType) {
+            dims.goodsType = p.goodsType;
+            setQuickTruckData(prev => ({ ...prev, goodsType: prev.goodsType || p.goodsType! }));
+          }
+          if (Object.keys(dims).length > 0) setProductDims(dims);
+        })
+        .catch(() => {});
+    }
 
     if (commodity) {
       setFromProduct({ name: commodity, qty, price: productPrice, unit });
@@ -1284,6 +1316,7 @@ export default function BookPage() {
               origin={customerForm.origin}
               destination={customerForm.destination}
               companyOrigin={companyOrigin ?? undefined}
+              initialState={Object.keys(productDims).length > 0 ? productDims : undefined}
             />
           )}
         </div>
