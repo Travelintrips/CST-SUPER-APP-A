@@ -50,6 +50,7 @@ import { getAdminWa } from "../lib/adminWa.js";
 import { notifyPaymentConfirmation } from "../lib/enterpriseWorkflowNotify.js";
 import { transactionTaxesTable } from "@workspace/db";
 import { recordTransactionTax } from "../lib/taxAutoService.js";
+import { handleTaxSse, broadcastTaxUpdate } from "../lib/taxSseBroadcast.js";
 
 function serializeCompany(c: typeof companiesTable.$inferSelect) {
   return { ...c, createdAt: c.createdAt.toISOString() };
@@ -3275,6 +3276,12 @@ router.patch("/tax-transactions/:id/mark-paid", async (req, res) => {
     .where(eq(transactionTaxesTable.id, id))
     .returning();
   if (!row) return res.status(404).json({ message: "Data tidak ditemukan" });
+  broadcastTaxUpdate({
+    event: "tax_marked",
+    period: row.period ?? undefined,
+    companyId: row.companyId ?? undefined,
+    timestamp: new Date().toISOString(),
+  });
   return res.json({ ok: true, data: { ...row, baseAmount: Number(row.baseAmount), taxAmount: Number(row.taxAmount) } });
 });
 
@@ -3287,6 +3294,12 @@ router.patch("/tax-transactions/:id/mark-reported", async (req, res) => {
     .where(eq(transactionTaxesTable.id, id))
     .returning();
   if (!row) return res.status(404).json({ message: "Data tidak ditemukan" });
+  broadcastTaxUpdate({
+    event: "tax_marked",
+    period: row.period ?? undefined,
+    companyId: row.companyId ?? undefined,
+    timestamp: new Date().toISOString(),
+  });
   return res.json({ ok: true, data: { ...row, baseAmount: Number(row.baseAmount), taxAmount: Number(row.taxAmount) } });
 });
 
@@ -3308,6 +3321,7 @@ router.post("/tax-transactions", async (req, res) => {
 });
 
 router.patch("/tax-transactions/bulk-mark", async (req, res) => {
+  const companyId = resolveCompanyId(req) ?? 1;
   const { ids, status } = req.body as { ids: number[]; status: string };
   if (!ids?.length || !["paid", "reported", "pending"].includes(status)) {
     return res.status(400).json({ message: "ids[] dan status (paid|reported|pending) wajib diisi" });
@@ -3316,7 +3330,17 @@ router.patch("/tax-transactions/bulk-mark", async (req, res) => {
   if (status === "paid") patch.paidAt = new Date();
   if (status === "reported") patch.reportedAt = new Date();
   await db.update(transactionTaxesTable).set(patch).where(inArray(transactionTaxesTable.id, ids));
+  broadcastTaxUpdate({
+    event: "tax_marked",
+    companyId,
+    count: ids.length,
+    timestamp: new Date().toISOString(),
+  });
   return res.json({ ok: true, updated: ids.length });
+});
+
+router.get("/tax-stream", (req, res) => {
+  handleTaxSse(req, res);
 });
 
 export default router;

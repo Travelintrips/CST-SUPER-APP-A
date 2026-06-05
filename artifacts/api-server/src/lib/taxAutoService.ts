@@ -1,6 +1,7 @@
 import { db, accountingTaxesTable, transactionTaxesTable } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
 import { logger } from "./logger.js";
+import { broadcastTaxUpdate } from "./taxSseBroadcast.js";
 
 export type TxType =
   | "logistic_order"
@@ -154,6 +155,14 @@ export async function recordTransactionTax(params: RecordTaxParams): Promise<voi
       { companyId, transactionType, transactionId, taxName: tax.name, taxAmount },
       "[taxAutoService] Transaction tax recorded",
     );
+
+    broadcastTaxUpdate({
+      event: "tax_recorded",
+      period,
+      companyId,
+      transactionType,
+      timestamp: new Date().toISOString(),
+    });
   } catch (e) {
     logger.warn({ err: e }, "[taxAutoService] Failed to record transaction tax (non-fatal)");
   }

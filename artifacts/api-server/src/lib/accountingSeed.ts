@@ -713,6 +713,65 @@ async function seedExpenseCategories(
   }
 }
 
+// ── Additional tax rates — runs unconditionally on every boot ────────────────
+const ADDITIONAL_TAX_TEMPLATES: {
+  name: string;
+  rate: string;
+  kind: "sale" | "purchase" | "withholding";
+  cutType: "self_borne" | "withholding";
+  accountBase: string;
+}[] = [
+  { name: "PPN Keluaran 12%",           rate: "12.000", kind: "sale",       cutType: "self_borne",  accountBase: "2-1020" },
+  { name: "PPN Masukan 12%",            rate: "12.000", kind: "purchase",   cutType: "self_borne",  accountBase: "1-1050" },
+  { name: "PPh 4(2) Sewa 10%",          rate: "10.000", kind: "withholding",cutType: "withholding", accountBase: "2-1030" },
+  { name: "PPh 15 Pelayaran DN 1,2%",   rate: "1.200",  kind: "withholding",cutType: "withholding", accountBase: "2-1030" },
+  { name: "PPh 15 Pelayaran LN 2,64%",  rate: "2.640",  kind: "withholding",cutType: "withholding", accountBase: "2-1030" },
+  { name: "PPh 26 20%",                 rate: "20.000", kind: "withholding",cutType: "withholding", accountBase: "2-1030" },
+];
+
+export async function seedAdditionalTaxes(): Promise<void> {
+  try {
+    for (const cid of ALL_COMPANY_IDS) {
+      const abbr = COMPANY_ABBR[cid]!;
+
+      const existingRows = await db
+        .select({ id: accountingTaxesTable.id, name: accountingTaxesTable.name })
+        .from(accountingTaxesTable)
+        .where(eq(accountingTaxesTable.companyId, cid));
+
+      const existingNames = new Set(existingRows.map((r) => r.name.trim().toLowerCase()));
+
+      for (const tpl of ADDITIONAL_TAX_TEMPLATES) {
+        if (existingNames.has(tpl.name.trim().toLowerCase())) continue;
+
+        const accountCode = `${tpl.accountBase}-${abbr}`;
+        const [accountRow] = await db
+          .select({ id: chartOfAccountsTable.id })
+          .from(chartOfAccountsTable)
+          .where(sql`${chartOfAccountsTable.code} = ${accountCode} AND ${chartOfAccountsTable.companyId} = ${cid}`)
+          .limit(1);
+
+        if (!accountRow) {
+          logger.warn({ accountCode, cid }, "seedAdditionalTaxes: account not found, skip");
+          continue;
+        }
+
+        await db.execute(sql.raw(`
+          INSERT INTO accounting_taxes (name, rate, kind, cut_type, account_id, company_id, is_active)
+          VALUES ('${tpl.name.replace(/'/g, "''")}', '${tpl.rate}', '${tpl.kind}', '${tpl.cutType}', ${accountRow.id}, ${cid}, true)
+          ON CONFLICT DO NOTHING
+        `));
+
+        logger.info({ name: tpl.name, cid, abbr }, "seedAdditionalTaxes: inserted new tax");
+      }
+    }
+
+    logger.info("seedAdditionalTaxes: done");
+  } catch (err) {
+    logger.warn({ err }, "seedAdditionalTaxes: failed (non-fatal)");
+  }
+}
+
 export async function getAccountingSettings(companyId = 1): Promise<typeof accountingSettingsTable.$inferSelect | null> {
   const [row] = await db
     .select()

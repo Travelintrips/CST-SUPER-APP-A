@@ -1,6 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
-import { seedAccountingDefaults } from "./lib/accountingSeed";
+import { seedAccountingDefaults, seedAdditionalTaxes } from "./lib/accountingSeed";
 import { seedLogisticsServiceItems } from "./lib/seedLogisticsItems";
 import { seedCatalogProducts } from "./lib/seedCatalogProducts";
 import { seedDemoData, seedDemoDrivers } from "./lib/seedDemoData";
@@ -363,6 +363,9 @@ async function startServer() {
     }))
     .then(() => seedAccountingDefaults().catch((err) => {
       logger.error({ err }, "Accounting seed failed");
+    }))
+    .then(() => seedAdditionalTaxes().catch((err) => {
+      logger.warn({ err }, "Additional tax seed failed (non-fatal)");
     }))
     .then(() => seedUom().catch((err) => {
       logger.warn({ err }, "UOM seed failed (non-fatal)");

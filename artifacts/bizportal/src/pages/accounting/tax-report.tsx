@@ -1,12 +1,12 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
-import { Download, RefreshCw, CheckCircle, FileText, AlertCircle } from "lucide-react";
+import { Download, RefreshCw, CheckCircle, FileText, AlertCircle, Wifi, WifiOff } from "lucide-react";
 
 const API = "/api/accounting";
 
@@ -78,6 +78,84 @@ interface Summary {
   reported: number;
 }
 
+function useTaxSse(period: string, companyId?: number) {
+  const qc = useQueryClient();
+  const [connected, setConnected] = useState(false);
+  const esRef = useRef<EventSource | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+
+    function stopPolling() {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+    }
+
+    function startFallbackPolling() {
+      stopPolling();
+      pollRef.current = setInterval(() => {
+        qc.invalidateQueries({ queryKey: ["tax-report", period] });
+        qc.invalidateQueries({ queryKey: ["tax-transactions", period] });
+      }, 30_000);
+    }
+
+    function connect() {
+      if (esRef.current) {
+        esRef.current.close();
+        esRef.current = null;
+      }
+
+      const params = new URLSearchParams();
+      if (companyId) params.set("companyId", String(companyId));
+      const es = new EventSource(`${API}/tax-stream?${params}`, { withCredentials: true });
+      esRef.current = es;
+
+      es.onopen = () => {
+        setConnected(true);
+        stopPolling();
+      };
+
+      es.onmessage = (ev) => {
+        try {
+          const data = JSON.parse(ev.data);
+          if (data.type === "tax_update") {
+            const affectsCurrent = !data.period || data.period === period;
+            if (affectsCurrent) {
+              qc.invalidateQueries({ queryKey: ["tax-report", period] });
+              qc.invalidateQueries({ queryKey: ["tax-transactions", period] });
+            }
+          }
+        } catch { /* ignore parse errors */ }
+      };
+
+      es.onerror = () => {
+        setConnected(false);
+        es.close();
+        esRef.current = null;
+        startFallbackPolling();
+        retryTimer = setTimeout(connect, 15_000);
+      };
+    }
+
+    connect();
+
+    return () => {
+      if (retryTimer) clearTimeout(retryTimer);
+      if (esRef.current) {
+        esRef.current.close();
+        esRef.current = null;
+      }
+      stopPolling();
+      setConnected(false);
+    };
+  }, [companyId, period, qc]);
+
+  return connected;
+}
+
 export default function TaxReportPage() {
   const qc = useQueryClient();
   const [period, setPeriod] = useState(currentPeriod());
@@ -86,6 +164,8 @@ export default function TaxReportPage() {
   const [statusFilter, setStatusFilter] = useState("all");
 
   const periods = useMemo(() => generatePeriods(), []);
+
+  const sseConnected = useTaxSse(period);
 
   const reportQuery = useQuery<{ rows: ReportRow[]; summary: Summary }>({
     queryKey: ["tax-report", period],
@@ -155,6 +235,13 @@ export default function TaxReportPage() {
           <p className="text-muted-foreground text-sm">Otomasi pajak per transaksi — PPN & PPh</p>
         </div>
         <div className="flex gap-2 items-center">
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            {sseConnected ? (
+              <><Wifi className="w-3.5 h-3.5 text-green-500" /> <span className="text-green-600">Live</span></>
+            ) : (
+              <><WifiOff className="w-3.5 h-3.5 text-orange-400" /> <span className="text-orange-500">Polling 30s</span></>
+            )}
+          </div>
           <Select value={period} onValueChange={setPeriod}>
             <SelectTrigger className="w-36">
               <SelectValue />
