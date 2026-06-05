@@ -489,14 +489,14 @@ export default function PurchaseRequestEditorPage() {
                       <div className="col-span-3">
                         <label className="text-xs text-muted-foreground mb-0.5 block">Kategori Komoditas</label>
                         <select
-                          className="flex h-8 w-full rounded-md border border-input bg-transparent px-2 text-xs"
+                          className="flex h-8 w-full rounded-md border border-input bg-background px-2 text-xs text-foreground [color-scheme:light]"
                           value={line.productCategory ?? ""}
                           onChange={e => setLineCategory(i, e.target.value)}
                           disabled={!isDraft}
                         >
-                          <option value="">— Umum —</option>
+                          <option value="" className="text-gray-900 bg-white dark:text-white dark:bg-gray-800">— Umum —</option>
                           {templates.map(t => (
-                            <option key={t.category} value={t.category}>{t.label}</option>
+                            <option key={t.category} value={t.category} className="text-gray-900 bg-white dark:text-white dark:bg-gray-800">{t.label}</option>
                           ))}
                         </select>
                       </div>
