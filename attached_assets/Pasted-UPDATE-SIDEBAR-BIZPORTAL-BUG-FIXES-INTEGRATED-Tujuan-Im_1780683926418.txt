@@ -1,0 +1,86 @@
+UPDATE SIDEBAR BIZPORTAL & BUG FIXES — INTEGRATED
+
+Tujuan:
+Implementasi parent menu baru "Expense Management" dengan 14 child menu, membersihkan Operations, dan perbaikan bug terkait expenseReminderWorker, kasbon.tsx, dan import.
+
+---
+
+A. SIDEBAR
+
+1. **Parent Menu Baru**
+
+   * Label: `Expense Management`
+   * Posisi: antara `Operations` dan `Finance`
+   * Collapsible
+   * Role: admin, owner, manager
+
+2. **Child Menu (Urutan Logis)**
+   | # | Child Menu | Path |
+   |---|------------|------|
+   | 1 | Semua Pengeluaran | /expense |
+   | 2 | Biaya Rutin | /expense/routine |
+   | 3 | Kategori | /expense/categories |
+   | 4 | Laporan Expense | /expense/reports |
+   | 5 | Dashboard & Monitor | /expense/dashboard |
+   | 6 | Kasbon Karyawan | /expense/kasbon |
+   | 7 | Dana Talangan | /expense/talangan |
+   | 8 | Vendor Installments | /expense/vendor-installments |
+   | 9 | Approvals | /expense/approvals |
+   | 10 | Fixed Assets | /expense/fixed-assets |
+   | 11 | Asset Depreciation | /expense/asset-depreciation |
+   | 12 | Vendor Payments | /expense/vendor-payments |
+   | 13 | Templates Expense | /expense/templates |
+   | 14 | Budget & Kurs | /expense/budget |
+
+3. **Operations**
+
+   * Hanya tersisa menu `Trading`
+   * Semua sub-menu terkait expense dipindahkan ke parent baru
+   * Pastikan tidak ada duplikasi
+
+---
+
+B. BUG FIXES
+
+1. **expenseReminderWorker**
+
+   * Unique index DATE_TRUNC diganti kolom `reminder_date` (IMMUTABLE-safe)
+
+2. **kasbon.tsx**
+
+   * Hapus `duplicate userList` dan `selectedUserId`
+
+3. **index.ts**
+
+   * Hapus import `fixExpenseCategoryDefaultTax` yang tidak ada
+
+---
+
+C. FRONTEND / TESTING
+
+1. Sidebar:
+
+   * Parent Expense Management muncul collapsible di posisi tepat
+   * Semua 14 child menu muncul, route valid, urutan logis
+   * Operations hanya menampilkan `Trading`
+
+2. Partial test:
+
+   * Klik semua child menu → halaman kanan panel muncul sesuai
+   * Role access valid (admin, owner, manager)
+
+3. Bug fix validation:
+
+   * Jalankan worker → pastikan reminder_date index tidak error
+   * Form kasbon → dropdown user / selectedUserId tidak duplikat
+   * Build / TypeScript → clean, tidak ada error
+
+---
+
+Instruksi:
+
+* Update backend sidebar config → tambahkan parent Expense Management + 14 child
+* Bersihkan Operations → hanya Trading, pindahkan expense sub-menu
+* Perbaiki bug expenseReminderWorker, kasbon.tsx, index.ts
+* Frontend render sidebar → collapsible, urutan logis, role access
+* Partial test → klik menu → halaman kanan muncul, expense list mapping benar
