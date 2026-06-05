@@ -958,7 +958,6 @@ export function AppShell({ children, noPadding }: AppShellProps) {
       {shortcutsOverlay}
       <div className="flex min-h-[100dvh] w-full bg-background text-foreground">
         <Sidebar className="border-r border-border">
-          <SidebarHeader className="border-b border-border px-3 py-2">
           <div
             onMouseDown={onDragMouseDown}
             className="absolute top-0 right-0 z-50 h-full w-1.5 cursor-col-resize group hidden md:flex items-center justify-center"
@@ -966,7 +965,7 @@ export function AppShell({ children, noPadding }: AppShellProps) {
           >
             <div className="h-12 w-0.5 rounded-full bg-border group-hover:bg-primary transition-colors" />
           </div>
-          <SidebarHeader className="border-b border-border px-4 py-3">
+          <SidebarHeader className="border-b border-border px-3 py-2">
             <div className="flex items-center gap-2">
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground shrink-0">
                 <Building2 size={18} />
