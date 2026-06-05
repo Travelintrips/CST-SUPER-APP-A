@@ -12,11 +12,11 @@ function getSecret(): string {
 }
 
 /**
- * Token window size: 48 hours.
- * Tokens rotate every 48 hours so old links eventually expire.
- * Returns the floor of the current 48-hour epoch.
+ * Token window size: 7 days.
+ * Tokens rotate every 7 days so old links eventually expire.
+ * Returns the floor of the current 7-day epoch.
  */
-const WINDOW_MS = 48 * 60 * 60 * 1000;
+const WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 function currentWindow(): number {
   return Math.floor(Date.now() / WINDOW_MS);
