@@ -19,6 +19,13 @@ import { ensureAccountingSettings } from "../lib/accountingSeed.js";
 
 const _expenseObjectStorage = new ObjectStorageService();
 
+// ── Boot migration: add default_tax_id to expense_categories ──────────────────
+db.execute(sql`
+  ALTER TABLE expense_categories
+  ADD COLUMN IF NOT EXISTS default_tax_id integer
+  REFERENCES accounting_taxes(id) ON DELETE SET NULL
+`).catch(() => {});
+
 const router = Router();
 router.use(async (req, res, next) => {
   if (!(await requireAdmin(req, res))) return;
@@ -80,7 +87,7 @@ router.get("/categories", async (_req, res) => {
 });
 
 router.post("/categories", async (req, res) => {
-  const { name, code, expenseAccountId, payableAccountId, requiresAttachment, isActive } = req.body ?? {};
+  const { name, code, expenseAccountId, payableAccountId, defaultTaxId, requiresAttachment, isActive } = req.body ?? {};
   if (!name || !code) return res.status(400).json({ message: "name and code are required" });
   const [created] = await db
     .insert(expenseCategoriesTable)
@@ -89,6 +96,7 @@ router.post("/categories", async (req, res) => {
       code: String(code).toUpperCase(),
       expenseAccountId: expenseAccountId ? Number(expenseAccountId) : null,
       payableAccountId: payableAccountId ? Number(payableAccountId) : null,
+      defaultTaxId: defaultTaxId ? Number(defaultTaxId) : null,
       requiresAttachment: Boolean(requiresAttachment),
       isActive: isActive !== false,
     })
@@ -99,12 +107,13 @@ router.post("/categories", async (req, res) => {
 router.patch("/categories/:id", async (req, res) => {
   const id = Number(req.params.id);
   if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
-  const { name, code, expenseAccountId, payableAccountId, requiresAttachment, isActive } = req.body ?? {};
+  const { name, code, expenseAccountId, payableAccountId, defaultTaxId, requiresAttachment, isActive } = req.body ?? {};
   const update: Record<string, unknown> = {};
   if (name !== undefined) update.name = String(name);
   if (code !== undefined) update.code = String(code).toUpperCase();
   if (expenseAccountId !== undefined) update.expenseAccountId = expenseAccountId ? Number(expenseAccountId) : null;
   if (payableAccountId !== undefined) update.payableAccountId = payableAccountId ? Number(payableAccountId) : null;
+  if (defaultTaxId !== undefined) update.defaultTaxId = defaultTaxId ? Number(defaultTaxId) : null;
   if (requiresAttachment !== undefined) update.requiresAttachment = Boolean(requiresAttachment);
   if (isActive !== undefined) update.isActive = Boolean(isActive);
   const [updated] = await db
@@ -130,30 +139,44 @@ router.post("/seed-categories", async (_req, res) => {
   const ap = byCode.get("2-1010");
   const opex = byCode.get("5-2040");
 
-  const CATEGORIES = [
-    { name: "Biaya Trucking", code: "TRUCKING" },
-    { name: "Biaya Handling", code: "HANDLING" },
-    { name: "Biaya Storage", code: "STORAGE" },
-    { name: "Biaya Pabean", code: "CUSTOMS" },
-    { name: "Biaya Dokumen", code: "DOCUMENT" },
-    { name: "Biaya Freight", code: "FREIGHT" },
-    { name: "Biaya Container", code: "CONTAINER" },
-    { name: "Biaya Operasional", code: "OPERATIONAL" },
-    { name: "Reimbursement Karyawan", code: "REIMBURSEMENT", requiresAttachment: true },
-    { name: "Biaya Vendor/Subcon", code: "VENDOR" },
-    // ── Preset Rutin ────────────────────────────────────────────────
-    { name: "Entertainment", code: "ENTERTAINMENT", coaCode: "5-2060" },
-    { name: "Makan & Minum", code: "MAKAN_MINUM", coaCode: "5-2040" },
-    { name: "Sewa Kantor", code: "SEWA_KANTOR", coaCode: "5-2020" },
-    { name: "Utilitas", code: "UTILITAS", coaCode: "5-2030" },
-    { name: "Peralatan & ATK", code: "PERALATAN", coaCode: "5-2090" },
-    { name: "Biaya Lain-lain", code: "LAIN_LAIN", coaCode: "5-3000" },
+  // Lookup default taxes by name for auto-mapping
+  const allTaxes = await db.select().from(accountingTaxesTable);
+  const taxByName = new Map(allTaxes.map((t) => [t.name.toLowerCase(), t]));
+  const pph23 = taxByName.get("pph 23") ?? allTaxes.find((t) => t.name.toLowerCase().includes("pph 23"));
+  const pph21 = taxByName.get("pph 21") ?? allTaxes.find((t) => t.name.toLowerCase().includes("pph 21"));
+  const pphSewa = allTaxes.find((t) => t.name.toLowerCase().includes("sewa"));
+
+  type CatDef = {
+    name: string; code: string; coaCode?: string;
+    requiresAttachment?: boolean; taxCode?: "pph23" | "pph21" | "pphSewa" | null;
+  };
+  const CATEGORIES: CatDef[] = [
+    { name: "Biaya Trucking",         code: "TRUCKING",      taxCode: "pph23" },
+    { name: "Biaya Handling",         code: "HANDLING",      taxCode: "pph23" },
+    { name: "Biaya Storage",          code: "STORAGE",       taxCode: "pph23" },
+    { name: "Biaya Pabean",           code: "CUSTOMS",       taxCode: "pph23" },
+    { name: "Biaya Dokumen",          code: "DOCUMENT",      taxCode: "pph23" },
+    { name: "Biaya Freight",          code: "FREIGHT",       taxCode: "pph23" },
+    { name: "Biaya Container",        code: "CONTAINER",     taxCode: "pph23" },
+    { name: "Biaya Operasional",      code: "OPERATIONAL",   taxCode: "pph23" },
+    { name: "Reimbursement Karyawan", code: "REIMBURSEMENT", requiresAttachment: true, taxCode: "pph21" },
+    { name: "Biaya Vendor/Subcon",    code: "VENDOR",        taxCode: "pph23" },
+    // ── Preset Rutin ──────────────────────────────────────────────
+    { name: "Entertainment",          code: "ENTERTAINMENT", coaCode: "5-2060", taxCode: null },
+    { name: "Makan & Minum",          code: "MAKAN_MINUM",  coaCode: "5-2040", taxCode: null },
+    { name: "Sewa Kantor",            code: "SEWA_KANTOR",  coaCode: "5-2020", taxCode: "pphSewa" },
+    { name: "Utilitas",               code: "UTILITAS",     coaCode: "5-2030", taxCode: null },
+    { name: "Peralatan & ATK",        code: "PERALATAN",    coaCode: "5-2090", taxCode: null },
+    { name: "Biaya Lain-lain",        code: "LAIN_LAIN",    coaCode: "5-3000", taxCode: null },
   ];
 
   for (const cat of CATEGORIES) {
-    const expAcc = (cat as { coaCode?: string }).coaCode
-      ? byCode.get((cat as { coaCode?: string }).coaCode!)
-      : opex;
+    const expAcc = cat.coaCode ? byCode.get(cat.coaCode) : opex;
+    const defaultTaxId =
+      cat.taxCode === "pph23" ? (pph23?.id ?? null)
+      : cat.taxCode === "pph21" ? (pph21?.id ?? null)
+      : cat.taxCode === "pphSewa" ? (pphSewa?.id ?? null)
+      : null;
     await db
       .insert(expenseCategoriesTable)
       .values({
@@ -161,7 +184,8 @@ router.post("/seed-categories", async (_req, res) => {
         code: cat.code,
         expenseAccountId: expAcc?.id ?? opex?.id ?? null,
         payableAccountId: ap?.id ?? settings.apAccountId ?? null,
-        requiresAttachment: (cat as { requiresAttachment?: boolean }).requiresAttachment ?? false,
+        defaultTaxId,
+        requiresAttachment: cat.requiresAttachment ?? false,
         isActive: true,
       })
       .onConflictDoNothing({ target: expenseCategoriesTable.code });
