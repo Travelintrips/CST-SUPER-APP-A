@@ -198,6 +198,13 @@ export default function ProductOrderPage() {
   const [companyOrigin, setCompanyOrigin] = useState<{ name: string; address: string; originCity: string; originAirport: string; originPort: string } | null>(null);
 
   useEffect(() => {
+    fetch(`${BASE}/api/trucking-rates`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (Array.isArray(d) && d.length > 0) setApiRates(d); })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
     fetch(`${BASE}/api/settings/company-pickup-address`)
       .then(r => r.ok ? r.json() : null)
       .then((d: { companyName: string; companyAddress: string; originCity?: string; originAirport?: string; originPort?: string } | null) => {

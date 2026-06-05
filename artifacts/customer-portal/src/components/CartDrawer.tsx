@@ -233,6 +233,25 @@ export function CartDrawer() {
   }, []);
 
   useEffect(() => {
+    fetch("/api/trucking-rates")
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (Array.isArray(d) && d.length > 0) setApiRates(d); })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (view !== "trucking") return;
+    try {
+      const saved = JSON.parse(localStorage.getItem("truck_pref") ?? "{}") as { destCity?: string; vehicleType?: string };
+      setTruckData(p => ({
+        ...p,
+        ...(saved.destCity   && !p.destCity    ? { destCity:    saved.destCity   } : {}),
+        ...(saved.vehicleType && !p.vehicleType ? { vehicleType: saved.vehicleType } : {}),
+      }));
+    } catch { /**/ }
+  }, [view]);
+
+  useEffect(() => {
     if (view !== "trucking" || companyPickup) return;
     fetch("/api/settings/company-pickup-address")
       .then(r => r.ok ? r.json() : null)
