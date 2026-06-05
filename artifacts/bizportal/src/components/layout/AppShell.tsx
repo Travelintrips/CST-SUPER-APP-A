@@ -792,31 +792,34 @@ export function AppShell({ children, noPadding }: AppShellProps) {
     <SidebarProvider>
       <div className="flex min-h-[100dvh] w-full bg-background text-foreground">
         <Sidebar className="border-r border-border">
-          <SidebarHeader className="border-b border-border px-4 py-3">
+          <SidebarHeader className="border-b border-border px-3 py-2">
             <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground shrink-0">
                 <Building2 size={18} />
               </div>
               <span className="text-lg font-bold tracking-tight flex-1">BizPortal</span>
-              {(["admin", "owner", "super_admin", "manager"] as string[]).includes(dbUser?.role as string) && (
-                <button
-                  onClick={() => setCustomizeMode((m) => !m)}
-                  className={cn(
-                    "p-1.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors",
-                    customizeMode && "bg-accent text-foreground"
-                  )}
-                  title="Sesuaikan tampilan menu"
-                >
-                  <SlidersHorizontal size={14} />
-                </button>
-              )}
             </div>
+            {(["admin", "owner", "super_admin", "manager"] as string[]).includes(dbUser?.role as string) && (
+              <button
+                onClick={() => setCustomizeMode((m) => !m)}
+                className={cn(
+                  "mt-1.5 w-full flex items-center gap-2 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium transition-colors",
+                  customizeMode
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "text-foreground hover:bg-accent hover:border-accent-foreground/20"
+                )}
+                title="Sesuaikan tampilan menu"
+              >
+                <SlidersHorizontal size={13} />
+                <span>{customizeMode ? "✓ Mode Kustomisasi Aktif" : "Kustomisasi Sidebar"}</span>
+              </button>
+            )}
             {customizeMode && (
-              <div className="mt-2 flex items-center justify-between gap-2 rounded-md bg-accent/60 px-2 py-1.5 text-[11px] text-muted-foreground">
-                <span>Klik <EyeOff size={10} className="inline -mt-px" /> untuk sembunyikan item</span>
+              <div className="mt-1 flex items-center justify-between gap-2 rounded-md bg-amber-950/40 border border-amber-700/30 px-2 py-1.5 text-[11px] text-amber-300">
+                <span>Seret <span className="font-mono">⠿</span> untuk reorder · <EyeOff size={10} className="inline -mt-px" /> sembunyikan</span>
                 <button
                   onClick={resetHidden}
-                  className="shrink-0 font-medium text-destructive hover:text-destructive/80"
+                  className="shrink-0 font-semibold text-red-400 hover:text-red-300"
                 >
                   Reset
                 </button>
