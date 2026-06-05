@@ -70,7 +70,9 @@ async function detectTax(
     case "logistic_order":
       return (
         (await findTaxByName(companyId, "Freight Paket")) ??
-        (await findTaxByName(companyId, "Freight"))
+        (await findTaxByName(companyId, "PPh Freight")) ??
+        (await findTaxByName(companyId, "Freight")) ??
+        (await findTaxByKind(companyId, "withholding"))
       );
 
     case "sales_order":

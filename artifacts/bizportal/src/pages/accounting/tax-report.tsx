@@ -171,6 +171,8 @@ export default function TaxReportPage() {
     queryKey: ["tax-report", period],
     queryFn: () =>
       fetch(`${API}/tax-report?period=${period}`, { credentials: "include" }).then((r) => r.json()),
+    refetchInterval: 30_000,
+    staleTime: 20_000,
   });
 
   const txQuery = useQuery<{ data: TaxTx[]; total: number }>({
@@ -181,6 +183,8 @@ export default function TaxReportPage() {
       return fetch(`${API}/tax-transactions?${params}`, { credentials: "include" }).then((r) => r.json());
     },
     enabled: tab === "detail",
+    refetchInterval: tab === "detail" ? 30_000 : false,
+    staleTime: 20_000,
   });
 
   const markMutation = useMutation({

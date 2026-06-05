@@ -667,12 +667,14 @@ router.post("/documents/:id/action", async (req, res) => {
         });
         if (taxAmount > 0) {
           const { recordTransactionTax } = await import("../lib/taxAutoService.js");
+          const grandTotalPO = Number(doc.grandTotal ?? doc.totalAmount ?? 0);
+          const baseAmountPO = grandTotalPO > taxAmount ? grandTotalPO - taxAmount : Number(doc.totalAmount ?? 0);
           void recordTransactionTax({
             companyId: doc.companyId ?? 1,
             transactionType: "purchase_order",
             transactionId: doc.id,
             transactionRef: doc.docNumber,
-            baseAmount: Number(doc.totalAmount ?? 0),
+            baseAmount: baseAmountPO,
             taxAmount,
           });
         }
