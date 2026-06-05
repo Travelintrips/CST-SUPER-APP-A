@@ -1,0 +1,123 @@
+KASBON KARYAWAN → REIMBURSEMENT → OCR RECEIPT — END-TO-END
+
+Tujuan:
+Implementasi workflow lengkap: pengajuan kasbon oleh karyawan → approval BD → reimbursement → upload receipt → OCR → auto-fill form → submit → timeline & audit.
+
+---
+
+## A. ALUR END-TO-END
+
+```text id="kasbon-ocr-flow"
+1. Karyawan A membuka form Kasbon Karyawan
+        │
+2. Isi detail kasbon:
+        - Tanggal
+        - Nominal pembelian Aqua / kebutuhan kantor
+        - Kategori (Makan & Minum / Office Supplies)
+        - Sumber Dana (Bank / Kas)
+        - Keterangan / Notes
+        │
+3. Submit kasbon → status: Pending Approval
+        │
+4. Business Division (BD) Approval
+        - Validasi kebutuhan & nominal
+        - Jika disetujui → status kasbon: Approved
+        - Optional: trigger audit log 'kasbon_approved'
+        │
+5. Finance / Admin reimbursement
+        - Bayar karyawan → update jurnal DR Kasbon / CR Kas/Bank
+        - Status kasbon → Terbayar / Partial
+        │
+6. Customer / Employee Upload Receipt
+        - Klik tombol “Upload Receipt” di form Kasbon / Dana Talangan
+        - File: PDF / JPG / PNG
+        │
+7. Backend OCR
+        - Endpoint: POST /api/expense/upload-receipt
+        - Simpan file ke storage
+        - Jalankan OCR → ekstrak:
+            * Nominal pembayaran
+            * Tanggal
+            * Vendor / Karyawan / Pihak penerima
+        - Simpan hasil OCR → `ocr_raw_data`
+        - Validasi: nominal > 0, tanggal valid, karyawan terdaftar
+        │
+8. Frontend Auto-Fill
+        - Nominal, Tanggal, Karyawan otomatis terisi di form
+        - User bisa koreksi jika OCR salah
+        │
+9. Submit Reimbursement
+        - Backend simpan record expense
+        - Update jurnal DR / CR otomatis
+        - Update status kasbon → Paid / Completed
+        - Timeline / dashboard admin update
+        - Audit log tercatat: kasbon_created, kasbon_approved, payment_processed, receipt_uploaded, ocr_processed
+```
+
+---
+
+## B. BACKEND
+
+1. **Kasbon Submission**
+
+   * Endpoint: POST `/api/kasbon` → simpan kasbon dengan status `Pending Approval`
+2. **Approval BD**
+
+   * Endpoint: PATCH `/api/kasbon/:id/approve` → set status `Approved`
+3. **Reimbursement / Payment**
+
+   * Endpoint: PATCH `/api/kasbon/:id/pay` → post jurnal DR Kasbon / CR Kas/Bank
+4. **OCR Receipt**
+
+   * Endpoint: POST `/api/expense/upload-receipt`
+   * Simpan file → storage
+   * Jalankan OCR → parse nominal, tanggal, karyawan
+   * Simpan hasil di `ocr_raw_data`
+   * Validasi data sebelum auto-fill
+5. **Audit Logging**
+
+   * Catat semua event dengan timestamp + expense_id + user_id
+
+---
+
+## C. FRONTEND
+
+1. **Form Kasbon**
+
+   * Input: Tanggal, Nominal, Karyawan, Sumber Dana, Kategori, Keterangan
+   * Tombol Upload Receipt → panggil OCR endpoint
+2. **Auto-Fill Hasil OCR**
+
+   * Nominal, Tanggal, Karyawan terisi otomatis
+   * User bisa koreksi manual
+3. **Timeline / Dashboard**
+
+   * Update realtime: Pending → Approved → Paid → Completed
+   * Menampilkan status kasbon & history
+
+---
+
+## D. TESTING / QA
+
+| No | Step                 | Expected Result                                                |
+| -- | -------------------- | -------------------------------------------------------------- |
+| 1  | Karyawan buat kasbon | Status `Pending Approval`, detail lengkap tersimpan            |
+| 2  | BD approve           | Status berubah → `Approved`, audit log tercatat                |
+| 3  | Finance reimburse    | Jurnal DR/CR update, status `Terbayar`                         |
+| 4  | Upload receipt       | File tersimpan, OCR membaca nominal/tanggal/karyawan           |
+| 5  | Auto-fill form       | Kolom nominal/tanggal/karyawan terisi otomatis                 |
+| 6  | Submit expense       | Record tersimpan, status kasbon → Paid/Completed               |
+| 7  | Timeline & audit     | Semua step tercatat, dashboard update realtime                 |
+| 8  | Partial test         | Bisa dijalankan tanpa mengganggu kasbon lain, build & TS clean |
+
+---
+
+Instruksi:
+
+* Implementasikan backend endpoints: `/api/kasbon`, `/api/kasbon/:id/approve`, `/api/kasbon/:id/pay`, `/api/expense/upload-receipt`
+* Integrasikan OCR library untuk ekstraksi nominal, tanggal, karyawan
+* Frontend form auto-fill hasil OCR → preview & koreksi manual
+* Jurnal DR/CR otomatis setelah reimbursement
+* Timeline / dashboard admin update realtime
+* Simpan semua event di audit log
+* Test partial: buat kasbon dummy → approve BD → reimburse → upload receipt → auto-fill → submit

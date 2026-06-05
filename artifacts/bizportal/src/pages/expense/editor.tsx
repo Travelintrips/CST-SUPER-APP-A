@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useLocation, useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { apiFetch } from "@/lib/api";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -43,6 +42,13 @@ import {
   Command, CommandEmpty, CommandInput, CommandItem, CommandList,
 } from "@/components/ui/command";
 import { Link } from "wouter";
+
+async function apiFetch(url: string, opts?: RequestInit) {
+  const r = await fetch(url, { credentials: "include", ...opts });
+  const d = await r.json();
+  if (!r.ok) throw new Error(d.message ?? "Terjadi kesalahan.");
+  return d;
+}
 
 const idr = (n: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
