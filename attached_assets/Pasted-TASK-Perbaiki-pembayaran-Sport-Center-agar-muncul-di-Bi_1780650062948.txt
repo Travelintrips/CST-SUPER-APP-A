@@ -1,0 +1,61 @@
+TASK: Perbaiki pembayaran Sport Center agar muncul di BizPortal Finance dan Supabase
+
+Tujuan:
+- Semua pembayaran booking Sport Center tercatat di:
+  - sport_payments
+  - sport_bookings (payment_status)
+  - Supabase sport_center_bookings
+  - Accounting (accounting_entries + accounting_payments)
+- Dashboard Finance → Payments dan Sport Center → Total Bayar Masuk tampil konsisten
+
+1. Database Migration:
+- Jalankan idempoten:
+  ALTER TABLE sport_payments ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'SPORT_CENTER';
+- Jalankan otomatis saat server start
+
+2. Endpoint: POST /api/sport-center/payments
+- Input:
+  - amount ATAU total_amount
+  - payment_method ATAU method
+  - payment_date opsional (YYYY-MM-DD)
+- Backend logic:
+  a. Insert ke sport_payments:
+     - booking_id
+     - amount
+     - payment_method
+     - paid_at = COALESCE(payment_date, NOW())
+     - source = 'SPORT_CENTER'
+     - payment_status = 'paid'
+  b. Update sport_bookings.payment_status = 'paid'
+  c. Supabase Sync:
+     - panggil syncBookingUpsert() dengan payment_status='paid'
+     - update sport_center_bookings di Supabase
+  d. Accounting:
+     - postSportCenterBooking() / postSportCenterBookingWithTax() fire-and-forget
+     - Debit Kas ← Credit Pendapatan Sport Center
+     - company_id dari booking
+     - source = 'sport_center_booking'
+  e. Accounting Payments:
+     - insertAccountingPaymentForSportCenter() → muncul di halaman Finance → Payments
+  f. Audit Log:
+     - insert ke sport_audit_logs: booking_id, amount, method, payment_number, source
+  g. Error handling:
+     - catch(err) → console.error lengkap, tidak silent
+
+3. Dashboard:
+- revenue_today di KPI Live query dari accounting_entries WHERE source='sport_center_booking'
+- Total Booking konsisten karena syncBookingUpsert dipanggil setelah setiap pembayaran
+
+4. Middleware:
+- requireAdmin, hanya admin BizPortal dapat akses
+
+5. Testing:
+- Buat booking test → lakukan pembayaran
+- Cek:
+  - sport_payments record ada, source='SPORT_CENTER', payment_status='paid'
+  - sport_bookings.payment_status='paid'
+  - Supabase sport_center_bookings update
+  - Accounting journal terbentuk
+  - Accounting Payments muncul di dashboard Finance
+  - sport_audit_logs terisi
+  - Dashboard Total Bayar Masuk konsisten
