@@ -8,6 +8,7 @@
  *   /q/*               → API Server      :8080  (short-link redirects)
  *   /s/*               → API Server      :8080
  *   /bizportal/*       → BizPortal       :3000
+ *   /bizportal/*       → BizPortal       :4200
 
  *   /sport-center/*    → 302 redirect to /bizportal/sport-center/* (served by BizPortal React Router)
 
@@ -41,6 +42,14 @@ const BIZPORTAL_PORT     = 3000;
 const CUSTOMER_PORT      = 5173;
 // Logistic Order Vite runs at 3001
 const LOGISTIC_ORDER_PORT = 3001;
+const API_PORT            = Number(process.env.API_PORT            ?? 8080);
+const BIZPORTAL_PORT      = Number(process.env.BIZPORTAL_PORT      ?? 18442);
+const CUSTOMER_PORT       = Number(process.env.CUSTOMER_PORT       ?? 23434);
+const LOGISTIC_ORDER_PORT = Number(process.env.LOGISTIC_ORDER_PORT ?? 19368);
+const API_PORT           = Number(process.env.API_PORT ?? 8080);
+const BIZPORTAL_PORT      = Number(process.env.BIZPORTAL_PORT ?? 3000);
+const CUSTOMER_PORT       = Number(process.env.CUSTOMER_PORT ?? 5173);
+const LOGISTIC_ORDER_PORT = Number(process.env.LOGISTIC_ORDER_PORT ?? 3001);
 
 const ROUTES = [
   { prefix: "/api",             upstream: { host: "localhost", port: API_PORT } },
@@ -83,7 +92,7 @@ const ROUTES = [
   { prefix: "/org",                 upstream: null, redirectMapTo: "/bizportal/org",                  redirectDefaultSuffix: "/" },
   { prefix: "/media",               upstream: null, redirectMapTo: "/bizportal/media",                redirectDefaultSuffix: "/" },
   // Products & catalog
-  { prefix: "/products",            upstream: null, redirectMapTo: "/bizportal/products",             redirectDefaultSuffix: "/items" },
+  
   { prefix: "/product-templates",   upstream: null, redirectMapTo: "/bizportal/product-templates",    redirectDefaultSuffix: "/" },
   { prefix: "/katalog-terpadu",     upstream: null, redirectMapTo: "/bizportal/katalog-terpadu",      redirectDefaultSuffix: "/" },
   { prefix: "/vendors",             upstream: null, redirectMapTo: "/bizportal/vendors",              redirectDefaultSuffix: "/" },
@@ -342,8 +351,20 @@ async function startGateway() {
 
 startGateway();
 
-
-// NOTE: EXTRA_PORT (23434) mirror listener is intentionally disabled.
-// Port 23434 is reserved for the customer-portal's internal HTTP proxy
-// (Vite on 5174 → proxy on 23434). Gateway must NOT own this port.
-
+// Also listen on EXTRA_PORT (default 23434) to resolve port-mapping conflicts
+// where both port 5000 and 23434 are mapped to external port 80 in .replit.
+const EXTRA_PORT = Number(process.env.EXTRA_PORT ?? 23434);
+if (EXTRA_PORT !== PORT) {
+  const extra = http.createServer(handleRequest);
+  extra.on("upgrade", handleUpgrade);
+  extra.on("error", (err) => {
+    if (err.code === "EADDRINUSE") {
+      console.log(`Gateway: EXTRA_PORT ${EXTRA_PORT} already in use — skipping mirror`);
+    } else {
+      console.error("Gateway extra server error:", err.message);
+    }
+  });
+  extra.listen(EXTRA_PORT, () => {
+    console.log(`Gateway also listening on port ${EXTRA_PORT} (mirror)`);
+  });
+}

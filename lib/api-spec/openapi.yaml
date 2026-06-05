@@ -3776,6 +3776,24 @@ components:
           type: boolean
         createdAt:
           type: string
+        weightKg:
+          type: number
+          nullable: true
+        volumeCbm:
+          type: number
+          nullable: true
+        lengthCm:
+          type: number
+          nullable: true
+        widthCm:
+          type: number
+          nullable: true
+        heightCm:
+          type: number
+          nullable: true
+        goodsType:
+          type: string
+          nullable: true
       required: [id, name, sku, price, stock, categories, itemType, unit, isActive, createdAt]
 
     CreateProductBody:
@@ -3823,6 +3841,24 @@ components:
           nullable: true
         isActive:
           type: boolean
+        weightKg:
+          type: number
+          nullable: true
+        volumeCbm:
+          type: number
+          nullable: true
+        lengthCm:
+          type: number
+          nullable: true
+        widthCm:
+          type: number
+          nullable: true
+        heightCm:
+          type: number
+          nullable: true
+        goodsType:
+          type: string
+          nullable: true
       required: [name, sku, price, itemType, unit]
 
     LineItem:

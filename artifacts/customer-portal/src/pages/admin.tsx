@@ -492,16 +492,16 @@ function MediaUploader({
     const newItems: MediaItem[] = [];
     try {
       for (const file of files) {
-        const { uploadURL, objectPath } = await apiPost<{ uploadURL: string; objectPath: string }>(
-          "/api/portal/admin/upload-url",
-          { contentType: file.type }
-        );
-        await fetch(uploadURL, {
-          method: "PUT",
-          headers: { "Content-Type": file.type },
-          body: file,
+        const formData = new FormData();
+        formData.append("file", file);
+        const res = await fetch("/api/portal/admin/upload", {
+          method: "POST",
+          headers: getAuthHeaders(),
+          body: formData,
         });
-        newItems.push({ type, url: `/api/storage${objectPath}` });
+        if (!res.ok) throw new Error(await res.text());
+        const { url } = await res.json() as { url: string };
+        newItems.push({ type, url });
       }
       onChange([...mediaItems, ...newItems]);
       toast({

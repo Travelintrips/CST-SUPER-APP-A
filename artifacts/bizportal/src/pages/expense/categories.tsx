@@ -26,6 +26,7 @@ import {
   useDeleteExpenseCategory,
   useSeedExpenseCategories,
   useListAccounts,
+  useListTaxes,
   getListExpenseCategoriesQueryKey,
   type ExpenseCategory,
 } from "@workspace/api-client-react";
@@ -42,6 +43,9 @@ const EMPTY_FORM = {
   code: "",
   expenseAccountId: null as number | null,
   payableAccountId: null as number | null,
+  defaultTaxId: null as number | null,
+  defaultAmount: "" as string,
+  defaultCoaId: null as number | null,
   requiresAttachment: false,
   isActive: true,
 };
@@ -52,6 +56,7 @@ export default function ExpenseCategoriesPage() {
   const { t } = useLanguage();
   const { data: cats = [] } = useListExpenseCategories();
   const { data: accounts = [] } = useListAccounts();
+  const { data: taxes = [] } = useListTaxes();
   const createMut = useCreateExpenseCategory();
   const updateMut = useUpdateExpenseCategory();
   const deleteMut = useDeleteExpenseCategory();
@@ -76,6 +81,9 @@ export default function ExpenseCategoriesPage() {
       code: c.code,
       expenseAccountId: c.expenseAccountId ?? null,
       payableAccountId: c.payableAccountId ?? null,
+      defaultTaxId: (c as any).defaultTaxId ?? null,
+      defaultAmount: (c as any).defaultAmount ? String(Number((c as any).defaultAmount)) : "",
+      defaultCoaId: (c as any).defaultCoaId ?? null,
       requiresAttachment: c.requiresAttachment,
       isActive: c.isActive,
     });
@@ -92,6 +100,9 @@ export default function ExpenseCategoriesPage() {
         code: form.code.toUpperCase(),
         expenseAccountId: form.expenseAccountId || undefined,
         payableAccountId: form.payableAccountId || undefined,
+        defaultTaxId: form.defaultTaxId || undefined,
+        defaultAmount: form.defaultAmount ? Number(form.defaultAmount) : undefined,
+        defaultCoaId: form.defaultCoaId || undefined,
         requiresAttachment: form.requiresAttachment,
         isActive: form.isActive,
       };
@@ -165,8 +176,8 @@ export default function ExpenseCategoriesPage() {
                 <TableRow>
                   <TableHead>Kode</TableHead>
                   <TableHead>Nama</TableHead>
-                  <TableHead>Akun Biaya</TableHead>
-                  <TableHead>Akun Hutang</TableHead>
+                  <TableHead>Akun Biaya (DR)</TableHead>
+                  <TableHead>Pajak Default</TableHead>
                   <TableHead>Lampiran</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="w-20"></TableHead>
@@ -180,12 +191,18 @@ export default function ExpenseCategoriesPage() {
                     </TableCell>
                   </TableRow>
                 )}
-                {cats.map((c) => (
+                {cats.map((c) => {
+                  const defaultTax = taxes.find((t) => t.id === (c as any).defaultTaxId);
+                  return (
                   <TableRow key={c.id}>
                     <TableCell className="font-mono text-xs">{c.code}</TableCell>
                     <TableCell className="font-medium">{c.name}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{getAccountName(c.expenseAccountId)}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{getAccountName(c.payableAccountId)}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {defaultTax
+                        ? <span className="text-amber-400 text-xs">{defaultTax.name} ({Number(defaultTax.rate)}%)</span>
+                        : <span className="text-xs text-muted-foreground">—</span>}
+                    </TableCell>
                     <TableCell>
                       {c.requiresAttachment
                         ? <Badge variant="outline" className="text-amber-400 border-amber-500 text-xs">Wajib</Badge>
@@ -207,7 +224,8 @@ export default function ExpenseCategoriesPage() {
                       </div>
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
           </CardContent>
@@ -267,6 +285,54 @@ export default function ExpenseCategoriesPage() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Akun Sumber Pembayaran Default</Label>
+              <Select
+                value={form.defaultCoaId?.toString() ?? "none"}
+                onValueChange={(v) => setForm((f) => ({ ...f, defaultCoaId: v === "none" ? null : Number(v) }))}
+              >
+                <SelectTrigger><SelectValue placeholder="Pilih akun kas/bank..." /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">— Tidak dipilih —</SelectItem>
+                  {accounts.filter((a) => a.type === "asset" && (a.name.toLowerCase().includes("kas") || a.name.toLowerCase().includes("bank"))).map((a) => (
+                    <SelectItem key={a.id} value={a.id.toString()}>
+                      {a.code} — {a.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">Akun kas/bank yang otomatis terpilih saat membuat biaya dari kategori ini.</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Pajak Default (Auto-fill)</Label>
+              <Select
+                value={form.defaultTaxId?.toString() ?? "none"}
+                onValueChange={(v) => setForm((f) => ({ ...f, defaultTaxId: v === "none" ? null : Number(v) }))}
+              >
+                <SelectTrigger><SelectValue placeholder="Tanpa pajak default" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">— Tanpa pajak default —</SelectItem>
+                  {taxes.map((t) => (
+                    <SelectItem key={t.id} value={t.id.toString()}>
+                      {t.name} ({Number(t.rate)}%)
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">Saat kategori ini dipilih di form Biaya Rutin, pajak akan ter-isi otomatis.</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Harga Default (Auto-fill Nominal)</Label>
+              <Input
+                type="number"
+                min="0"
+                step="any"
+                placeholder="0 (kosong = tidak ada default)"
+                value={form.defaultAmount}
+                onChange={(e) => setForm((f) => ({ ...f, defaultAmount: e.target.value }))}
+              />
+              <p className="text-xs text-muted-foreground">Saat kategori ini dipilih di form Biaya Rutin, nominal akan ter-isi otomatis dengan nilai ini.</p>
             </div>
             <div className="flex items-center justify-between rounded-lg border border-border px-4 py-3">
               <div>

@@ -42,7 +42,7 @@ async function checkFonnte(): Promise<ExternalCheckResult> {
   try {
     const t0 = Date.now();
     const res = await fetch("https://api.fonnte.com/device", {
-      method: "GET",
+      method: "POST",
       headers: { Authorization: token },
       signal: AbortSignal.timeout(5_000),
     });

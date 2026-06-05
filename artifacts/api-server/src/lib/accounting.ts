@@ -975,6 +975,17 @@ export async function postSportCenterBooking(args: {
   companyId?: number | null;
 }): Promise<void> {
   try {
+    // Idempoten: skip jika jurnal booking ini sudah diposting
+    const [existingEntry] = await db
+      .select()
+      .from(accountingEntriesTable)
+      .where(sql`${accountingEntriesTable.source} = 'sport_center_booking' AND ${accountingEntriesTable.sourceId} = ${args.bookingId}`)
+      .limit(1);
+    if (existingEntry) {
+      logger.info({ bookingId: args.bookingId }, "Sport Center booking journal already posted — skipping");
+      return;
+    }
+
     const settings = await ensureAccountingSettings(args.companyId ?? 1);
 
     const debitAccountId = settings.defaultCashAccountId ?? settings.defaultBankAccountId;
@@ -984,7 +995,19 @@ export async function postSportCenterBooking(args: {
 
     if (!debitAccountId || !creditAccountId || !journalId) {
       logger.warn(
-        { bookingId: args.bookingId },
+        {
+          bookingId: args.bookingId,
+          companyId: args.companyId,
+          settingsId: settings.id,
+          defaultCashAccountId: settings.defaultCashAccountId,
+          defaultBankAccountId: settings.defaultBankAccountId,
+          salesIncomeAccountId: settings.salesIncomeAccountId,
+          cashJournalId: settings.cashJournalId,
+          bankJournalId: settings.bankJournalId,
+          debitAccountId,
+          creditAccountId,
+          journalId,
+        },
         "Skipping Sport Center booking post: akun kas/pendapatan atau jurnal belum dikonfigurasi",
       );
       return;

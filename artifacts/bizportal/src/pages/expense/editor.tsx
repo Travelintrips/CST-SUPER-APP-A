@@ -394,6 +394,7 @@ export default function ExpenseEditorPage() {
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [rejectOpen, setRejectOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
+  const [autoFilled, setAutoFilled] = useState<Set<string>>(new Set());
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [deletingAttId, setDeletingAttId] = useState<number | null>(null);
@@ -479,11 +480,19 @@ export default function ExpenseEditorPage() {
 
   const onCategoryChange = (catId: number | null) => {
     const cat = cats.find((c) => c.id === catId);
+    const filled = new Set<string>();
+    if (cat) {
+      if (cat.expenseAccountId) filled.add("expenseAccountId");
+      if (cat.payableAccountId) filled.add("payableAccountId");
+      if (cat.defaultTaxId) filled.add("taxRateId");
+    }
+    setAutoFilled(filled);
     setForm((f) => ({
       ...f,
       categoryId: catId,
-      expenseAccountId: cat?.expenseAccountId ?? f.expenseAccountId,
-      payableAccountId: cat?.payableAccountId ?? f.payableAccountId,
+      expenseAccountId: cat ? (cat.expenseAccountId ?? null) : f.expenseAccountId,
+      payableAccountId: cat ? (cat.payableAccountId ?? null) : f.payableAccountId,
+      taxRateId: cat ? (cat.defaultTaxId ?? null) : f.taxRateId,
     }));
   };
 
@@ -774,11 +783,19 @@ export default function ExpenseEditorPage() {
                     onChange={(e) => setForm((f) => ({ ...f, unitPrice: Number(e.target.value) }))} />
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Pajak</Label>
+                  <Label className="flex items-center gap-1.5">
+                    Pajak
+                    {autoFilled.has("taxRateId") && (
+                      <span className="text-xs font-normal text-sky-400 bg-sky-950 border border-sky-800 px-1.5 py-0.5 rounded">auto</span>
+                    )}
+                  </Label>
                   <Select
                     value={form.taxRateId?.toString() ?? "none"}
                     disabled={locked}
-                    onValueChange={(v) => setForm((f) => ({ ...f, taxRateId: v === "none" ? null : Number(v) }))}
+                    onValueChange={(v) => {
+                      setAutoFilled((s) => { const n = new Set(s); n.delete("taxRateId"); return n; });
+                      setForm((f) => ({ ...f, taxRateId: v === "none" ? null : Number(v) }));
+                    }}
                   >
                     <SelectTrigger><SelectValue placeholder="Tidak ada pajak" /></SelectTrigger>
                     <SelectContent>
@@ -814,18 +831,26 @@ export default function ExpenseEditorPage() {
 
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm">Override Akun (Opsional)</CardTitle>
+                <CardTitle className="text-sm">Akun Biaya & Hutang</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <p className="text-xs text-muted-foreground">
-                  Jika kosong, akan menggunakan akun dari kategori atau pengaturan akuntansi.
+                  Terisi otomatis dari kategori. Bisa diubah manual jika perlu.
                 </p>
                 <div className="space-y-1.5">
-                  <Label>Akun Biaya (Debit)</Label>
+                  <Label className="flex items-center gap-1.5">
+                    Akun Biaya (Debit)
+                    {autoFilled.has("expenseAccountId") && (
+                      <span className="text-xs font-normal text-sky-400 bg-sky-950 border border-sky-800 px-1.5 py-0.5 rounded">auto</span>
+                    )}
+                  </Label>
                   <Select
                     value={form.expenseAccountId?.toString() ?? "none"}
                     disabled={locked}
-                    onValueChange={(v) => setForm((f) => ({ ...f, expenseAccountId: v === "none" ? null : Number(v) }))}
+                    onValueChange={(v) => {
+                      setAutoFilled((s) => { const n = new Set(s); n.delete("expenseAccountId"); return n; });
+                      setForm((f) => ({ ...f, expenseAccountId: v === "none" ? null : Number(v) }));
+                    }}
                   >
                     <SelectTrigger><SelectValue placeholder="Dari kategori / default" /></SelectTrigger>
                     <SelectContent>
@@ -837,11 +862,19 @@ export default function ExpenseEditorPage() {
                   </Select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Akun Hutang (Kredit)</Label>
+                  <Label className="flex items-center gap-1.5">
+                    Akun Hutang (Kredit)
+                    {autoFilled.has("payableAccountId") && (
+                      <span className="text-xs font-normal text-sky-400 bg-sky-950 border border-sky-800 px-1.5 py-0.5 rounded">auto</span>
+                    )}
+                  </Label>
                   <Select
                     value={form.payableAccountId?.toString() ?? "none"}
                     disabled={locked}
-                    onValueChange={(v) => setForm((f) => ({ ...f, payableAccountId: v === "none" ? null : Number(v) }))}
+                    onValueChange={(v) => {
+                      setAutoFilled((s) => { const n = new Set(s); n.delete("payableAccountId"); return n; });
+                      setForm((f) => ({ ...f, payableAccountId: v === "none" ? null : Number(v) }));
+                    }}
                   >
                     <SelectTrigger><SelectValue placeholder="Dari kategori / default" /></SelectTrigger>
                     <SelectContent>

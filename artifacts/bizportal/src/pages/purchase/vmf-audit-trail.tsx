@@ -17,7 +17,7 @@ import { Switch } from "@/components/ui/switch";
 import {
   ClipboardList, Search, Download, ChevronDown, ChevronRight,
   Link2, Send, FileCheck, Wrench, CheckCircle, XCircle,
-  Clock, AlertCircle, AlertTriangle, BellRing, Loader2, Settings2,
+  Clock, AlertCircle, AlertTriangle, BellRing, Loader2, Settings2, ArrowLeft,
 } from "lucide-react";
 import { Link } from "wouter";
 
