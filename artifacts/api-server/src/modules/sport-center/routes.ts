@@ -20,15 +20,36 @@ async function insertAccountingPaymentForSportCenter(args: {
   createdById?: string | null;
 }): Promise<void> {
   try {
+    // Idempotency: skip jika sudah ada accounting_payment untuk sourceDocId ini
+    const existing = await db.execute(sql`
+      SELECT id FROM accounting_payments
+      WHERE source_type = 'sport_center' AND source_doc_id = ${args.sourceDocId}
+      LIMIT 1
+    `);
+    if (existing.rows.length > 0) {
+      console.log(`[sport-center] insertAccountingPaymentForSportCenter: already exists for source_doc_id=${args.sourceDocId} — skip`);
+      return;
+    }
+
     const settings = await ensureAccountingSettings(args.companyId);
     const isCash = ["cash", "tunai"].includes(args.method?.toLowerCase() ?? "");
     const journalId = isCash
       ? (settings.cashJournalId ?? settings.bankJournalId)
       : (settings.bankJournalId ?? settings.cashJournalId);
-    if (!journalId) return;
+    if (!journalId) {
+      console.error(
+        `[sport-center] insertAccountingPaymentForSportCenter: journal tidak ditemukan untuk company_id=${args.companyId} method=${args.method}. ` +
+        `cashJournalId=${settings.cashJournalId} bankJournalId=${settings.bankJournalId}. ` +
+        `Pastikan Accounting → Settings sudah dikonfigurasi jurnal Kas/Bank.`
+      );
+      return;
+    }
     const payDate = args.date ?? new Date().toISOString().split("T")[0]!;
     const year = payDate.slice(0, 4);
-    const cntRes = await db.execute(sql`SELECT CAST(COUNT(*) AS int) AS seq FROM accounting_payments`);
+    const cntRes = await db.execute(sql`
+      SELECT CAST(COUNT(*) AS int) AS seq FROM accounting_payments
+      WHERE company_id = ${args.companyId}
+    `);
     const seq = Number((cntRes.rows[0] as any)?.seq ?? 0);
     const paySeq = (seq + 1).toString().padStart(4, "0");
     const acctPayNumber = `PAY/${year}/${paySeq}`;
@@ -48,6 +69,7 @@ async function insertAccountingPaymentForSportCenter(args: {
       sourceDocId: args.sourceDocId,
       createdById: args.createdById ?? null,
     });
+    console.log(`[sport-center] accounting_payment created: ${acctPayNumber} amount=${args.amount} source_doc_id=${args.sourceDocId}`);
   } catch (err) {
     console.error("[sport-center] insertAccountingPaymentForSportCenter failed:", err);
   }
@@ -1394,9 +1416,10 @@ router.post("/payments", async (req, res) => {
     const bFacility = String(b.facility_name ?? "");
     const createdById = (req.user as { id: string } | undefined)?.id ?? null;
 
-    // Validasi payment_date
+    // Validasi payment_date — gunakan sebagai tanggal efektif accounting jika valid
     const isValidDate = payment_date && /^\d{4}-\d{2}-\d{2}$/.test(payment_date);
     const paidAt = isValidDate ? `${payment_date}T00:00:00Z` : null; // null → NOW() di SQL
+    const effectiveDate = isValidDate ? (payment_date as string) : bBookingDate;
 
     // 2. Generate payment number dengan company_id yang benar
     const paymentNumber = await nextPaymentNumber(bCompanyId);
@@ -1443,13 +1466,14 @@ router.post("/payments", async (req, res) => {
     });
 
     // 6. Post jurnal accounting (Debit Kas ← Credit Pendapatan) — fire-and-forget
+    // Gunakan effectiveDate agar entry accounting sesuai tanggal bayar, bukan tanggal booking
     if (bTaxAmount > 0) {
       postSportCenterBookingWithTax({
         bookingId: Number(booking_id),
         bookingCode: bCode,
         customerName: bCustomer,
         facilityName: bFacility,
-        date: bBookingDate,
+        date: effectiveDate,
         baseAmount: bTotalAmount,
         taxAmount: bTaxAmount,
         createdById,
@@ -1461,14 +1485,15 @@ router.post("/payments", async (req, res) => {
         bookingCode: bCode,
         customerName: bCustomer,
         facilityName: bFacility,
-        date: bBookingDate,
+        date: effectiveDate,
         totalPrice: bTotalAmount,
         createdById,
         companyId: bCompanyId,
       }).catch((err: unknown) => console.error('[sport-center] postSportCenterBooking failed:', err));
     }
 
-    // 7. Accounting Payments — agar muncul di Accounting → Payments
+    // 7. Accounting Payments — agar muncul di Finance → Payments
+    // Gunakan effectiveDate dan idempotency via sourceDocId
     insertAccountingPaymentForSportCenter({
       companyId: bCompanyId,
       paymentNumber,
@@ -1478,7 +1503,7 @@ router.post("/payments", async (req, res) => {
       ref: bCode,
       memo: `Pembayaran booking sport center ${bCode}`,
       sourceDocId: Number(payRow.id),
-      date: bBookingDate,
+      date: effectiveDate,
       createdById,
     }).catch((err: unknown) => console.error("[sport-center] insertAccountingPayment failed:", err));
 
@@ -1494,6 +1519,7 @@ router.post("/payments", async (req, res) => {
           method: finalMethod,
           payment_number: paymentNumber,
           source: 'SPORT_CENTER',
+          payment_date: effectiveDate,
         })}::jsonb
       )
     `).catch((err: unknown) => console.error('[sport-center] audit log failed:', err));
