@@ -2273,6 +2273,27 @@ export default function SettingsPage() {
             </Card>
           )}
 
+          {isAdmin && (
+            <Card className="col-span-1 md:col-span-3 bg-card border-border">
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Truck className="w-4 h-4 text-orange-500" /> Tarif Kendaraan Trucking
+                </CardTitle>
+                <CardDescription>
+                  Atur tarif per kg dan harga minimum untuk setiap jenis kendaraan (CDE, CDD, Fuso, Wingbox, Trailer).
+                  Tarif ini digunakan sebagai estimasi offline di Customer Portal.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <a href="/bizportal/settings/trucking-rates">
+                  <Button variant="outline" size="sm">
+                    <Truck className="w-4 h-4 mr-2 text-orange-500" /> Kelola Tarif Kendaraan
+                  </Button>
+                </a>
+              </CardContent>
+            </Card>
+          )}
+
           <Card className="col-span-1 md:col-span-3 bg-card border-border">
             <CardHeader>
               <CardTitle className="text-xl">Authentication</CardTitle>
