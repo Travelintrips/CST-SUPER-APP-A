@@ -3035,16 +3035,16 @@ router.get("/me/dashboard-stats", requirePortalAuth, async (req, res) => {
     const [totalOrdersRes, activeOrdersRes, completedOrdersRes, invoiceOutstandingRes, trackingRes] = await Promise.all([
       db.execute<{ cnt: string }>(sql`
         SELECT count(*)::text AS cnt FROM logistic_orders
-        WHERE portal_customer_id = ${customerId}
+        WHERE email = (SELECT email FROM portal_customers WHERE id = ${customerId} LIMIT 1)
       `),
       db.execute<{ cnt: string }>(sql`
         SELECT count(*)::text AS cnt FROM logistic_orders
-        WHERE portal_customer_id = ${customerId}
+        WHERE email = (SELECT email FROM portal_customers WHERE id = ${customerId} LIMIT 1)
           AND status IN ('In Progress','in_transit','In Transit','New Order','processing')
       `),
       db.execute<{ cnt: string }>(sql`
         SELECT count(*)::text AS cnt FROM logistic_orders
-        WHERE portal_customer_id = ${customerId}
+        WHERE email = (SELECT email FROM portal_customers WHERE id = ${customerId} LIMIT 1)
           AND status IN ('Completed','delivered','Delivered')
       `),
       db.execute<{ total: string; cnt: string }>(sql`
@@ -3062,7 +3062,7 @@ router.get("/me/dashboard-stats", requirePortalAuth, async (req, res) => {
       `),
       db.execute<{ cnt: string }>(sql`
         SELECT count(*)::text AS cnt FROM logistic_orders
-        WHERE portal_customer_id = ${customerId}
+        WHERE email = (SELECT email FROM portal_customers WHERE id = ${customerId} LIMIT 1)
           AND status IN ('In Progress','in_transit','In Transit')
           AND EXISTS (
             SELECT 1 FROM driver_locations dl WHERE dl.order_id = logistic_orders.id
