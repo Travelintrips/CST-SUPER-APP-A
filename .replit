@@ -26,6 +26,7 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
+<<<<<<< HEAD
 
 args = "fuser -k 5000/tcp 2>/dev/null; sleep 0.3; PORT=5000 node gateway.mjs"
 args = "fuser -k 5000/tcp 2>/dev/null; sleep 0.3; API_PORT=8080 CUSTOMER_PORT=5173 BIZPORTAL_PORT=3000 PORT=5000 node gateway.mjs"
@@ -85,6 +86,11 @@ waitForPort = 3001
 
 [workflows.workflow.metadata]
 outputType = "console"
+=======
+args = "node gateway.mjs"
+waitForPort = 5000
+
+>>>>>>> 3992d2bdb2bc2e9d469bf6e1d3914afc4f9158ed
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
@@ -154,6 +160,7 @@ localPort = 5000
 externalPort = 80
 
 [[ports]]
+<<<<<<< HEAD
 
 localPort = 5173
 externalPort = 5173
@@ -203,6 +210,8 @@ localPort = 18442
 externalPort = 4200
 
 [[ports]]
+=======
+>>>>>>> 3992d2bdb2bc2e9d469bf6e1d3914afc4f9158ed
 localPort = 18444
 externalPort = 3000
 
