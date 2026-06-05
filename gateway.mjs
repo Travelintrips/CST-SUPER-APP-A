@@ -7,12 +7,11 @@
  *   /pos-images/*      → API Server      :8080
  *   /q/*               → API Server      :8080  (short-link redirects)
  *   /s/*               → API Server      :8080
- *   /bizportal/*       → BizPortal       :4200
-
- *   /sport-center/*    → 302 redirect to /bizportal/sport-center/* (served by BizPortal React Router)
-
+ *   /bizportal/*       → BizPortal       :18442
+ *   /logistic-order/*  → Logistic Order  :19368
+ *   /sport-center/*    → 302 redirect to /bizportal/sport-center/*
  *   /customer-portal/* → redirect strip prefix
- *   /*                 → Customer Portal :5173
+ *   /*                 → Customer Portal :5174
  *
  * Retry behaviour:
  *   When an upstream is not yet ready (ECONNREFUSED / ECONNRESET / ETIMEDOUT),
@@ -27,7 +26,7 @@
 import http from "node:http";
 import net  from "node:net";
 
-const PORT          = Number(process.env.PORT ?? 5000);
+const PORT          = Number(process.env.PORT          ?? 5000);
 const MAX_ATTEMPTS  = Number(process.env.GW_MAX_ATTEMPTS  ?? 8);
 const BACKOFF_CAP   = Number(process.env.GW_BACKOFF_CAP   ?? 2000);
 const BASE_DELAY    = Number(process.env.GW_BASE_DELAY    ?? 200);
@@ -35,22 +34,15 @@ const BASE_DELAY    = Number(process.env.GW_BASE_DELAY    ?? 200);
 const RETRYABLE_CODES = new Set(["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "ENOTFOUND"]);
 
 const API_PORT           = Number(process.env.API_PORT ?? 8080);
-// BizPortal Vite runs at 3000
-const BIZPORTAL_PORT     = Number(process.env.BIZPORTAL_PORT ?? 3000);
-// Customer portal Vite runs at 5173
-const CUSTOMER_PORT      = Number(process.env.CUSTOMER_PORT ?? 5173);
-// Logistic Order Vite runs at 3001
-// BizPortal Vite — configurable via env, defaults to 4200
-const BIZPORTAL_PORT     = Number(process.env.BIZPORTAL_PORT ?? 4200);
-// Customer portal Vite — configurable via env, defaults to 5173
-const CUSTOMER_PORT      = Number(process.env.CUSTOMER_PORT ?? 5173);
-// Logistic Order Vite — configurable via env, defaults to 3001
-// BizPortal Vite dev server
-const BIZPORTAL_PORT     = Number(process.env.BIZPORTAL_PORT ?? 3000);
-// Customer portal Vite dev server
-const CUSTOMER_PORT      = Number(process.env.CUSTOMER_PORT ?? 5173);
-// Logistic Order Vite dev server
+// BizPortal proxy always on 3000 (start-dev.sh proxies Replit's assigned port → 3000)
+const BIZPORTAL_PORT     = 3000;
+// Customer Portal Vite always binds on 5174
+const CUSTOMER_PORT      = 5174;
 const LOGISTIC_ORDER_PORT = Number(process.env.LOGISTIC_ORDER_PORT ?? 3001);
+const API_PORT            = 8080;
+const BIZPORTAL_PORT      = 18442;
+const CUSTOMER_PORT       = 5174;
+const LOGISTIC_ORDER_PORT = 19368;
 
 const ROUTES = [
   { prefix: "/api",             upstream: { host: "localhost", port: API_PORT } },
@@ -59,55 +51,42 @@ const ROUTES = [
   { prefix: "/s",               upstream: { host: "localhost", port: API_PORT } },
   { prefix: "/bizportal",       upstream: { host: "localhost", port: BIZPORTAL_PORT } },
   { prefix: "/logistic-order",  upstream: { host: "localhost", port: LOGISTIC_ORDER_PORT } },
-  // /sport-center/* → redirect to BizPortal React Router — no separate service on :3002
-  { prefix: "/sport-center",    upstream: null, redirectMapTo: "/bizportal/sport-center",   redirectDefaultSuffix: "/dashboard" },
+  { prefix: "/sport-center",    upstream: null, redirectMapTo: "/bizportal/sport-center",    redirectDefaultSuffix: "/dashboard" },
 
   // BizPortal sub-paths accessed without /bizportal/ prefix → redirect
-  // Core modules
-  { prefix: "/sales",               upstream: null, redirectMapTo: "/bizportal/sales",               redirectDefaultSuffix: "/documents" },
-  { prefix: "/purchase",            upstream: null, redirectMapTo: "/bizportal/purchase",             redirectDefaultSuffix: "/documents" },
-  { prefix: "/logistics",           upstream: null, redirectMapTo: "/bizportal/logistics",            redirectDefaultSuffix: "/" },
-  { prefix: "/accounting",          upstream: null, redirectMapTo: "/bizportal/accounting",           redirectDefaultSuffix: "/journals" },
-  { prefix: "/settings",            upstream: null, redirectMapTo: "/bizportal/settings",             redirectDefaultSuffix: "/" },
-  // Reports & analytics
-  { prefix: "/reports",             upstream: null, redirectMapTo: "/bizportal/reports",              redirectDefaultSuffix: "/operasional" },
-  { prefix: "/analytics",           upstream: null, redirectMapTo: "/bizportal/analytics",            redirectDefaultSuffix: "/" },
-  { prefix: "/holding",             upstream: null, redirectMapTo: "/bizportal/holding",              redirectDefaultSuffix: "/" },
-  // Expenses
-  { prefix: "/expense",             upstream: null, redirectMapTo: "/bizportal/expense",              redirectDefaultSuffix: "/" },
-  { prefix: "/expenses",            upstream: null, redirectMapTo: "/bizportal/expense",              redirectDefaultSuffix: "/" },
-  // Dashboard & general
-  { prefix: "/dashboard",           upstream: null, redirectMapTo: "/bizportal/dashboard",            redirectDefaultSuffix: "/" },
-  { prefix: "/ceo-dashboard",       upstream: null, redirectMapTo: "/bizportal/ceo-dashboard",        redirectDefaultSuffix: "/" },
-  { prefix: "/enterprise-dashboard",upstream: null, redirectMapTo: "/bizportal/enterprise-dashboard", redirectDefaultSuffix: "/" },
-  { prefix: "/operational-dashboard",upstream: null,redirectMapTo: "/bizportal/operational-dashboard",redirectDefaultSuffix: "/" },
-  { prefix: "/approvals",           upstream: null, redirectMapTo: "/bizportal/approvals",            redirectDefaultSuffix: "/" },
-  { prefix: "/notifications",       upstream: null, redirectMapTo: "/bizportal/notifications",        redirectDefaultSuffix: "/" },
-  { prefix: "/exceptions",          upstream: null, redirectMapTo: "/bizportal/exceptions",           redirectDefaultSuffix: "/" },
-  // Correspondence & communication
-  { prefix: "/correspondences",     upstream: null, redirectMapTo: "/bizportal/correspondences",      redirectDefaultSuffix: "/" },
-  { prefix: "/email-inbox",         upstream: null, redirectMapTo: "/bizportal/email-inbox",          redirectDefaultSuffix: "/" },
-  { prefix: "/notification-history",upstream: null, redirectMapTo: "/bizportal/notification-history", redirectDefaultSuffix: "/" },
-  // Users, org & media
-  { prefix: "/users",               upstream: null, redirectMapTo: "/bizportal/users",                redirectDefaultSuffix: "/" },
-  { prefix: "/org",                 upstream: null, redirectMapTo: "/bizportal/org",                  redirectDefaultSuffix: "/" },
-  { prefix: "/media",               upstream: null, redirectMapTo: "/bizportal/media",                redirectDefaultSuffix: "/" },
-  // Products & catalog
-  
-  { prefix: "/product-templates",   upstream: null, redirectMapTo: "/bizportal/product-templates",    redirectDefaultSuffix: "/" },
-  { prefix: "/katalog-terpadu",     upstream: null, redirectMapTo: "/bizportal/katalog-terpadu",      redirectDefaultSuffix: "/" },
-  { prefix: "/vendors",             upstream: null, redirectMapTo: "/bizportal/vendors",              redirectDefaultSuffix: "/" },
-  // Commerce & trading
-  { prefix: "/ecommerce",           upstream: null, redirectMapTo: "/bizportal/ecommerce",            redirectDefaultSuffix: "/" },
-  { prefix: "/trading",             upstream: null, redirectMapTo: "/bizportal/trading",              redirectDefaultSuffix: "/" },
-  // Audit & AI
-  { prefix: "/audit",               upstream: null, redirectMapTo: "/bizportal/audit",                redirectDefaultSuffix: "/" },
-  { prefix: "/intelligence-alerts", upstream: null, redirectMapTo: "/bizportal/intelligence-alerts",  redirectDefaultSuffix: "/" },
-  { prefix: "/ai-approvals",        upstream: null, redirectMapTo: "/bizportal/ai-approvals",         redirectDefaultSuffix: "/" },
-
-  // POS / Kasir — /pos is a legacy alias that redirects to /kasir
-  { prefix: "/kasir",           upstream: null, redirectMapTo: "/bizportal/kasir",            redirectDefaultSuffix: "/" },
-  { prefix: "/pos",             upstream: null, redirectMapTo: "/kasir",                      redirectDefaultSuffix: "/" },
+  { prefix: "/sales",                upstream: null, redirectMapTo: "/bizportal/sales",                redirectDefaultSuffix: "/documents" },
+  { prefix: "/purchase",             upstream: null, redirectMapTo: "/bizportal/purchase",              redirectDefaultSuffix: "/documents" },
+  { prefix: "/logistics",            upstream: null, redirectMapTo: "/bizportal/logistics",             redirectDefaultSuffix: "/" },
+  { prefix: "/accounting",           upstream: null, redirectMapTo: "/bizportal/accounting",            redirectDefaultSuffix: "/journals" },
+  { prefix: "/settings",             upstream: null, redirectMapTo: "/bizportal/settings",              redirectDefaultSuffix: "/" },
+  { prefix: "/reports",              upstream: null, redirectMapTo: "/bizportal/reports",               redirectDefaultSuffix: "/operasional" },
+  { prefix: "/analytics",            upstream: null, redirectMapTo: "/bizportal/analytics",             redirectDefaultSuffix: "/" },
+  { prefix: "/holding",              upstream: null, redirectMapTo: "/bizportal/holding",               redirectDefaultSuffix: "/" },
+  { prefix: "/expense",              upstream: null, redirectMapTo: "/bizportal/expense",               redirectDefaultSuffix: "/" },
+  { prefix: "/expenses",             upstream: null, redirectMapTo: "/bizportal/expense",               redirectDefaultSuffix: "/" },
+  // NOTE: /dashboard is intentionally NOT redirected — customer portal uses /dashboard for its own pages
+  { prefix: "/ceo-dashboard",        upstream: null, redirectMapTo: "/bizportal/ceo-dashboard",         redirectDefaultSuffix: "/" },
+  { prefix: "/enterprise-dashboard", upstream: null, redirectMapTo: "/bizportal/enterprise-dashboard",  redirectDefaultSuffix: "/" },
+  { prefix: "/operational-dashboard",upstream: null, redirectMapTo: "/bizportal/operational-dashboard", redirectDefaultSuffix: "/" },
+  { prefix: "/approvals",            upstream: null, redirectMapTo: "/bizportal/approvals",             redirectDefaultSuffix: "/" },
+  { prefix: "/notifications",        upstream: null, redirectMapTo: "/bizportal/notifications",         redirectDefaultSuffix: "/" },
+  { prefix: "/exceptions",           upstream: null, redirectMapTo: "/bizportal/exceptions",            redirectDefaultSuffix: "/" },
+  { prefix: "/correspondences",      upstream: null, redirectMapTo: "/bizportal/correspondences",       redirectDefaultSuffix: "/" },
+  { prefix: "/email-inbox",          upstream: null, redirectMapTo: "/bizportal/email-inbox",           redirectDefaultSuffix: "/" },
+  { prefix: "/notification-history", upstream: null, redirectMapTo: "/bizportal/notification-history",  redirectDefaultSuffix: "/" },
+  { prefix: "/users",                upstream: null, redirectMapTo: "/bizportal/users",                 redirectDefaultSuffix: "/" },
+  { prefix: "/org",                  upstream: null, redirectMapTo: "/bizportal/org",                   redirectDefaultSuffix: "/" },
+  { prefix: "/media",                upstream: null, redirectMapTo: "/bizportal/media",                 redirectDefaultSuffix: "/" },
+  { prefix: "/product-templates",    upstream: null, redirectMapTo: "/bizportal/product-templates",     redirectDefaultSuffix: "/" },
+  { prefix: "/katalog-terpadu",      upstream: null, redirectMapTo: "/bizportal/katalog-terpadu",       redirectDefaultSuffix: "/" },
+  { prefix: "/vendors",              upstream: null, redirectMapTo: "/bizportal/vendors",               redirectDefaultSuffix: "/" },
+  { prefix: "/ecommerce",            upstream: null, redirectMapTo: "/bizportal/ecommerce",             redirectDefaultSuffix: "/" },
+  { prefix: "/trading",              upstream: null, redirectMapTo: "/bizportal/trading",               redirectDefaultSuffix: "/" },
+  { prefix: "/audit",                upstream: null, redirectMapTo: "/bizportal/audit",                 redirectDefaultSuffix: "/" },
+  { prefix: "/intelligence-alerts",  upstream: null, redirectMapTo: "/bizportal/intelligence-alerts",   redirectDefaultSuffix: "/" },
+  { prefix: "/ai-approvals",         upstream: null, redirectMapTo: "/bizportal/ai-approvals",          redirectDefaultSuffix: "/" },
+  { prefix: "/kasir",                upstream: null, redirectMapTo: "/bizportal/kasir",                 redirectDefaultSuffix: "/" },
+  { prefix: "/pos",                  upstream: null, redirectMapTo: "/kasir",                           redirectDefaultSuffix: "/" },
 
   // Canvas artifact iframe hits /customer-portal/* — redirect to strip the prefix
   { prefix: "/customer-portal", upstream: null, redirectStrip: "/customer-portal" },
@@ -216,7 +195,6 @@ function proxyAttempt(req, upstream, body, rewrittenPath) {
 function handleRequest(req, res) {
   const { upstream, stripPrefix, redirectStrip, redirectMapTo, redirectDefaultSuffix, matchedPrefix } = resolve(req.url ?? "/");
 
-  // Redirect-strip: browser URL must change so client-side router sees correct path
   if (redirectStrip) {
     const target = rewritePath(req.url ?? "/", redirectStrip);
     res.writeHead(302, { location: target });
@@ -224,7 +202,6 @@ function handleRequest(req, res) {
     return;
   }
 
-  // Redirect-map: rewrite prefix to a different base path (e.g. /sport-center/* → /bizportal/sport-center/*)
   if (redirectMapTo) {
     const url = req.url ?? "/";
     const suffix = matchedPrefix ? url.slice(matchedPrefix.length) : "";
@@ -352,8 +329,7 @@ async function startGateway() {
 
 startGateway();
 
-// Also listen on EXTRA_PORT (default 23434) to resolve port-mapping conflicts
-// where both port 5000 and 23434 are mapped to external port 80 in .replit.
+// Also listen on EXTRA_PORT (default 23434) to mirror the gateway
 const EXTRA_PORT = Number(process.env.EXTRA_PORT ?? 23434);
 if (EXTRA_PORT !== PORT) {
   const extra = http.createServer(handleRequest);

@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/tooltip";
 import {
   useListExpenseCategories, useListTaxes, useListExpenses, useListAccounts,
-  getListExpensesQueryKey,
+  getListExpensesQueryKey, getListExpenseCategoriesQueryKey,
 } from "@workspace/api-client-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -96,6 +96,7 @@ export default function ExpenseRoutinePage() {
   const { toast } = useToast();
   const qc = useQueryClient();
   const { activeCompanyId } = useCompany();
+  const [seedingCats, setSeedingCats] = useState(false);
 
   const { data: allCats = [], refetch: refetchCats } = useListExpenseCategories({
     query: { refetchInterval: 30_000 },
@@ -327,16 +328,30 @@ export default function ExpenseRoutinePage() {
           <div className="rounded-md border border-amber-700 bg-amber-950/40 px-4 py-3 text-sm text-amber-300 flex items-center justify-between gap-3">
             <span>Preset kategori rutin belum ada di database.</span>
             <button
-              className="shrink-0 underline text-amber-200 hover:text-white"
+              disabled={seedingCats}
+              className="shrink-0 underline text-amber-200 hover:text-white disabled:opacity-50 disabled:cursor-wait flex items-center gap-1"
               onClick={async () => {
-                const r = await fetch("/api/expenses/seed-categories", { method: "POST", credentials: "include" });
-                if (r.ok) {
-                  toast({ title: "Kategori berhasil di-seed." });
-                  qc.invalidateQueries({ queryKey: ["listExpenseCategories"] });
-                  window.location.reload();
+                setSeedingCats(true);
+                try {
+                  const r = await fetch("/api/expenses/seed-categories", { method: "POST", credentials: "include" });
+                  const data = await r.json().catch(() => ({}));
+                  if (r.ok) {
+                    toast({ title: `Kategori berhasil di-seed (${data.seeded ?? 0} kategori).` });
+                    await qc.invalidateQueries({ queryKey: getListExpenseCategoriesQueryKey() });
+                    await refetchCats();
+                  } else {
+                    toast({ title: "Gagal seed kategori", description: data.message ?? `HTTP ${r.status}`, variant: "destructive" });
+                  }
+                } catch (e: any) {
+                  toast({ title: "Error", description: e.message, variant: "destructive" });
+                } finally {
+                  setSeedingCats(false);
                 }
               }}
-            >Seed Sekarang</button>
+            >
+              {seedingCats && <Loader2 size={13} className="animate-spin" />}
+              {seedingCats ? "Menyimpan…" : "Seed Sekarang"}
+            </button>
           </div>
         )}
 

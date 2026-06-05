@@ -168,6 +168,7 @@ export default function SportCenterDashboard() {
     retry: 1,
   });
 
+
   // ── Query: Revenue Transactions (lazy — hanya saat expandedCard === 'revenue') ──────────
   interface RevenueTxRow {
     entry_id: number;
@@ -183,19 +184,22 @@ export default function SportCenterDashboard() {
     status: string | null;
     payment_status: string | null;
     total_amount: string | null;
+
   }
+  type RevenueTxQueryResult = { data: RevenueTxRow[]; total: number };
   const {
     data: revenueTxData,
     isLoading: revenueTxLoading,
-  } = useQuery<{ data: RevenueTxRow[]; total: number }>({
+  } = useQuery<RevenueTxQueryResult>({
     queryKey: ["sport-center-revenue-tx", activeCompanyId, costCenterId, kpiDate],
     queryFn: async () => {
       const qs = new URLSearchParams();
       if (activeCompanyId) qs.set("companyId", String(activeCompanyId));
+      if (costCenterId) qs.set("costCenterId", String(costCenterId));
       qs.set("date", kpiDate);
       const r = await fetch(`/api/sport-center/revenue-transactions?${qs}`, { credentials: "include" });
       if (!r.ok) throw new Error("Gagal memuat transaksi revenue");
-      return r.json() as Promise<{ data: RevenueTxRow[]; total: number }>;
+      return r.json() as Promise<RevenueTxQueryResult>;
     },
     enabled: expandedCard === "revenue",
     staleTime: 30_000,
@@ -727,9 +731,11 @@ export default function SportCenterDashboard() {
           </div>
         </div>
 
+
         {/* ── Expandable Detail: Revenue Hari Ini ──────────────────────────── */}
         {!kpiLoading && expandedCard === "revenue" && (
           <div className="border border-blue-700/40 rounded-xl bg-blue-950/10 transition-all">
+
             <div className="flex items-center justify-between px-4 py-3 border-b border-blue-700/30">
               <div className="flex items-center gap-2">
                 <DollarSign className="h-4 w-4 text-blue-400" />
@@ -755,12 +761,14 @@ export default function SportCenterDashboard() {
               </button>
             </div>
 
+
             {revenueTxLoading ? (
               <div className="p-4 space-y-2">
                 {Array.from({ length: 5 }).map((_, i) => (
                   <div key={i} className="h-10 rounded-lg bg-muted/20 animate-pulse" />
                 ))}
               </div>
+
             ) : !revenueTxData || revenueTxData.data.length === 0 ? (
               <div className="py-10 text-center text-muted-foreground text-sm">
                 Tidak ada transaksi revenue untuk {kpiDateLabel}.
@@ -790,32 +798,19 @@ export default function SportCenterDashboard() {
                         ? `${tx.start_time ?? "?"} – ${tx.end_time ?? "?"}`
                         : "-";
                       return (
-                        <tr
-                          key={tx.entry_id ?? i}
-                          className="border-b border-blue-700/10 hover:bg-blue-950/20 transition-colors"
-                        >
-                          <td className="py-2 px-3 font-mono text-blue-300/80 whitespace-nowrap">
-                            {tx.booking_number ?? tx.ref ?? "-"}
-                          </td>
+                        <tr key={tx.entry_id ?? i} className="border-b border-blue-700/10 hover:bg-blue-950/20 transition-colors">
+                          <td className="py-2 px-3 font-mono text-blue-300/80 whitespace-nowrap">{tx.booking_number ?? tx.ref ?? "-"}</td>
                           <td className="py-2 px-3 text-foreground max-w-[140px] truncate">{tx.customer_name ?? "-"}</td>
                           <td className="py-2 px-3 text-muted-foreground max-w-[120px] truncate">{tx.facility_name ?? "-"}</td>
-                          <td className="py-2 px-3 text-muted-foreground whitespace-nowrap">
-                            {tx.booking_date ? fmtDate(tx.booking_date) : "-"}
-                          </td>
+                          <td className="py-2 px-3 text-muted-foreground whitespace-nowrap">{tx.booking_date ? fmtDate(tx.booking_date) : "-"}</td>
                           <td className="py-2 px-3 text-muted-foreground whitespace-nowrap">{timeRange}</td>
                           <td className="py-2 px-3">
-                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] font-medium ${statusCls}`}>
-                              {statusLbl}
-                            </span>
+                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] font-medium ${statusCls}`}>{statusLbl}</span>
                           </td>
                           <td className="py-2 px-3">
-                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] font-medium ${payCls}`}>
-                              {tx.payment_status ?? "-"}
-                            </span>
+                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] font-medium ${payCls}`}>{tx.payment_status ?? "-"}</span>
                           </td>
-                          <td className="py-2 px-3 text-right font-semibold text-foreground whitespace-nowrap">
-                            {idr(Number(tx.amount ?? 0))}
-                          </td>
+                          <td className="py-2 px-3 text-right font-semibold text-foreground whitespace-nowrap">{idr(Number(tx.amount ?? 0))}</td>
                         </tr>
                       );
                     })}

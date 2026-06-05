@@ -394,11 +394,17 @@ router.get("/heatmap", async (req, res) => {
 router.get("/facilities", async (req, res) => {
   if (!await requireAdmin(req, res)) return;
   try {
-    const cId = req.query.companyId ? Number(req.query.companyId) : null;
-    const result = await db.execute(sql`SELECT * FROM sport_facilities WHERE (${cId}::int IS NULL OR company_id = ${cId}) ORDER BY sort_order ASC, id ASC`);
+    const raw = req.query.companyId;
+    const parsed = raw ? Number(raw) : NaN;
+    // companyId=0 (consolidated) or "all" or NaN → fetch semua company
+    const cId = (!isNaN(parsed) && parsed > 0) ? parsed : null;
+    const result = cId
+      ? await db.execute(sql`SELECT * FROM sport_facilities WHERE company_id = ${cId} ORDER BY sort_order ASC, id ASC`)
+      : await db.execute(sql`SELECT * FROM sport_facilities ORDER BY sort_order ASC, id ASC`);
     res.json(result.rows);
-  } catch {
-    res.status(500).json({ error: "Gagal" });
+  } catch (err) {
+    console.error("[sport-center] GET /facilities error:", err);
+    res.status(500).json({ error: "Gagal memuat fasilitas" });
   }
 });
 
@@ -1629,7 +1635,6 @@ router.get("/reports", async (req, res) => {
         WHERE (${cId}::int IS NULL OR company_id = ${cId})
         GROUP BY status
       `),
-      // Booking revenue dalam range
       db.execute(sql`
         SELECT COALESCE(SUM(total_amount),0) AS revenue FROM sport_bookings
         WHERE status != 'cancelled'
@@ -1637,7 +1642,6 @@ router.get("/reports", async (req, res) => {
           AND (${from}::date IS NULL OR booking_date >= ${from}::date)
           AND (${to}::date IS NULL OR booking_date <= ${to}::date)
       `),
-      // Membership revenue dalam range
       db.execute(sql`
         SELECT COALESCE(SUM(amount),0) AS revenue FROM sport_payments
         WHERE payment_type = 'membership' AND status = 'paid'
@@ -1659,6 +1663,102 @@ router.get("/reports", async (req, res) => {
     });
   } catch {
     res.status(500).json({ error: "Gagal" });
+  }
+});
+
+// ── GET /reports/revenue — data dari accounting_entries (konsisten dengan KPI Live) ──
+router.get("/reports/revenue", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  try {
+    const cId = req.query.companyId ? Number(req.query.companyId) : null;
+    const from = (req.query.from as string) ?? null;
+    const to = (req.query.to as string) ?? null;
+
+    const [monthlyRes, byFacilityRes, byMethodRes, transactionsRes] = await Promise.all([
+      // Monthly: dari accounting_entries (konsisten dengan KPI Live)
+      db.execute(sql`
+        SELECT
+          TO_CHAR(ae.date, 'YYYY-MM') AS month,
+          COALESCE(SUM(ae.total_debit), 0) AS revenue,
+          COUNT(*) AS transactions
+        FROM accounting_entries ae
+        WHERE ae.source IN ('sport_center_booking', 'sport_center_membership')
+          AND ae.status = 'posted'
+          AND (${cId}::int IS NULL OR ae.company_id = ${cId})
+          AND (${from}::date IS NULL OR ae.date >= ${from}::date)
+          AND (${to}::date IS NULL OR ae.date <= ${to}::date)
+        GROUP BY TO_CHAR(ae.date, 'YYYY-MM')
+        ORDER BY month DESC
+        LIMIT 24
+      `),
+      // Revenue per fasilitas: dari sport_payments JOIN sport_bookings
+      db.execute(sql`
+        SELECT
+          COALESCE(sb.facility_name, 'Lainnya') AS facility_name,
+          COUNT(sp.id) AS bookings,
+          COALESCE(SUM(sp.amount), 0) AS revenue
+        FROM sport_payments sp
+        JOIN sport_bookings sb ON sb.id = sp.booking_id
+        WHERE sp.status = 'paid'
+          AND sp.payment_type = 'booking'
+          AND (${cId}::int IS NULL OR sp.company_id = ${cId})
+          AND (${from}::date IS NULL OR sp.paid_at::date >= ${from}::date)
+          AND (${to}::date IS NULL OR sp.paid_at::date <= ${to}::date)
+        GROUP BY sb.facility_name
+        ORDER BY revenue DESC
+      `),
+      // Revenue per metode pembayaran
+      db.execute(sql`
+        SELECT
+          COALESCE(sp.method, 'cash') AS method,
+          COUNT(sp.id) AS transactions,
+          COALESCE(SUM(sp.amount), 0) AS total
+        FROM sport_payments sp
+        WHERE sp.status = 'paid'
+          AND (${cId}::int IS NULL OR sp.company_id = ${cId})
+          AND (${from}::date IS NULL OR sp.paid_at::date >= ${from}::date)
+          AND (${to}::date IS NULL OR sp.paid_at::date <= ${to}::date)
+        GROUP BY sp.method
+        ORDER BY total DESC
+      `),
+      // Transaksi detail: sport_payments JOIN sport_bookings
+      db.execute(sql`
+        SELECT
+          sp.id,
+          sp.payment_number,
+          sp.booking_id,
+          sp.amount,
+          sp.method AS payment_method,
+          sp.paid_at,
+          sp.payment_type,
+          sp.status,
+          COALESCE(sb.facility_name, '') AS facility_name,
+          COALESCE(sb.customer_name, '') AS customer_name,
+          sb.booking_number,
+          sb.booking_date,
+          sb.start_time,
+          sb.end_time,
+          sb.payment_status AS booking_payment_status
+        FROM sport_payments sp
+        LEFT JOIN sport_bookings sb ON sb.id = sp.booking_id
+        WHERE sp.status = 'paid'
+          AND (${cId}::int IS NULL OR sp.company_id = ${cId})
+          AND (${from}::date IS NULL OR sp.paid_at::date >= ${from}::date)
+          AND (${to}::date IS NULL OR sp.paid_at::date <= ${to}::date)
+        ORDER BY sp.paid_at DESC
+        LIMIT 200
+      `),
+    ]);
+
+    res.json({
+      monthly: monthlyRes.rows,
+      byFacility: byFacilityRes.rows,
+      byMethod: byMethodRes.rows,
+      transactions: transactionsRes.rows,
+    });
+  } catch (err) {
+    console.error('[sport-center] GET /reports/revenue error:', err);
+    res.status(500).json({ error: "Gagal memuat laporan revenue" });
   }
 });
 
