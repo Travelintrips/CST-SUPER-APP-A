@@ -37,6 +37,8 @@ export const expensesTable = pgTable("expenses", {
   salesDocId: integer("sales_doc_id"),
   shipmentId: integer("shipment_id"),
   categoryId: integer("category_id").references(() => expenseCategoriesTable.id, { onDelete: "set null" }),
+  sourceAccountId: integer("source_account_id").references(() => chartOfAccountsTable.id, { onDelete: "set null" }),
+  vendorId: integer("vendor_id"),
   description: text("description"),
   qty: numeric("qty", { precision: 14, scale: 4 }).notNull().default("1"),
   unit: text("unit"),

@@ -384,6 +384,7 @@ export default function ExpenseListPage() {
                   <TableHead>Vendor/Karyawan</TableHead>
                   <TableHead>Deskripsi</TableHead>
                   <TableHead>Kategori</TableHead>
+                  <TableHead>Sumber Dana</TableHead>
                   <TableHead>Job / Referensi</TableHead>
                   <TableHead className="text-right">Total</TableHead>
                   <TableHead>Status</TableHead>
@@ -393,12 +394,12 @@ export default function ExpenseListPage() {
               <TableBody>
                 {isLoading && (
                   <TableRow>
-                    <TableCell colSpan={10} className="text-center py-10 text-muted-foreground">Memuat data...</TableCell>
+                    <TableCell colSpan={11} className="text-center py-10 text-muted-foreground">Memuat data...</TableCell>
                   </TableRow>
                 )}
                 {!isLoading && expenses.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={10} className="text-center py-10 text-muted-foreground">
+                    <TableCell colSpan={11} className="text-center py-10 text-muted-foreground">
                       Belum ada expense. Klik "Buat Expense" untuk memulai.
                     </TableCell>
                   </TableRow>
@@ -421,7 +422,12 @@ export default function ExpenseListPage() {
                       <TableCell>
                         {cat ? (
                           <Badge variant="secondary" className="text-xs">{cat.name}</Badge>
+                        ) : exp.categoryName ? (
+                          <Badge variant="secondary" className="text-xs">{exp.categoryName}</Badge>
                         ) : <span className="text-xs text-muted-foreground">—</span>}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {exp.sourceAccountName ?? "—"}
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-col gap-0.5">

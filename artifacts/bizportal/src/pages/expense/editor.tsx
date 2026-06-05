@@ -353,6 +353,7 @@ const STATUS_COLORS: Record<string, string> = {
 const EMPTY_FORM = {
   date: new Date().toISOString().slice(0, 10),
   vendorEmployee: "",
+  vendorId: null as number | null,
   expenseType: "vendor_bill" as "vendor_bill" | "reimbursement" | "internal",
   categoryId: null as number | null,
   description: "",
@@ -364,6 +365,7 @@ const EMPTY_FORM = {
   notes: "",
   expenseAccountId: null as number | null,
   payableAccountId: null as number | null,
+  sourceAccountId: null as number | null,
   salesDocId: null as number | null,
   shipmentId: null as number | null,
 };
@@ -456,6 +458,7 @@ export default function ExpenseEditorPage() {
       setForm({
         date: expense.date,
         vendorEmployee: expense.vendorEmployee ?? "",
+        vendorId: expense.vendorId ?? null,
         expenseType: expense.expenseType as any,
         categoryId: expense.categoryId ?? null,
         description: expense.description ?? "",
@@ -467,6 +470,7 @@ export default function ExpenseEditorPage() {
         notes: expense.notes ?? "",
         expenseAccountId: expense.expenseAccountId ?? null,
         payableAccountId: expense.payableAccountId ?? null,
+        sourceAccountId: expense.sourceAccountId ?? null,
         salesDocId: expense.salesDocId ?? null,
         shipmentId: expense.shipmentId ?? null,
       });
@@ -510,6 +514,7 @@ export default function ExpenseEditorPage() {
     const body = {
       date: form.date,
       vendorEmployee: form.vendorEmployee || undefined,
+      vendorId: form.vendorId || undefined,
       expenseType: form.expenseType,
       categoryId: form.categoryId || undefined,
       description: form.description || undefined,
@@ -521,6 +526,7 @@ export default function ExpenseEditorPage() {
       notes: form.notes || undefined,
       expenseAccountId: form.expenseAccountId || undefined,
       payableAccountId: form.payableAccountId || undefined,
+      sourceAccountId: form.sourceAccountId || undefined,
       salesDocId: form.salesDocId || undefined,
       shipmentId: form.shipmentId || undefined,
     };
@@ -720,10 +726,37 @@ export default function ExpenseEditorPage() {
                 </Select>
               </div>
               <div className="space-y-1.5">
+                <Label>Vendor Master (Link)</Label>
+                <Select
+                  value={form.vendorId?.toString() ?? "none"}
+                  disabled={locked}
+                  onValueChange={(v) => {
+                    if (v === "none") {
+                      setForm((f) => ({ ...f, vendorId: null }));
+                    } else {
+                      const sup = suppliers.find((s) => s.id.toString() === v);
+                      setForm((f) => ({
+                        ...f,
+                        vendorId: Number(v),
+                        vendorEmployee: sup?.name ?? f.vendorEmployee,
+                      }));
+                    }
+                  }}
+                >
+                  <SelectTrigger><SelectValue placeholder="Pilih vendor dari master…" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">— Tidak dipilih —</SelectItem>
+                    {suppliers.map((s) => (
+                      <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
                 <Label>Vendor / Karyawan</Label>
                 <VendorEmployeeCombobox
                   value={form.vendorEmployee}
-                  onChange={(v) => setForm((f) => ({ ...f, vendorEmployee: v }))}
+                  onChange={(v) => setForm((f) => ({ ...f, vendorEmployee: v, vendorId: v ? f.vendorId : null }))}
                   suppliers={suppliers}
                   customers={customers}
                   disabled={locked}
@@ -885,6 +918,23 @@ export default function ExpenseEditorPage() {
                     <SelectContent>
                       <SelectItem value="none">— Dari kategori / default —</SelectItem>
                       {accounts.filter((a) => a.type === "liability").map((a) => (
+                        <SelectItem key={a.id} value={a.id.toString()}>{a.code} — {a.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Sumber Dana (Bank/Kas)</Label>
+                  <p className="text-xs text-muted-foreground">Akun kas/bank sebagai sumber pembayaran.</p>
+                  <Select
+                    value={form.sourceAccountId?.toString() ?? "none"}
+                    disabled={locked}
+                    onValueChange={(v) => setForm((f) => ({ ...f, sourceAccountId: v === "none" ? null : Number(v) }))}
+                  >
+                    <SelectTrigger><SelectValue placeholder="Dari pengaturan default" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">— Dari pengaturan default —</SelectItem>
+                      {accounts.filter((a) => a.type === "asset" || a.type === "bank" || a.type === "cash").map((a) => (
                         <SelectItem key={a.id} value={a.id.toString()}>{a.code} — {a.name}</SelectItem>
                       ))}
                     </SelectContent>

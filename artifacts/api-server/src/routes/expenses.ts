@@ -1,6 +1,6 @@
 import { Router, type Request } from "express";
 import { resolveCompanyId } from "../lib/resolveCompany.js";
-import { eq, desc, and, gte, lte, like, or, sql, count } from "drizzle-orm";
+import { eq, desc, and, gte, lte, like, or, sql, count, getTableColumns } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { logStorageEvent, getRequestIp, getActor } from "../lib/storageAuditLog.js";
 import {
@@ -32,6 +32,14 @@ db.execute(sql`
 db.execute(sql`
   ALTER TABLE expense_categories
   ADD COLUMN IF NOT EXISTS default_coa_id integer REFERENCES chart_of_accounts(id) ON DELETE SET NULL
+`).catch(() => {});
+db.execute(sql`
+  ALTER TABLE expenses
+  ADD COLUMN IF NOT EXISTS source_account_id integer REFERENCES chart_of_accounts(id) ON DELETE SET NULL
+`).catch(() => {});
+db.execute(sql`
+  ALTER TABLE expenses
+  ADD COLUMN IF NOT EXISTS vendor_id integer
 `).catch(() => {});
 
 /**
@@ -407,6 +415,7 @@ router.post("/quick", async (req: Request, res) => {
       expenseNumber,
       date: String(date),
       vendorEmployee: vendorEmployee ? String(vendorEmployee) : null,
+      vendorId: req.body?.vendorId ? Number(req.body.vendorId) : null,
       expenseType: "routine",
       categoryId: Number(categoryId),
       description: notes ? String(notes) : cat.name,
@@ -488,6 +497,7 @@ router.post("/quick", async (req: Request, res) => {
     expenseNumber,
     date: String(date),
     vendorEmployee: vendorEmployee ? String(vendorEmployee) : null,
+    vendorId: req.body?.vendorId ? Number(req.body.vendorId) : null,
     expenseType: "routine",
     categoryId: Number(categoryId),
     description: notes ? String(notes) : cat.name,
@@ -501,6 +511,7 @@ router.post("/quick", async (req: Request, res) => {
     status: "posted",
     notes: notes ? String(notes) : null,
     expenseAccountId,
+    sourceAccountId: sourceAccountId ? Number(sourceAccountId) : null,
     createdById: userId,
   }).returning();
 
@@ -665,7 +676,12 @@ router.get("/", async (req: Request, res) => {
   if (to) conditions.push(lte(expensesTable.date, to));
 
   let rows = await db
-    .select()
+    .select({
+      ...getTableColumns(expensesTable),
+      categoryName: sql<string | null>`(SELECT name FROM expense_categories WHERE id = ${expensesTable.categoryId})`,
+      sourceAccountName: sql<string | null>`(SELECT name FROM chart_of_accounts WHERE id = ${expensesTable.sourceAccountId})`,
+      vendorName: sql<string | null>`(SELECT name FROM suppliers WHERE id = ${expensesTable.vendorId})`,
+    })
     .from(expensesTable)
     .where(and(...conditions))
     .orderBy(desc(expensesTable.date), desc(expensesTable.id))
@@ -677,11 +693,17 @@ router.get("/", async (req: Request, res) => {
       (r) =>
         r.expenseNumber.toLowerCase().includes(q) ||
         (r.vendorEmployee ?? "").toLowerCase().includes(q) ||
+        (r.vendorName ?? "").toLowerCase().includes(q) ||
         (r.description ?? "").toLowerCase().includes(q),
     );
   }
 
-  return res.json(rows.map(serializeExpense));
+  return res.json(rows.map((r) => ({
+    ...serializeExpense(r as typeof expensesTable.$inferSelect),
+    categoryName: r.categoryName ?? null,
+    sourceAccountName: r.sourceAccountName ?? null,
+    vendorName: r.vendorName ?? null,
+  })));
 });
 
 router.get("/:id", async (req, res) => {
@@ -696,18 +718,27 @@ router.get("/:id", async (req, res) => {
   const category = expense.categoryId
     ? (await db.select().from(expenseCategoriesTable).where(eq(expenseCategoriesTable.id, expense.categoryId)))[0] ?? null
     : null;
+  const sourceAccount = expense.sourceAccountId
+    ? (await db.select({ name: chartOfAccountsTable.name }).from(chartOfAccountsTable).where(eq(chartOfAccountsTable.id, expense.sourceAccountId)))[0] ?? null
+    : null;
+  const vendorRow = expense.vendorId
+    ? (await db.execute(sql`SELECT name FROM suppliers WHERE id = ${expense.vendorId} LIMIT 1`)).rows[0] ?? null
+    : null;
   return res.json({
     ...serializeExpense(expense),
     attachments,
     category: category ? serializeCategory(category) : null,
+    categoryName: category?.name ?? null,
+    sourceAccountName: sourceAccount?.name ?? null,
+    vendorName: (vendorRow as any)?.name ?? null,
   });
 });
 
 router.post("/", async (req, res) => {
   const {
-    date, vendorEmployee, expenseType, salesDocId, shipmentId, categoryId,
+    date, vendorEmployee, vendorId, expenseType, salesDocId, shipmentId, categoryId,
     description, qty, unit, unitPrice, taxRateId, currency, notes,
-    expenseAccountId, payableAccountId,
+    expenseAccountId, payableAccountId, sourceAccountId,
   } = req.body ?? {};
 
   if (!date) return res.status(400).json({ message: "date required" });
@@ -740,6 +771,7 @@ router.post("/", async (req, res) => {
       expenseNumber,
       date: String(date),
       vendorEmployee: vendorEmployee ? String(vendorEmployee) : null,
+      vendorId: vendorId ? Number(vendorId) : null,
       expenseType: expenseType ?? "vendor_bill",
       salesDocId: salesDocId ? Number(salesDocId) : null,
       shipmentId: shipmentId ? Number(shipmentId) : null,
@@ -757,6 +789,7 @@ router.post("/", async (req, res) => {
       notes: notes ? String(notes) : null,
       expenseAccountId: expenseAccountId ? Number(expenseAccountId) : null,
       payableAccountId: payableAccountId ? Number(payableAccountId) : null,
+      sourceAccountId: sourceAccountId ? Number(sourceAccountId) : null,
       createdById: (req as { userId?: string }).userId ?? null,
     })
     .returning();
@@ -774,9 +807,9 @@ router.put("/:id", async (req, res) => {
   }
 
   const {
-    date, vendorEmployee, expenseType, salesDocId, shipmentId, categoryId,
+    date, vendorEmployee, vendorId, expenseType, salesDocId, shipmentId, categoryId,
     description, qty, unit, unitPrice, taxRateId, currency, notes,
-    expenseAccountId, payableAccountId,
+    expenseAccountId, payableAccountId, sourceAccountId,
   } = req.body ?? {};
 
   const qtyN = Number(qty ?? 1);
@@ -801,6 +834,7 @@ router.put("/:id", async (req, res) => {
     .set({
       date: String(date),
       vendorEmployee: vendorEmployee ? String(vendorEmployee) : null,
+      vendorId: vendorId ? Number(vendorId) : null,
       expenseType: expenseType ?? "vendor_bill",
       salesDocId: salesDocId ? Number(salesDocId) : null,
       shipmentId: shipmentId ? Number(shipmentId) : null,
@@ -817,6 +851,7 @@ router.put("/:id", async (req, res) => {
       notes: notes ? String(notes) : null,
       expenseAccountId: expenseAccountId ? Number(expenseAccountId) : null,
       payableAccountId: payableAccountId ? Number(payableAccountId) : null,
+      sourceAccountId: sourceAccountId !== undefined ? (sourceAccountId ? Number(sourceAccountId) : null) : undefined,
       updatedAt: new Date(),
     })
     .where(eq(expensesTable.id, id))

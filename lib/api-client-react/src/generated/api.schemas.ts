@@ -1929,6 +1929,11 @@ export interface Expense {
   salesDocId?: number | null;
   shipmentId?: number | null;
   categoryId?: number | null;
+  categoryName?: string | null;
+  sourceAccountId?: number | null;
+  sourceAccountName?: string | null;
+  vendorId?: number | null;
+  vendorName?: string | null;
   description?: string | null;
   qty: number;
   unit?: string | null;
@@ -1975,6 +1980,7 @@ export const CreateExpenseBodyExpenseType = {
 export interface CreateExpenseBody {
   date: string;
   vendorEmployee?: string | null;
+  vendorId?: number | null;
   expenseType?: CreateExpenseBodyExpenseType;
   salesDocId?: number | null;
   shipmentId?: number | null;
@@ -1988,6 +1994,7 @@ export interface CreateExpenseBody {
   notes?: string | null;
   expenseAccountId?: number | null;
   payableAccountId?: number | null;
+  sourceAccountId?: number | null;
 }
 
 export interface CreateExpenseAttachmentBody {
