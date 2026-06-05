@@ -80,10 +80,16 @@ router.put("/", async (req: Request, res: Response) => {
   `);
 
   try {
-    const desc = `Sidebar layout diperbarui: ${itemOrder.length} parent, ${Object.keys(childOrder).length} grup child diurutkan, ${hiddenItems.length} item disembunyikan`;
+    const newDataJson = JSON.stringify({
+      parentCount: itemOrder.length,
+      childGroupCount: Object.keys(childOrder).length,
+      hiddenCount: hiddenItems.length,
+      itemOrder,
+      hiddenItems,
+    });
     await db.execute(sql`
-      INSERT INTO erp_audit_logs (user_id, module, action, description, created_at)
-      VALUES (${userId}, 'SETTINGS', 'SIDEBAR_LAYOUT_UPDATE', ${desc}, NOW())
+      INSERT INTO erp_audit_logs (user_id, module, action, reference_id, new_data, created_at)
+      VALUES (${userId}, 'settings', 'sidebar_layout_update', ${userId}, ${newDataJson}::jsonb, NOW())
     `);
   } catch (_) {}
 
