@@ -1,5 +1,6 @@
 import { Router, type Request } from "express";
-import { eq, desc, and, sql, gte, lte } from "drizzle-orm";
+import { eq, desc, and, sql } from "drizzle-orm";
+import multer from "multer";
 import {
   db, cashAdvancesTable, cashAdvanceRepaymentsTable,
   chartOfAccountsTable, accountingJournalsTable,
@@ -8,12 +9,17 @@ import { requireAdmin } from "../lib/requireAdmin.js";
 import { postEntry } from "../lib/accounting.js";
 import { ensureAccountingSettings } from "../lib/accountingSeed.js";
 import { resolveCompanyId } from "../lib/resolveCompany.js";
+import { auditFromReq } from "../lib/auditLog.js";
+import { getOpenAI } from "../lib/openaiClient.js";
+import { Client as ObjectStorageClient } from "@replit/object-storage";
 
 const router = Router();
 router.use(async (req, res, next) => {
   if (!(await requireAdmin(req, res))) return;
   next();
 });
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
 
 // ─── Inline migration ────────────────────────────────────────────────────────
 async function ensureTables() {
@@ -53,24 +59,30 @@ async function ensureTables() {
     CREATE INDEX IF NOT EXISTS cash_advances_status_idx ON cash_advances(status);
     CREATE INDEX IF NOT EXISTS cash_advance_repayments_advance_idx ON cash_advance_repayments(advance_id);
   `));
-  // Add rejection_reason if not present
   await db.execute(sql.raw(`
     ALTER TABLE cash_advances ADD COLUMN IF NOT EXISTS rejection_reason TEXT;
     ALTER TABLE cash_advances ADD COLUMN IF NOT EXISTS approval_request_id INTEGER;
+    ALTER TABLE cash_advances ADD COLUMN IF NOT EXISTS vendor_id INTEGER;
+    ALTER TABLE cash_advances ADD COLUMN IF NOT EXISTS user_id TEXT;
+    ALTER TABLE cash_advances ADD COLUMN IF NOT EXISTS category TEXT;
+    ALTER TABLE cash_advances ADD COLUMN IF NOT EXISTS receipt_url TEXT;
+    ALTER TABLE cash_advances ADD COLUMN IF NOT EXISTS ocr_raw_data TEXT;
   `));
 }
 ensureTables().catch(console.error);
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function serializeAdv(r: typeof cashAdvancesTable.$inferSelect & { rejectionReason?: string | null; approvalRequestId?: number | null }) {
+function serializeAdv(r: any) {
   return {
     ...r,
+    id: Number(r.id),
     amount: Number(r.amount),
-    paidAmount: Number(r.paidAmount),
-    remainingAmount: Number(r.remainingAmount),
-    createdAt: r.createdAt.toISOString(),
-    updatedAt: r.updatedAt.toISOString(),
+    paidAmount: Number(r.paid_amount ?? r.paidAmount ?? 0),
+    remainingAmount: Number(r.remaining_amount ?? r.remainingAmount ?? 0),
+    createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at ?? r.createdAt,
+    updatedAt: r.updated_at instanceof Date ? r.updated_at.toISOString() : r.updated_at ?? r.updatedAt,
+    ocrRawData: r.ocr_raw_data ? (() => { try { return JSON.parse(r.ocr_raw_data); } catch { return null; } })() : null,
   };
 }
 function serializeRep(r: typeof cashAdvanceRepaymentsTable.$inferSelect) {
@@ -109,12 +121,10 @@ async function resolveCashBankAccount(paymentMethod: string, settings: Awaited<R
     : (settings.defaultBankAccountId ?? settings.defaultCashAccountId);
 }
 
-// ─── Helper: post journal for cash advance (called also from approval route) ─
+// ─── Helper: post journal for cash advance ────────────────────────────────────
 export async function postCashAdvanceJournal(advId: number) {
-  const [adv] = await db.execute(sql.raw(
-    `SELECT * FROM cash_advances WHERE id = ${advId}`
-  ));
-  const r = (adv as any);
+  const result = await db.execute(sql.raw(`SELECT * FROM cash_advances WHERE id = ${advId}`));
+  const r = result.rows[0] as any;
   if (!r) throw new Error("Kasbon tidak ditemukan");
 
   const companyId: number | null = r.company_id ?? null;
@@ -155,7 +165,7 @@ export async function postCashAdvanceJournal(advId: number) {
   return entry;
 }
 
-// ─── Check approval limit ─────────────────────────────────────────────────────
+// ─── Check approval limit ──────────────────────────────────────────────────────
 async function checkApprovalLimit(type: string, companyId: number | null, amount: number) {
   const result = await db.execute(sql.raw(`
     SELECT * FROM expense_approval_limits
@@ -171,50 +181,103 @@ async function checkApprovalLimit(type: string, companyId: number | null, amount
   return { needsApproval, limit };
 }
 
-// ─── List ─────────────────────────────────────────────────────────────────────
-
+// ─── List ──────────────────────────────────────────────────────────────────────
 router.get("/", async (req: Request, res) => {
   const companyId = resolveCompanyId(req);
   const { type, status, from, to } = req.query as Record<string, string>;
-  const conds: ReturnType<typeof eq>[] = [eq(cashAdvancesTable.companyId, companyId)];
-  if (type) conds.push(eq(cashAdvancesTable.type, type));
-  if (status) conds.push(eq(cashAdvancesTable.status, status));
-  if (from) conds.push(gte(cashAdvancesTable.date, from));
-  if (to) conds.push(lte(cashAdvancesTable.date, to));
-  const rows = await db
-    .select().from(cashAdvancesTable)
-    .where(and(...conds))
-    .orderBy(desc(cashAdvancesTable.date), desc(cashAdvancesTable.id))
-    .limit(500);
-  return res.json(rows.map(serializeAdv));
+  const whereParts: string[] = [`ca.company_id = ${companyId}`];
+  if (type) whereParts.push(`ca.type = '${type.replace(/'/g, "''")}'`);
+  if (status) whereParts.push(`ca.status = '${status.replace(/'/g, "''")}'`);
+  if (from) whereParts.push(`ca.date >= '${from}'`);
+  if (to) whereParts.push(`ca.date <= '${to}'`);
+
+  const result = await db.execute(sql.raw(`
+    SELECT ca.*,
+      coa.code AS cash_bank_account_code,
+      coa.name AS cash_bank_account_name,
+      sup.name AS vendor_name,
+      u.name AS employee_name,
+      u.email AS employee_email,
+      dep.name AS employee_department,
+      dv.name AS employee_division
+      u.name   AS user_name
+    FROM cash_advances ca
+    LEFT JOIN chart_of_accounts coa ON ca.cash_bank_account_id = coa.id
+    LEFT JOIN suppliers sup ON ca.vendor_id = sup.id
+    LEFT JOIN users u ON ca.user_id = u.id
+    LEFT JOIN departments dep ON u.department_id = dep.id
+    LEFT JOIN divisions dv ON u.division_id = dv.id
+    WHERE ${whereParts.join(" AND ")}
+    ORDER BY ca.date DESC, ca.id DESC
+    LIMIT 500
+  `));
+
+  return res.json((result.rows as any[]).map((r) => ({
+    ...serializeAdv(r),
+    cashBankAccount: r.cash_bank_account_id
+      ? { id: r.cash_bank_account_id, code: r.cash_bank_account_code, name: r.cash_bank_account_name }
+      : null,
+    vendor: r.vendor_id ? { id: r.vendor_id, name: r.vendor_name } : null,
+    employee: r.user_id
+      ? { id: r.user_id, name: r.employee_name, email: r.employee_email, department: r.employee_department, division: r.employee_division }
+      : null,
+    user: r.user_id ? { id: r.user_id, name: r.user_name } : null,
+  })));
 });
 
-// ─── Detail ───────────────────────────────────────────────────────────────────
-
+// ─── Detail ────────────────────────────────────────────────────────────────────
 router.get("/:id", async (req, res) => {
   const id = Number(req.params.id);
   if (isNaN(id)) return res.status(400).json({ message: "Invalid id" });
-  const [adv] = await db.select().from(cashAdvancesTable).where(eq(cashAdvancesTable.id, id));
+  const result = await db.execute(sql.raw(`
+    SELECT ca.*,
+      u.name AS employee_name, u.email AS employee_email,
+      dep.name AS employee_department, dv.name AS employee_division,
+      sec.name AS employee_section
+    FROM cash_advances ca
+    LEFT JOIN users u ON ca.user_id = u.id
+    LEFT JOIN departments dep ON u.department_id = dep.id
+    LEFT JOIN divisions dv ON u.division_id = dv.id
+    LEFT JOIN sections sec ON u.section_id = sec.id
+    WHERE ca.id = ${id}
+  `));
+  const adv = result.rows[0] as any;
   if (!adv) return res.status(404).json({ message: "Not found" });
   const repayments = await db
     .select().from(cashAdvanceRepaymentsTable)
     .where(eq(cashAdvanceRepaymentsTable.advanceId, id))
     .orderBy(desc(cashAdvanceRepaymentsTable.date), desc(cashAdvanceRepaymentsTable.id));
-  // Get linked approval request if any
   const approvalResult = await db.execute(sql.raw(
     `SELECT * FROM expense_approval_requests WHERE ref_type IN ('kasbon','talangan') AND ref_id = ${id} ORDER BY id DESC LIMIT 1`
   ));
+  const auditResult = await db.execute(sql.raw(`
+    SELECT action, module, new_data, created_at, user_email
+    FROM erp_audit_logs
+    WHERE module = 'kasbon' AND reference_id = '${id}'
+    ORDER BY created_at DESC LIMIT 20
+  `)).catch(() => ({ rows: [] }));
+
+  const employee = adv.user_id ? {
+    id: adv.user_id,
+    name: adv.employee_name,
+    email: adv.employee_email,
+    department: adv.employee_department,
+    division: adv.employee_division,
+    section: adv.employee_section,
+  } : null;
+
   return res.json({
     ...serializeAdv(adv),
+    employee,
     repayments: repayments.map(serializeRep),
     approvalRequest: approvalResult.rows[0] ?? null,
+    auditLogs: auditResult.rows ?? [],
   });
 });
 
-// ─── Create ───────────────────────────────────────────────────────────────────
-
+// ─── Create ────────────────────────────────────────────────────────────────────
 router.post("/", async (req: Request, res) => {
-  const { type, partyName, amount, paymentMethod, date, notes } = req.body ?? {};
+  const { type, partyName, amount, paymentMethod, date, notes, vendorId, sourceAccountId, category, userId: bodyUserId } = req.body ?? {};
   if (!type || !["kasbon", "talangan"].includes(type))
     return res.status(400).json({ message: "type harus 'kasbon' atau 'talangan'." });
   if (!partyName?.trim()) return res.status(400).json({ message: "Nama pihak wajib diisi." });
@@ -229,18 +292,21 @@ router.post("/", async (req: Request, res) => {
   if (!receivableAccountId)
     return res.status(400).json({ message: `Akun piutang (${type === "kasbon" ? "1-1032" : "1-1033"}) belum ada di COA.` });
 
-  const cashBankAccountId = await resolveCashBankAccount(paymentMethod ?? "bank", settings);
+  const resolvedCashBank = sourceAccountId
+    ? Number(sourceAccountId)
+    : await resolveCashBankAccount(paymentMethod ?? "bank", settings);
+  const cashBankAccountId = resolvedCashBank;
   if (!cashBankAccountId)
     return res.status(400).json({ message: "Akun Kas/Bank default belum dikonfigurasi." });
 
-  // ── Cek limit approval ───────────────────────────────────────────────────
   const { needsApproval, limit } = await checkApprovalLimit(type, companyId, amountN);
-
   const advanceNumber = await nextAdvanceNumber(type);
-  const userId = (req as any).userId ?? null;
+  const creatorUserId = (req as any).userId ?? null;
+  // bodyUserId = karyawan yang menerima kasbon (dari combobox di frontend)
+  const employeeUserId = bodyUserId ? String(bodyUserId) : null;
+  const categoryVal = category ? String(category).trim() : null;
 
   if (needsApproval && limit) {
-    // Buat kasbon dengan status pending_approval, tanpa jurnal dulu
     const [adv] = await db.insert(cashAdvancesTable).values({
       companyId,
       advanceNumber,
@@ -255,16 +321,21 @@ router.post("/", async (req: Request, res) => {
       status: "pending_approval",
       receivableAccountId,
       cashBankAccountId,
-      createdById: userId,
+      vendorId: vendorId ? Number(vendorId) : null,
+      userId: employeeUserId,
+      createdById: creatorUserId,
     }).returning();
 
-    // Ambil nama requester
+    // Set category via raw SQL (column added via migration)
+    if (categoryVal) {
+      await db.execute(sql.raw(`UPDATE cash_advances SET category = '${categoryVal.replace(/'/g, "''")}' WHERE id = ${adv!.id}`));
+    }
+
     let requesterName: string | null = null;
-    if (userId) {
-      const ur = await db.execute(sql.raw(`SELECT name FROM users WHERE id = '${userId}' LIMIT 1`));
+    if (creatorUserId) {
+      const ur = await db.execute(sql.raw(`SELECT name FROM users WHERE id = '${creatorUserId}' LIMIT 1`));
       requesterName = (ur.rows[0] as any)?.name ?? null;
     }
-    // Ambil nama L1/L2 approver
     let l1Name: string | null = null, l2Name: string | null = null;
     if (limit.l1_approver_id) {
       const r = await db.execute(sql.raw(`SELECT name FROM users WHERE id = '${limit.l1_approver_id}' LIMIT 1`));
@@ -278,7 +349,6 @@ router.post("/", async (req: Request, res) => {
     const typeLabel = type === "kasbon" ? "Kasbon" : "Dana Talangan";
     const desc = `${typeLabel} ${partyName} — ${new Intl.NumberFormat("id-ID").format(amountN)}`;
 
-    // Buat approval request
     const arResult = await db.execute(sql.raw(`
       INSERT INTO expense_approval_requests
         (company_id, ref_type, ref_id, description, amount, requester_id, requester_name,
@@ -287,7 +357,7 @@ router.post("/", async (req: Request, res) => {
       VALUES
         (${companyId ?? "NULL"}, '${type}', ${adv!.id},
          '${desc.replace(/'/g, "''")}', ${amountN},
-         ${userId ? `'${userId}'` : "NULL"},
+         ${creatorUserId ? `'${creatorUserId}'` : "NULL"},
          ${requesterName ? `'${requesterName.replace(/'/g, "''")}'` : "NULL"},
          'pending',
          ${limit.l1_approver_id ? `'${limit.l1_approver_id}'` : "NULL"},
@@ -299,23 +369,27 @@ router.post("/", async (req: Request, res) => {
       RETURNING id
     `));
     const arId = (arResult.rows[0] as any)?.id;
-
-    // Update cash advance dengan approval_request_id
     if (arId) {
       await db.execute(sql.raw(`UPDATE cash_advances SET approval_request_id = ${arId} WHERE id = ${adv!.id}`));
     }
 
-    // Kirim notif WA ke grup admin
     try {
       const { getAdminGroupWa } = await import("../lib/adminWa.js");
       const { sendWhatsApp } = await import("../lib/fonnte.js");
       const adminGroup = await getAdminGroupWa();
       if (adminGroup) {
         const approverInfo = l1Name ? `Menunggu persetujuan: *${l1Name}*` : "Tidak ada approver yang dikonfigurasi";
-        const msg = `🔔 *Permintaan ${typeLabel} Baru*\n\nNo: ${advanceNumber}\nNama: ${partyName}\nNominal: Rp ${new Intl.NumberFormat("id-ID").format(amountN)}\nPemohon: ${requesterName ?? userId ?? "-"}\n${approverInfo}\n\nNominal melebihi batas auto-approve. Silakan buka BizPortal → Expense → Approval untuk menyetujui.`;
+        const msg = `🔔 *Permintaan ${typeLabel} Baru*\n\nNo: ${advanceNumber}\nNama: ${partyName}\nKategori: ${categoryVal ?? "-"}\nNominal: Rp ${new Intl.NumberFormat("id-ID").format(amountN)}\n${approverInfo}`;
         sendWhatsApp(adminGroup, msg, { context: "expense_approval_request", refId: String(arId) }).catch(() => {});
       }
     } catch { /* non-fatal */ }
+
+    auditFromReq(req, {
+      action: "kasbon_created",
+      module: "kasbon",
+      referenceId: String(adv!.id),
+      newData: { advanceNumber, partyName, amount: amountN, status: "pending_approval", category: categoryVal },
+    });
 
     return res.status(201).json({
       ...serializeAdv(adv!),
@@ -325,7 +399,7 @@ router.post("/", async (req: Request, res) => {
     });
   }
 
-  // ── Tidak perlu approval — buat langsung dengan jurnal ───────────────────
+  // ── Tidak perlu approval — buat langsung dengan jurnal ──────────────────────
   const [adv] = await db.insert(cashAdvancesTable).values({
     companyId,
     advanceNumber,
@@ -340,8 +414,14 @@ router.post("/", async (req: Request, res) => {
     status: "active",
     receivableAccountId,
     cashBankAccountId,
-    createdById: userId,
+    vendorId: vendorId ? Number(vendorId) : null,
+    userId: employeeUserId,
+    createdById: creatorUserId,
   }).returning();
+
+  if (categoryVal) {
+    await db.execute(sql.raw(`UPDATE cash_advances SET category = '${categoryVal.replace(/'/g, "''")}' WHERE id = ${adv!.id}`));
+  }
 
   const journalType = (paymentMethod ?? "bank") === "cash" ? "cash" : "bank";
   const [journal] = await db.select().from(accountingJournalsTable)
@@ -367,11 +447,199 @@ router.post("/", async (req: Request, res) => {
   }, j.code);
 
   await db.update(cashAdvancesTable).set({ entryId: entry.id }).where(eq(cashAdvancesTable.id, adv!.id));
+
+  auditFromReq(req, {
+    action: "kasbon_created",
+    module: "kasbon",
+    referenceId: String(adv!.id),
+    newData: { advanceNumber, partyName, amount: amountN, status: "active", category: categoryVal },
+  });
+
   return res.status(201).json({ ...serializeAdv({ ...adv!, entryId: entry.id }), needsApproval: false });
 });
 
-// ─── Repayment ────────────────────────────────────────────────────────────────
+// ─── Approve (BD) ──────────────────────────────────────────────────────────────
+router.patch("/:id/approve", async (req: Request, res) => {
+  const id = Number(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ message: "Invalid id" });
 
+  const result = await db.execute(sql.raw(`SELECT * FROM cash_advances WHERE id = ${id}`));
+  const adv = result.rows[0] as any;
+  if (!adv) return res.status(404).json({ message: "Kasbon tidak ditemukan." });
+  if (adv.status !== "pending_approval")
+    return res.status(400).json({ message: `Kasbon status '${adv.status}' tidak bisa di-approve.` });
+
+  // Post jurnal dan set status → active
+  try {
+    await postCashAdvanceJournal(id);
+  } catch (e: any) {
+    return res.status(400).json({ message: `Gagal posting jurnal: ${e.message}` });
+  }
+
+  // Update approval request
+  await db.execute(sql.raw(`
+    UPDATE expense_approval_requests
+    SET l1_status = 'approved', status = 'approved', updated_at = NOW()
+    WHERE ref_type IN ('kasbon','talangan') AND ref_id = ${id}
+  `)).catch(() => {});
+
+  auditFromReq(req, {
+    action: "kasbon_approved",
+    module: "kasbon",
+    referenceId: String(id),
+    newData: { advanceNumber: adv.advance_number, partyName: adv.party_name, amount: Number(adv.amount) },
+  });
+
+  const updated = await db.execute(sql.raw(`SELECT * FROM cash_advances WHERE id = ${id}`));
+  return res.json({ ...serializeAdv(updated.rows[0] as any), message: "Kasbon disetujui dan jurnal telah diposting." });
+});
+
+// ─── Reject (BD) ───────────────────────────────────────────────────────────────
+router.patch("/:id/reject", async (req: Request, res) => {
+  const id = Number(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ message: "Invalid id" });
+  const { reason } = req.body ?? {};
+
+  const result = await db.execute(sql.raw(`SELECT * FROM cash_advances WHERE id = ${id}`));
+  const adv = result.rows[0] as any;
+  if (!adv) return res.status(404).json({ message: "Kasbon tidak ditemukan." });
+  if (adv.status !== "pending_approval")
+    return res.status(400).json({ message: `Kasbon status '${adv.status}' tidak bisa ditolak.` });
+
+  const reasonSafe = reason ? String(reason).replace(/'/g, "''") : "";
+  await db.execute(sql.raw(`
+    UPDATE cash_advances
+    SET status = 'rejected', rejection_reason = '${reasonSafe}', updated_at = NOW()
+    WHERE id = ${id}
+  `));
+
+  await db.execute(sql.raw(`
+    UPDATE expense_approval_requests
+    SET l1_status = 'rejected', l1_notes = '${reasonSafe}', status = 'rejected', updated_at = NOW()
+    WHERE ref_type IN ('kasbon','talangan') AND ref_id = ${id}
+  `)).catch(() => {});
+
+  auditFromReq(req, {
+    action: "kasbon_rejected",
+    module: "kasbon",
+    referenceId: String(id),
+    newData: { advanceNumber: adv.advance_number, reason },
+  });
+
+  const updated = await db.execute(sql.raw(`SELECT * FROM cash_advances WHERE id = ${id}`));
+  return res.json({ ...serializeAdv(updated.rows[0] as any), message: "Kasbon ditolak." });
+});
+
+// ─── Upload Receipt + OCR ──────────────────────────────────────────────────────
+router.post("/:id/upload-receipt", upload.single("receipt"), async (req: Request, res) => {
+  const id = Number(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ message: "Invalid id" });
+  if (!req.file) return res.status(400).json({ message: "File receipt wajib diupload." });
+
+  const result = await db.execute(sql.raw(`SELECT * FROM cash_advances WHERE id = ${id}`));
+  const adv = result.rows[0] as any;
+  if (!adv) return res.status(404).json({ message: "Kasbon tidak ditemukan." });
+
+  const file = req.file;
+  const ext = (file.originalname.split(".").pop() ?? "jpg").toLowerCase();
+  const allowedExt = ["jpg", "jpeg", "png", "pdf", "webp"];
+  if (!allowedExt.includes(ext))
+    return res.status(400).json({ message: "Format file tidak didukung. Gunakan JPG, PNG, atau PDF." });
+
+  // ── Upload ke Replit Object Storage ─────────────────────────────────────────
+  let receiptUrl: string | null = null;
+  try {
+    const storageClient = new ObjectStorageClient();
+    const key = `receipts/kasbon-${id}-${Date.now()}.${ext}`;
+    await storageClient.uploadFromBytes(key, file.buffer, { contentType: file.mimetype });
+    receiptUrl = key;
+  } catch {
+    // Storage optional — OCR masih bisa berjalan
+  }
+
+  // ── OCR via OpenAI Vision ────────────────────────────────────────────────────
+  let ocrResult: { amount: number | null; date: string | null; partyName: string | null; description: string | null; confidence: string } = {
+    amount: null, date: null, partyName: null, description: null, confidence: "low",
+  };
+
+  try {
+    const openai = getOpenAI();
+    const isImage = ["jpg", "jpeg", "png", "webp"].includes(ext);
+
+    let userContent: any[];
+    if (isImage) {
+      const b64 = file.buffer.toString("base64");
+      const mime = file.mimetype as "image/jpeg" | "image/png" | "image/webp";
+      userContent = [
+        {
+          type: "text",
+          text: `Ini adalah struk/receipt pembayaran. Ekstrak informasi berikut dalam JSON:
+- amount: nominal pembayaran (angka, tanpa tanda titik/koma, tanpa simbol mata uang)
+- date: tanggal transaksi (format YYYY-MM-DD)
+- partyName: nama vendor/toko/pihak penerima
+- description: deskripsi singkat pembelian
+- confidence: "high" jika data jelas, "medium" jika ada ketidakpastian, "low" jika tidak bisa dibaca
+
+Kembalikan HANYA JSON valid, tidak ada teks lain.`,
+        },
+        { type: "image_url", image_url: { url: `data:${mime};base64,${b64}`, detail: "high" } },
+      ];
+    } else {
+      // PDF — ekstrak teks dulu
+      userContent = [
+        {
+          type: "text",
+          text: `Analisa file PDF berikut (base64): ${file.buffer.toString("base64").slice(0, 2000)}...
+Ini adalah struk/receipt pembayaran. Ekstrak dalam JSON: amount (angka), date (YYYY-MM-DD), partyName (nama toko), description (deskripsi pembelian), confidence (high/medium/low).
+Kembalikan HANYA JSON valid.`,
+        },
+      ];
+    }
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [{ role: "user", content: userContent }],
+      max_tokens: 400,
+      response_format: { type: "json_object" },
+    });
+
+    const raw = completion.choices[0]?.message?.content ?? "{}";
+    const parsed = JSON.parse(raw);
+    ocrResult = {
+      amount: parsed.amount ? Number(String(parsed.amount).replace(/[^\d]/g, "")) : null,
+      date: parsed.date ?? null,
+      partyName: parsed.partyName ?? null,
+      description: parsed.description ?? null,
+      confidence: parsed.confidence ?? "medium",
+    };
+  } catch (e) {
+    console.error("[OCR] Failed:", e);
+  }
+
+  // ── Simpan ke DB ──────────────────────────────────────────────────────────────
+  const ocrJson = JSON.stringify(ocrResult).replace(/'/g, "''");
+  const receiptUrlSafe = receiptUrl ? `'${receiptUrl}'` : "NULL";
+  await db.execute(sql.raw(`
+    UPDATE cash_advances
+    SET receipt_url = ${receiptUrlSafe}, ocr_raw_data = '${ocrJson}', updated_at = NOW()
+    WHERE id = ${id}
+  `));
+
+  auditFromReq(req, {
+    action: "receipt_uploaded",
+    module: "kasbon",
+    referenceId: String(id),
+    newData: { receiptUrl, ocr: ocrResult },
+  });
+
+  return res.json({
+    receiptUrl,
+    ocr: ocrResult,
+    message: "Receipt berhasil diproses.",
+  });
+});
+
+// ─── Repayment ─────────────────────────────────────────────────────────────────
 router.post("/:id/repay", async (req: Request, res) => {
   const id = Number(req.params.id);
   if (isNaN(id)) return res.status(400).json({ message: "Invalid id" });
@@ -447,12 +715,18 @@ router.post("/:id/repay", async (req: Request, res) => {
     updatedAt: new Date(),
   }).where(eq(cashAdvancesTable.id, id));
 
+  auditFromReq(req, {
+    action: "payment_processed",
+    module: "kasbon",
+    referenceId: String(id),
+    newData: { repaymentAmount: amountN, newStatus, newRemaining },
+  });
+
   const [updated] = await db.select().from(cashAdvancesTable).where(eq(cashAdvancesTable.id, id));
   return res.status(201).json({ repayment: serializeRep(rep!), advance: serializeAdv(updated!) });
 });
 
-// ─── Delete ───────────────────────────────────────────────────────────────────
-
+// ─── Delete ────────────────────────────────────────────────────────────────────
 router.delete("/:id", async (req, res) => {
   const id = Number(req.params.id);
   if (isNaN(id)) return res.status(400).json({ message: "Invalid id" });
@@ -460,7 +734,6 @@ router.delete("/:id", async (req, res) => {
   if (!adv) return res.status(404).json({ message: "Not found" });
   if (!["active", "pending_approval", "rejected"].includes(adv.status) || Number(adv.paidAmount) > 0)
     return res.status(400).json({ message: "Hanya kasbon yang belum ada cicilan yang bisa dihapus." });
-  // Hapus approval request terkait jika ada
   await db.execute(sql.raw(
     `DELETE FROM expense_approval_requests WHERE ref_type IN ('kasbon','talangan') AND ref_id = ${id}`
   ));

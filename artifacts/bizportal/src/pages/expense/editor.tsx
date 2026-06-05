@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useLocation, useParams } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -41,6 +42,13 @@ import {
   Command, CommandEmpty, CommandInput, CommandItem, CommandList,
 } from "@/components/ui/command";
 import { Link } from "wouter";
+
+async function apiFetch(url: string, opts?: RequestInit) {
+  const r = await fetch(url, { credentials: "include", ...opts });
+  const d = await r.json();
+  if (!r.ok) throw new Error(d.message ?? "Terjadi kesalahan.");
+  return d;
+}
 
 const idr = (n: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
@@ -388,6 +396,15 @@ export default function ExpenseEditorPage() {
   const { data: taxes = [] } = useListTaxes();
   const { data: suppliers = [] } = useVendors();
   const { data: customers = [] } = useListCustomers();
+  const { data: paymentAccounts = [] } = useQuery({
+    queryKey: ["expense-payment-accounts"],
+    queryFn: () => apiFetch("/api/expenses/payment-accounts"),
+  });
+
+  const { data: userList = [] } = useQuery({
+    queryKey: ["users-list"],
+    queryFn: () => apiFetch("/api/users"),
+  });
 
   const createMut = useCreateExpense();
   const updateMut = useUpdateExpense();
@@ -396,6 +413,9 @@ export default function ExpenseEditorPage() {
   const deleteAttachmentMut = useDeleteExpenseAttachment();
 
   const [form, setForm] = useState({ ...EMPTY_FORM });
+  const [sourceAccountId, setSourceAccountId] = useState<number | null>(null);
+  const [vendorId, setVendorId] = useState<number | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
   const [rejectOpen, setRejectOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
   const [payOpen, setPayOpen] = useState(false);
@@ -455,6 +475,7 @@ export default function ExpenseEditorPage() {
 
   useEffect(() => {
     if (expense && !isNew) {
+      const expAny = expense as any;
       setForm({
         date: expense.date,
         vendorEmployee: expense.vendorEmployee ?? "",
@@ -474,6 +495,9 @@ export default function ExpenseEditorPage() {
         salesDocId: expense.salesDocId ?? null,
         shipmentId: expense.shipmentId ?? null,
       });
+      setSourceAccountId(expAny.sourceAccountId ?? null);
+      setVendorId(expAny.vendorId ?? null);
+      setUserId(expAny.userId ?? null);
     }
   }, [expense]);
 
@@ -511,7 +535,7 @@ export default function ExpenseEditorPage() {
 
   const save = async () => {
     if (!form.date) { toast({ title: t.common.error, variant: "destructive" }); return; }
-    const body = {
+    const body: any = {
       date: form.date,
       vendorEmployee: form.vendorEmployee || undefined,
       vendorId: form.vendorId || undefined,
@@ -529,6 +553,9 @@ export default function ExpenseEditorPage() {
       sourceAccountId: form.sourceAccountId || undefined,
       salesDocId: form.salesDocId || undefined,
       shipmentId: form.shipmentId || undefined,
+      sourceAccountId: sourceAccountId ?? undefined,
+      vendorId: vendorId ?? undefined,
+      userId: userId ?? undefined,
     };
     try {
       if (isNew) {
@@ -761,6 +788,65 @@ export default function ExpenseEditorPage() {
                   customers={customers}
                   disabled={locked}
                 />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Vendor (Master)</Label>
+                <Select
+                  value={vendorId ? String(vendorId) : "__none__"}
+                  onValueChange={(v) => {
+                    if (v === "__none__") { setVendorId(null); return; }
+                    const id = Number(v);
+                    setVendorId(id);
+                    const s = (suppliers as any[]).find((s: any) => s.id === id);
+                    if (s && !form.vendorEmployee.trim()) setForm((f) => ({ ...f, vendorEmployee: s.name ?? "" }));
+                  }}
+                  disabled={locked}
+                >
+                  <SelectTrigger><SelectValue placeholder="Pilih vendor master..." /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">— Tidak dipilih —</SelectItem>
+                    {(suppliers as any[]).map((s: any) => (
+                      <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Karyawan (User Master)</Label>
+                <Select
+                  value={userId ?? "__none__"}
+                  onValueChange={(v) => {
+                    if (v === "__none__") { setUserId(null); return; }
+                    setUserId(v);
+                    const u = (userList as any[]).find((u: any) => u.id === v);
+                    if (u && !form.vendorEmployee.trim()) setForm((f) => ({ ...f, vendorEmployee: u.name ?? "" }));
+                  }}
+                  disabled={locked}
+                >
+                  <SelectTrigger><SelectValue placeholder="Pilih karyawan..." /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">— Tidak dipilih —</SelectItem>
+                    {(userList as any[]).map((u: any) => (
+                      <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Sumber Dana (Akun)</Label>
+                <Select
+                  value={sourceAccountId ? String(sourceAccountId) : "__none__"}
+                  onValueChange={(v) => setSourceAccountId(v === "__none__" ? null : Number(v))}
+                  disabled={locked}
+                >
+                  <SelectTrigger><SelectValue placeholder="Pilih akun kas/bank..." /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">— Tidak dipilih —</SelectItem>
+                    {(paymentAccounts as any[]).map((a: any) => (
+                      <SelectItem key={a.id} value={String(a.id)}>{a.code} – {a.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-1.5">
                 <Label>Kategori</Label>

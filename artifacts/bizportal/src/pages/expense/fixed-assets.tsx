@@ -57,6 +57,12 @@ export default function FixedAssetsPage() {
   const today = new Date().toISOString().slice(0, 10);
   const thisMonth = today.slice(0, 7) + "-01";
 
+  // Fetch akun Kas/Bank dari COA untuk dropdown sumber pembayaran
+  const { data: paymentAccounts = [] } = useQuery<{ id: number; code: string; name: string }[]>({
+    queryKey: ["fixed-assets-payment-accounts", activeCompanyId],
+    queryFn: () => apiFetch(`/api/fixed-assets/payment-accounts${cq}`),
+  });
+
   const [showForm, setShowForm] = useState(false);
   const [assetName, setAssetName] = useState("");
   const [assetType, setAssetType] = useState("equipment");
@@ -66,8 +72,12 @@ export default function FixedAssetsPage() {
   const [salvageRaw, setSalvageRaw] = useState("");
   const [deprMethod, setDeprMethod] = useState("straight_line");
   const [pm, setPm] = useState("bank");
+  const [paymentAccountId, setPaymentAccountId] = useState<string>("");
   const [taxRelated, setTaxRelated] = useState(false);
   const [notes, setNotes] = useState("");
+
+  // Set default paymentAccountId ke akun pertama saat data tersedia
+  const selectedPaymentAccount = paymentAccounts.find((a) => String(a.id) === paymentAccountId);
 
   const createMut = useMutation({
     mutationFn: (body: object) => apiFetch(`/api/fixed-assets${cq}`, {
@@ -76,7 +86,7 @@ export default function FixedAssetsPage() {
     onSuccess: (d) => {
       toast({ title: `✓ ${d.asset_number} — ${d.asset_name} berhasil dicatat.` });
       qc.invalidateQueries({ queryKey: ["fixed-assets"] });
-      setShowForm(false); setAssetName(""); setPriceRaw(""); setSalvageRaw(""); setNotes(""); setPurchaseDate(today);
+      setShowForm(false); setAssetName(""); setPriceRaw(""); setSalvageRaw(""); setNotes(""); setPurchaseDate(today); setPaymentAccountId("");
     },
     onError: (e: Error) => toast({ title: e.message, variant: "destructive" }),
   });
@@ -85,11 +95,12 @@ export default function FixedAssetsPage() {
     const price = parseIDR(priceRaw);
     if (!assetName.trim()) return toast({ title: "Nama aset wajib diisi.", variant: "destructive" });
     if (price <= 0) return toast({ title: "Harga beli harus lebih dari 0.", variant: "destructive" });
+    if (!paymentAccountId) return toast({ title: "Pilih sumber pembayaran.", variant: "destructive" });
     createMut.mutate({
       assetName, assetType, purchaseDate, purchasePrice: price,
       usefulLifeMonths: parseInt(usefulLife) || 60,
       salvageValue: parseIDR(salvageRaw), depreciationMethod: deprMethod,
-      paymentMethod: pm, taxRelated, notes,
+      paymentMethod: pm, paymentAccountId: parseInt(paymentAccountId), taxRelated, notes,
     });
   };
 
@@ -161,6 +172,54 @@ export default function FixedAssetsPage() {
           </div>
         </div>
 
+        {/* Filter bar */}
+        {!showForm && (
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative flex-1 min-w-[180px]">
+              <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Cari nama/no. aset..."
+                value={filterSearch}
+                onChange={(e) => setFilterSearch(e.target.value)}
+                className="pl-8 h-8 text-sm"
+              />
+            </div>
+            <Select value={filterType} onValueChange={setFilterType}>
+              <SelectTrigger className="h-8 text-sm w-[140px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua Jenis</SelectItem>
+                {Object.entries(ASSET_TYPES).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={filterMethod} onValueChange={setFilterMethod}>
+              <SelectTrigger className="h-8 text-sm w-[150px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua Metode</SelectItem>
+                <SelectItem value="straight_line">Garis Lurus</SelectItem>
+                <SelectItem value="declining_balance">Saldo Menurun</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={filterStatus} onValueChange={setFilterStatus}>
+              <SelectTrigger className="h-8 text-sm w-[120px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua Status</SelectItem>
+                <SelectItem value="active">Aktif</SelectItem>
+                <SelectItem value="inactive">Nonaktif</SelectItem>
+              </SelectContent>
+            </Select>
+            {hasFilter && (
+              <Button variant="ghost" size="sm" className="h-8 text-xs gap-1 text-muted-foreground" onClick={resetFilters}>
+                <X size={12} /> Reset
+              </Button>
+            )}
+            {!isLoading && (
+              <span className="text-xs text-muted-foreground ml-auto">
+                {filtered.length} dari {list.length} aset
+              </span>
+            )}
+          </div>
+        )}
+
         {showForm && (
           <Card>
             <CardHeader className="pb-3">
@@ -213,11 +272,24 @@ export default function FixedAssetsPage() {
                 </div>
                 <div className="space-y-1.5">
                   <Label>Sumber Pembayaran</Label>
-                  <Select value={pm} onValueChange={setPm}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                  <Select value={paymentAccountId} onValueChange={(v) => {
+                    setPaymentAccountId(v);
+                    const acc = paymentAccounts.find((a) => String(a.id) === v);
+                    if (acc) setPm(acc.code.startsWith("1-1010") ? "cash" : "bank");
+                  }}>
+                    <SelectTrigger>
+                      <SelectValue placeholder={paymentAccounts.length === 0 ? "Memuat akun..." : "Pilih akun Kas/Bank"} />
+                    </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="bank">🏦 Bank</SelectItem>
-                      <SelectItem value="cash">💵 Kas</SelectItem>
+                      {paymentAccounts.map((acc) => (
+                        <SelectItem key={acc.id} value={String(acc.id)}>
+                          <span className="font-mono text-xs text-muted-foreground mr-2">{acc.code}</span>
+                          {acc.name}
+                        </SelectItem>
+                      ))}
+                      {paymentAccounts.length === 0 && (
+                        <SelectItem value="__none" disabled>Tidak ada akun Kas/Bank di COA</SelectItem>
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
@@ -230,7 +302,7 @@ export default function FixedAssetsPage() {
               {parseIDR(priceRaw) > 0 && (
                 <div className="space-y-1.5">
                   <div className="rounded-md bg-muted/40 border px-4 py-2 text-xs text-muted-foreground">
-                    Jurnal: <strong>DR Aset Tetap</strong> {idr(parseIDR(priceRaw))} · <strong>CR {pm === "cash" ? "Kas" : "Bank"}</strong> {idr(parseIDR(priceRaw))}
+                    Jurnal: <strong>DR Aset Tetap</strong> {idr(parseIDR(priceRaw))} · <strong>CR {selectedPaymentAccount ? `${selectedPaymentAccount.code} — ${selectedPaymentAccount.name}` : (pm === "cash" ? "Kas" : "Bank")}</strong> {idr(parseIDR(priceRaw))}
                   </div>
                   {parseInt(usefulLife) > 0 && (
                     <div className="rounded-md bg-muted/40 border px-4 py-2 text-xs text-muted-foreground">
@@ -269,7 +341,10 @@ export default function FixedAssetsPage() {
               <TableBody>
                 {isLoading && <TableRow><TableCell colSpan={9} className="text-center py-10 text-muted-foreground">Memuat...</TableCell></TableRow>}
                 {!isLoading && list.length === 0 && <TableRow><TableCell colSpan={9} className="text-center py-10 text-muted-foreground">Belum ada aset tetap.</TableCell></TableRow>}
-                {(list as any[]).map((row) => {
+                {!isLoading && list.length > 0 && filtered.length === 0 && (
+                  <TableRow><TableCell colSpan={9} className="text-center py-10 text-muted-foreground">Tidak ada aset yang cocok dengan filter.</TableCell></TableRow>
+                )}
+                {filtered.map((row) => {
                   const deprPct = parseFloat(row.purchase_price) > 0
                     ? (parseFloat(row.accumulated_depreciation) / parseFloat(row.purchase_price)) * 100 : 0;
                   return (

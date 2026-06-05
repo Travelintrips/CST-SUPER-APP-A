@@ -405,6 +405,7 @@ export default function ExpenseListPage() {
                   </TableRow>
                 )}
                 {expenses.map((exp) => {
+                  const expAny = exp as any;
                   const cat = cats.find((c) => c.id === exp.categoryId);
                   return (
                     <TableRow key={exp.id} className="cursor-pointer hover:bg-muted/50" {...prefetchHover(getGetExpenseQueryOptions(exp.id))}>
@@ -417,7 +418,7 @@ export default function ExpenseListPage() {
                       <TableCell>
                         <Badge variant="outline" className="text-xs">{TYPE_LABELS[exp.expenseType] ?? exp.expenseType}</Badge>
                       </TableCell>
-                      <TableCell className="text-sm">{exp.vendorEmployee ?? "—"}</TableCell>
+                      <TableCell className="text-sm">{expAny.vendor?.name ?? expAny.user?.name ?? exp.vendorEmployee ?? "—"}</TableCell>
                       <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">{exp.description ?? "—"}</TableCell>
                       <TableCell>
                         {cat ? (
@@ -425,6 +426,13 @@ export default function ExpenseListPage() {
                         ) : exp.categoryName ? (
                           <Badge variant="secondary" className="text-xs">{exp.categoryName}</Badge>
                         ) : <span className="text-xs text-muted-foreground">—</span>}
+                        {expAny.categoryName
+                          ? <Badge variant="secondary" className="text-xs">{expAny.categoryName}</Badge>
+                          : cat ? <Badge variant="secondary" className="text-xs">{cat.name}</Badge>
+                          : <span className="text-xs text-muted-foreground">—</span>}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {expAny.sourceAccount?.name ?? "—"}
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">
                         {exp.sourceAccountName ?? "—"}
