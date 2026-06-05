@@ -984,7 +984,19 @@ export async function postSportCenterBooking(args: {
 
     if (!debitAccountId || !creditAccountId || !journalId) {
       logger.warn(
-        { bookingId: args.bookingId },
+        {
+          bookingId: args.bookingId,
+          companyId: args.companyId,
+          settingsId: settings.id,
+          defaultCashAccountId: settings.defaultCashAccountId,
+          defaultBankAccountId: settings.defaultBankAccountId,
+          salesIncomeAccountId: settings.salesIncomeAccountId,
+          cashJournalId: settings.cashJournalId,
+          bankJournalId: settings.bankJournalId,
+          debitAccountId,
+          creditAccountId,
+          journalId,
+        },
         "Skipping Sport Center booking post: akun kas/pendapatan atau jurnal belum dikonfigurasi",
       );
       return;

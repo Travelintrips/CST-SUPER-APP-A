@@ -69,6 +69,8 @@ const COA_LEAF_TEMPLATES: SeedAccount[] = [
   { code: "1-1022", name: "Bank BNI",                         type: "asset",   parentCode: "1-1000" },
   { code: "1-1030", name: "Piutang Usaha",                    type: "asset",   parentCode: "1-1000" },
   { code: "1-1031", name: "Piutang Lainnya",                  type: "asset",   parentCode: "1-1000" },
+  { code: "1-1032", name: "Piutang Karyawan (Kasbon)",        type: "asset",   parentCode: "1-1000" },
+  { code: "1-1033", name: "Piutang Dana Talangan",            type: "asset",   parentCode: "1-1000" },
   { code: "1-1040", name: "Persediaan Barang",                type: "asset",   parentCode: "1-1000" },
   { code: "1-1050", name: "PPN Masukan",                      type: "asset",   parentCode: "1-1000" },
   { code: "1-1060", name: "Uang Muka Biaya",                  type: "asset",   parentCode: "1-1000" },
@@ -81,8 +83,12 @@ const COA_LEAF_TEMPLATES: SeedAccount[] = [
   { code: "2-1030", name: "Hutang Pajak Lainnya",             type: "liability", parentCode: "2-1000" },
   { code: "2-1040", name: "Uang Muka Pelanggan",              type: "liability", parentCode: "2-1000" },
   { code: "2-1045", name: "GR/IR Clearing (Barang Diterima/Belum Ditagih)", type: "liability", parentCode: "2-1000" },
+  { code: "2-1050", name: "Hutang Bank Jangka Pendek",        type: "liability", parentCode: "2-1000" },
+  { code: "2-1055", name: "Hutang Leasing Jangka Pendek",     type: "liability", parentCode: "2-1000" },
   // ── Kewajiban Jangka Panjang ──────────────────────────────
   { code: "2-2010", name: "Hutang Jangka Panjang",            type: "liability", parentCode: "2-2000" },
+  { code: "2-2020", name: "Hutang Bank Jangka Panjang",       type: "liability", parentCode: "2-2000" },
+  { code: "2-2030", name: "Hutang Leasing Jangka Panjang",    type: "liability", parentCode: "2-2000" },
   // ── Modal ─────────────────────────────────────────────────
   { code: "3-1010", name: "Modal Disetor",                    type: "equity",  parentCode: "3-1000" },
   // ── Laba / Rugi ───────────────────────────────────────────
@@ -149,6 +155,30 @@ async function applyRuntimeMigrations(): Promise<void> {
     `ALTER TABLE accounting_settings ADD COLUMN IF NOT EXISTS company_id INTEGER`,
     `ALTER TABLE accounting_settings ADD COLUMN IF NOT EXISTS grir_account_id INTEGER REFERENCES chart_of_accounts(id) ON DELETE SET NULL`,
     `ALTER TABLE accounting_settings ADD COLUMN IF NOT EXISTS gsheet_spreadsheet_id TEXT`,
+    `CREATE TABLE IF NOT EXISTS transaction_taxes (
+      id SERIAL PRIMARY KEY,
+      company_id INTEGER NOT NULL,
+      transaction_type TEXT NOT NULL,
+      transaction_id INTEGER NOT NULL,
+      transaction_ref TEXT,
+      tax_id INTEGER NOT NULL REFERENCES accounting_taxes(id),
+      tax_name TEXT NOT NULL,
+      tax_rate NUMERIC(6,3) NOT NULL,
+      cut_type TEXT NOT NULL DEFAULT 'self_borne',
+      base_amount NUMERIC(14,2) NOT NULL,
+      tax_amount NUMERIC(14,2) NOT NULL,
+      account_id INTEGER REFERENCES chart_of_accounts(id),
+      period TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      paid_at TIMESTAMP,
+      reported_at TIMESTAMP,
+      notes TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS tx_taxes_tx_uniq ON transaction_taxes(transaction_type, transaction_id, tax_id)`,
+    `CREATE INDEX IF NOT EXISTS tx_taxes_company_period_idx ON transaction_taxes(company_id, period)`,
+    `CREATE INDEX IF NOT EXISTS tx_taxes_status_idx ON transaction_taxes(status)`,
   ];
   for (const q of [...companyColMigrations, ...accountingColMigrations]) {
     try { await db.execute(sql.raw(q)); } catch { /* column/index already exists or duplicate */ }
@@ -218,9 +248,11 @@ export async function ensureDefaultCompany(): Promise<number> {
 export async function seedAccountingDefaults(companyId?: number): Promise<void> {
   const cid = companyId ?? (await ensureDefaultCompany());
 
-  // ── Fast-path: skip heavy seed if COA already fully populated ────────────
+  // ── Fast-path: skip heavy seed if COA, journals, AND settings already fully populated ──
   // Count leaf accounts that have a company_id (per-company accounts).
   // Expected: COA_LEAF_TEMPLATES.length (38) × ALL_COMPANY_IDS.length (4) = 152
+  // Also check journals (6 templates × 4 companies = 24) and that settings rows have
+  // cash_journal_id populated — if any are missing, fall through to full seed.
   try {
     const [{ leafCount }] = await db
       .select({ leafCount: sql<number>`count(*)::int` })
@@ -228,6 +260,23 @@ export async function seedAccountingDefaults(companyId?: number): Promise<void> 
       .where(sql`company_id IS NOT NULL`);
     const expectedLeaves = COA_LEAF_TEMPLATES.length * ALL_COMPANY_IDS.length;
     if (Number(leafCount) >= expectedLeaves) {
+      // Also verify journals and settings are not empty
+      const [{ jCount }] = await db
+        .select({ jCount: sql<number>`count(*)::int` })
+        .from(accountingJournalsTable)
+        .where(sql`company_id IS NOT NULL`);
+      const expectedJournals = 6 * ALL_COMPANY_IDS.length; // 6 journal types × 4 companies
+      const [{ nullSettingsCnt }] = await db
+        .select({ nullSettingsCnt: sql<number>`count(*)::int` })
+        .from(accountingSettingsTable)
+        .where(sql`cash_journal_id IS NULL AND company_id IS NOT NULL`);
+      if (Number(jCount) < expectedJournals || Number(nullSettingsCnt) > 0) {
+        logger.info(
+          { jCount: Number(jCount), expectedJournals, nullSettingsCnt: Number(nullSettingsCnt) },
+          "Accounting seed: COA seeded but journals/settings missing — running full seed to repair."
+        );
+        // Fall through to full seed below
+      } else {
       logger.info("Accounting seed: COA already fully seeded — skipping (fast path).");
       // Still patch grirAccountId in settings if it's NULL but 2-1045 account exists
       try {
@@ -251,7 +300,8 @@ export async function seedAccountingDefaults(companyId?: number): Promise<void> 
         `);
       } catch (e) { /* non-fatal */ }
       return;
-    }
+      } // end else (journals+settings already seeded)
+    } // end if (leafCount >= expectedLeaves)
   } catch {
     // column may not exist yet — fall through to full seed
   }
@@ -469,6 +519,27 @@ export async function seedAccountingDefaults(companyId?: number): Promise<void> 
     ALTER TABLE accounting_taxes ADD COLUMN IF NOT EXISTS company_id integer
   `);
 
+  // ── Taxes: add withholding value to tax_kind enum if not exists ───────────
+  try {
+    await db.execute(sql.raw(`ALTER TYPE tax_kind ADD VALUE IF NOT EXISTS 'withholding'`));
+  } catch { /* already exists */ }
+
+  // ── Taxes: create cut_type enum and add cut_type column ──────────────────
+  try {
+    await db.execute(sql.raw(`
+      DO $$ BEGIN
+        CREATE TYPE cut_type AS ENUM ('self_borne', 'withholding');
+      EXCEPTION WHEN duplicate_object THEN NULL;
+      END $$
+    `));
+  } catch { /* already exists */ }
+  try {
+    await db.execute(sql.raw(`
+      ALTER TABLE accounting_taxes
+        ADD COLUMN IF NOT EXISTS cut_type cut_type NOT NULL DEFAULT 'self_borne'
+    `));
+  } catch { /* already exists */ }
+
   // Dedup taxes: keep min(id) per (kind, company_id)
   await db.execute(sql`
     DELETE FROM accounting_taxes
@@ -482,43 +553,54 @@ export async function seedAccountingDefaults(companyId?: number): Promise<void> 
     UPDATE accounting_taxes SET company_id = 1 WHERE company_id IS NULL
   `);
 
-  // Seed PPN sale + purchase per company
+  // Define PPh tax templates
+  interface TaxTemplate {
+    name: string;
+    rate: string;
+    kind: "sale" | "purchase" | "withholding";
+    cutType: "self_borne" | "withholding";
+    accountBase: string; // base COA code
+    uniqueKey: string;   // used to detect if already exists
+  }
+  const TAX_TEMPLATES: TaxTemplate[] = [
+    { name: "PPN Keluaran 11%",         rate: "11.000", kind: "sale",        cutType: "self_borne",  accountBase: "2-1020", uniqueKey: "sale" },
+    { name: "PPN Masukan 11%",          rate: "11.000", kind: "purchase",     cutType: "self_borne",  accountBase: "1-1050", uniqueKey: "purchase" },
+    { name: "PPh 21",                   rate: "5.000",  kind: "withholding",  cutType: "withholding", accountBase: "2-1030", uniqueKey: "pph21" },
+    { name: "PPh 23",                   rate: "2.000",  kind: "withholding",  cutType: "withholding", accountBase: "2-1030", uniqueKey: "pph23" },
+    { name: "PPh Final",                rate: "0.500",  kind: "withholding",  cutType: "self_borne",  accountBase: "2-1030", uniqueKey: "pphfinal" },
+    { name: "PPh Freight Paket 1,1%",   rate: "1.100",  kind: "withholding",  cutType: "withholding", accountBase: "2-1030", uniqueKey: "pphfreight" },
+  ];
+
+  // Seed all tax templates per company
   for (const companyId of ALL_COMPANY_IDS) {
-    const ppnOut = needFor("2-1020", companyId);
-    const ppnIn  = needFor("1-1050", companyId);
     const existingForCompany = await db
       .select()
       .from(accountingTaxesTable)
       .where(eq(accountingTaxesTable.companyId, companyId));
-    const hasSale     = existingForCompany.some((t) => t.kind === "sale");
-    const hasPurchase = existingForCompany.some((t) => t.kind === "purchase");
-    if (!hasSale) {
-      await db.insert(accountingTaxesTable).values({
-        name: "PPN Keluaran 11%", rate: "11.000", kind: "sale",
-        accountId: ppnOut.id, companyId,
-      });
-    } else {
-      // Update account to correct company account
-      const [existing] = existingForCompany.filter((t) => t.kind === "sale");
-      if (existing && existing.accountId !== ppnOut.id) {
-        await db.execute(sql`
-          UPDATE accounting_taxes SET account_id = ${ppnOut.id}
+
+    for (const tpl of TAX_TEMPLATES) {
+      const accountRow = needFor(tpl.accountBase, companyId);
+
+      // Detect existing by kind for PPN, by name-prefix for PPh
+      let existing: typeof existingForCompany[0] | undefined;
+      if (tpl.uniqueKey === "sale")       existing = existingForCompany.find((t) => t.kind === "sale");
+      else if (tpl.uniqueKey === "purchase") existing = existingForCompany.find((t) => t.kind === "purchase");
+      else existing = existingForCompany.find((t) => t.name === tpl.name);
+
+      if (!existing) {
+        await db.execute(sql.raw(`
+          INSERT INTO accounting_taxes (name, rate, kind, cut_type, account_id, company_id, is_active)
+          VALUES ('${tpl.name}', '${tpl.rate}', '${tpl.kind}', '${tpl.cutType}', ${accountRow.id}, ${companyId}, true)
+          ON CONFLICT DO NOTHING
+        `));
+      } else {
+        // Patch account_id and cut_type on existing rows
+        await db.execute(sql.raw(`
+          UPDATE accounting_taxes
+          SET account_id = ${accountRow.id},
+              cut_type = '${tpl.cutType}'
           WHERE id = ${existing.id}
-        `);
-      }
-    }
-    if (!hasPurchase) {
-      await db.insert(accountingTaxesTable).values({
-        name: "PPN Masukan 11%", rate: "11.000", kind: "purchase",
-        accountId: ppnIn.id, companyId,
-      });
-    } else {
-      const [existing] = existingForCompany.filter((t) => t.kind === "purchase");
-      if (existing && existing.accountId !== ppnIn.id) {
-        await db.execute(sql`
-          UPDATE accounting_taxes SET account_id = ${ppnIn.id}
-          WHERE id = ${existing.id}
-        `);
+        `));
       }
     }
   }
@@ -631,6 +713,65 @@ async function seedExpenseCategories(
   }
 }
 
+// ── Additional tax rates — runs unconditionally on every boot ────────────────
+const ADDITIONAL_TAX_TEMPLATES: {
+  name: string;
+  rate: string;
+  kind: "sale" | "purchase" | "withholding";
+  cutType: "self_borne" | "withholding";
+  accountBase: string;
+}[] = [
+  { name: "PPN Keluaran 12%",           rate: "12.000", kind: "sale",       cutType: "self_borne",  accountBase: "2-1020" },
+  { name: "PPN Masukan 12%",            rate: "12.000", kind: "purchase",   cutType: "self_borne",  accountBase: "1-1050" },
+  { name: "PPh 4(2) Sewa 10%",          rate: "10.000", kind: "withholding",cutType: "withholding", accountBase: "2-1030" },
+  { name: "PPh 15 Pelayaran DN 1,2%",   rate: "1.200",  kind: "withholding",cutType: "withholding", accountBase: "2-1030" },
+  { name: "PPh 15 Pelayaran LN 2,64%",  rate: "2.640",  kind: "withholding",cutType: "withholding", accountBase: "2-1030" },
+  { name: "PPh 26 20%",                 rate: "20.000", kind: "withholding",cutType: "withholding", accountBase: "2-1030" },
+];
+
+export async function seedAdditionalTaxes(): Promise<void> {
+  try {
+    for (const cid of ALL_COMPANY_IDS) {
+      const abbr = COMPANY_ABBR[cid]!;
+
+      const existingRows = await db
+        .select({ id: accountingTaxesTable.id, name: accountingTaxesTable.name })
+        .from(accountingTaxesTable)
+        .where(eq(accountingTaxesTable.companyId, cid));
+
+      const existingNames = new Set(existingRows.map((r) => r.name.trim().toLowerCase()));
+
+      for (const tpl of ADDITIONAL_TAX_TEMPLATES) {
+        if (existingNames.has(tpl.name.trim().toLowerCase())) continue;
+
+        const accountCode = `${tpl.accountBase}-${abbr}`;
+        const [accountRow] = await db
+          .select({ id: chartOfAccountsTable.id })
+          .from(chartOfAccountsTable)
+          .where(sql`${chartOfAccountsTable.code} = ${accountCode} AND ${chartOfAccountsTable.companyId} = ${cid}`)
+          .limit(1);
+
+        if (!accountRow) {
+          logger.warn({ accountCode, cid }, "seedAdditionalTaxes: account not found, skip");
+          continue;
+        }
+
+        await db.execute(sql.raw(`
+          INSERT INTO accounting_taxes (name, rate, kind, cut_type, account_id, company_id, is_active)
+          VALUES ('${tpl.name.replace(/'/g, "''")}', '${tpl.rate}', '${tpl.kind}', '${tpl.cutType}', ${accountRow.id}, ${cid}, true)
+          ON CONFLICT DO NOTHING
+        `));
+
+        logger.info({ name: tpl.name, cid, abbr }, "seedAdditionalTaxes: inserted new tax");
+      }
+    }
+
+    logger.info("seedAdditionalTaxes: done");
+  } catch (err) {
+    logger.warn({ err }, "seedAdditionalTaxes: failed (non-fatal)");
+  }
+}
+
 export async function getAccountingSettings(companyId = 1): Promise<typeof accountingSettingsTable.$inferSelect | null> {
   const [row] = await db
     .select()
@@ -640,12 +781,103 @@ export async function getAccountingSettings(companyId = 1): Promise<typeof accou
   return row ?? null;
 }
 
+/** Lookup COA dan journal yang tersedia lalu return partial settings untuk auto-populate. */
+async function resolveSettingsFromCoa(companyId: number): Promise<Partial<typeof accountingSettingsTable.$inferInsert>> {
+  const cFilter = companyId;
+
+  const lookupCoa = async (code: string): Promise<number | null> => {
+    let [row] = await db
+      .select({ id: chartOfAccountsTable.id })
+      .from(chartOfAccountsTable)
+      .where(sql`${chartOfAccountsTable.code} = ${code} AND ${chartOfAccountsTable.companyId} = ${cFilter}`)
+      .limit(1);
+    if (!row) {
+      [row] = await db
+        .select({ id: chartOfAccountsTable.id })
+        .from(chartOfAccountsTable)
+        .where(sql`${chartOfAccountsTable.code} = ${code}`)
+        .limit(1);
+    }
+    return row?.id ?? null;
+  };
+
+  const lookupJournal = async (type: string): Promise<number | null> => {
+    let [row] = await db
+      .select({ id: accountingJournalsTable.id })
+      .from(accountingJournalsTable)
+      .where(sql`${accountingJournalsTable.type} = ${type} AND ${accountingJournalsTable.companyId} = ${cFilter}`)
+      .limit(1);
+    if (!row) {
+      [row] = await db
+        .select({ id: accountingJournalsTable.id })
+        .from(accountingJournalsTable)
+        .where(sql`${accountingJournalsTable.type} = ${type}`)
+        .limit(1);
+    }
+    return row?.id ?? null;
+  };
+
+  const [cashAccountId, bankAccountId, salesIncomeId, arAccountId, apAccountId, cashJournalId, bankJournalId, salesJournalId, purchaseJournalId] = await Promise.all([
+    lookupCoa("1-1010"),
+    lookupCoa("1-1020"),
+    lookupCoa("4-1010"),
+    lookupCoa("1-1030"),
+    lookupCoa("2-1010"),
+    lookupJournal("cash"),
+    lookupJournal("bank"),
+    lookupJournal("sales"),
+    lookupJournal("purchase"),
+  ]);
+
+  return {
+    defaultCashAccountId: cashAccountId,
+    defaultBankAccountId: bankAccountId,
+    salesIncomeAccountId: salesIncomeId,
+    arAccountId,
+    apAccountId,
+    cashJournalId,
+    bankJournalId,
+    salesJournalId,
+    purchaseJournalId,
+  };
+}
+
 export async function ensureAccountingSettings(companyId = 1): Promise<typeof accountingSettingsTable.$inferSelect> {
   const existing = await getAccountingSettings(companyId);
-  if (existing) return existing;
+  if (existing) {
+    // Jika field kas/jurnal masih null (belum dikonfigurasi manual), coba auto-populate dari COA
+    const needsPopulate = !existing.defaultCashAccountId && !existing.defaultBankAccountId && !existing.cashJournalId && !existing.bankJournalId;
+    if (needsPopulate) {
+      try {
+        const patch = await resolveSettingsFromCoa(companyId);
+        const hasAny = Object.values(patch).some((v) => v != null);
+        if (hasAny) {
+          const [updated] = await db
+            .update(accountingSettingsTable)
+            .set(patch)
+            .where(eq(accountingSettingsTable.id, existing.id))
+            .returning();
+          logger.info({ companyId, patch }, "ensureAccountingSettings: auto-populated settings dari COA");
+          return updated ?? existing;
+        }
+      } catch (err) {
+        logger.warn({ companyId, err }, "ensureAccountingSettings: gagal auto-populate dari COA");
+      }
+    }
+    return existing;
+  }
+
+  // Create baru dengan auto-populate dari COA
+  let autoFields: Partial<typeof accountingSettingsTable.$inferInsert> = {};
+  try {
+    autoFields = await resolveSettingsFromCoa(companyId);
+  } catch {
+    // ignore, fallback ke kosong
+  }
   const [created] = await db
     .insert(accountingSettingsTable)
-    .values({ companyId })
+    .values({ companyId, ...autoFields })
     .returning();
+  logger.info({ companyId, autoFields }, "ensureAccountingSettings: created new settings");
   return created!;
 }

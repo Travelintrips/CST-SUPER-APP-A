@@ -28,7 +28,7 @@ import {
   Search, RefreshCw, Package, Trash2, CheckCircle2, Circle,
   Clock, Truck, XCircle, ChevronRight, AlertTriangle, User,
   Mail, Phone, MapPin, StickyNote, Loader2, Tag, FileText,
-  ClipboardList, Wrench, ChevronDown, Eye,
+  ClipboardList, Wrench, ChevronDown, Eye, CreditCard, Send, ExternalLink,
 } from "lucide-react";
 import { getTemplate } from "@/lib/productTemplates";
 import type { ProductTemplate } from "@/lib/productTemplates";
@@ -474,6 +474,13 @@ export default function PortalProductOrdersPage() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [linkingItemId, setLinkingItemId] = useState<number | null>(null);
+  const [confirmingPaymentId, setConfirmingPaymentId] = useState<number | null>(null);
+  const [resendingInvoiceId, setResendingInvoiceId] = useState<number | null>(null);
+  const [showAssignDriver, setShowAssignDriver] = useState(false);
+  const [assigningDriver, setAssigningDriver] = useState(false);
+  const [driverJob, setDriverJob] = useState<Record<string, unknown> | null>(null);
+  const [driverList, setDriverList] = useState<{ id: number; name: string; phone: string | null; vehiclePlate: string | null; vehicleType: string | null }[]>([]);
+  const [driverForm, setDriverForm] = useState({ driverId: "", driverNameOverride: "", driverPhoneOverride: "", vehiclePlateOverride: "", vehicleType: "", cargoDescription: "", pickupDateTime: "", deliveryDateTime: "" });
 
   const { data: orders = [], isLoading, refetch } = useListPortalProductOrders(
     { status: statusFilter !== "all" ? statusFilter : undefined, search: search || undefined },
@@ -497,6 +504,19 @@ export default function PortalProductOrdersPage() {
   const invalidate = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: getListPortalProductOrdersQueryKey() });
   }, [queryClient]);
+
+  // Load driver job + driver list when a detail panel opens
+  useEffect(() => {
+    if (!detailOrderId) { setDriverJob(null); setShowAssignDriver(false); return; }
+    fetch(`/api/portal-product/orders/${detailOrderId}/driver`)
+      .then((r) => r.json())
+      .then((d: { job: Record<string, unknown> | null }) => setDriverJob(d.job))
+      .catch(() => {});
+    fetch("/api/portal-product/drivers")
+      .then((r) => r.json())
+      .then((d: { drivers: typeof driverList }) => setDriverList(d.drivers ?? []))
+      .catch(() => {});
+  }, [detailOrderId]);
 
   const filtered = orders.filter((o) => {
     if (!search) return true;
@@ -546,6 +566,62 @@ export default function PortalProductOrdersPage() {
     invalidate();
     if (failed === 0) toast({ title: `${success} pesanan berhasil dihapus` });
     else toast({ title: `${success} berhasil, ${failed} gagal`, variant: "destructive" });
+  }
+
+  async function handleConfirmPayment(id: number) {
+    if (!confirm("Konfirmasi pembayaran sudah diterima?")) return;
+    setConfirmingPaymentId(id);
+    try {
+      const res = await fetch(`/api/portal-product/orders/${id}/confirm-payment`, { method: "POST" });
+      if (!res.ok) throw new Error("Gagal");
+      invalidate();
+      queryClient.invalidateQueries({ queryKey: [`portal-product-order-${id}`] });
+      toast({ title: "Pembayaran dikonfirmasi ✅" });
+    } catch { toast({ title: "Gagal konfirmasi pembayaran", variant: "destructive" }); }
+    finally { setConfirmingPaymentId(null); }
+  }
+
+  async function handleAssignDriver(id: number) {
+    setAssigningDriver(true);
+    try {
+      const selected = driverList.find((d) => d.id.toString() === driverForm.driverId);
+      const body = {
+        ...(driverForm.driverId ? { driverId: parseInt(driverForm.driverId, 10) } : {}),
+        driverNameOverride: driverForm.driverNameOverride || selected?.name || undefined,
+        driverPhoneOverride: driverForm.driverPhoneOverride || selected?.phone || undefined,
+        vehiclePlateOverride: driverForm.vehiclePlateOverride || selected?.vehiclePlate || undefined,
+        vehicleType: driverForm.vehicleType || selected?.vehicleType || undefined,
+        cargoDescription: driverForm.cargoDescription || undefined,
+        pickupDateTime: driverForm.pickupDateTime || undefined,
+        deliveryDateTime: driverForm.deliveryDateTime || undefined,
+      };
+      const res = await fetch(`/api/portal-product/orders/${id}/assign-driver`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const d = await res.json() as { jobNumber?: string; error?: string };
+      if (!res.ok) throw new Error(d.error ?? "Gagal");
+      toast({ title: `Driver ditugaskan ✅ — ${d.jobNumber}` });
+      setShowAssignDriver(false);
+      setDriverForm({ driverId: "", driverNameOverride: "", driverPhoneOverride: "", vehiclePlateOverride: "", vehicleType: "", cargoDescription: "", pickupDateTime: "", deliveryDateTime: "" });
+      // Reload driver job
+      const dj = await fetch(`/api/portal-product/orders/${id}/driver`).then((r) => r.json()) as { job: Record<string, unknown> | null };
+      setDriverJob(dj.job);
+      invalidate();
+    } catch (e: unknown) { toast({ title: (e as Error).message ?? "Gagal assign driver", variant: "destructive" }); }
+    finally { setAssigningDriver(false); }
+  }
+
+  async function handleResendInvoice(id: number) {
+    setResendingInvoiceId(id);
+    try {
+      const res = await fetch(`/api/portal-product/orders/${id}/resend-invoice`, { method: "POST" });
+      const d = await res.json() as { invoiceUrl?: string; message?: string };
+      if (!res.ok) throw new Error(d.message ?? "Gagal");
+      toast({ title: "Invoice dikirim ulang via WA ✅", description: d.invoiceUrl ?? undefined });
+    } catch (e: unknown) { toast({ title: (e as Error).message ?? "Gagal", variant: "destructive" }); }
+    finally { setResendingInvoiceId(null); }
   }
 
   async function handleLinkItem(itemId: number, productId: number) {
@@ -892,6 +968,141 @@ export default function PortalProductOrdersPage() {
                   </div>
                 )}
               </div>
+
+              {/* Driver Assignment */}
+              <Separator />
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Penugasan Driver</p>
+                  {!driverJob && (
+                    <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5"
+                      onClick={() => setShowAssignDriver((v) => !v)}
+                    >
+                      <Truck className="w-3 h-3" />
+                      {showAssignDriver ? "Batal" : "Tugaskan Driver"}
+                    </Button>
+                  )}
+                </div>
+
+                {driverJob ? (
+                  <div className="bg-muted/30 border rounded-lg p-3 text-xs space-y-1.5">
+                    <div className="flex items-center gap-2 justify-between">
+                      <span className="font-medium text-sm">{String(driverJob.driverName ?? "—")}</span>
+                      <Badge variant="outline" className="text-[10px]">{String(driverJob.status)}</Badge>
+                    </div>
+                    <p className="text-muted-foreground">📞 {String(driverJob.driverPhone ?? "—")} · 🚗 {String(driverJob.vehiclePlate ?? "—")}</p>
+                    {driverJob.cargoDescription && <p className="text-muted-foreground">📦 {String(driverJob.cargoDescription)}</p>}
+                    <p className="font-mono text-[10px] text-muted-foreground">Job: {String(driverJob.jobNumber)}</p>
+                  </div>
+                ) : !showAssignDriver ? (
+                  <p className="text-xs text-muted-foreground italic">Belum ada driver ditugaskan</p>
+                ) : null}
+
+                {showAssignDriver && !driverJob && (
+                  <div className="border rounded-lg p-4 space-y-3 mt-2">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="col-span-2">
+                        <p className="text-[10px] text-muted-foreground mb-1">Driver (sistem)</p>
+                        <Select value={driverForm.driverId} onValueChange={(v) => setDriverForm((f) => ({ ...f, driverId: v }))}>
+                          <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Pilih driver..." /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="" className="text-xs">— Tidak ada / manual —</SelectItem>
+                            {driverList.map((d) => (
+                              <SelectItem key={d.id} value={d.id.toString()} className="text-xs">
+                                {d.name} {d.vehiclePlate ? `(${d.vehiclePlate})` : ""}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-muted-foreground mb-1">Nama Driver (override)</p>
+                        <Input className="h-8 text-xs" placeholder="Nama driver..." value={driverForm.driverNameOverride}
+                          onChange={(e) => setDriverForm((f) => ({ ...f, driverNameOverride: e.target.value }))} />
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-muted-foreground mb-1">Telepon Driver</p>
+                        <Input className="h-8 text-xs" placeholder="08xx..." value={driverForm.driverPhoneOverride}
+                          onChange={(e) => setDriverForm((f) => ({ ...f, driverPhoneOverride: e.target.value }))} />
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-muted-foreground mb-1">Plat Kendaraan</p>
+                        <Input className="h-8 text-xs" placeholder="B 1234 XX" value={driverForm.vehiclePlateOverride}
+                          onChange={(e) => setDriverForm((f) => ({ ...f, vehiclePlateOverride: e.target.value }))} />
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-muted-foreground mb-1">Jenis Kendaraan</p>
+                        <Input className="h-8 text-xs" placeholder="Truk, Pickup..." value={driverForm.vehicleType}
+                          onChange={(e) => setDriverForm((f) => ({ ...f, vehicleType: e.target.value }))} />
+                      </div>
+                      <div className="col-span-2">
+                        <p className="text-[10px] text-muted-foreground mb-1">Deskripsi Muatan</p>
+                        <Input className="h-8 text-xs" placeholder="Barang..." value={driverForm.cargoDescription}
+                          onChange={(e) => setDriverForm((f) => ({ ...f, cargoDescription: e.target.value }))} />
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-muted-foreground mb-1">Jadwal Pickup</p>
+                        <Input className="h-8 text-xs" type="datetime-local" value={driverForm.pickupDateTime}
+                          onChange={(e) => setDriverForm((f) => ({ ...f, pickupDateTime: e.target.value }))} />
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-muted-foreground mb-1">Jadwal Pengiriman</p>
+                        <Input className="h-8 text-xs" type="datetime-local" value={driverForm.deliveryDateTime}
+                          onChange={(e) => setDriverForm((f) => ({ ...f, deliveryDateTime: e.target.value }))} />
+                      </div>
+                    </div>
+                    <Button size="sm" className="gap-1.5 w-full h-8 text-xs" disabled={assigningDriver}
+                      onClick={() => handleAssignDriver(detailOrder.id)}
+                    >
+                      {assigningDriver ? <Loader2 className="w-3 h-3 animate-spin" /> : <Truck className="w-3 h-3" />}
+                      Konfirmasi Penugasan Driver
+                    </Button>
+                  </div>
+                )}
+              </div>
+
+              {/* Invoice & Payment */}
+              {(detailOrder as any).invoiceToken !== undefined && (
+                <>
+                  <Separator />
+                  <div>
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Invoice & Pembayaran</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {(detailOrder as any).paymentStatus === "paid" ? (
+                        <span className="inline-flex items-center gap-1.5 text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-1.5 font-medium">
+                          <CheckCircle2 className="w-3.5 h-3.5" /> Pembayaran Diterima
+                        </span>
+                      ) : (
+                        <>
+                          <Button size="sm" variant="outline" className="gap-1.5 h-8 text-xs"
+                            disabled={confirmingPaymentId === detailOrder.id}
+                            onClick={() => handleConfirmPayment(detailOrder.id)}
+                          >
+                            {confirmingPaymentId === detailOrder.id
+                              ? <Loader2 className="w-3 h-3 animate-spin" />
+                              : <CreditCard className="w-3 h-3" />}
+                            Konfirmasi Bayar
+                          </Button>
+                          <Button size="sm" variant="outline" className="gap-1.5 h-8 text-xs"
+                            disabled={resendingInvoiceId === detailOrder.id}
+                            onClick={() => handleResendInvoice(detailOrder.id)}
+                          >
+                            {resendingInvoiceId === detailOrder.id
+                              ? <Loader2 className="w-3 h-3 animate-spin" />
+                              : <Send className="w-3 h-3" />}
+                            Kirim Invoice WA
+                          </Button>
+                        </>
+                      )}
+                      {(detailOrder as any).salesDocNumber && (
+                        <span className="text-xs text-muted-foreground ml-auto">
+                          SO: <span className="font-mono font-medium">{(detailOrder as any).salesDocNumber}</span>
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
 
               {/* Danger zone */}
               <Separator />

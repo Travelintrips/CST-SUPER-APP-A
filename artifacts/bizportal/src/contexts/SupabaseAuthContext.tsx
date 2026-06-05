@@ -9,6 +9,7 @@ interface AuthContextValue {
   isAuthenticated: boolean;
   signInWithGoogle: () => void;
   signInWithEmail: (email: string, password: string) => Promise<{ error: string | null }>;
+  devLogin: (email: string) => Promise<{ error: string | null }>;
   signOut: () => void;
   login: () => void;
   logout: () => void;
@@ -162,6 +163,23 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
     return { error: "Email login tidak didukung. Gunakan Google login." };
   }, []);
 
+  const devLogin = useCallback(async (email: string) => {
+    try {
+      const res = await fetch("/api/auth/dev-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json() as { user?: AuthUser; error?: string };
+      if (!res.ok) return { error: data.error ?? "Login gagal" };
+      if (data.user) { writeCache(data.user); setUser(data.user); }
+      return { error: null };
+    } catch {
+      return { error: "Koneksi ke server gagal" };
+    }
+  }, []);
+
   const signOut = useCallback(() => {
     writeCache(null);
     setUser(null);
@@ -177,6 +195,7 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
     isAuthenticated: !!user,
     signInWithGoogle,
     signInWithEmail,
+    devLogin,
     signOut,
     login: signInWithGoogle,
     logout: signOut,

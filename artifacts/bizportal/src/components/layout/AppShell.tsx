@@ -305,6 +305,7 @@ export function AppShell({ children, noPadding }: AppShellProps) {
       icon: Activity,
       roles: ["admin", "owner", "trading"],
       children: [
+        { titleKey: "Biaya Rutin", href: "/expense/routine", icon: Wallet, roles: ["admin", "owner"] },
         { titleKey: "expenseList", href: "/expense", icon: Receipt, roles: ["admin", "owner"] },
         { titleKey: "expenseCategories", href: "/expense/categories", icon: Tags, roles: ["admin", "owner"] },
         { titleKey: "expenseReports", href: "/expense/reports", icon: BarChart2, roles: ["admin", "owner"] },
@@ -338,6 +339,7 @@ export function AppShell({ children, noPadding }: AppShellProps) {
         { titleKey: "Dashboard Holding", href: "/holding/dashboard", icon: BarChart2, devOnly: true },
         { titleKey: "Laporan L/R Holding", href: "/holding/pl-report", icon: TrendingUp, devOnly: true },
         { titleKey: "Laporan Arus Kas", href: "/holding/cashflow-report", icon: Wallet, devOnly: true },
+        { titleKey: "Executive Dashboard", href: "/executive", icon: Landmark, roles: ["admin", "owner"] },
       ],
     },
 

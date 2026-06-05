@@ -11,7 +11,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Pencil, Trash2, Search, Package, FlaskConical, Tag, Settings2, Check, X } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Package, FlaskConical, Tag, Settings2, Check, X, Upload, FileDown, AlertCircle, CheckCircle2 } from "lucide-react";
+import { useRef } from "react";
 
 const UNITS = ["pcs", "gram", "kg", "ml", "liter", "sachet", "kaleng", "botol", "bungkus", "porsi", "cup", "lusin"];
 const NEW_CATEGORY_VALUE = "__new__";
@@ -418,6 +419,227 @@ function CategoryManagerDialog({ open, onClose }: { open: boolean; onClose: () =
   );
 }
 
+// ── CSV Template ─────────────────────────────────────────────────────────────
+
+const CSV_HEADERS = ["name","sku","unit","price","cost_price","item_type","subcategory","weight_kg","length_cm","width_cm","height_cm","goods_type"];
+const CSV_EXAMPLE = [
+  "Kopi Arabica 1kg,KPI-ARA-1KG,kg,150000,90000,barang,Kopi,1,30,20,20,General Cargo",
+  "Teh Hijau 500g,TEH-HIJ-500,pcs,75000,45000,barang,Teh,0.5,,,,"
+].join("\n");
+
+function downloadTemplate() {
+  const content = CSV_HEADERS.join(",") + "\n" + CSV_EXAMPLE;
+  const blob = new Blob([content], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = "template-produk.csv"; a.click();
+  URL.revokeObjectURL(url);
+}
+
+function parseCSV(text: string): Array<Record<string, string>> {
+  const lines = text.trim().split(/\r?\n/).filter(l => l.trim());
+  if (lines.length < 2) return [];
+  const headers = lines[0].split(",").map(h => h.trim().replace(/^"|"$/g, ""));
+  return lines.slice(1).map(line => {
+    const vals = line.split(",").map(v => v.trim().replace(/^"|"$/g, ""));
+    const row: Record<string, string> = {};
+    headers.forEach((h, i) => { row[h] = vals[i] ?? ""; });
+    return row;
+  });
+}
+
+interface ImportRow {
+  name: string; sku: string; unit: string; price: number; costPrice: number;
+  itemType: string; subcategory: string;
+  weightKg: number | null; lengthCm: number | null; widthCm: number | null; heightCm: number | null; goodsType: string;
+}
+
+function mapCSVRow(raw: Record<string, string>): ImportRow {
+  const n = (v: string) => { const x = parseFloat(v); return isNaN(x) ? null : x; };
+  return {
+    name:       raw.name ?? "",
+    sku:        raw.sku ?? "",
+    unit:       raw.unit || "pcs",
+    price:      parseFloat(raw.price) || 0,
+    costPrice:  parseFloat(raw.cost_price) || 0,
+    itemType:   raw.item_type || "barang",
+    subcategory: raw.subcategory ?? "",
+    weightKg:   n(raw.weight_kg),
+    lengthCm:   n(raw.length_cm),
+    widthCm:    n(raw.width_cm),
+    heightCm:   n(raw.height_cm),
+    goodsType:  raw.goods_type ?? "",
+  };
+}
+
+// ── Import Dialog ─────────────────────────────────────────────────────────────
+
+function ImportDialog({ open, onClose, onImported }: { open: boolean; onClose: () => void; onImported: () => void }) {
+  const { toast } = useToast();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [rows, setRows] = useState<ImportRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<{ imported: number; skipped: number; errors: string[] } | null>(null);
+
+  function handleFile(file: File) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target?.result as string;
+      const parsed = parseCSV(text).map(mapCSVRow);
+      setRows(parsed);
+      setResult(null);
+    };
+    reader.readAsText(file);
+  }
+
+  async function doImport() {
+    if (rows.length === 0) return;
+    setLoading(true);
+    try {
+      const res = await apiFetch("/bom/products/import", {
+        method: "POST",
+        body: JSON.stringify({
+          rows: rows.map(r => ({
+            name: r.name, sku: r.sku, unit: r.unit,
+            price: r.price, costPrice: r.costPrice,
+            itemType: r.itemType, subcategory: r.subcategory || null,
+            weightKg: r.weightKg, lengthCm: r.lengthCm,
+            widthCm: r.widthCm, heightCm: r.heightCm,
+            goodsType: r.goodsType || null,
+          })),
+        }),
+      });
+      setResult(res);
+      if (res.imported > 0) {
+        toast({ title: `${res.imported} produk berhasil diimport` });
+        onImported();
+      }
+    } catch (e) {
+      toast({ title: "Import gagal", description: (e as Error).message, variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function reset() { setRows([]); setResult(null); }
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (!v) { reset(); onClose(); } }}>
+      <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Upload className="w-4 h-4" /> Import Produk dari CSV
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="flex-1 overflow-auto space-y-4 py-2">
+          {/* Step 1: template */}
+          <div className="flex items-center gap-3 p-3 rounded-lg bg-gray-50 border">
+            <span className="w-6 h-6 rounded-full bg-orange-500 text-white text-xs flex items-center justify-center shrink-0 font-bold">1</span>
+            <div className="flex-1">
+              <p className="text-sm font-medium">Download template CSV</p>
+              <p className="text-xs text-gray-500">Isi sesuai format: name, sku, unit, price, cost_price, item_type, subcategory, weight_kg, length_cm, width_cm, height_cm, goods_type</p>
+            </div>
+            <Button variant="outline" size="sm" onClick={downloadTemplate} className="shrink-0 gap-1.5">
+              <FileDown className="w-3.5 h-3.5" /> Template CSV
+            </Button>
+          </div>
+
+          {/* Step 2: upload */}
+          <div className="flex items-center gap-3 p-3 rounded-lg bg-gray-50 border">
+            <span className="w-6 h-6 rounded-full bg-orange-500 text-white text-xs flex items-center justify-center shrink-0 font-bold">2</span>
+            <div className="flex-1">
+              <p className="text-sm font-medium">Upload file CSV</p>
+              <p className="text-xs text-gray-500">SKU yang sudah ada akan di-<em>update</em>, SKU baru akan ditambahkan</p>
+            </div>
+            <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden"
+              onChange={e => { if (e.target.files?.[0]) handleFile(e.target.files[0]); }} />
+            <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()} className="shrink-0 gap-1.5">
+              <Upload className="w-3.5 h-3.5" /> Pilih File
+            </Button>
+          </div>
+
+          {/* Preview */}
+          {rows.length > 0 && !result && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium text-gray-700">{rows.length} baris siap diimport</p>
+                <Button variant="ghost" size="sm" onClick={reset} className="text-gray-400 h-7">
+                  <X className="w-3.5 h-3.5 mr-1" /> Reset
+                </Button>
+              </div>
+              <div className="border rounded-lg overflow-auto max-h-64">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="text-xs">
+                      <TableHead>Nama</TableHead><TableHead>SKU</TableHead><TableHead>Satuan</TableHead>
+                      <TableHead className="text-right">Harga Jual</TableHead><TableHead className="text-right">HPP</TableHead>
+                      <TableHead>Tipe</TableHead><TableHead>Kategori</TableHead>
+                      <TableHead className="text-right">Berat(kg)</TableHead><TableHead className="text-right">P×L×T (cm)</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {rows.map((r, i) => (
+                      <TableRow key={i} className={`text-xs ${!r.name || !r.sku ? "bg-red-50" : ""}`}>
+                        <TableCell className={`font-medium ${!r.name ? "text-red-500" : ""}`}>{r.name || "— KOSONG —"}</TableCell>
+                        <TableCell className={`font-mono ${!r.sku ? "text-red-500" : ""}`}>{r.sku || "— KOSONG —"}</TableCell>
+                        <TableCell>{r.unit}</TableCell>
+                        <TableCell className="text-right">{r.price.toLocaleString("id-ID")}</TableCell>
+                        <TableCell className="text-right">{r.costPrice.toLocaleString("id-ID")}</TableCell>
+                        <TableCell>{r.itemType}</TableCell>
+                        <TableCell>{r.subcategory || <span className="text-gray-300">—</span>}</TableCell>
+                        <TableCell className="text-right">{r.weightKg ?? <span className="text-gray-300">—</span>}</TableCell>
+                        <TableCell className="text-right text-gray-500">
+                          {(r.lengthCm || r.widthCm || r.heightCm)
+                            ? `${r.lengthCm ?? "?"}×${r.widthCm ?? "?"}×${r.heightCm ?? "?"}`
+                            : <span className="text-gray-300">—</span>}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          )}
+
+          {/* Result */}
+          {result && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 p-3 rounded-lg bg-green-50 border border-green-200">
+                <CheckCircle2 className="w-5 h-5 text-green-600 shrink-0" />
+                <div>
+                  <p className="text-sm font-semibold text-green-800">{result.imported} produk berhasil diimport/diupdate</p>
+                  {result.skipped > 0 && <p className="text-xs text-amber-700">{result.skipped} baris dilewati</p>}
+                </div>
+              </div>
+              {result.errors.length > 0 && (
+                <div className="p-3 rounded-lg bg-red-50 border border-red-200 space-y-1">
+                  <p className="text-xs font-semibold text-red-700 flex items-center gap-1"><AlertCircle className="w-3.5 h-3.5" /> Error detail:</p>
+                  {result.errors.map((e, i) => <p key={i} className="text-xs text-red-600 font-mono">{e}</p>)}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <DialogFooter className="border-t pt-3">
+          <Button variant="outline" onClick={() => { reset(); onClose(); }}>Tutup</Button>
+          {rows.length > 0 && !result && (
+            <Button onClick={doImport} disabled={loading} className="gap-1.5">
+              {loading ? "Mengimport..." : <><Upload className="w-3.5 h-3.5" /> Import {rows.length} Produk</>}
+            </Button>
+          )}
+          {result && (
+            <Button variant="outline" onClick={reset} className="gap-1.5">
+              <Upload className="w-3.5 h-3.5" /> Import File Lain
+            </Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 type Tab = "products" | "raw-materials";
@@ -432,6 +654,7 @@ export default function ProductItemsPage() {
   const [rmDialog, setRmDialog] = useState(false);
   const [editRm, setEditRm] = useState<RawMaterial | null>(null);
   const [catMgrDialog, setCatMgrDialog] = useState(false);
+  const [importDialog, setImportDialog] = useState(false);
   const [filterCat, setFilterCat] = useState<string | null>(null);
 
   const { data: products = [], isLoading: prodLoading } = useQuery<Product[]>({
@@ -478,9 +701,14 @@ export default function ProductItemsPage() {
           </div>
           <div className="flex gap-2">
             {tab === "products" && (
-              <Button variant="outline" onClick={() => setCatMgrDialog(true)}>
-                <Settings2 className="w-4 h-4 mr-1" /> Kelola Kategori
-              </Button>
+              <>
+                <Button variant="outline" onClick={() => setCatMgrDialog(true)}>
+                  <Settings2 className="w-4 h-4 mr-1" /> Kelola Kategori
+                </Button>
+                <Button variant="outline" onClick={() => setImportDialog(true)} className="gap-1.5 border-blue-300 text-blue-700 hover:bg-blue-50">
+                  <Upload className="w-4 h-4" /> Import CSV
+                </Button>
+              </>
             )}
             {tab === "products" ? (
               <Button onClick={() => { setEditProd(null); setProdDialog(true); }}>
@@ -719,6 +947,16 @@ export default function ProductItemsPage() {
           <CategoryManagerDialog
             open={catMgrDialog}
             onClose={() => setCatMgrDialog(false)}
+          />
+        )}
+        {importDialog && (
+          <ImportDialog
+            open={importDialog}
+            onClose={() => setImportDialog(false)}
+            onImported={() => {
+              qc.invalidateQueries({ queryKey: ["bom-products"] });
+              qc.invalidateQueries({ queryKey: ["bom-categories"] });
+            }}
           />
         )}
       </div>

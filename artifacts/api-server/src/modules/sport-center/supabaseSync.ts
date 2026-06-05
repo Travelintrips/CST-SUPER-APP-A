@@ -41,6 +41,8 @@ export interface BookingRow {
   id: number;
   booking_number: string;
   customer_name: string;
+  customer_id?: number | null;
+  customer_email?: string | null;
   customer_phone?: string | null;
   facility_id?: number | null;
   facility_name: string;
@@ -320,6 +322,7 @@ export async function syncBookingUpsert(row: BookingRow): Promise<void> {
   const payload: Record<string, unknown> = {
     booking_code: row.booking_number,
     customer_name: row.customer_name,
+    customer_email: row.customer_email ?? "",   // Supabase column is NOT NULL; use empty string as fallback
     customer_phone: row.customer_phone ?? null,
     facility_name: row.facility_name,
     date: row.booking_date,
@@ -344,11 +347,12 @@ export async function syncBookingUpsert(row: BookingRow): Promise<void> {
       } else {
         await db.execute(sql`
           INSERT INTO sport_center_bookings
-            (booking_code, customer_name, customer_phone, facility_name, date, start_time, end_time, total_hours, total_price, status, payment_status, notes, updated_at)
+            (booking_code, customer_name, customer_email, customer_phone, facility_name, date, start_time, end_time, total_hours, total_price, status, payment_status, notes, updated_at)
           VALUES
-            (${payload.booking_code}, ${payload.customer_name}, ${payload.customer_phone}, ${payload.facility_name}, ${payload.date}::date, ${payload.start_time}::time, ${payload.end_time}::time, ${payload.total_hours}, ${payload.total_price}, ${payload.status}, ${payload.payment_status}, ${payload.notes}, NOW())
+            (${payload.booking_code}, ${payload.customer_name}, ${payload.customer_email}, ${payload.customer_phone}, ${payload.facility_name}, ${payload.date}::date, ${payload.start_time}::time, ${payload.end_time}::time, ${payload.total_hours}, ${payload.total_price}, ${payload.status}, ${payload.payment_status}, ${payload.notes}, NOW())
           ON CONFLICT (booking_code) DO UPDATE SET
             customer_name  = EXCLUDED.customer_name,
+            customer_email = EXCLUDED.customer_email,
             customer_phone = EXCLUDED.customer_phone,
             facility_name  = EXCLUDED.facility_name,
             date           = EXCLUDED.date,
@@ -448,6 +452,7 @@ export async function syncAllBookings(): Promise<{ synced: number; errors: numbe
     const payload: Record<string, unknown> = {
       booking_code: row.booking_number,
       customer_name: row.customer_name,
+      customer_email: row.customer_email ?? "",   // Supabase column is NOT NULL; use empty string as fallback
       customer_phone: row.customer_phone ?? null,
       facility_name: row.facility_name,
       date: row.booking_date,
@@ -472,11 +477,12 @@ export async function syncAllBookings(): Promise<{ synced: number; errors: numbe
         } else {
           await db.execute(sql`
             INSERT INTO sport_center_bookings
-              (booking_code, customer_name, customer_phone, facility_name, date, start_time, end_time, total_hours, total_price, status, payment_status, notes, updated_at)
+              (booking_code, customer_name, customer_email, customer_phone, facility_name, date, start_time, end_time, total_hours, total_price, status, payment_status, notes, updated_at)
             VALUES
-              (${payload.booking_code}, ${payload.customer_name}, ${payload.customer_phone}, ${payload.facility_name}, ${payload.date}::date, ${payload.start_time}::time, ${payload.end_time}::time, ${payload.total_hours}, ${payload.total_price}, ${payload.status}, ${payload.payment_status}, ${payload.notes}, NOW())
+              (${payload.booking_code}, ${payload.customer_name}, ${payload.customer_email}, ${payload.customer_phone}, ${payload.facility_name}, ${payload.date}::date, ${payload.start_time}::time, ${payload.end_time}::time, ${payload.total_hours}, ${payload.total_price}, ${payload.status}, ${payload.payment_status}, ${payload.notes}, NOW())
             ON CONFLICT (booking_code) DO UPDATE SET
               customer_name  = EXCLUDED.customer_name,
+              customer_email = EXCLUDED.customer_email,
               facility_name  = EXCLUDED.facility_name,
               status         = EXCLUDED.status,
               payment_status = EXCLUDED.payment_status,

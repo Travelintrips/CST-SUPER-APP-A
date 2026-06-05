@@ -35,7 +35,7 @@ import {
   FileUp,
   Sparkles,
   CheckCheck,
-  ListChecks,
+  ListChecks, ArrowLeft,
 } from "lucide-react";
 import { Link } from "wouter";
 

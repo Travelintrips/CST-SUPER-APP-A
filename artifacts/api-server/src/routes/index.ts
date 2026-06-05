@@ -77,6 +77,7 @@ import { operationalContextRouter } from "./operationalContext.js";
 import { aiDecisionMemoryRouter } from "./aiDecisionMemory.js";
 import { productTemplatesRouter } from "./productTemplates.js";
 import logisticsUnitsRouter from "./logisticsUnits.js";
+import truckingRatesRouter from "./truckingRates.js";
 import { enterpriseWorkflowRouter } from "./enterpriseWorkflow.js";
 import { customerFeedbackPublicRouter, customerFeedbackAdminRouter } from "./customerFeedback.js";
 import { purchaseMiniPublicRouter, purchaseMiniAdminRouter } from "./purchaseMiniFormRoute.js";
@@ -96,6 +97,15 @@ import importAdvisorRouter from "./importAdvisor.js";
 import { handleAlertSse } from "../lib/alertsBroadcast.js";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import sportCenterRouter from "../modules/sport-center/routes.js";
+import executiveRouter from "./executive.js";
+import cashAdvancesRouter from "./cashAdvances.js";
+import vendorInstallmentsRouter from "./vendorInstallments.js";
+import bankLoansRouter from "./bankLoans.js";
+import fixedAssetsRouter from "./fixedAssets.js";
+import expenseApprovalsRouter from "./expenseApprovals.js";
+import expenseDashboardRouter from "./expenseDashboard.js";
+import expenseTemplatesRouter from "./expenseTemplates.js";
+import expenseBudgetsRouter from "./expenseBudgets.js";
 
 import type { Request, Response } from "express";
 
@@ -203,6 +213,7 @@ router.use("/operational-context", operationalContextRouter);
 router.use("/ai/decision-memory", aiDecisionMemoryRouter);
 router.use("/product-templates", productTemplatesRouter);
 router.use("/logistics-units", logisticsUnitsRouter);
+router.use("/trucking-rates", truckingRatesRouter);
 router.use("/enterprise-workflow", enterpriseWorkflowRouter);
 router.use("/customer-feedback", customerFeedbackAdminRouter);
 router.use("/customer-feedback", customerFeedbackPublicRouter);
@@ -225,6 +236,15 @@ router.use("/system", systemRouter);
 router.use("/rbac", rbacRouter);
 router.use("/import-advisor", importAdvisorRouter);
 router.use("/sport-center", sportCenterRouter);
+router.use("/executive", executiveRouter);
+router.use("/cash-advances", cashAdvancesRouter);
+router.use("/vendor-installments", vendorInstallmentsRouter);
+router.use("/bank-loans", bankLoansRouter);
+router.use("/fixed-assets", fixedAssetsRouter);
+router.use("/expense-approvals", expenseApprovalsRouter);
+router.use("/expense-dashboard", expenseDashboardRouter);
+router.use("/expense-templates", expenseTemplatesRouter);
+router.use("/expense-config", expenseBudgetsRouter);
 
 router.get("/alerts/stream", async (req: Request, res: Response) => {
   const ok = await requireAdmin(req, res);

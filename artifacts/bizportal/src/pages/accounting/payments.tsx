@@ -20,7 +20,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useCompany } from "@/contexts/CompanyContext";
 import { useQueryClient } from "@tanstack/react-query";
-import { Plus, ArrowDownLeft, ArrowUpRight, ExternalLink, FileText, ChevronDown, ChevronUp, Users, Ban, MessageSquare, ShoppingCart, Printer, Download } from "lucide-react";
+import { Plus, ArrowDownLeft, ArrowUpRight, ExternalLink, FileText, ChevronDown, ChevronUp, Users, Ban, MessageSquare, ShoppingCart, Printer, Download, Activity } from "lucide-react";
 import { exportXlsx, printWindow } from "@/lib/export";
 import { CorrespondenceTab } from "@/components/CorrespondenceTab";
 import {
@@ -55,6 +55,15 @@ function LinkedDocBadge({ sourceType, sourceDocId }: { sourceType?: string | nul
       <Link href={`/sales/orders/${sourceDocId}`}>
         <Badge className="bg-indigo-900/40 text-indigo-300 border-indigo-700 text-xs gap-1 cursor-pointer hover:bg-indigo-900/60">
           <ShoppingCart className="h-3 w-3" /> SO #{sourceDocId}
+        </Badge>
+      </Link>
+    );
+  }
+  if (sourceType === "sport_center") {
+    return (
+      <Link href="/sport-center/payments">
+        <Badge className="bg-emerald-900/40 text-emerald-300 border-emerald-700 text-xs gap-1 cursor-pointer hover:bg-emerald-900/60">
+          <Activity className="h-3 w-3" /> Sport Center
         </Badge>
       </Link>
     );
@@ -790,6 +799,7 @@ export default function PaymentsPage() {
                     <SelectItem value="all">Semua Dokumen</SelectItem>
                     <SelectItem value="sales_order">SO (Sales Order)</SelectItem>
                     <SelectItem value="purchase_order">PO (Purchase Order)</SelectItem>
+                    <SelectItem value="sport_center">Sport Center</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
