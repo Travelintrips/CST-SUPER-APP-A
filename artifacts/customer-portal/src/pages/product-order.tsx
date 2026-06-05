@@ -175,6 +175,7 @@ export default function ProductOrderPage() {
   const [truckingForm, setTruckingForm] = useState<TruckingForm>(EMPTY_TRUCKING);
   const [estimating, setEstimating] = useState(false);
   const [truckingEstimate, setTruckingEstimate] = useState<number | null>(null);
+  const [vehicleComparison, setVehicleComparison] = useState<Array<{ type: string; label: string; desc: string; estimate: number; suitable: boolean }> | null>(null);
   const [deliveryAddressError, setDeliveryAddressError] = useState(false);
   const [checkoutAddressError, setCheckoutAddressError] = useState(false);
   const [companyOrigin, setCompanyOrigin] = useState<{ name: string; address: string; originCity: string; originAirport: string; originPort: string } | null>(null);

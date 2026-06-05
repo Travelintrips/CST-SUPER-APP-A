@@ -185,6 +185,7 @@ export function CartDrawer() {
   const [truckData, setTruckData] = useState<Record<string, string>>({});
   const [truckEstimate, setTruckEstimate] = useState<number | null>(null);
   const [truckEstimating, setTruckEstimating] = useState(false);
+  const [vehicleComparison, setVehicleComparison] = useState<Array<{ type: string; label: string; desc: string; estimate: number; suitable: boolean }> | null>(null);
   const [deliveryAddressError, setDeliveryAddressError] = useState(false);
   const [companyPickup, setCompanyPickup] = useState<{ name: string; address: string; originCity: string } | null>(null);
   const [cartAutoFilled, setCartAutoFilled] = useState(false);
@@ -294,22 +295,44 @@ export function CartDrawer() {
     setLocation(cat ? `/book?cat=${cat}` : "/book");
   }
 
-  function handleEstimate() {
+  async function handleCompareVehicles() {
     setTruckEstimating(true);
-    const params = new URLSearchParams({ transport_mode: "TRUCKING" });
-    if (truckData.vehicleType) params.set("truck_type", truckData.vehicleType);
-    const effectiveOrigin = companyPickup?.originCity ?? "Jakarta";
-    params.set("origin", effectiveOrigin);
-    if (truckData.destCity)    params.set("dest", truckData.destCity);
-    fetch(`/api/logistic/orders/estimate-price?${params}`)
-      .then(r => r.ok ? r.json() : Promise.reject())
-      .then((d: { estimated_price: number | null }) => {
-        if (d.estimated_price && d.estimated_price > 0) {
-          setTruckEstimate(d.estimated_price);
-        } else fallbackEstimate();
+    setVehicleComparison(null);
+    const w  = parseFloat(truckData.weight  || "0") || 0;
+    const l  = parseFloat(truckData.length  || "0") || 0;
+    const wi = parseFloat(truckData.width   || "0") || 0;
+    const h  = parseFloat(truckData.height  || "0") || 0;
+    const volW = (l && wi && h) ? (l * wi * h) / 4000 : 0;
+    const origin = companyPickup?.originCity ?? "Jakarta";
+
+    const results = await Promise.all(
+      VEHICLE_CAPACITIES.map(async (v) => {
+        const suitable = w <= v.maxKg;
+        try {
+          const params = new URLSearchParams({ transport_mode: "TRUCKING", truck_type: v.type, origin });
+          if (truckData.destCity) params.set("dest", truckData.destCity);
+          const res = await fetch(`/api/logistic/orders/estimate-price?${params}`);
+          const d: { estimated_price: number | null } = await res.json();
+          const estimate = (d.estimated_price && d.estimated_price > 0)
+            ? d.estimated_price
+            : offlineEstimateForVehicle(w, v.type, volW);
+          return { type: v.type, label: v.label, desc: v.desc, estimate, suitable };
+        } catch {
+          return { type: v.type, label: v.label, desc: v.desc, estimate: offlineEstimateForVehicle(w, v.type, volW), suitable };
+        }
       })
-      .catch(fallbackEstimate)
-      .finally(() => setTruckEstimating(false));
+    );
+
+    setVehicleComparison(results);
+    const suggested = w > 0 ? suggestVehicleType(w) : null;
+    const targetType = truckData.vehicleType || suggested || "";
+    const found = results.find(r => r.type === targetType && r.suitable)
+      ?? results.find(r => r.suitable);
+    if (found) {
+      setTruckData(p => ({ ...p, vehicleType: found.type }));
+      setTruckEstimate(found.estimate);
+    }
+    setTruckEstimating(false);
   }
 
   function fallbackEstimate() {
@@ -319,6 +342,19 @@ export function CartDrawer() {
     const h  = parseFloat(truckData.height) || 0;
     const volW = (l && wi && h) ? (l * wi * h) / 4000 : 0;
     setTruckEstimate(Math.max(150_000, Math.round(Math.max(w, volW) * 2_500)));
+  }
+
+  function offlineEstimateForVehicle(weightKg: number, vehicleType: string, volW: number): number {
+    const chargeable = Math.max(weightKg, volW);
+    const rates: Record<string, { rate: number; min: number }> = {
+      CDE:     { rate: 3_500, min: 200_000   },
+      CDD:     { rate: 2_800, min: 350_000   },
+      Fuso:    { rate: 2_200, min: 800_000   },
+      Wingbox: { rate: 1_800, min: 2_500_000 },
+      Trailer: { rate: 1_500, min: 5_000_000 },
+    };
+    const r = rates[vehicleType] ?? rates["CDD"];
+    return Math.max(r.min, Math.round(chargeable * r.rate));
   }
 
   const grouped      = groupItems(items);
