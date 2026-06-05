@@ -33,6 +33,9 @@ db.execute(sql`
   ALTER TABLE expense_categories
   ADD COLUMN IF NOT EXISTS default_coa_id integer REFERENCES chart_of_accounts(id) ON DELETE SET NULL
 `).catch(() => {});
+db.execute(sql`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS source_account_id integer REFERENCES chart_of_accounts(id) ON DELETE SET NULL`).catch(() => {});
+db.execute(sql`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS vendor_id integer`).catch(() => {});
+db.execute(sql`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS user_id text`).catch(() => {});
 
 /**
  * Jalankan setelah accounting seed — pastikan semua kategori punya default_tax_id valid.
@@ -98,6 +101,18 @@ async function nextExpenseNumber(): Promise<string> {
 }
 
 // ===================== Expense Categories =====================
+
+// ── Akun Bank/Kas untuk Sumber Dana ──────────────────────────────────────────
+router.get("/payment-accounts", async (req, res) => {
+  const companyId = resolveCompanyId(req);
+  const rows = await db.execute(sql.raw(`
+    SELECT id, code, name, type FROM chart_of_accounts
+    WHERE code LIKE '1-1%'
+      AND (company_id = ${companyId} OR company_id IS NULL)
+    ORDER BY code
+  `));
+  return res.json(rows.rows);
+});
 
 router.get("/categories/check-code", async (req, res) => {
   const code = String(req.query.code ?? "").trim().toUpperCase();
@@ -653,35 +668,48 @@ router.get("/summary", async (req, res) => {
 
 router.get("/", async (req: Request, res) => {
   const companyId = resolveCompanyId(req);
-  const conditions: ReturnType<typeof eq>[] = [eq(expensesTable.companyId, companyId)];
   const { status, categoryId, expenseType, salesDocId, shipmentId, search, from, to } = req.query as Record<string, string>;
 
-  if (status) conditions.push(eq(expensesTable.status, status));
-  if (categoryId) conditions.push(eq(expensesTable.categoryId, Number(categoryId)));
-  if (expenseType) conditions.push(eq(expensesTable.expenseType, expenseType));
-  if (salesDocId) conditions.push(eq(expensesTable.salesDocId, Number(salesDocId)));
-  if (shipmentId) conditions.push(eq(expensesTable.shipmentId, Number(shipmentId)));
-  if (from) conditions.push(gte(expensesTable.date, from));
-  if (to) conditions.push(lte(expensesTable.date, to));
-
-  let rows = await db
-    .select()
-    .from(expensesTable)
-    .where(and(...conditions))
-    .orderBy(desc(expensesTable.date), desc(expensesTable.id))
-    .limit(500);
-
+  const whereParts: string[] = [`e.company_id = ${companyId}`];
+  if (status) whereParts.push(`e.status = '${status.replace(/'/g, "''")}'`);
+  if (categoryId) whereParts.push(`e.category_id = ${Number(categoryId)}`);
+  if (expenseType) whereParts.push(`e.expense_type = '${expenseType.replace(/'/g, "''")}'`);
+  if (salesDocId) whereParts.push(`e.sales_doc_id = ${Number(salesDocId)}`);
+  if (shipmentId) whereParts.push(`e.shipment_id = ${Number(shipmentId)}`);
+  if (from) whereParts.push(`e.date >= '${from}'`);
+  if (to) whereParts.push(`e.date <= '${to}'`);
   if (search) {
-    const q = search.toLowerCase();
-    rows = rows.filter(
-      (r) =>
-        r.expenseNumber.toLowerCase().includes(q) ||
-        (r.vendorEmployee ?? "").toLowerCase().includes(q) ||
-        (r.description ?? "").toLowerCase().includes(q),
-    );
+    const q = search.replace(/'/g, "''");
+    whereParts.push(`(e.expense_number ILIKE '%${q}%' OR COALESCE(e.vendor_employee,'') ILIKE '%${q}%' OR COALESCE(e.description,'') ILIKE '%${q}%')`);
   }
 
-  return res.json(rows.map(serializeExpense));
+  const result = await db.execute(sql.raw(`
+    SELECT e.*,
+      ec.name  AS category_name,
+      ec.code  AS category_code,
+      sa.code  AS source_account_code,
+      sa.name  AS source_account_name,
+      sup.name AS vendor_name
+    FROM expenses e
+    LEFT JOIN expense_categories ec ON e.category_id = ec.id
+    LEFT JOIN chart_of_accounts  sa ON e.source_account_id = sa.id
+    LEFT JOIN suppliers          sup ON e.vendor_id = sup.id
+    WHERE ${whereParts.join(" AND ")}
+    ORDER BY e.date DESC, e.id DESC
+    LIMIT 500
+  `));
+
+  return res.json((result.rows as any[]).map((r) => ({
+    ...serializeExpense(r as any),
+    categoryName: r.category_name ?? null,
+    categoryCode: r.category_code ?? null,
+    sourceAccount: r.source_account_id
+      ? { id: r.source_account_id, code: r.source_account_code, name: r.source_account_name }
+      : null,
+    vendor: r.vendor_id
+      ? { id: r.vendor_id, name: r.vendor_name }
+      : null,
+  })));
 });
 
 router.get("/:id", async (req, res) => {
@@ -696,10 +724,26 @@ router.get("/:id", async (req, res) => {
   const category = expense.categoryId
     ? (await db.select().from(expenseCategoriesTable).where(eq(expenseCategoriesTable.id, expense.categoryId)))[0] ?? null
     : null;
+
+  let sourceAccount: { id: number; code: string; name: string } | null = null;
+  if (expense.sourceAccountId) {
+    const rows = await db.execute(sql.raw(`SELECT id, code, name FROM chart_of_accounts WHERE id = ${expense.sourceAccountId} LIMIT 1`));
+    const r = rows.rows[0] as any;
+    if (r) sourceAccount = { id: r.id, code: r.code, name: r.name };
+  }
+  let vendor: { id: number; name: string } | null = null;
+  if (expense.vendorId) {
+    const rows = await db.execute(sql.raw(`SELECT id, name FROM suppliers WHERE id = ${expense.vendorId} LIMIT 1`));
+    const r = rows.rows[0] as any;
+    if (r) vendor = { id: r.id, name: r.name };
+  }
+
   return res.json({
     ...serializeExpense(expense),
     attachments,
     category: category ? serializeCategory(category) : null,
+    sourceAccount,
+    vendor,
   });
 });
 
@@ -707,7 +751,7 @@ router.post("/", async (req, res) => {
   const {
     date, vendorEmployee, expenseType, salesDocId, shipmentId, categoryId,
     description, qty, unit, unitPrice, taxRateId, currency, notes,
-    expenseAccountId, payableAccountId,
+    expenseAccountId, payableAccountId, sourceAccountId, vendorId, userId,
   } = req.body ?? {};
 
   if (!date) return res.status(400).json({ message: "date required" });
@@ -757,6 +801,9 @@ router.post("/", async (req, res) => {
       notes: notes ? String(notes) : null,
       expenseAccountId: expenseAccountId ? Number(expenseAccountId) : null,
       payableAccountId: payableAccountId ? Number(payableAccountId) : null,
+      sourceAccountId: sourceAccountId ? Number(sourceAccountId) : null,
+      vendorId: vendorId ? Number(vendorId) : null,
+      userId: userId ? String(userId) : null,
       createdById: (req as { userId?: string }).userId ?? null,
     })
     .returning();
@@ -776,7 +823,7 @@ router.put("/:id", async (req, res) => {
   const {
     date, vendorEmployee, expenseType, salesDocId, shipmentId, categoryId,
     description, qty, unit, unitPrice, taxRateId, currency, notes,
-    expenseAccountId, payableAccountId,
+    expenseAccountId, payableAccountId, sourceAccountId, vendorId, userId,
   } = req.body ?? {};
 
   const qtyN = Number(qty ?? 1);
@@ -817,6 +864,9 @@ router.put("/:id", async (req, res) => {
       notes: notes ? String(notes) : null,
       expenseAccountId: expenseAccountId ? Number(expenseAccountId) : null,
       payableAccountId: payableAccountId ? Number(payableAccountId) : null,
+      sourceAccountId: sourceAccountId !== undefined ? (sourceAccountId ? Number(sourceAccountId) : null) : existing.sourceAccountId,
+      vendorId: vendorId !== undefined ? (vendorId ? Number(vendorId) : null) : existing.vendorId,
+      userId: userId !== undefined ? (userId ? String(userId) : null) : existing.userId,
       updatedAt: new Date(),
     })
     .where(eq(expensesTable.id, id))

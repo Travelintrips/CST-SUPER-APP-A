@@ -1496,15 +1496,13 @@ router.post("/payments", async (req, res) => {
     });
 
     // 6. Post jurnal accounting (Debit Kas ← Credit Pendapatan) — fire-and-forget
-    // Gunakan effectiveDate agar entry accounting sesuai tanggal bayar, bukan tanggal booking
-    // Pakai paymentAccountingDate (bukan bBookingDate) agar revenue_today KPI akurat
+    // Pakai paymentAccountingDate (bukan bBookingDate) agar KPI revenue_today akurat
     if (bTaxAmount > 0) {
       postSportCenterBookingWithTax({
         bookingId: Number(booking_id),
         bookingCode: bCode,
         customerName: bCustomer,
         facilityName: bFacility,
-        date: effectiveDate,
         date: paymentAccountingDate,
         baseAmount: bTotalAmount,
         taxAmount: bTaxAmount,
@@ -1517,7 +1515,6 @@ router.post("/payments", async (req, res) => {
         bookingCode: bCode,
         customerName: bCustomer,
         facilityName: bFacility,
-        date: effectiveDate,
         date: paymentAccountingDate,
         totalPrice: bTotalAmount,
         createdById,
@@ -1525,8 +1522,6 @@ router.post("/payments", async (req, res) => {
       }).catch((err: unknown) => console.error('[sport-center] postSportCenterBooking failed:', err));
     }
 
-    // 7. Accounting Payments — agar muncul di Finance → Payments
-    // Gunakan effectiveDate dan idempotency via sourceDocId
     // 7. Accounting Payments — agar muncul di Finance BizPortal → Payments
     insertAccountingPaymentForSportCenter({
       companyId: bCompanyId,
@@ -1537,7 +1532,6 @@ router.post("/payments", async (req, res) => {
       ref: bCode,
       memo: `Pembayaran booking sport center ${bCode}`,
       sourceDocId: Number(payRow.id),
-      date: effectiveDate,
       date: paymentAccountingDate,
       createdById,
     }).catch((err: unknown) => console.error("[sport-center] insertAccountingPayment failed:", err));
@@ -1703,20 +1697,21 @@ router.get("/reports/revenue", async (req, res) => {
         ORDER BY month DESC
         LIMIT 24
       `),
-      // Revenue per fasilitas: dari sport_payments JOIN sport_bookings
+      // Revenue per fasilitas: dari sport_payments JOIN sport_bookings JOIN sport_facilities
       db.execute(sql`
         SELECT
-          COALESCE(sb.facility_name, 'Lainnya') AS facility_name,
+          COALESCE(f.name, sb.facility_name, 'Lainnya') AS facility_name,
           COUNT(sp.id) AS bookings,
           COALESCE(SUM(sp.amount), 0) AS revenue
         FROM sport_payments sp
         JOIN sport_bookings sb ON sb.id = sp.booking_id
+        LEFT JOIN sport_facilities f ON f.id = sb.facility_id
         WHERE sp.status = 'paid'
-          AND sp.payment_type = 'booking'
+          AND sp.source = 'SPORT_CENTER'
           AND (${cId}::int IS NULL OR sp.company_id = ${cId})
           AND (${from}::date IS NULL OR sp.paid_at::date >= ${from}::date)
           AND (${to}::date IS NULL OR sp.paid_at::date <= ${to}::date)
-        GROUP BY sb.facility_name
+        GROUP BY COALESCE(f.name, sb.facility_name, 'Lainnya')
         ORDER BY revenue DESC
       `),
       // Revenue per metode pembayaran
@@ -1727,13 +1722,14 @@ router.get("/reports/revenue", async (req, res) => {
           COALESCE(SUM(sp.amount), 0) AS total
         FROM sport_payments sp
         WHERE sp.status = 'paid'
+          AND sp.source = 'SPORT_CENTER'
           AND (${cId}::int IS NULL OR sp.company_id = ${cId})
           AND (${from}::date IS NULL OR sp.paid_at::date >= ${from}::date)
           AND (${to}::date IS NULL OR sp.paid_at::date <= ${to}::date)
         GROUP BY sp.method
         ORDER BY total DESC
       `),
-      // Transaksi detail: sport_payments JOIN sport_bookings
+      // Transaksi detail: sport_payments JOIN sport_bookings JOIN sport_facilities
       db.execute(sql`
         SELECT
           sp.id,
@@ -1743,8 +1739,8 @@ router.get("/reports/revenue", async (req, res) => {
           sp.method AS payment_method,
           sp.paid_at,
           sp.payment_type,
-          sp.status,
-          COALESCE(sb.facility_name, '') AS facility_name,
+          sp.status AS payment_status,
+          COALESCE(f.name, sb.facility_name, 'Lainnya') AS facility_name,
           COALESCE(sb.customer_name, '') AS customer_name,
           sb.booking_number,
           sb.booking_date,
@@ -1753,12 +1749,14 @@ router.get("/reports/revenue", async (req, res) => {
           sb.payment_status AS booking_payment_status
         FROM sport_payments sp
         LEFT JOIN sport_bookings sb ON sb.id = sp.booking_id
+        LEFT JOIN sport_facilities f ON f.id = sb.facility_id
         WHERE sp.status = 'paid'
+          AND sp.source = 'SPORT_CENTER'
           AND (${cId}::int IS NULL OR sp.company_id = ${cId})
           AND (${from}::date IS NULL OR sp.paid_at::date >= ${from}::date)
           AND (${to}::date IS NULL OR sp.paid_at::date <= ${to}::date)
         ORDER BY sp.paid_at DESC
-        LIMIT 200
+        LIMIT 500
       `),
     ]);
 

@@ -378,6 +378,7 @@ export default function ExpenseListPage() {
                   <TableHead>Vendor/Karyawan</TableHead>
                   <TableHead>Deskripsi</TableHead>
                   <TableHead>Kategori</TableHead>
+                  <TableHead>Sumber Dana</TableHead>
                   <TableHead>Job / Referensi</TableHead>
                   <TableHead className="text-right">Total</TableHead>
                   <TableHead>Status</TableHead>
@@ -387,17 +388,18 @@ export default function ExpenseListPage() {
               <TableBody>
                 {isLoading && (
                   <TableRow>
-                    <TableCell colSpan={10} className="text-center py-10 text-muted-foreground">Memuat data...</TableCell>
+                    <TableCell colSpan={11} className="text-center py-10 text-muted-foreground">Memuat data...</TableCell>
                   </TableRow>
                 )}
                 {!isLoading && expenses.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={10} className="text-center py-10 text-muted-foreground">
+                    <TableCell colSpan={11} className="text-center py-10 text-muted-foreground">
                       Belum ada expense. Klik "Buat Expense" untuk memulai.
                     </TableCell>
                   </TableRow>
                 )}
                 {expenses.map((exp) => {
+                  const expAny = exp as any;
                   const cat = cats.find((c) => c.id === exp.categoryId);
                   return (
                     <TableRow key={exp.id} className="cursor-pointer hover:bg-muted/50" {...prefetchHover(getGetExpenseQueryOptions(exp.id))}>
@@ -410,12 +412,16 @@ export default function ExpenseListPage() {
                       <TableCell>
                         <Badge variant="outline" className="text-xs">{TYPE_LABELS[exp.expenseType] ?? exp.expenseType}</Badge>
                       </TableCell>
-                      <TableCell className="text-sm">{exp.vendorEmployee ?? "—"}</TableCell>
+                      <TableCell className="text-sm">{expAny.vendor?.name ?? exp.vendorEmployee ?? "—"}</TableCell>
                       <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">{exp.description ?? "—"}</TableCell>
                       <TableCell>
-                        {cat ? (
-                          <Badge variant="secondary" className="text-xs">{cat.name}</Badge>
-                        ) : <span className="text-xs text-muted-foreground">—</span>}
+                        {expAny.categoryName
+                          ? <Badge variant="secondary" className="text-xs">{expAny.categoryName}</Badge>
+                          : cat ? <Badge variant="secondary" className="text-xs">{cat.name}</Badge>
+                          : <span className="text-xs text-muted-foreground">—</span>}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {expAny.sourceAccount?.name ?? "—"}
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-col gap-0.5">

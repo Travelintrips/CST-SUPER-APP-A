@@ -76,6 +76,36 @@ interface KpiLiveData {
 
 interface HeatmapRow { hour: string; booking_count: number; }
 
+interface RevenueTxRow {
+  entry_id: number;
+  payment_date: string;
+  amount: number;
+  ref: string | null;
+  booking_number: string | null;
+  customer_name: string | null;
+  facility_name: string | null;
+  booking_date: string | null;
+  start_time: string | null;
+  end_time: string | null;
+  status: string | null;
+  payment_status: string | null;
+  total_amount: string | null;
+}
+type RevenueTxQueryResult = { data: RevenueTxRow[]; total: number };
+
+interface AllBookingRow {
+  booking_code: string | null;
+  customer_name: string | null;
+  facility_name: string | null;
+  date: string | null;
+  start_time: string | null;
+  end_time: string | null;
+  status: string | null;
+  payment_status: string | null;
+  total_price: number | null;
+  created_at: string | null;
+}
+
 export default function SportCenterDashboard() {
   const qc = useQueryClient();
   const [, navigate] = useLocation();
@@ -170,23 +200,6 @@ export default function SportCenterDashboard() {
 
 
   // ── Query: Revenue Transactions (lazy — hanya saat expandedCard === 'revenue') ──────────
-  interface RevenueTxRow {
-    entry_id: number;
-    payment_date: string;
-    amount: number;
-    ref: string | null;
-    booking_number: string | null;
-    customer_name: string | null;
-    facility_name: string | null;
-    booking_date: string | null;
-    start_time: string | null;
-    end_time: string | null;
-    status: string | null;
-    payment_status: string | null;
-    total_amount: string | null;
-
-  }
-  type RevenueTxQueryResult = { data: RevenueTxRow[]; total: number };
   const {
     data: revenueTxData,
     isLoading: revenueTxLoading,
@@ -195,6 +208,7 @@ export default function SportCenterDashboard() {
     queryFn: async () => {
       const qs = new URLSearchParams();
       if (activeCompanyId) qs.set("companyId", String(activeCompanyId));
+      if (costCenterId) qs.set("costCenterId", String(costCenterId));
       qs.set("date", kpiDate);
       const r = await fetch(`/api/sport-center/revenue-transactions?${qs}`, { credentials: "include" });
       if (!r.ok) throw new Error("Gagal memuat transaksi revenue");
@@ -205,18 +219,6 @@ export default function SportCenterDashboard() {
   });
 
   // ── Query: Semua booking dari Supabase (lazy — hanya saat expandedCard === 'totalBooking') ──
-  interface AllBookingRow {
-    booking_code: string | null;
-    customer_name: string | null;
-    facility_name: string | null;
-    date: string | null;
-    start_time: string | null;
-    end_time: string | null;
-    status: string | null;
-    payment_status: string | null;
-    total_price: number | null;
-    created_at: string | null;
-  }
   const {
     data: allBookingsData,
     isLoading: allBookingsLoading,
@@ -757,6 +759,8 @@ export default function SportCenterDashboard() {
 
         {/* ── Expandable Detail: Revenue Transaksi ─────────────────────────── */}
         {!kpiLoading && (expandedCard === "revenue" || expandedCard === "revenueToday") && (
+        {/* ── Expandable Detail: Revenue Hari Ini ──────────────────────────── */}
+        {!kpiLoading && expandedCard === "revenue" && (
           <div className="border border-blue-700/40 rounded-xl bg-blue-950/10 transition-all">
             <div className="flex items-center justify-between px-4 py-3 border-b border-blue-700/30">
               <div className="flex items-center gap-2">
@@ -788,6 +792,9 @@ export default function SportCenterDashboard() {
                   <div key={i} className="h-10 rounded-lg bg-muted/20 animate-pulse" />
                 ))}
               </div>
+
+
+
             ) : !revenueTxData || revenueTxData.data.length === 0 ? (
               <div className="py-10 text-center text-muted-foreground text-sm">
                 Tidak ada transaksi revenue untuk {kpiDateLabel}.

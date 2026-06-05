@@ -53,10 +53,11 @@ async function ensureTables() {
     CREATE INDEX IF NOT EXISTS cash_advances_status_idx ON cash_advances(status);
     CREATE INDEX IF NOT EXISTS cash_advance_repayments_advance_idx ON cash_advance_repayments(advance_id);
   `));
-  // Add rejection_reason if not present
   await db.execute(sql.raw(`
     ALTER TABLE cash_advances ADD COLUMN IF NOT EXISTS rejection_reason TEXT;
     ALTER TABLE cash_advances ADD COLUMN IF NOT EXISTS approval_request_id INTEGER;
+    ALTER TABLE cash_advances ADD COLUMN IF NOT EXISTS vendor_id INTEGER;
+    ALTER TABLE cash_advances ADD COLUMN IF NOT EXISTS user_id TEXT;
   `));
 }
 ensureTables().catch(console.error);
@@ -176,17 +177,32 @@ async function checkApprovalLimit(type: string, companyId: number | null, amount
 router.get("/", async (req: Request, res) => {
   const companyId = resolveCompanyId(req);
   const { type, status, from, to } = req.query as Record<string, string>;
-  const conds: ReturnType<typeof eq>[] = [eq(cashAdvancesTable.companyId, companyId)];
-  if (type) conds.push(eq(cashAdvancesTable.type, type));
-  if (status) conds.push(eq(cashAdvancesTable.status, status));
-  if (from) conds.push(gte(cashAdvancesTable.date, from));
-  if (to) conds.push(lte(cashAdvancesTable.date, to));
-  const rows = await db
-    .select().from(cashAdvancesTable)
-    .where(and(...conds))
-    .orderBy(desc(cashAdvancesTable.date), desc(cashAdvancesTable.id))
-    .limit(500);
-  return res.json(rows.map(serializeAdv));
+  const whereParts: string[] = [`ca.company_id = ${companyId}`];
+  if (type) whereParts.push(`ca.type = '${type.replace(/'/g, "''")}'`);
+  if (status) whereParts.push(`ca.status = '${status.replace(/'/g, "''")}'`);
+  if (from) whereParts.push(`ca.date >= '${from}'`);
+  if (to) whereParts.push(`ca.date <= '${to}'`);
+
+  const result = await db.execute(sql.raw(`
+    SELECT ca.*,
+      coa.code AS cash_bank_account_code,
+      coa.name AS cash_bank_account_name,
+      sup.name AS vendor_name
+    FROM cash_advances ca
+    LEFT JOIN chart_of_accounts coa ON ca.cash_bank_account_id = coa.id
+    LEFT JOIN suppliers sup ON ca.vendor_id = sup.id
+    WHERE ${whereParts.join(" AND ")}
+    ORDER BY ca.date DESC, ca.id DESC
+    LIMIT 500
+  `));
+
+  return res.json((result.rows as any[]).map((r) => ({
+    ...serializeAdv(r as any),
+    cashBankAccount: r.cash_bank_account_id
+      ? { id: r.cash_bank_account_id, code: r.cash_bank_account_code, name: r.cash_bank_account_name }
+      : null,
+    vendor: r.vendor_id ? { id: r.vendor_id, name: r.vendor_name } : null,
+  })));
 });
 
 // ─── Detail ───────────────────────────────────────────────────────────────────
@@ -214,7 +230,7 @@ router.get("/:id", async (req, res) => {
 // ─── Create ───────────────────────────────────────────────────────────────────
 
 router.post("/", async (req: Request, res) => {
-  const { type, partyName, amount, paymentMethod, date, notes } = req.body ?? {};
+  const { type, partyName, amount, paymentMethod, date, notes, vendorId, sourceAccountId } = req.body ?? {};
   if (!type || !["kasbon", "talangan"].includes(type))
     return res.status(400).json({ message: "type harus 'kasbon' atau 'talangan'." });
   if (!partyName?.trim()) return res.status(400).json({ message: "Nama pihak wajib diisi." });
@@ -229,7 +245,10 @@ router.post("/", async (req: Request, res) => {
   if (!receivableAccountId)
     return res.status(400).json({ message: `Akun piutang (${type === "kasbon" ? "1-1032" : "1-1033"}) belum ada di COA.` });
 
-  const cashBankAccountId = await resolveCashBankAccount(paymentMethod ?? "bank", settings);
+  const resolvedCashBank = sourceAccountId
+    ? Number(sourceAccountId)
+    : await resolveCashBankAccount(paymentMethod ?? "bank", settings);
+  const cashBankAccountId = resolvedCashBank;
   if (!cashBankAccountId)
     return res.status(400).json({ message: "Akun Kas/Bank default belum dikonfigurasi." });
 
@@ -255,6 +274,8 @@ router.post("/", async (req: Request, res) => {
       status: "pending_approval",
       receivableAccountId,
       cashBankAccountId,
+      vendorId: vendorId ? Number(vendorId) : null,
+      userId: (req as any).userId ?? null,
       createdById: userId,
     }).returning();
 
@@ -340,6 +361,8 @@ router.post("/", async (req: Request, res) => {
     status: "active",
     receivableAccountId,
     cashBankAccountId,
+    vendorId: vendorId ? Number(vendorId) : null,
+    userId: (req as any).userId ?? null,
     createdById: userId,
   }).returning();
 
