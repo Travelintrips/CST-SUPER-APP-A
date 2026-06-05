@@ -61,20 +61,22 @@ router.put("/", async (req: Request, res: Response) => {
   const hiddenItems = (body.hiddenItems ?? []) as string[];
   const itemOrder = (body.itemOrder ?? []) as string[];
   const childOrder = (body.childOrder ?? {}) as Record<string, string[]>;
+  const hiddenItemsJson = JSON.stringify(hiddenItems);
+  const itemOrderJson = JSON.stringify(itemOrder);
   const childOrderJson = JSON.stringify(childOrder);
 
   await db.execute(sql`
     INSERT INTO user_nav_preferences (user_id, hidden_items, item_order, child_order, updated_at)
     VALUES (
       ${userId},
-      ${hiddenItems},
-      ${itemOrder},
+      ${hiddenItemsJson}::jsonb,
+      ${itemOrderJson}::jsonb,
       ${childOrderJson}::jsonb,
       NOW()
     )
     ON CONFLICT (user_id) DO UPDATE
-      SET hidden_items = ${hiddenItems},
-          item_order   = ${itemOrder},
+      SET hidden_items = ${hiddenItemsJson}::jsonb,
+          item_order   = ${itemOrderJson}::jsonb,
           child_order  = ${childOrderJson}::jsonb,
           updated_at   = NOW()
   `);
