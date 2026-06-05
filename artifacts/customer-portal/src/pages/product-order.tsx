@@ -692,7 +692,7 @@ export default function ProductOrderPage() {
                 <Input
                   placeholder="Contoh: Surabaya, Bandung, Medan..."
                   value={truckingForm.destination}
-                  onChange={e => setTruckingForm(f => ({ ...f, destination: e.target.value }))}
+                  onChange={e => { setTruckingForm(f => ({ ...f, destination: e.target.value })); setVehicleComparison(null); }}
                   className="border-primary/40 focus:border-primary text-base"
                   autoFocus
                 />
