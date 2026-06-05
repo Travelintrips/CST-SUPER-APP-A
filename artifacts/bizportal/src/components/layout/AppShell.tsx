@@ -1,4 +1,4 @@
-import { ReactNode, useState } from "react";
+import { ReactNode, useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { CommandPalette, useCommandPalette, usePageTracker } from "@/components/CommandPalette";
 import { Link, useLocation } from "wouter";
@@ -164,7 +164,7 @@ function applySortOrder<T extends { href: string }>(items: T[], order: string[] 
 }
 
 export function AppShell({ children, noPadding }: AppShellProps) {
-  const [location] = useLocation();
+  const [location, navigate] = useLocation();
   const { t } = useLanguage();
   const { activeCompany, isConsolidated } = useCompany();
   const { data: dbUser } = useGetCurrentUser({
@@ -597,6 +597,39 @@ export function AppShell({ children, noPadding }: AppShellProps) {
   const { open: cmdOpen, setOpen: setCmdOpen } = useCommandPalette();
   usePageTracker();
 
+  const [showShortcuts, setShowShortcuts] = useState(false);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if ((e.target as HTMLElement)?.isContentEditable) return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+      if (e.key === "?") {
+        e.preventDefault();
+        setShowShortcuts((s) => !s);
+        return;
+      }
+      if (e.key === "Escape") {
+        setShowShortcuts(false);
+        return;
+      }
+      if (showShortcuts && /^[1-9]$/.test(e.key)) {
+        const idx = parseInt(e.key, 10) - 1;
+        const item = orderedNav[idx];
+        if (item) {
+          e.preventDefault();
+          const href = item.type === "group" ? (item.children[0]?.href ?? item.basePath) : item.href;
+          navigate(href);
+          setShowShortcuts(false);
+        }
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [showShortcuts, orderedNav, navigate]);
+
   const { data: navConfig } = useQuery<Record<string, string[]>>({
     queryKey: ["settings", "nav-company-config"],
     queryFn: async () => {
@@ -798,8 +831,90 @@ export function AppShell({ children, noPadding }: AppShellProps) {
     );
   };
 
+  const shortcutsOverlay = showShortcuts ? (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      onClick={() => setShowShortcuts(false)}
+    >
+      <div
+        className="relative w-full max-w-3xl max-h-[85vh] overflow-y-auto rounded-xl border border-border bg-background shadow-2xl mx-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-background px-5 py-3">
+          <div>
+            <h2 className="text-sm font-semibold">Keyboard Shortcuts</h2>
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              Tekan <kbd className="rounded border border-border bg-muted px-1 py-0.5 font-mono text-[10px]">1</kbd>–<kbd className="rounded border border-border bg-muted px-1 py-0.5 font-mono text-[10px]">9</kbd> untuk navigasi cepat · <kbd className="rounded border border-border bg-muted px-1 py-0.5 font-mono text-[10px]">?</kbd> tutup · <kbd className="rounded border border-border bg-muted px-1 py-0.5 font-mono text-[10px]">Esc</kbd> tutup
+            </p>
+          </div>
+          <button
+            onClick={() => setShowShortcuts(false)}
+            className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+          >
+            ✕
+          </button>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 p-4">
+          {orderedNav.map((item, idx) => {
+            const shortcutKey = idx < 9 ? String(idx + 1) : null;
+            const title = getNavTitle(item.titleKey);
+            const Icon = item.icon;
+            const children = item.type === "group"
+              ? item.children
+                  .filter((c) => filterChild(c) && (IS_DEV || !("devOnly" in c && c.devOnly)))
+                  .slice(0, 6)
+              : [];
+            return (
+              <div key={item.type === "group" ? item.basePath : item.href} className="rounded-lg border border-border bg-card p-3 space-y-1.5">
+                <div className="flex items-center gap-2">
+                  {shortcutKey && (
+                    <kbd className="shrink-0 rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px] font-bold text-muted-foreground">{shortcutKey}</kbd>
+                  )}
+                  <Icon size={14} className="shrink-0 text-primary" />
+                  <span className="text-xs font-semibold truncate">{title}</span>
+                </div>
+                {children.length > 0 && (
+                  <div className="pl-1 space-y-0.5">
+                    {children.map((c) => (
+                      <button
+                        key={c.href}
+                        onClick={() => { navigate(c.href); setShowShortcuts(false); }}
+                        className="flex w-full items-center gap-1.5 rounded px-1 py-0.5 text-left text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                      >
+                        <c.icon size={11} className="shrink-0" />
+                        <span className="truncate">{getNavTitle(c.titleKey)}</span>
+                      </button>
+                    ))}
+                    {item.type === "group" && item.children.filter((c) => filterChild(c) && (IS_DEV || !("devOnly" in c && c.devOnly))).length > 6 && (
+                      <span className="block pl-1 text-[10px] text-muted-foreground/60">
+                        +{item.children.filter((c) => filterChild(c) && (IS_DEV || !("devOnly" in c && c.devOnly))).length - 6} lainnya…
+                      </span>
+                    )}
+                  </div>
+                )}
+                {item.type === "flat" && (
+                  <button
+                    onClick={() => { navigate(item.href); setShowShortcuts(false); }}
+                    className="flex w-full items-center gap-1.5 rounded px-1 py-0.5 text-left text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                  >
+                    <span className="truncate">→ {item.href}</span>
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <div className="border-t border-border px-5 py-3 text-[11px] text-muted-foreground flex gap-4">
+          <span><kbd className="rounded border border-border bg-muted px-1 py-0.5 font-mono text-[10px]">Ctrl+K</kbd> Command palette</span>
+          <span><kbd className="rounded border border-border bg-muted px-1 py-0.5 font-mono text-[10px]">?</kbd> Toggle overlay ini</span>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
   return (
     <SidebarProvider>
+      {shortcutsOverlay}
       <div className="flex min-h-[100dvh] w-full bg-background text-foreground">
         <Sidebar className="border-r border-border">
           <SidebarHeader className="border-b border-border px-4 py-3">
@@ -869,6 +984,13 @@ export function AppShell({ children, noPadding }: AppShellProps) {
                 </span>
               )}
               {IS_DEV && <DevUserSwitcher />}
+              <button
+                onClick={() => setShowShortcuts(true)}
+                className="hidden sm:flex items-center justify-center rounded-md border border-border bg-muted/50 px-2 py-1 text-xs text-muted-foreground hover:bg-accent transition-colors"
+                title="Keyboard shortcuts (?)"
+              >
+                <span className="font-mono font-bold">?</span>
+              </button>
               <NotificationBell />
             </div>
           </div>
@@ -891,6 +1013,13 @@ export function AppShell({ children, noPadding }: AppShellProps) {
                 </span>
               )}
               {IS_DEV && <DevUserSwitcher />}
+              <button
+                onClick={() => setShowShortcuts(true)}
+                className="flex items-center justify-center rounded-md border border-border bg-muted/50 px-2 py-1.5 text-xs text-muted-foreground hover:bg-accent transition-colors"
+                title="Keyboard shortcuts (?)"
+              >
+                <span className="font-mono font-bold text-[11px]">?</span>
+              </button>
               <LanguageSelector />
               <NotificationBell />
               <DropdownMenu>
