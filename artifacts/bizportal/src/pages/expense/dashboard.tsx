@@ -276,8 +276,10 @@ export default function ExpenseDashboardPage() {
                 { href: "/expense/templates", label: "Kelola Template Expense", icon: "📋" },
                 { href: "/expense/budget",    label: "Anggaran & Multi-Mata Uang", icon: "💰" },
                 { href: "/expense/approvals", label: "Approval Expense", icon: "✅" },
-                { href: "/expense/kasbon",    label: "Kasbon Karyawan", icon: "👤" },
-                { href: "/expense/bank-loans", label: "Hutang Bank / Leasing", icon: "🏦" },
+                { href: "/expense/kasbon",            label: "Kasbon Karyawan",       icon: "👤" },
+                { href: "/expense/bank-loans",         label: "Hutang Bank / Leasing",  icon: "🏦" },
+                { href: "/expense/vendor-payments",    label: "Pembayaran Vendor",       icon: "🧾" },
+                { href: "/expense/asset-depreciation", label: "Penyusutan Aset Tetap",  icon: "📉" },
               ].map(({ href, label, icon }) => (
                 <Link key={href} href={href}>
                   <div className="flex items-center gap-3 rounded-lg border border-border hover:bg-muted/50 px-3 py-2 cursor-pointer transition-colors text-sm">
