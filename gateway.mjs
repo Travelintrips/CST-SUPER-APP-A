@@ -35,6 +35,11 @@ const BASE_DELAY    = Number(process.env.GW_BASE_DELAY    ?? 200);
 const RETRYABLE_CODES = new Set(["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "ENOTFOUND"]);
 
 const API_PORT           = Number(process.env.API_PORT ?? 8080);
+// BizPortal Vite — configurable via env, defaults to 4200
+const BIZPORTAL_PORT     = Number(process.env.BIZPORTAL_PORT ?? 4200);
+// Customer portal Vite — configurable via env, defaults to 5173
+const CUSTOMER_PORT      = Number(process.env.CUSTOMER_PORT ?? 5173);
+// Logistic Order Vite — configurable via env, defaults to 3001
 // BizPortal Vite dev server
 const BIZPORTAL_PORT     = Number(process.env.BIZPORTAL_PORT ?? 3000);
 // Customer portal Vite dev server
