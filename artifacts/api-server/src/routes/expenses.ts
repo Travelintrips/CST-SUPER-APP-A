@@ -218,6 +218,17 @@ export async function postQuickExpenseJournal(expenseId: number) {
   const taxAmountN = Number(expense.taxAmount ?? 0);
   const totalN = Number(expense.total);
 
+  let taxKindQEJ: string | null = null;
+  let taxAccountIdQEJ: number | null = null;
+  if (expense.taxRateId) {
+    const [taxRow] = await db.select().from(accountingTaxesTable)
+      .where(eq(accountingTaxesTable.id, expense.taxRateId));
+    taxKindQEJ = taxRow?.kind ?? null;
+    taxAccountIdQEJ = taxRow?.accountId ?? null;
+  }
+  const isWithholdingQEJ = taxKindQEJ === "withholding";
+  const cashNetQEJ = isWithholdingQEJ ? amountN - taxAmountN : totalN;
+
   const journalType = "bank";
   const journals = await db.select().from(accountingJournalsTable)
     .where(eq(accountingJournalsTable.type, journalType)).limit(1);
@@ -229,10 +240,12 @@ export async function postQuickExpenseJournal(expenseId: number) {
 
   const lines = [
     { accountId: expenseAccountId, debit: amountN, credit: 0, description: expense.description ?? "Biaya" },
-    ...(taxAmountN > 0 && settings.ppnInputAccountId
+    ...(taxAmountN > 0 && isWithholdingQEJ && taxAccountIdQEJ
+      ? [{ accountId: taxAccountIdQEJ, debit: 0, credit: taxAmountN, description: "Hutang PPh" }]
+      : taxAmountN > 0 && !isWithholdingQEJ && settings.ppnInputAccountId
       ? [{ accountId: settings.ppnInputAccountId, debit: taxAmountN, credit: 0, description: "PPN Masukan" }]
       : []),
-    { accountId: cashBankAccountId, debit: 0, credit: totalN, description: "Bank" },
+    { accountId: cashBankAccountId, debit: 0, credit: cashNetQEJ, description: "Bank" },
   ];
 
   const entry = await postEntry({
@@ -296,11 +309,20 @@ router.post("/quick", async (req: Request, res) => {
   }
 
   let taxAmountN = 0;
+  let taxKindQ: string | null = null;
+  let taxAccountIdQ: number | null = null;
   if (taxRateId) {
     const [tax] = await db.select().from(accountingTaxesTable).where(eq(accountingTaxesTable.id, Number(taxRateId)));
-    if (tax) taxAmountN = Math.round(amountN * Number(tax.rate) / 100 * 100) / 100;
+    if (tax) {
+      taxAmountN = Math.round(amountN * Number(tax.rate) / 100 * 100) / 100;
+      taxKindQ = tax.kind ?? null;
+      taxAccountIdQ = tax.accountId ?? null;
+    }
   }
-  const totalN = Math.round((amountN + taxAmountN) * 100) / 100;
+  const isWithholdingQ = taxKindQ === "withholding";
+  const totalN = isWithholdingQ
+    ? Math.round((amountN - taxAmountN) * 100) / 100
+    : Math.round((amountN + taxAmountN) * 100) / 100;
 
   // ── Cek limit approval ────────────────────────────────────────────────────
   const { needsApproval, limit } = await checkExpenseApprovalLimit(companyId, totalN);
@@ -424,7 +446,9 @@ router.post("/quick", async (req: Request, res) => {
 
   const lines = [
     { accountId: expenseAccountId, debit: amountN, credit: 0, description: cat.name },
-    ...(taxAmountN > 0 && settings.ppnInputAccountId
+    ...(taxAmountN > 0 && isWithholdingQ && taxAccountIdQ
+      ? [{ accountId: taxAccountIdQ, debit: 0, credit: taxAmountN, description: "Hutang PPh" }]
+      : taxAmountN > 0 && !isWithholdingQ && settings.ppnInputAccountId
       ? [{ accountId: settings.ppnInputAccountId, debit: taxAmountN, credit: 0, description: "PPN Masukan" }]
       : []),
     { accountId: cashBankAccountId, debit: 0, credit: totalN, description: isCash ? "Kas" : "Bank" },
@@ -441,6 +465,17 @@ router.post("/quick", async (req: Request, res) => {
   }, journal.code);
 
   await db.update(expensesTable).set({ entryId: entry.id }).where(eq(expensesTable.id, expense!.id));
+
+  const { recordTransactionTax } = await import("../lib/taxAutoService.js");
+  void recordTransactionTax({
+    companyId,
+    transactionType: "expense",
+    transactionId: expense!.id,
+    transactionRef: expense!.expenseNumber,
+    baseAmount: amountN,
+    taxAmount: taxAmountN > 0 ? taxAmountN : undefined,
+    subType: cat.code ?? null,
+  });
 
   return res.status(201).json({ ...serializeExpense({ ...expense!, entryId: entry.id }), needsApproval: false });
 });
@@ -613,11 +648,17 @@ router.post("/", async (req, res) => {
   const subtotal = Math.round(qtyN * upN * 100) / 100;
 
   let taxAmountN = 0;
+  let taxKindCreate: string | null = null;
   if (taxRateId) {
     const [tax] = await db.select().from(accountingTaxesTable).where(eq(accountingTaxesTable.id, Number(taxRateId)));
-    if (tax) taxAmountN = Math.round(subtotal * Number(tax.rate) / 100 * 100) / 100;
+    if (tax) {
+      taxAmountN = Math.round(subtotal * Number(tax.rate) / 100 * 100) / 100;
+      taxKindCreate = tax.kind ?? null;
+    }
   }
-  const total = Math.round((subtotal + taxAmountN) * 100) / 100;
+  const total = taxKindCreate === "withholding"
+    ? Math.round((subtotal - taxAmountN) * 100) / 100
+    : Math.round((subtotal + taxAmountN) * 100) / 100;
 
   const companyIdForInsert = resolveCompanyId(req as Request);
   const expenseNumber = await nextExpenseNumber();
@@ -673,11 +714,17 @@ router.put("/:id", async (req, res) => {
   const subtotal = Math.round(qtyN * upN * 100) / 100;
 
   let taxAmountN = 0;
+  let taxKindUpdate: string | null = null;
   if (taxRateId) {
     const [tax] = await db.select().from(accountingTaxesTable).where(eq(accountingTaxesTable.id, Number(taxRateId)));
-    if (tax) taxAmountN = Math.round(subtotal * Number(tax.rate) / 100 * 100) / 100;
+    if (tax) {
+      taxAmountN = Math.round(subtotal * Number(tax.rate) / 100 * 100) / 100;
+      taxKindUpdate = tax.kind ?? null;
+    }
   }
-  const total = Math.round((subtotal + taxAmountN) * 100) / 100;
+  const total = taxKindUpdate === "withholding"
+    ? Math.round((subtotal - taxAmountN) * 100) / 100
+    : Math.round((subtotal + taxAmountN) * 100) / 100;
 
   const [updated] = await db
     .update(expensesTable)
@@ -803,12 +850,27 @@ router.post("/:id/action", async (req, res) => {
     const taxAmountN = Number(expense.taxAmount);
     const subtotalN = Number(expense.subtotal);
 
+    let taxKindPost: string | null = null;
+    let taxAccountIdPost: number | null = null;
+    if (expense.taxRateId) {
+      const [taxRow] = await db.select().from(accountingTaxesTable)
+        .where(eq(accountingTaxesTable.id, expense.taxRateId));
+      taxKindPost = taxRow?.kind ?? null;
+      taxAccountIdPost = taxRow?.accountId ?? null;
+    }
+    const isWithholdingPost = taxKindPost === "withholding";
+
     const lines = [];
     lines.push({ accountId: resolvedExpenseAccountId, debit: subtotalN, credit: 0, description: expense.description ?? expense.expenseNumber });
-    if (taxAmountN > 0 && settings.ppnInputAccountId) {
+    if (taxAmountN > 0 && isWithholdingPost && taxAccountIdPost) {
+      lines.push({ accountId: taxAccountIdPost, debit: 0, credit: taxAmountN, description: "Hutang PPh" });
+      lines.push({ accountId: resolvedPayableAccountId, debit: 0, credit: totalN, description: expense.vendorEmployee ?? expense.expenseNumber });
+    } else if (taxAmountN > 0 && !isWithholdingPost && settings.ppnInputAccountId) {
       lines.push({ accountId: settings.ppnInputAccountId, debit: taxAmountN, credit: 0, description: "PPN Masukan" });
+      lines.push({ accountId: resolvedPayableAccountId, debit: 0, credit: totalN, description: expense.vendorEmployee ?? expense.expenseNumber });
+    } else {
+      lines.push({ accountId: resolvedPayableAccountId, debit: 0, credit: subtotalN, description: expense.vendorEmployee ?? expense.expenseNumber });
     }
-    lines.push({ accountId: resolvedPayableAccountId, debit: 0, credit: totalN, description: expense.vendorEmployee ?? expense.expenseNumber });
 
     const [journal] = await db.select().from(accountingJournalsTable).where(eq(accountingJournalsTable.type, "purchase")).limit(1);
     if (!journal) return res.status(400).json({ message: "Jurnal pembelian tidak ditemukan." });

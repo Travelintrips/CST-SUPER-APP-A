@@ -167,7 +167,8 @@ export default function ExpenseRoutinePage() {
   const amount = parseIDR(amountRaw);
   const selectedTax = taxes.find((t) => t.id.toString() === taxRateId);
   const taxAmount = selectedTax ? Math.round(amount * Number(selectedTax.rate) / 100) : 0;
-  const total = amount + taxAmount;
+  const isWithholding = selectedTax?.kind === "withholding";
+  const total = isWithholding ? amount - taxAmount : amount + taxAmount;
 
   // Account name resolution
   const debitAccName = selectedCat?.expenseAccountId
@@ -502,12 +503,12 @@ export default function ExpenseRoutinePage() {
                 </div>
                 {taxAmount > 0 && (
                   <div className="flex justify-between text-muted-foreground">
-                    <span>Pajak ({selectedTax?.name})</span>
-                    <span className="font-mono">{idr(taxAmount)}</span>
+                    <span>{isWithholding ? `PPh Dipotong (${selectedTax?.name})` : `PPN (${selectedTax?.name})`}</span>
+                    <span className="font-mono">{isWithholding ? `−${idr(taxAmount)}` : `+${idr(taxAmount)}`}</span>
                   </div>
                 )}
                 <div className="flex justify-between font-semibold border-t pt-1.5 mt-0.5">
-                  <span>Total</span>
+                  <span>{isWithholding ? "Dibayar ke Vendor" : "Total"}</span>
                   <span className="font-mono text-base">{idr(total)}</span>
                 </div>
                 <div className="border-t pt-1.5 mt-0.5 space-y-0.5 text-xs text-muted-foreground">
@@ -516,9 +517,15 @@ export default function ExpenseRoutinePage() {
                     <span className="text-emerald-400">DR {debitAccCode && `[${debitAccCode}]`} {debitAccName}</span>
                     <span className="font-mono">{idr(amount)}</span>
                   </div>
-                  {taxAmount > 0 && (
+                  {taxAmount > 0 && !isWithholding && (
                     <div className="flex justify-between">
                       <span className="text-emerald-400">DR PPN Masukan</span>
+                      <span className="font-mono">{idr(taxAmount)}</span>
+                    </div>
+                  )}
+                  {taxAmount > 0 && isWithholding && (
+                    <div className="flex justify-between">
+                      <span className="text-rose-400">CR Hutang PPh ({selectedTax?.name})</span>
                       <span className="font-mono">{idr(taxAmount)}</span>
                     </div>
                   )}
