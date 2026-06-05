@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useLocation } from "wouter";
 import {
   X, Trash2, Plus, ShoppingCart, ArrowRight,
@@ -196,6 +196,8 @@ export function CartDrawer() {
   const [truckEstimating, setTruckEstimating] = useState(false);
   const [vehicleComparison, setVehicleComparison] = useState<Array<{ type: string; label: string; desc: string; estimate: number; suitable: boolean }> | null>(null);
   const [deliveryAddressError, setDeliveryAddressError] = useState(false);
+  const [freightDestError, setFreightDestError] = useState(false);
+  const [companyFetchFailed, setCompanyFetchFailed] = useState(false);
   const [companyPickup, setCompanyPickup] = useState<{ name: string; address: string; originCity: string } | null>(null);
   const [cartAutoFilled, setCartAutoFilled] = useState(false);
   const [apiRates, setApiRates] = useState<Array<{ type: string; label: string; description: string; max_kg: string | null; rate_per_kg: string; min_price: string }> | null>(null);
@@ -207,7 +209,26 @@ export function CartDrawer() {
   const [, setLocation]        = useLocation();
   const { toast }              = useToast();
 
-  const { items, addItem, removeItem, clearCart, subtotal, tax, grandTotal, taxRate } = useCart();
+  const { items, addItem, replaceItemByType, removeItem, clearCart, subtotal, tax, grandTotal, taxRate } = useCart();
+
+  const hasProductOnly = items.length > 0 && items.every(i => i.calculatorType === "product");
+
+  const [selectedShipping, setSelectedShipping] = useState<"darat" | "laut" | "udara" | null>(() => {
+    try { return (JSON.parse(localStorage.getItem("logistic_product_shipping") ?? "null") as { method?: string } | null)?.method as "darat" | "laut" | "udara" | null ?? null; }
+    catch { return null; }
+  });
+
+  const daratEstimate = useMemo(() => {
+    const productItems = items.filter(i => i.calculatorType === "product");
+    if (productItems.length === 0) return null;
+    const itemsWithWeight = productItems.filter(i => Number(i.inputData.weightKg ?? 0) > 0);
+    const totalWeight = itemsWithWeight.length > 0
+      ? itemsWithWeight.reduce((s, i) => s + Number(i.inputData.weightKg) * Number(i.inputData.qty ?? 1), 0)
+      : productItems.reduce((s, i) => s + Number(i.inputData.qty ?? 1), 0);
+    if (totalWeight <= 0) return null;
+    const vehicleType = suggestVehicleType(totalWeight);
+    return offlineEstimateForVehicle(totalWeight, vehicleType, 0);
+  }, [items]);
 
   function computeCartAutoFill(): { hasData: boolean; weight?: string; vehicleType?: string; length?: string; width?: string; height?: string; goodsType?: string } {
     const productItems = items.filter(i => i.calculatorType === "product");
@@ -266,7 +287,7 @@ export function CartDrawer() {
   }, [view]);
 
   useEffect(() => {
-    if (view !== "trucking" || companyPickup) return;
+    if (!open || companyPickup) return;
     fetch("/api/settings/company-pickup-address")
       .then(r => r.ok ? r.json() : null)
       .then((d: { companyName: string; companyAddress: string; originCity?: string } | null) => {
@@ -276,8 +297,11 @@ export function CartDrawer() {
           setCompanyPickup({ name: "CST Logistics", address: DEFAULT_PICKUP, originCity: "Jakarta" });
         }
       })
-      .catch(() => setCompanyPickup({ name: "CST Logistics", address: DEFAULT_PICKUP, originCity: "Jakarta" }));
-  }, [view, companyPickup]);
+      .catch(() => {
+        setCompanyPickup({ name: "CST Logistics", address: DEFAULT_PICKUP, originCity: "Jakarta" });
+        setCompanyFetchFailed(true);
+      });
+  }, [open, companyPickup]);
 
   function close() { setOpen(false); }
 
@@ -292,6 +316,20 @@ export function CartDrawer() {
   }
 
   function handleCheckout() {
+    if (hasProductOnly && !selectedShipping) {
+      toast({ title: "Pilih metode pengiriman terlebih dahulu", variant: "destructive" });
+      return;
+    }
+    if (hasProductOnly && selectedShipping) {
+      try {
+        localStorage.setItem("logistic_product_shipping", JSON.stringify({
+          method: selectedShipping,
+          estimate: selectedShipping === "darat" ? daratEstimate : null,
+          companyName: companyPickup?.name ?? "CST Logistics",
+          companyAddress: companyPickup?.address ?? DEFAULT_PICKUP,
+        }));
+      } catch { /**/ }
+    }
     close();
     setLocation("/book?step=3");
   }
@@ -304,7 +342,7 @@ export function CartDrawer() {
     }
     const name = truckMode === "detail" ? "Trucking — Pickup & Delivery" : "Trucking — Kargo";
     const pickupAddr = companyPickup?.address ?? DEFAULT_PICKUP;
-    addItem({
+    replaceItemByType({
       category: "Trucking",
       serviceName: name,
       calculatorType: "trucking",
@@ -316,7 +354,7 @@ export function CartDrawer() {
       calculationResult: truckEstimate ? { estimated_price: truckEstimate } : {},
       subtotal: 0,
     });
-    toast({ title: `${name} ditambahkan ke keranjang` });
+    toast({ title: `${name} diperbarui di keranjang` });
     setTruckData({});
     setTruckEstimate(null);
     setView("cart");
@@ -331,6 +369,7 @@ export function CartDrawer() {
     const af = computeCartAutoFill();
     if (af.hasData) {
       setFreightData({
+        originCountry: "Indonesia",
         weight: af.weight || "",
         length: af.length || "",
         width:  af.width  || "",
@@ -339,13 +378,26 @@ export function CartDrawer() {
       });
       setFreightAutoFilled(true);
     } else {
-      setFreightData({});
+      setFreightData({ originCountry: "Indonesia" });
       setFreightAutoFilled(false);
     }
+    setFreightDestError(false);
     setView("freight");
   }
 
   function computeFreightEstimate() {
+    // Validasi destination sebelum hitung estimasi
+    if (freightSvc === "sea" && !freightData.destCountry?.trim()) {
+      setFreightDestError(true);
+      toast({ title: "Isi Negara Tujuan terlebih dahulu", variant: "destructive" });
+      return;
+    }
+    if (freightSvc === "air" && !freightData.destAirport?.trim()) {
+      setFreightDestError(true);
+      toast({ title: "Isi Bandara Tujuan terlebih dahulu", variant: "destructive" });
+      return;
+    }
+    setFreightDestError(false);
     setFreightEstimating(true);
     const fd = freightData;
     setTimeout(() => {
@@ -380,21 +432,32 @@ export function CartDrawer() {
   }
 
   function handleAddFreightItem() {
+    // Validasi destination wajib untuk sea/air
+    if (freightSvc === "sea" && !freightData.destCountry?.trim()) {
+      setFreightDestError(true);
+      toast({ title: "Negara Tujuan wajib diisi", variant: "destructive" });
+      return;
+    }
+    if (freightSvc === "air" && !freightData.destAirport?.trim()) {
+      setFreightDestError(true);
+      toast({ title: "Bandara Tujuan wajib diisi", variant: "destructive" });
+      return;
+    }
     const meta = FREIGHT_SVC_META[freightSvc];
     let name = meta.name;
     if (freightSvc === "sea")       name = `Kargo Laut — ${freightData.shipType || "LCL"}`;
     else if (freightSvc === "air")  name = "Kargo Udara";
     else if (freightSvc === "customs") name = `Custom Clearance — ${freightData.customsType || "Import"}`;
     else if (freightSvc === "additional") name = freightData.addlType || "Asuransi & Lainnya";
-    addItem({
-      id: crypto.randomUUID(),
-      name,
+    replaceItemByType({
+      serviceName: name,
       category: meta.name,
       calculatorType: meta.calcType,
       inputData: { ...freightData },
+      calculationResult: freightEstimate ? { estimated_price: freightEstimate } : {},
       subtotal: freightEstimate ?? 0,
     });
-    toast({ title: `${name} ditambahkan ke keranjang` });
+    toast({ title: `${name} diperbarui di keranjang` });
     setFreightData({});
     setFreightEstimate(null);
     setFreightAutoFilled(false);
@@ -570,12 +633,59 @@ export function CartDrawer() {
                     </div>
                   );
                 })}
-                <button
-                  onClick={openServiceCatalog}
-                  className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-slate-200 text-sm text-slate-400 hover:border-sky-300 hover:text-sky-600 hover:bg-sky-50/60 transition-colors"
-                >
-                  <Plus className="w-4 h-4" /> Tambah Layanan / Produk
-                </button>
+                {/* ── Metode Pengiriman (product-only cart) ── */}
+                {hasProductOnly ? (
+                  <div className="pt-1">
+                    <div className="flex items-center gap-2 mb-2.5 px-0.5">
+                      <Truck className="w-3.5 h-3.5 text-slate-400" />
+                      <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">
+                        Metode Pengiriman <span className="text-red-400">*</span>
+                      </span>
+                    </div>
+                    {/* Alamat Pengirim (otomatis) */}
+                    <div className="mb-3 rounded-lg border border-orange-200 bg-orange-50/80 px-3 py-2.5">
+                      <p className="text-[10px] font-bold text-orange-400 uppercase tracking-wide mb-1">Pengirim (Otomatis)</p>
+                      <p className="text-[11px] font-semibold text-orange-700 leading-snug">🏭 {companyPickup?.name ?? "CST Logistics"}</p>
+                      <p className="text-[11px] text-orange-600 mt-0.5 leading-snug">{companyPickup?.address ?? DEFAULT_PICKUP}</p>
+                    </div>
+                    <div className="space-y-2">
+                      {([
+                        { id: "darat" as const, name: "Pengiriman Darat",  Icon: Truck,  desc: "Trucking kota ke kota",    activeColor: "border-orange-400 bg-orange-50", iconColor: "text-orange-600", iconBg: "bg-orange-100", estimate: daratEstimate },
+                        { id: "laut"  as const, name: "Pengiriman Laut",   Icon: Ship,   desc: "Sea freight LCL / FCL",    activeColor: "border-blue-400 bg-blue-50",   iconColor: "text-blue-600",   iconBg: "bg-blue-100",   estimate: null },
+                        { id: "udara" as const, name: "Pengiriman Udara",  Icon: Plane,  desc: "Air freight ekspres",      activeColor: "border-sky-400 bg-sky-50",     iconColor: "text-sky-600",    iconBg: "bg-sky-100",    estimate: null },
+                      ]).map(m => (
+                        <button key={m.id} onClick={() => setSelectedShipping(m.id)}
+                          className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left ${selectedShipping === m.id ? m.activeColor + " shadow-sm" : "border-slate-200 bg-white hover:border-slate-300"}`}
+                        >
+                          <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${selectedShipping === m.id ? m.iconBg : "bg-slate-100"}`}>
+                            <m.Icon className={`w-5 h-5 ${selectedShipping === m.id ? m.iconColor : "text-slate-400"}`} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className={`text-sm font-semibold leading-tight ${selectedShipping === m.id ? "text-slate-900" : "text-slate-700"}`}>{m.name}</p>
+                            <p className="text-[11px] text-slate-400 mt-0.5">{m.desc}</p>
+                          </div>
+                          <div className="text-right shrink-0 flex flex-col items-end gap-1">
+                            {m.estimate ? (
+                              <p className="text-xs font-bold text-slate-800">{formatCurrency(m.estimate)}</p>
+                            ) : (
+                              <p className="text-[10px] text-slate-400 italic">Sesuai rute</p>
+                            )}
+                            <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${selectedShipping === m.id ? "border-primary bg-primary" : "border-slate-300 bg-white"}`}>
+                              {selectedShipping === m.id && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={openServiceCatalog}
+                    className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-slate-200 text-sm text-slate-400 hover:border-sky-300 hover:text-sky-600 hover:bg-sky-50/60 transition-colors"
+                  >
+                    <Plus className="w-4 h-4" /> Tambah Layanan / Produk
+                  </button>
+                )}
               </div>
             )
           )}
@@ -769,13 +879,18 @@ export function CartDrawer() {
                       </div>
                     </div>
                     <div>
-                      <Label className="text-[11px] mb-1 block flex items-center gap-1"><MapPin className="w-3 h-3" /> Kota Tujuan *</Label>
-                      <Input className="h-8 text-xs" placeholder="Surabaya" value={truckData.destCity||""} onChange={e => {
-                        const dc = e.target.value;
-                        setTruckData(p => ({ ...p, destCity: dc }));
-                        setVehicleComparison(null);
-                        try { localStorage.setItem("truck_pref", JSON.stringify({ destCity: dc, vehicleType: truckData.vehicleType ?? "" })); } catch { /**/ }
-                      }} />
+                      <Label className="text-[11px] mb-1 flex items-center gap-1"><MapPin className="w-3 h-3 text-blue-500" /> Kota Tujuan <span className="text-destructive">*</span></Label>
+                      <Input
+                        className={`h-8 text-xs ${!truckData.destCity && vehicleComparison !== null ? "border-destructive" : ""}`}
+                        placeholder="Surabaya, Medan, Makassar..."
+                        value={truckData.destCity||""}
+                        onChange={e => {
+                          const dc = e.target.value;
+                          setTruckData(p => ({ ...p, destCity: dc }));
+                          setVehicleComparison(null);
+                          try { localStorage.setItem("truck_pref", JSON.stringify({ destCity: dc, vehicleType: truckData.vehicleType ?? "" })); } catch { /**/ }
+                        }}
+                      />
                     </div>
                     <div>
                       <Label className="text-[11px] mb-1 flex items-center gap-1">
@@ -966,24 +1081,64 @@ export function CartDrawer() {
                 </div>
               )}
 
+              {/* Warning: company fetch failed */}
+              {companyFetchFailed && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 flex items-start gap-2">
+                  <span className="text-amber-500 mt-0.5 shrink-0 text-xs">⚠</span>
+                  <p className="text-[10px] text-amber-700 leading-snug">
+                    Data perusahaan tidak dapat dimuat. Asal menggunakan nilai default. Anda dapat mengedit manual jika diperlukan.
+                  </p>
+                </div>
+              )}
+
               {/* SEA FREIGHT */}
               {freightSvc === "sea" && (
                 <div className="space-y-3">
+                  {/* Negara Asal — selalu otomatis dari data perusahaan */}
                   <div className="grid grid-cols-2 gap-2.5">
                     <div>
-                      <Label className="text-[11px] mb-1 block">Negara Asal *</Label>
-                      <Input className="h-8 text-xs" placeholder="Indonesia" value={freightData.originCountry||""} onChange={e => setFreightData(p => ({...p, originCountry: e.target.value}))} />
+                      <Label className="text-[11px] mb-1 flex items-center gap-1">
+                        <MapPin className="w-3 h-3 text-orange-500" /> Negara Asal
+                        <span className="ml-auto text-[10px] font-semibold bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded-full">Otomatis</span>
+                      </Label>
+                      <div className="h-8 rounded-md border border-orange-200 bg-orange-50 px-3 flex items-center gap-1.5">
+                        <span className="text-xs font-medium text-orange-700">🇮🇩 Indonesia</span>
+                        {companyPickup?.originCity && <span className="text-[10px] text-orange-400 ml-auto">{companyPickup.originCity}</span>}
+                      </div>
                     </div>
                     <div>
-                      <Label className="text-[11px] mb-1 block">Negara Tujuan *</Label>
-                      <Input className="h-8 text-xs" placeholder="Singapore" value={freightData.destCountry||""} onChange={e => setFreightData(p => ({...p, destCountry: e.target.value}))} />
+                      <Label className="text-[11px] mb-1 font-semibold flex items-center gap-1">
+                        <MapPin className="w-3 h-3 text-blue-500" />
+                        Negara Tujuan <span className="text-destructive">*</span>
+                      </Label>
+                      <Input
+                        className={`h-8 text-xs ${freightDestError && !freightData.destCountry ? "border-destructive focus-visible:ring-destructive" : "border-primary/40 focus:border-primary"}`}
+                        placeholder="Singapore, Malaysia, China..."
+                        value={freightData.destCountry||""}
+                        onChange={e => { setFreightData(p => ({...p, destCountry: e.target.value})); if (e.target.value) setFreightDestError(false); }}
+                        autoFocus
+                      />
+                      {freightDestError && !freightData.destCountry && (
+                        <p className="text-[11px] text-destructive mt-1 flex items-center gap-1">
+                          <MapPin className="w-3 h-3" /> Negara tujuan wajib diisi.
+                        </p>
+                      )}
                     </div>
+                  </div>
+                  {/* Berat — read-only jika dari keranjang */}
+                  <div className="grid grid-cols-2 gap-2.5">
                     <div>
                       <Label className="text-[11px] mb-1 flex items-center gap-1">
                         Berat (kg)
                         {freightAutoFilled && freightData.weight && <span className="ml-auto text-[10px] font-semibold bg-sky-100 text-sky-600 px-1.5 py-0.5 rounded-full">Otomatis</span>}
                       </Label>
-                      <Input type="number" min={0} className="h-8 text-xs" placeholder="100" value={freightData.weight||""} onChange={e => setFreightData(p => ({...p, weight: e.target.value}))} />
+                      {freightAutoFilled && freightData.weight ? (
+                        <div className="h-8 flex items-center px-2.5 bg-sky-50 border border-sky-200 rounded-md">
+                          <span className="text-xs font-semibold text-slate-800">{freightData.weight} kg</span>
+                        </div>
+                      ) : (
+                        <Input type="number" min={0} className="h-8 text-xs" placeholder="100" value={freightData.weight||""} onChange={e => setFreightData(p => ({...p, weight: e.target.value}))} />
+                      )}
                     </div>
                     <div>
                       <Label className="text-[11px] mb-1 block">Jenis Pengiriman</Label>
@@ -997,6 +1152,7 @@ export function CartDrawer() {
                       </Select>
                     </div>
                   </div>
+                  {/* Dimensi — read-only jika dari keranjang */}
                   <div>
                     <Label className="text-[11px] mb-1 flex items-center gap-1">
                       Dimensi (cm) — P × L × T
@@ -1005,18 +1161,47 @@ export function CartDrawer() {
                       )}
                     </Label>
                     <div className="grid grid-cols-3 gap-1.5">
-                      <Input type="number" min={0} className="h-8 text-xs" placeholder="Panjang" value={freightData.length||""} onChange={e => setFreightData(p => ({...p, length: e.target.value}))} />
-                      <Input type="number" min={0} className="h-8 text-xs" placeholder="Lebar"   value={freightData.width||""}  onChange={e => setFreightData(p => ({...p, width: e.target.value}))} />
-                      <Input type="number" min={0} className="h-8 text-xs" placeholder="Tinggi"  value={freightData.height||""} onChange={e => setFreightData(p => ({...p, height: e.target.value}))} />
+                      {freightAutoFilled && (freightData.length || freightData.width || freightData.height) ? (
+                        <>
+                          <div className="h-8 rounded-md border border-sky-200 bg-sky-50 px-3 flex items-center justify-between">
+                            <span className="text-xs font-medium text-sky-700">{freightData.length || "—"}</span>
+                            <span className="text-[9px] text-sky-400">P</span>
+                          </div>
+                          <div className="h-8 rounded-md border border-sky-200 bg-sky-50 px-3 flex items-center justify-between">
+                            <span className="text-xs font-medium text-sky-700">{freightData.width || "—"}</span>
+                            <span className="text-[9px] text-sky-400">L</span>
+                          </div>
+                          <div className="h-8 rounded-md border border-sky-200 bg-sky-50 px-3 flex items-center justify-between">
+                            <span className="text-xs font-medium text-sky-700">{freightData.height || "—"}</span>
+                            <span className="text-[9px] text-sky-400">T</span>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <Input type="number" min={0} className="h-8 text-xs" placeholder="Panjang" value={freightData.length||""} onChange={e => setFreightData(p => ({...p, length: e.target.value}))} />
+                          <Input type="number" min={0} className="h-8 text-xs" placeholder="Lebar"   value={freightData.width||""}  onChange={e => setFreightData(p => ({...p, width: e.target.value}))} />
+                          <Input type="number" min={0} className="h-8 text-xs" placeholder="Tinggi"  value={freightData.height||""} onChange={e => setFreightData(p => ({...p, height: e.target.value}))} />
+                        </>
+                      )}
                     </div>
                   </div>
+                  {/* Jenis Barang — read-only jika dari keranjang */}
                   <div className="grid grid-cols-2 gap-2.5">
                     <div>
-                      <Label className="text-[11px] mb-1 block">Jenis Barang</Label>
-                      <Select value={freightData.goodsType||undefined} onValueChange={v => setFreightData(p => ({...p, goodsType: v}))}>
-                        <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Pilih" /></SelectTrigger>
-                        <SelectContent>{GOODS_TYPES.map(g => <SelectItem key={g} value={g} className="text-xs">{g}</SelectItem>)}</SelectContent>
-                      </Select>
+                      <Label className="text-[11px] mb-1 flex items-center gap-1">
+                        Jenis Barang
+                        {freightAutoFilled && freightData.goodsType && <span className="ml-auto text-[10px] font-semibold bg-sky-100 text-sky-600 px-1.5 py-0.5 rounded-full">Otomatis</span>}
+                      </Label>
+                      {freightAutoFilled && freightData.goodsType ? (
+                        <div className="h-8 flex items-center px-2.5 bg-sky-50 border border-sky-200 rounded-md">
+                          <span className="text-xs font-semibold text-slate-800">{freightData.goodsType}</span>
+                        </div>
+                      ) : (
+                        <Select value={freightData.goodsType||undefined} onValueChange={v => setFreightData(p => ({...p, goodsType: v}))}>
+                          <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Pilih" /></SelectTrigger>
+                          <SelectContent>{GOODS_TYPES.map(g => <SelectItem key={g} value={g} className="text-xs">{g}</SelectItem>)}</SelectContent>
+                        </Select>
+                      )}
                     </div>
                     <div>
                       <Label className="text-[11px] mb-1 block">Incoterms</Label>
@@ -1066,8 +1251,22 @@ export function CartDrawer() {
                   </div>
                   {/* Wajib diisi customer: Bandara Tujuan */}
                   <div>
-                    <Label className="text-[11px] mb-1 font-semibold block">Bandara Tujuan *</Label>
-                    <Input className="h-8 text-xs border-primary/40 focus:border-primary" placeholder="Contoh: SIN — Singapore, KUL — Malaysia..." value={freightData.destAirport||""} onChange={e => setFreightData(p => ({...p, destAirport: e.target.value}))} autoFocus />
+                    <Label className="text-[11px] mb-1 font-semibold flex items-center gap-1">
+                      <MapPin className="w-3 h-3 text-sky-500" />
+                      Bandara Tujuan <span className="text-destructive">*</span>
+                    </Label>
+                    <Input
+                      className={`h-8 text-xs ${freightDestError && !freightData.destAirport ? "border-destructive focus-visible:ring-destructive" : "border-primary/40 focus:border-primary"}`}
+                      placeholder="Contoh: SIN — Singapore, KUL — Malaysia..."
+                      value={freightData.destAirport||""}
+                      onChange={e => { setFreightData(p => ({...p, destAirport: e.target.value})); if (e.target.value) setFreightDestError(false); }}
+                      autoFocus
+                    />
+                    {freightDestError && !freightData.destAirport && (
+                      <p className="text-[11px] text-destructive mt-1 flex items-center gap-1">
+                        <MapPin className="w-3 h-3" /> Bandara tujuan wajib diisi.
+                      </p>
+                    )}
                   </div>
                   <div>
                     <Label className="text-[11px] mb-1 block">Incoterms</Label>
@@ -1195,12 +1394,7 @@ export function CartDrawer() {
                     freightSvc === "storage" ? "border-emerald-400 text-emerald-600 hover:bg-emerald-50" :
                                                "border-slate-400 text-slate-600 hover:bg-slate-50"
                   }`}
-                  disabled={freightEstimating || (
-                    freightSvc === "sea"     ? !freightData.destCountry :
-                    freightSvc === "air"     ? !freightData.destAirport :
-                    freightSvc === "storage" ? !freightData.volume :
-                    false
-                  )}
+                  disabled={freightEstimating || (freightSvc === "storage" ? !freightData.volume : false)}
                   onClick={computeFreightEstimate}
                 >
                   {freightEstimating
@@ -1260,17 +1454,39 @@ export function CartDrawer() {
                 <p className="text-[11px] text-slate-400 leading-snug">Harga akhir dikonfirmasi vendor setelah pesanan diterima.</p>
               )}
             </div>
+            {/* Shipping estimate row for product-only carts */}
+            {hasProductOnly && selectedShipping && (
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-500">Estimasi Ongkos Kirim</span>
+                <span className="font-medium text-slate-700">
+                  {selectedShipping === "darat" && daratEstimate
+                    ? formatCurrency(daratEstimate)
+                    : <span className="text-slate-400 text-xs italic">Sesuai rute</span>}
+                </span>
+              </div>
+            )}
+            {hasProductOnly && !selectedShipping && (
+              <p className="text-[11px] text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-center">
+                ⚠️ Pilih metode pengiriman sebelum checkout
+              </p>
+            )}
             <Button className="w-full gap-2 h-11 text-sm font-semibold" onClick={handleCheckout}>
               Lanjutkan ke Checkout <ArrowRight className="w-4 h-4" />
             </Button>
-            <div className="grid grid-cols-2 gap-2">
-              <Button variant="outline" className="gap-1.5 text-sm h-10" onClick={openServiceCatalog}>
-                <Truck className="w-3.5 h-3.5" /> Pilih Layanan
+            {hasProductOnly ? (
+              <Button variant="outline" className="w-full gap-1.5 text-sm h-10" onClick={() => { close(); setLocation("/products"); }}>
+                <Package className="w-3.5 h-3.5" /> Tambah Produk Lagi
               </Button>
-              <Button variant="outline" className="gap-1.5 text-sm h-10" onClick={() => { close(); setLocation("/products"); }}>
-                <Package className="w-3.5 h-3.5" /> Pilih Produk
-              </Button>
-            </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-2">
+                <Button variant="outline" className="gap-1.5 text-sm h-10" onClick={openServiceCatalog}>
+                  <Truck className="w-3.5 h-3.5" /> Pilih Layanan
+                </Button>
+                <Button variant="outline" className="gap-1.5 text-sm h-10" onClick={() => { close(); setLocation("/products"); }}>
+                  <Package className="w-3.5 h-3.5" /> Pilih Produk
+                </Button>
+              </div>
+            )}
           </div>
         )}
 
@@ -1304,11 +1520,10 @@ export function CartDrawer() {
                                              "bg-purple-600 hover:bg-purple-700"
               }`}
               disabled={
-                freightSvc === "sea"       ? !freightData.originCountry || !freightData.destCountry :
-                freightSvc === "air"       ? !freightData.originAirport || !freightData.destAirport :
                 freightSvc === "storage"   ? !freightData.volume :
                 freightSvc === "customs"   ? false :
-                !freightData.addlType
+                freightSvc === "additional" ? !freightData.addlType :
+                false
               }
               onClick={handleAddFreightItem}
             >

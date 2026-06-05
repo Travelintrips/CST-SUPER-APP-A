@@ -20,15 +20,45 @@ async function insertAccountingPaymentForSportCenter(args: {
   createdById?: string | null;
 }): Promise<void> {
   try {
+
+    // Idempotency: skip jika sudah ada accounting_payment untuk sourceDocId ini
+    const existing = await db.execute(sql`
+      SELECT id FROM accounting_payments
+      WHERE source_type = 'sport_center' AND source_doc_id = ${args.sourceDocId}
+      LIMIT 1
+    `);
+    if (existing.rows.length > 0) {
+      console.log(`[sport-center] insertAccountingPaymentForSportCenter: already exists for source_doc_id=${args.sourceDocId} — skip`);
+      return;
+    }
+    // Idempoten: skip jika accounting_payment untuk sport_payment ini sudah ada
+    const dupCheck = await db.execute(sql`
+      SELECT 1 FROM accounting_payments
+      WHERE source_type = 'sport_center' AND source_doc_id = ${args.sourceDocId}
+      LIMIT 1
+    `);
+    if (dupCheck.rows.length > 0) return;
+
     const settings = await ensureAccountingSettings(args.companyId);
     const isCash = ["cash", "tunai"].includes(args.method?.toLowerCase() ?? "");
     const journalId = isCash
       ? (settings.cashJournalId ?? settings.bankJournalId)
       : (settings.bankJournalId ?? settings.cashJournalId);
-    if (!journalId) return;
+    if (!journalId) {
+      console.error(
+        `[sport-center] insertAccountingPaymentForSportCenter: journal tidak ditemukan untuk company_id=${args.companyId} method=${args.method}. ` +
+        `cashJournalId=${settings.cashJournalId} bankJournalId=${settings.bankJournalId}. ` +
+        `Pastikan Accounting → Settings sudah dikonfigurasi jurnal Kas/Bank.`
+      );
+      console.error(`[sport-center] insertAccountingPaymentForSportCenter: tidak ada jurnal kas/bank untuk companyId=${args.companyId}, sourceDocId=${args.sourceDocId}`);
+      return;
+    }
     const payDate = args.date ?? new Date().toISOString().split("T")[0]!;
     const year = payDate.slice(0, 4);
-    const cntRes = await db.execute(sql`SELECT CAST(COUNT(*) AS int) AS seq FROM accounting_payments`);
+    const cntRes = await db.execute(sql`
+      SELECT CAST(COUNT(*) AS int) AS seq FROM accounting_payments
+      WHERE company_id = ${args.companyId}
+    `);
     const seq = Number((cntRes.rows[0] as any)?.seq ?? 0);
     const paySeq = (seq + 1).toString().padStart(4, "0");
     const acctPayNumber = `PAY/${year}/${paySeq}`;
@@ -48,6 +78,7 @@ async function insertAccountingPaymentForSportCenter(args: {
       sourceDocId: args.sourceDocId,
       createdById: args.createdById ?? null,
     });
+    console.log(`[sport-center] accounting_payment created: ${acctPayNumber} amount=${args.amount} source_doc_id=${args.sourceDocId}`);
   } catch (err) {
     console.error("[sport-center] insertAccountingPaymentForSportCenter failed:", err);
   }
@@ -1394,9 +1425,13 @@ router.post("/payments", async (req, res) => {
     const bFacility = String(b.facility_name ?? "");
     const createdById = (req.user as { id: string } | undefined)?.id ?? null;
 
-    // Validasi payment_date
+    // Validasi payment_date — gunakan sebagai tanggal efektif accounting jika valid
     const isValidDate = payment_date && /^\d{4}-\d{2}-\d{2}$/.test(payment_date);
     const paidAt = isValidDate ? `${payment_date}T00:00:00Z` : null; // null → NOW() di SQL
+    const effectiveDate = isValidDate ? (payment_date as string) : bBookingDate;
+    // Tanggal untuk accounting: payment_date jika valid, atau hari ini — BUKAN booking_date
+    // Ini penting agar KPI revenue_today dan Finance → Payments menampilkan data yang benar
+    const paymentAccountingDate: string = isValidDate ? (payment_date as string) : new Date().toISOString().slice(0, 10);
 
     // 2. Generate payment number dengan company_id yang benar
     const paymentNumber = await nextPaymentNumber(bCompanyId);
@@ -1443,13 +1478,16 @@ router.post("/payments", async (req, res) => {
     });
 
     // 6. Post jurnal accounting (Debit Kas ← Credit Pendapatan) — fire-and-forget
+    // Gunakan effectiveDate agar entry accounting sesuai tanggal bayar, bukan tanggal booking
+    // Pakai paymentAccountingDate (bukan bBookingDate) agar revenue_today KPI akurat
     if (bTaxAmount > 0) {
       postSportCenterBookingWithTax({
         bookingId: Number(booking_id),
         bookingCode: bCode,
         customerName: bCustomer,
         facilityName: bFacility,
-        date: bBookingDate,
+        date: effectiveDate,
+        date: paymentAccountingDate,
         baseAmount: bTotalAmount,
         taxAmount: bTaxAmount,
         createdById,
@@ -1461,14 +1499,17 @@ router.post("/payments", async (req, res) => {
         bookingCode: bCode,
         customerName: bCustomer,
         facilityName: bFacility,
-        date: bBookingDate,
+        date: effectiveDate,
+        date: paymentAccountingDate,
         totalPrice: bTotalAmount,
         createdById,
         companyId: bCompanyId,
       }).catch((err: unknown) => console.error('[sport-center] postSportCenterBooking failed:', err));
     }
 
-    // 7. Accounting Payments — agar muncul di Accounting → Payments
+    // 7. Accounting Payments — agar muncul di Finance → Payments
+    // Gunakan effectiveDate dan idempotency via sourceDocId
+    // 7. Accounting Payments — agar muncul di Finance BizPortal → Payments
     insertAccountingPaymentForSportCenter({
       companyId: bCompanyId,
       paymentNumber,
@@ -1478,7 +1519,8 @@ router.post("/payments", async (req, res) => {
       ref: bCode,
       memo: `Pembayaran booking sport center ${bCode}`,
       sourceDocId: Number(payRow.id),
-      date: bBookingDate,
+      date: effectiveDate,
+      date: paymentAccountingDate,
       createdById,
     }).catch((err: unknown) => console.error("[sport-center] insertAccountingPayment failed:", err));
 
@@ -1494,6 +1536,7 @@ router.post("/payments", async (req, res) => {
           method: finalMethod,
           payment_number: paymentNumber,
           source: 'SPORT_CENTER',
+          payment_date: effectiveDate,
         })}::jsonb
       )
     `).catch((err: unknown) => console.error('[sport-center] audit log failed:', err));
@@ -1506,6 +1549,52 @@ router.post("/payments", async (req, res) => {
   } catch (err) {
     console.error('[sport-center] POST /payments error:', err);
     res.status(500).json({ error: "Gagal mencatat pembayaran" });
+  }
+});
+
+// ── REVENUE TRANSACTIONS (untuk expandable card di dashboard) ────────────────
+router.get("/revenue-transactions", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  try {
+    const cId = req.query.companyId ? Number(req.query.companyId) : null;
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const date = (req.query.date as string | undefined) ?? todayStr;
+    const from = (req.query.from as string | undefined) ?? date;
+    const to   = (req.query.to   as string | undefined) ?? date;
+
+    const rows = await db.execute(sql`
+      SELECT
+        ae.id           AS entry_id,
+        ae.date         AS payment_date,
+        ae.total_debit  AS amount,
+        ae.ref,
+        ae.source,
+        ae.source_id    AS booking_id,
+        b.booking_number,
+        b.customer_name,
+        b.facility_name,
+        b.booking_date,
+        b.start_time,
+        b.end_time,
+        b.status,
+        b.payment_status,
+        b.total_amount
+      FROM accounting_entries ae
+      LEFT JOIN sport_bookings b ON b.id = ae.source_id
+      WHERE ae.source = 'sport_center_booking'
+        AND ae.status  = 'posted'
+        AND ae.date   >= ${from}::date
+        AND ae.date   <= ${to}::date
+        AND (${cId}::int IS NULL OR ae.company_id = ${cId})
+      ORDER BY ae.date DESC, ae.id DESC
+      LIMIT 500
+    `);
+
+    const total = rows.rows.reduce((s, r) => s + Number((r as any).amount ?? 0), 0);
+    res.json({ data: rows.rows, total, date, from, to });
+  } catch (err) {
+    console.error("[sport-center] GET /revenue-transactions error:", err);
+    res.status(500).json({ error: "Gagal memuat transaksi revenue" });
   }
 });
 

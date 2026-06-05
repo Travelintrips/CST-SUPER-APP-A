@@ -569,6 +569,20 @@ export default function BookPage() {
   const [companyOrigin, setCompanyOrigin] = useState<CompanyOrigin | null>(null);
   const [productDims, setProductDims] = useState<Record<string, string>>({});
 
+  const [productShipping, setProductShipping] = useState<{
+    method: "darat" | "laut" | "udara";
+    estimate: number | null;
+    companyName: string;
+    companyAddress: string;
+  } | null>(null);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("logistic_product_shipping");
+      if (saved) setProductShipping(JSON.parse(saved));
+    } catch { /* ignore */ }
+  }, []);
+
   // Fetch company origin defaults (origin airport, port, city)
   useEffect(() => {
     fetch("/api/settings/company-pickup-address")
@@ -869,7 +883,7 @@ export default function BookPage() {
     }
     const hasProductOnly = cartItems.every(c => c.calculatorType === "product");
     if (hasProductOnly && !customerForm.shippingAddress?.trim() && !customerForm.destination?.trim()) {
-      toast({ title: "Alamat Pengiriman wajib diisi", variant: "destructive" });
+      toast({ title: "Alamat Tujuan Pengiriman wajib diisi", variant: "destructive" });
       return;
     }
     const truckingInputData = (truckingItem?.inputData ?? {}) as Record<string, unknown>;
@@ -879,17 +893,26 @@ export default function BookPage() {
       cartItems.every(c => c.calculatorType !== "trucking" && c.calculatorType !== "air_freight" && c.calculatorType !== "sea_fcl" && c.calculatorType !== "sea_lcl") && cartItems.some(c => c.calculatorType !== "product") ? "service" :
       "shipment"
     );
-    const effectiveOrigin = (derivedOrderType === "product" || derivedOrderType === "service") ? (origin || "") : origin;
+    // For product-only orders, use company address as origin and shipping address as destination
+    const productOnlyOrigin = hasProductOnly ? (productShipping?.companyAddress || companyOrigin?.address || "") : "";
+    const effectiveOrigin = hasProductOnly ? productOnlyOrigin : ((derivedOrderType === "service") ? (origin || "") : origin);
     const effectiveDestination = derivedOrderType === "product"
       ? (shippingAddress || destination || "")
       : (derivedOrderType === "service" ? (destination || "") : destination);
+    // Derive transport mode from productShipping for product-only orders
+    const productTransportMode = hasProductOnly && productShipping
+      ? (productShipping.method === "darat" ? "TRUCKING" : productShipping.method === "laut" ? "SEA_FREIGHT" : "AIR_FREIGHT")
+      : customerForm.transportMode;
+    const productShipmentType = hasProductOnly && productShipping
+      ? (productShipping.method === "darat" ? "Trucking" : productShipping.method === "laut" ? "Sea LCL" : "Air Freight")
+      : (shipmentType ?? "");
     createOrder.mutate({ data: {
       companyName,
       customerName,
       email,
       phone,
       orderType: derivedOrderType ?? undefined,
-      shipmentType: shipmentType ?? "",
+      shipmentType: productShipmentType || (shipmentType ?? ""),
       origin: effectiveOrigin,
       destination: effectiveDestination,
       commodity: customerForm.commodity || str(truckingInputData.cargo_category) || null,
@@ -908,7 +931,7 @@ export default function BookPage() {
       jamOrder: str(truckingInputData.pickupTime) || null,
       // [MULTI-MODE] transport mode fields
       ...(({
-        ...(customerForm.transportMode ? { transportMode: customerForm.transportMode } : {}),
+        ...(productTransportMode ? { transportMode: productTransportMode } : {}),
         originDistrict: customerForm.originDistrict || undefined,
         destDistrict: customerForm.destDistrict || undefined,
         pickupDate: customerForm.pickupDate || str(truckingInputData.pickupDate) || undefined,
@@ -1510,17 +1533,61 @@ export default function BookPage() {
       const hasShipmentInCart = cartItems.some(c =>
         ["trucking","air_freight","sea_fcl","sea_lcl"].includes(c.calculatorType)
       );
+      const hasProductOnly = cartItems.every(c => c.calculatorType === "product") && cartItems.length > 0;
       const hasLogisticService = !isProductOrder && hasShipmentInCart;
       const hasOriginDest = !isProductOrder && !isServiceOrder && cartItems.some(c =>
         c.inputData?.pickupCity || c.inputData?.originAirport || c.inputData?.originPort ||
         c.inputData?.destCity   || c.inputData?.destinationAirport || c.inputData?.destinationPort
       );
+
+      const SHIPPING_LABEL: Record<string, string> = {
+        darat: "Pengiriman Darat (Trucking)",
+        laut: "Pengiriman Laut (Sea Freight)",
+        udara: "Pengiriman Udara (Air Freight)",
+      };
+      const SHIPPING_ICON: Record<string, JSX.Element> = {
+        darat: <Truck className="w-5 h-5 text-orange-600" />,
+        laut: <Ship className="w-5 h-5 text-blue-600" />,
+        udara: <Plane className="w-5 h-5 text-sky-600" />,
+      };
+
       return (
         <div className="space-y-5">
           <div>
             <h2 className="text-xl font-bold text-foreground mb-1">Data Pemesan</h2>
             <p className="text-sm text-muted-foreground">Lengkapi data untuk konfirmasi pesanan</p>
           </div>
+
+          {/* ── Ringkasan Pengiriman (hanya untuk product-only order) ── */}
+          {hasProductOnly && productShipping && (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 divide-y divide-slate-200 overflow-hidden">
+              <div className="flex items-center gap-3 px-4 py-3 bg-white">
+                <div className="w-9 h-9 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
+                  {SHIPPING_ICON[productShipping.method]}
+                </div>
+                <div className="flex-1">
+                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wide">Metode Pengiriman</p>
+                  <p className="text-sm font-semibold text-slate-900">{SHIPPING_LABEL[productShipping.method]}</p>
+                </div>
+                {productShipping.estimate ? (
+                  <div className="text-right">
+                    <p className="text-[10px] text-slate-400">Estimasi</p>
+                    <p className="text-sm font-bold text-slate-800">{formatCurrency(productShipping.estimate)}</p>
+                  </div>
+                ) : (
+                  <span className="text-[11px] text-slate-400 italic">Sesuai rute</span>
+                )}
+              </div>
+              <div className="px-4 py-3 flex items-start gap-3">
+                <MapPin className="w-4 h-4 text-orange-500 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-[10px] font-bold text-orange-500 uppercase tracking-wide">Alamat Pengirim (Kita)</p>
+                  <p className="text-xs font-semibold text-slate-800">{productShipping.companyName}</p>
+                  <p className="text-xs text-slate-500">{productShipping.companyAddress}</p>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* ── Group 1: Data Perusahaan ─────────────────────────── */}
           <div className="space-y-3">
@@ -1642,12 +1709,25 @@ export default function BookPage() {
                 </div>
               </>)}
 
-              {/* ── Alamat Pengiriman — tampil hanya jika product order + ada layanan shipment ─── */}
-              {isProductOrder && hasShipmentInCart && (
+              {/* ── Alamat Tujuan Pengiriman — tampil untuk semua product order ─── */}
+              {isProductOrder && (
                 <div className="col-span-2">
-                  <Label className="text-xs">Alamat Pengiriman (opsional)</Label>
-                  <Input placeholder="Jl. ..., Kota, Provinsi (kosongkan jika pickup)" value={f.shippingAddress} onChange={e => set("shippingAddress", e.target.value)} />
-                  <p className="text-[11px] text-muted-foreground mt-1">Terisi otomatis dari data layanan shipment. Kosongkan jika pickup sendiri.</p>
+                  <Label className="text-xs">
+                    Alamat Tujuan Pengiriman
+                    {hasProductOnly && <span className="text-destructive"> *</span>}
+                    {!hasProductOnly && hasShipmentInCart && <span className="text-muted-foreground font-normal"> (opsional)</span>}
+                  </Label>
+                  <Input
+                    placeholder="Jl. ..., Kota, Provinsi — tujuan pengiriman barang"
+                    value={f.shippingAddress}
+                    onChange={e => set("shippingAddress", e.target.value)}
+                  />
+                  {hasProductOnly && (
+                    <p className="text-[11px] text-muted-foreground mt-1">Masukkan alamat lengkap tujuan pengiriman Anda.</p>
+                  )}
+                  {!hasProductOnly && hasShipmentInCart && (
+                    <p className="text-[11px] text-muted-foreground mt-1">Kosongkan jika pickup sendiri.</p>
+                  )}
                 </div>
               )}
 

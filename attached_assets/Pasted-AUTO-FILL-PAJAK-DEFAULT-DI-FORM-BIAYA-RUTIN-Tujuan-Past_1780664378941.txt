@@ -1,0 +1,70 @@
+AUTO-FILL PAJAK DEFAULT DI FORM BIAYA RUTIN
+
+Tujuan:
+Pastikan setiap kategori expense otomatis mengisi Pajak Default yang valid di dropdown, dan menampilkan badge "auto" jika default digunakan.
+
+---
+
+A. BACKEND
+
+1. **Validasi Default Tax**
+
+   * Pastikan setiap kategori memiliki `default_tax_id` yang ada di tabel `accounting_taxes`
+   * Jika default tidak valid → set ke default PPN Masukan 11% (ID=2)
+   * Gunakan query re-seed / update script untuk kategori Dev & Prod:
+
+     ```sql
+     UPDATE categories SET default_tax_id = 2 WHERE default_tax_id IS NULL OR default_tax_id NOT IN (SELECT id FROM accounting_taxes);
+     ```
+
+2. **Endpoint GET Category**
+
+   * Sertakan `default_tax_id` di response
+   * Frontend menggunakan ID ini untuk auto-fill dropdown
+
+---
+
+B. FRONTEND
+
+1. **Auto-fill Pajak**
+
+   * Saat kategori dipilih:
+
+     ```ts
+     if (category.default_tax_id && taxes.includes(category.default_tax_id)) {
+       taxDropdown.value = category.default_tax_id
+       badgeTaxAuto.style.display = "inline" // tampilkan badge "auto"
+     } else {
+       taxDropdown.value = "" // tampil "Tanpa Pajak"
+     }
+     ```
+
+2. **Re-run After Taxes Load**
+
+   * Pastikan `taxes.length` dijadikan dependency agar auto-fill dijalankan setelah daftar taxes selesai load
+
+3. **Manual Override**
+
+   * Admin bisa tetap pilih pajak lain → override default
+
+---
+
+C. TESTING / QA
+
+| No | Step                       | Expected Result                               |
+| -- | -------------------------- | --------------------------------------------- |
+| 1  | Pilih kategori Dev         | Dropdown pajak otomatis pilih PPN Masukan 11% |
+| 2  | Pilih kategori Prod        | Dropdown pajak otomatis pilih PPN Masukan 11% |
+| 3  | Default tidak valid / NULL | Auto-fill menggunakan PPN Masukan 11%         |
+| 4  | Manual override            | Nilai override tersimpan di DB                |
+| 5  | Partial test               | Dropdown, badge auto, build & TS clean        |
+
+---
+
+Instruksi:
+
+* Update backend kategori → set default_tax_id valid
+* Sertakan default_tax_id di GET /api/category
+* Frontend auto-fill dropdown pajak jika default ada
+* Tampilkan badge "auto" saat default digunakan
+* Test partial → pilih kategori → dropdown auto-fill → badge muncul → override masih bisa

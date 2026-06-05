@@ -44,6 +44,8 @@ const EMPTY_FORM = {
   expenseAccountId: null as number | null,
   payableAccountId: null as number | null,
   defaultTaxId: null as number | null,
+  defaultAmount: "" as string,
+  defaultCoaId: null as number | null,
   requiresAttachment: false,
   isActive: true,
 };
@@ -80,6 +82,8 @@ export default function ExpenseCategoriesPage() {
       expenseAccountId: c.expenseAccountId ?? null,
       payableAccountId: c.payableAccountId ?? null,
       defaultTaxId: (c as any).defaultTaxId ?? null,
+      defaultAmount: (c as any).defaultAmount ? String(Number((c as any).defaultAmount)) : "",
+      defaultCoaId: (c as any).defaultCoaId ?? null,
       requiresAttachment: c.requiresAttachment,
       isActive: c.isActive,
     });
@@ -97,6 +101,8 @@ export default function ExpenseCategoriesPage() {
         expenseAccountId: form.expenseAccountId || undefined,
         payableAccountId: form.payableAccountId || undefined,
         defaultTaxId: form.defaultTaxId || undefined,
+        defaultAmount: form.defaultAmount ? Number(form.defaultAmount) : undefined,
+        defaultCoaId: form.defaultCoaId || undefined,
         requiresAttachment: form.requiresAttachment,
         isActive: form.isActive,
       };
@@ -281,6 +287,24 @@ export default function ExpenseCategoriesPage() {
               </Select>
             </div>
             <div className="space-y-1.5">
+              <Label>Akun Sumber Pembayaran Default</Label>
+              <Select
+                value={form.defaultCoaId?.toString() ?? "none"}
+                onValueChange={(v) => setForm((f) => ({ ...f, defaultCoaId: v === "none" ? null : Number(v) }))}
+              >
+                <SelectTrigger><SelectValue placeholder="Pilih akun kas/bank..." /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">— Tidak dipilih —</SelectItem>
+                  {accounts.filter((a) => a.type === "asset" && (a.name.toLowerCase().includes("kas") || a.name.toLowerCase().includes("bank"))).map((a) => (
+                    <SelectItem key={a.id} value={a.id.toString()}>
+                      {a.code} — {a.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">Akun kas/bank yang otomatis terpilih saat membuat biaya dari kategori ini.</p>
+            </div>
+            <div className="space-y-1.5">
               <Label>Pajak Default (Auto-fill)</Label>
               <Select
                 value={form.defaultTaxId?.toString() ?? "none"}
@@ -297,6 +321,18 @@ export default function ExpenseCategoriesPage() {
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">Saat kategori ini dipilih di form Biaya Rutin, pajak akan ter-isi otomatis.</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Harga Default (Auto-fill Nominal)</Label>
+              <Input
+                type="number"
+                min="0"
+                step="any"
+                placeholder="0 (kosong = tidak ada default)"
+                value={form.defaultAmount}
+                onChange={(e) => setForm((f) => ({ ...f, defaultAmount: e.target.value }))}
+              />
+              <p className="text-xs text-muted-foreground">Saat kategori ini dipilih di form Biaya Rutin, nominal akan ter-isi otomatis dengan nilai ini.</p>
             </div>
             <div className="flex items-center justify-between rounded-lg border border-border px-4 py-3">
               <div>
