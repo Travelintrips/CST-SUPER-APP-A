@@ -19,11 +19,15 @@ import { ensureAccountingSettings } from "../lib/accountingSeed.js";
 
 const _expenseObjectStorage = new ObjectStorageService();
 
-// ── Boot migration: add default_tax_id to expense_categories ──────────────────
+// ── Boot migration: add default_tax_id & default_amount to expense_categories ──
 db.execute(sql`
   ALTER TABLE expense_categories
   ADD COLUMN IF NOT EXISTS default_tax_id integer
   REFERENCES accounting_taxes(id) ON DELETE SET NULL
+`).catch(() => {});
+db.execute(sql`
+  ALTER TABLE expense_categories
+  ADD COLUMN IF NOT EXISTS default_amount NUMERIC(14,2)
 `).catch(() => {});
 
 const router = Router();
@@ -87,7 +91,7 @@ router.get("/categories", async (_req, res) => {
 });
 
 router.post("/categories", async (req, res) => {
-  const { name, code, expenseAccountId, payableAccountId, defaultTaxId, requiresAttachment, isActive } = req.body ?? {};
+  const { name, code, expenseAccountId, payableAccountId, defaultTaxId, defaultAmount, requiresAttachment, isActive } = req.body ?? {};
   if (!name || !code) return res.status(400).json({ message: "name and code are required" });
   const [created] = await db
     .insert(expenseCategoriesTable)
@@ -97,6 +101,7 @@ router.post("/categories", async (req, res) => {
       expenseAccountId: expenseAccountId ? Number(expenseAccountId) : null,
       payableAccountId: payableAccountId ? Number(payableAccountId) : null,
       defaultTaxId: defaultTaxId ? Number(defaultTaxId) : null,
+      defaultAmount: defaultAmount ? String(Number(defaultAmount)) : null,
       requiresAttachment: Boolean(requiresAttachment),
       isActive: isActive !== false,
     })
@@ -107,13 +112,14 @@ router.post("/categories", async (req, res) => {
 router.patch("/categories/:id", async (req, res) => {
   const id = Number(req.params.id);
   if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
-  const { name, code, expenseAccountId, payableAccountId, defaultTaxId, requiresAttachment, isActive } = req.body ?? {};
+  const { name, code, expenseAccountId, payableAccountId, defaultTaxId, defaultAmount, requiresAttachment, isActive } = req.body ?? {};
   const update: Record<string, unknown> = {};
   if (name !== undefined) update.name = String(name);
   if (code !== undefined) update.code = String(code).toUpperCase();
   if (expenseAccountId !== undefined) update.expenseAccountId = expenseAccountId ? Number(expenseAccountId) : null;
   if (payableAccountId !== undefined) update.payableAccountId = payableAccountId ? Number(payableAccountId) : null;
   if (defaultTaxId !== undefined) update.defaultTaxId = defaultTaxId ? Number(defaultTaxId) : null;
+  if (defaultAmount !== undefined) update.defaultAmount = defaultAmount ? String(Number(defaultAmount)) : null;
   if (requiresAttachment !== undefined) update.requiresAttachment = Boolean(requiresAttachment);
   if (isActive !== undefined) update.isActive = Boolean(isActive);
   const [updated] = await db
