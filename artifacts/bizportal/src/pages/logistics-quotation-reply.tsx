@@ -42,7 +42,7 @@ import {
   Clock,
   Inbox,
   Reply,
-  Phone,
+  Phone, ArrowLeft,
 } from "lucide-react";
 import { Link } from "wouter";
 

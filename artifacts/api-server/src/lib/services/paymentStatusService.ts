@@ -33,6 +33,7 @@ import {
   salesDocumentsTable,
   purchaseDocumentsTable,
   accountingPaymentsTable,
+  paymentsTable,
 } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { logger } from "../logger.js";
@@ -40,13 +41,9 @@ import { writeAuditLog } from "../auditLog.js";
 
 // ── Feature Flag ──────────────────────────────────────────────────────────────
 //
-// Fase 1: false — hanya sum accounting_payments (backward compatible)
-// Fase 2: ubah ke true — sum KEDUA tabel: accounting_payments + payments (Paylabs)
+// Fase 2: true — sum KEDUA tabel: accounting_payments + payments (Paylabs)
 //
-// JANGAN ubah ke true sampai routes/payments.ts dimigrasikan ke service ini,
-// karena route tersebut masih melakukan direct update paymentStatus sendiri.
-//
-const INCLUDE_PAYLABS_IN_RECALC = false;
+const INCLUDE_PAYLABS_IN_RECALC = true;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -101,6 +98,23 @@ async function sumAccountingPayments(docId: number, docType: DocType): Promise<n
   );
 }
 
+/** Sum semua payments (Paylabs/online) dengan status "paid" untuk sebuah source doc. */
+async function sumPaylabsPayments(docId: number, docType: DocType): Promise<number> {
+  const refKind = docType === "sales_order" ? "sales" : "purchase";
+  const rows: Array<{ amount: string | null }> = await db
+    .select({ amount: paymentsTable.amount })
+    .from(paymentsTable)
+    .where(
+      and(
+        eq(paymentsTable.refKind, refKind),
+        eq(paymentsTable.refId, docId),
+        eq(paymentsTable.status, "paid"),
+      ),
+    ) as Array<{ amount: string | null }>;
+
+  return round2(rows.reduce((sum: number, row) => sum + Number(row.amount), 0));
+}
+
 // ── Core Function ─────────────────────────────────────────────────────────────
 
 /**
@@ -118,11 +132,10 @@ export async function recalculatePaymentStatus(
 ): Promise<PaymentStatusResult> {
   let totalPaid = await sumAccountingPayments(docId, docType);
 
-  // Fase 2: tambahkan sum dari payments table (Paylabs)
-  // if (INCLUDE_PAYLABS_IN_RECALC) {
-  //   const paylabsTotal = await sumPaylabsPayments(docId, docType);
-  //   totalPaid = round2(totalPaid + paylabsTotal);
-  // }
+  if (INCLUDE_PAYLABS_IN_RECALC) {
+    const paylabsTotal = await sumPaylabsPayments(docId, docType);
+    totalPaid = round2(totalPaid + paylabsTotal);
+  }
 
   if (docType === "sales_order") {
     const [doc] = await db

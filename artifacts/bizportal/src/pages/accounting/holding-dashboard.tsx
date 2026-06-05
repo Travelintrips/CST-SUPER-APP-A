@@ -23,6 +23,7 @@ import {
   RefreshCw,
   Download,
   Eye,
+  ArrowLeft,
 } from "lucide-react";
 import { Link } from "wouter";
 

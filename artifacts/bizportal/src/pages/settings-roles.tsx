@@ -20,7 +20,7 @@ import {
 import {
   ShieldCheck, Plus, Pencil, Trash2, Users, UserPlus, X, ChevronRight,
   Building2, GitBranch, Eye, PenLine, PlusCircle, Trash, Lock,
-  RotateCcw, Shield, CheckSquare,
+  RotateCcw, Shield, CheckSquare, ArrowLeft,
 } from "lucide-react";
 import { Link } from "wouter";
 

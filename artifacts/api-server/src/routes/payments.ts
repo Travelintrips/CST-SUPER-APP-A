@@ -8,7 +8,7 @@ import { eq, desc } from "drizzle-orm";
 import crypto from "node:crypto";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { postPaymentReceived, postSalesInvoice } from "../lib/accounting.js";
-import { markSalesInvoiced } from "../lib/services/index.js";
+import { markSalesInvoiced, recalculatePaymentStatus } from "../lib/services/index.js";
 import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStatusService.js";
 import { sendPaymentProofWaLink } from "../lib/paymentProofService.js";
 
@@ -247,9 +247,11 @@ router.post("/paylabs/webhook", async (req, res) => {
           taxAccountId: null,
         });
       }
+      // ── RECALCULATE PAYMENT STATUS (unpaid → partial → paid) ──────────────
+      void recalculatePaymentStatus(payment.refId, "sales_order").catch(
+        (e: unknown) => console.warn("[payments] recalculatePaymentStatus failed (paylabs webhook)", e)
+      );
       // ── AUTO STATUS: Payment Received ─────────────────────────────────────
-      // Jika Paylabs mengkonfirmasi pembayaran lunas dan ada logistic order
-      // terhubung, transisi status otomatis ke "Payment Received".
       if (salesDoc?.logisticOrderId && Number(salesDoc.grandTotal) > 0 && Number(payment.amount) >= Number(salesDoc.grandTotal)) {
         void transitionLogisticOrderStatus(salesDoc.logisticOrderId, "Payment Received", {
           source: "paylabs:webhook",
@@ -298,6 +300,10 @@ router.post("/:id/simulate-paid", async (req, res) => {
         taxAccountId: null,
       });
     }
+    // ── RECALCULATE PAYMENT STATUS (unpaid → partial → paid) ──────────────
+    void recalculatePaymentStatus(payment.refId, "sales_order").catch(
+      (e: unknown) => console.warn("[payments] recalculatePaymentStatus failed (simulate-paid)", e)
+    );
     // ── AUTO STATUS: Payment Received ─────────────────────────────────────
     if (salesDoc2?.logisticOrderId && Number(salesDoc2.grandTotal) > 0 && Number(payment.amount) >= Number(salesDoc2.grandTotal)) {
       void transitionLogisticOrderStatus(salesDoc2.logisticOrderId, "Payment Received", {

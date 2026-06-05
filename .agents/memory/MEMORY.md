@@ -26,4 +26,8 @@
 - [Multi-Company Data Isolation](multi-company-isolation.md) — company_id added to product_templates & whatsapp_template_configs; unique indexes use COALESCE(company_id,0); suppliers/templates/WA-templates filtered by resolveCompanyId in routes.
 - [FASE 5 Driver Assignment Analytics](fase5-driver-analytics.md) — driverJobWorker (auto-cancel 24h, reminder 6h), analytics/summary endpoint, analytics dashboard page, force-update dialog + SSE toast in OrderDriverAssignmentPanel.
 - [FASE 6A Cost Center Framework](fase6a-cost-center.md) — cost_centers table + costCenterId on accounting_entries; resolveCostCenterId helper; all report endpoints support ?cost_center_id= filter; CRUD API + BizPortal master page.
+- [Portal Product Order Full Flow](portal-product-order-flow.md) — 5 gaps fixed: stock deduction, auto-SO, tracking page, invoice+payment, driver assignment. mailer.ts had duplicate declarations (was accidentally doubled).
 - [Express 5 Router Use Middleware Fix](express5-router-use-fix.md) — Express 5 router tanpa router.use() pertama menyebabkan sebagian route 404; fix: tambah no-op router.use() sebelum route pertama.
+- [Accounting Seed Fast-Path Bug](accounting-seed-fastpath.md) — fast-path di seedAccountingDefaults hanya cek COA count, skip journal+settings; fix: tambah journal count + null-settings check; direct SQL repair jika DB sudah jalan.
+- [Tax SSE & Journal Mapping](tax-sse-journal-mapping.md) — taxAutoService expanded (PPh 15 Pelayaran DN/LN, PPh 4(2) Sewa, PPh 26); journalMappingService.ts for kasbon/talangan/loan/depreciation; routes POST /api/accounting/journal-mapping/*
+- [Expense Fase 10-13](expense-fase10-13.md) — Reminder worker, dashboard, templates, budget+currency; apiFetch pattern; no useListChartOfAccounts in api-client.

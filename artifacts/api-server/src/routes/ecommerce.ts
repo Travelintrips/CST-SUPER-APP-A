@@ -93,6 +93,12 @@ function serializeProduct(
     subcategory: p.subcategory ?? null,
     isActive: p.isActive,
     imageUrl: p.imageUrl ?? null,
+    weightKg:  p.weightKg  != null ? Number(p.weightKg)  : null,
+    volumeCbm: p.volumeCbm != null ? Number(p.volumeCbm) : null,
+    lengthCm:  p.lengthCm  != null ? Number(p.lengthCm)  : null,
+    widthCm:   p.widthCm   != null ? Number(p.widthCm)   : null,
+    heightCm:  p.heightCm  != null ? Number(p.heightCm)  : null,
+    goodsType: p.goodsType ?? null,
   };
 }
 
@@ -222,6 +228,7 @@ router.post("/products", async (req, res) => {
     name, sku, price, stock, categories, description, imageUrl, mediaItems,
     defaultSalesTaxId, defaultPurchaseTaxId,
     itemType, unit, unitOptions, subcategory, isActive,
+    weightKg, lengthCm, widthCm, heightCm, goodsType,
   } = req.body;
   if (!name || !sku || price == null) return res.status(400).json({ message: "name, sku, price are required" });
   const categoryNames: string[] = Array.isArray(categories) ? categories.map(String) : [];
@@ -251,6 +258,11 @@ router.post("/products", async (req, res) => {
       unitOptions: Array.isArray(unitOptions) ? JSON.stringify(unitOptions) : "[]",
       subcategory: subcategory ?? null,
       isActive: isActive !== undefined ? Boolean(isActive) : true,
+      weightKg: weightKg != null ? String(weightKg) : null,
+      lengthCm: lengthCm != null ? String(lengthCm) : null,
+      widthCm:  widthCm  != null ? String(widthCm)  : null,
+      heightCm: heightCm != null ? String(heightCm) : null,
+      goodsType: goodsType ?? null,
     }).returning();
     if (validCats.length > 0) {
       await tx.insert(productCategoryMapTable).values(
@@ -348,6 +360,102 @@ router.post("/products/bulk-import", async (req, res) => {
   return res.json({ results });
 });
 
+// POST /api/ecommerce/products/bulk-update-dimensions
+router.post("/products/bulk-update-dimensions", requireClerkUser, async (req, res) => {
+  const rows: unknown[] = Array.isArray(req.body.rows) ? req.body.rows : [];
+  if (rows.length === 0) return res.status(400).json({ message: "rows array wajib diisi" });
+  if (rows.length > 500) return res.status(400).json({ message: "Maksimum 500 baris per import" });
+
+  const skus = rows.map((r) => String((r as Record<string, unknown>).sku ?? "").trim()).filter(Boolean);
+  if (skus.length === 0) return res.status(400).json({ message: "Semua baris harus memiliki SKU" });
+
+  const existingProducts = await db.select({ id: productsTable.id, sku: productsTable.sku, name: productsTable.name })
+    .from(productsTable).where(inArray(productsTable.sku, skus));
+  const existingBySku = new Map(existingProducts.map((p) => [p.sku, p]));
+
+  const results: Array<{ row: number; sku?: string; name?: string; status: string; message?: string }> = [];
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i] as Record<string, unknown>;
+    const sku = String(row.sku ?? "").trim();
+    if (!sku) { results.push({ row: i + 1, status: "error", message: "SKU wajib diisi" }); continue; }
+
+    const existing = existingBySku.get(sku);
+    if (!existing) { results.push({ row: i + 1, sku, status: "error", message: "SKU tidak ditemukan" }); continue; }
+
+    const parse = (k: string) => {
+      const v = String(row[k] ?? "").replace(",", ".").trim();
+      const n = parseFloat(v);
+      return isNaN(n) || v === "" ? null : n;
+    };
+
+    const weightKg  = parse("berat_kg")   ?? parse("weightKg")  ?? parse("weight_kg");
+    const lengthCm  = parse("panjang_cm") ?? parse("lengthCm")  ?? parse("length_cm");
+    const widthCm   = parse("lebar_cm")   ?? parse("widthCm")   ?? parse("width_cm");
+    const heightCm  = parse("tinggi_cm")  ?? parse("heightCm")  ?? parse("height_cm");
+    const goodsType = String(row.jenis_barang ?? row.goodsType ?? row.goods_type ?? "").trim() || null;
+
+    try {
+      await db.update(productsTable).set({
+        ...(weightKg  !== null && { weightKg:  String(weightKg) }),
+        ...(lengthCm  !== null && { lengthCm:  String(lengthCm) }),
+        ...(widthCm   !== null && { widthCm:   String(widthCm) }),
+        ...(heightCm  !== null && { heightCm:  String(heightCm) }),
+        ...(goodsType !== null && { goodsType }),
+      }).where(eq(productsTable.id, existing.id));
+      results.push({ row: i + 1, sku, name: existing.name, status: "updated" });
+    } catch (err: unknown) {
+      results.push({ row: i + 1, sku, status: "error", message: err instanceof Error ? err.message : "Unknown error" });
+    }
+  }
+
+  broadcastToPortal("price_sync", { ts: Date.now() });
+  return res.json({ results });
+});
+
+// POST /api/ecommerce/products/bulk-update-fields
+// Body: { ids: number[], fields: { goodsType?, weightKg?, volumeCbm?, lengthCm?, widthCm?, heightCm? } }
+router.post("/products/bulk-update-fields", requireClerkUser, async (req, res) => {
+  const ids: number[] = Array.isArray(req.body.ids)
+    ? req.body.ids.map(Number).filter((n: number) => !isNaN(n) && n > 0)
+    : [];
+  if (ids.length === 0) return res.status(400).json({ message: "ids array wajib diisi" });
+  if (ids.length > 200) return res.status(400).json({ message: "Maksimum 200 item per batch update" });
+
+  const f = (req.body.fields ?? {}) as Record<string, unknown>;
+
+  const toNumericStr = (v: unknown): string | null | undefined => {
+    if (v === undefined) return undefined;
+    if (v === null || v === "") return null;
+    const n = parseFloat(String(v).replace(",", "."));
+    return isNaN(n) || n < 0 ? undefined : String(n);
+  };
+
+  const updateData: Record<string, unknown> = {};
+
+  if ("goodsType" in f) updateData.goodsType = (f.goodsType === "" || f.goodsType === null) ? null : String(f.goodsType);
+
+  const wKg  = toNumericStr(f.weightKg);
+  const vCbm = toNumericStr(f.volumeCbm);
+  const lCm  = toNumericStr(f.lengthCm);
+  const wCm  = toNumericStr(f.widthCm);
+  const hCm  = toNumericStr(f.heightCm);
+
+  if (wKg  !== undefined) updateData.weightKg  = wKg;
+  if (vCbm !== undefined) updateData.volumeCbm = vCbm;
+  if (lCm  !== undefined) updateData.lengthCm  = lCm;
+  if (wCm  !== undefined) updateData.widthCm   = wCm;
+  if (hCm  !== undefined) updateData.heightCm  = hCm;
+
+  if (Object.keys(updateData).length === 0) {
+    return res.status(400).json({ message: "Tidak ada field yang diubah" });
+  }
+
+  await db.update(productsTable).set(updateData).where(inArray(productsTable.id, ids));
+  broadcastToPortal("price_sync", { ts: Date.now() });
+  return res.json({ updated: ids.length });
+});
+
 // GET /api/ecommerce/products/:id
 router.get("/products/:id", async (req, res) => {
   const id = Number(req.params.id);
@@ -364,6 +472,7 @@ router.put("/products/:id", async (req, res) => {
     name, sku, price, stock, categories, description, imageUrl, mediaItems,
     defaultSalesTaxId, defaultPurchaseTaxId,
     itemType, unit, unitOptions, subcategory, isActive,
+    weightKg, volumeCbm, lengthCm, widthCm, heightCm, goodsType,
   } = req.body;
   const requestedNames: string[] = Array.isArray(categories) ? categories.map(String).filter(Boolean) : [];
 
@@ -404,6 +513,12 @@ router.put("/products/:id", async (req, res) => {
       unit: unit ?? "pcs",
       unitOptions: Array.isArray(unitOptions) ? JSON.stringify(unitOptions) : "[]",
       subcategory: subcategory ?? null,
+      weightKg:  weightKg  != null ? String(weightKg)  : null,
+      volumeCbm: volumeCbm != null ? String(volumeCbm) : null,
+      lengthCm:  lengthCm  != null ? String(lengthCm)  : null,
+      widthCm:   widthCm   != null ? String(widthCm)   : null,
+      heightCm:  heightCm  != null ? String(heightCm)  : null,
+      goodsType: goodsType ?? null,
       isActive: isActive !== undefined ? Boolean(isActive) : true,
     }).where(eq(productsTable.id, id)).returning();
     if (!p) return null;
@@ -447,6 +562,124 @@ router.delete("/products/:id", async (req, res) => {
   //           jasa.tsx (invalidates ["listPortalServicesJasa"])
   broadcastToPortal("price_sync", { ts: Date.now() });
   return res.json({ message: "Product deleted" });
+});
+
+// PATCH /api/ecommerce/products/:id/image — quick image-only update (BizPortal inline)
+router.patch("/products/:id/image", requireClerkUser, async (req, res) => {
+  const id = Number(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
+  const { imageUrl } = req.body ?? {};
+  if (typeof imageUrl !== "string") return res.status(400).json({ message: "imageUrl diperlukan" });
+  const normalized = normalizeImage(imageUrl);
+  const [existing] = await db.select({ id: productsTable.id, mediaItems: productsTable.mediaItems }).from(productsTable).where(eq(productsTable.id, id));
+  if (!existing) return res.status(404).json({ message: "Produk tidak ditemukan" });
+  let media: Array<{ type: string; url: string }> = [];
+  try { media = JSON.parse(existing.mediaItems ?? "[]"); } catch { /* empty */ }
+  const hasImage = media.some((m) => m.type === "image");
+  if (normalized && !hasImage) {
+    media = [{ type: "image", url: normalized }, ...media];
+  } else if (normalized && hasImage) {
+    media = media.map((m, i) => (i === 0 && m.type === "image") ? { ...m, url: normalized } : m);
+  } else if (!normalized) {
+    media = media.filter((m) => m.type !== "image");
+  }
+  await db.update(productsTable).set({
+    imageUrl: normalized,
+    mediaItems: JSON.stringify(media),
+  }).where(eq(productsTable.id, id));
+  broadcastToPortal("price_sync", { ts: Date.now() });
+  return res.json({ id, imageUrl: normalized });
+});
+
+// POST /api/ecommerce/products/scan-storage — scan Supabase portal-assets & match ke produk (admin)
+router.post("/products/scan-storage", requireClerkUser, async (req, res) => {
+  try {
+    const { createClient } = await import("@supabase/supabase-js");
+    const rawKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
+    const devKey = process.env.SUPABASE_SERVICE_ROLE_KEY_DEV ?? "";
+    const devUrl = process.env.SUPABASE_URL_DEV ?? "";
+    const supabaseKey = rawKey.length > 100 ? rawKey : devKey;
+    const rawUrl = rawKey.length > 100
+      ? (process.env.VITE_SUPABASE_URL ?? process.env.SUPABASE_URL ?? "")
+      : devUrl.replace(/\/rest\/v1\/?$/, "");
+    const supabaseUrl = rawUrl.startsWith("http") ? rawUrl : `https://${rawUrl}.supabase.co`;
+    if (!supabaseUrl || !supabaseKey) return res.status(503).json({ message: "Supabase belum dikonfigurasi" });
+
+    const WebSocket = (await import("ws")).default;
+    const sb = createClient(supabaseUrl, supabaseKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+      realtime: { transport: WebSocket as unknown as typeof globalThis.WebSocket },
+    });
+
+    const BUCKET = "public-assets";
+    const IMAGE_EXTS = new Set(["jpg", "jpeg", "png", "webp", "gif"]);
+
+    async function listAll(prefix: string): Promise<string[]> {
+      const { data } = await sb.storage.from(BUCKET).list(prefix, { limit: 1000 });
+      if (!data) return [];
+      const files: string[] = [];
+      for (const item of data) {
+        if (item.metadata || !item.id) {
+          const ext = item.name.split(".").pop()?.toLowerCase() ?? "";
+          if (IMAGE_EXTS.has(ext)) files.push(`${prefix ? prefix + "/" : ""}${item.name}`);
+        } else {
+          const sub = await listAll(`${prefix ? prefix + "/" : ""}${item.name}`);
+          files.push(...sub);
+        }
+      }
+      return files;
+    }
+
+    const allFiles = await listAll("portal-assets");
+    const products = await db.select({ id: productsTable.id, name: productsTable.name, imageUrl: productsTable.imageUrl }).from(productsTable);
+
+    const matched: Array<{ productId: number; productName: string; file: string; url: string }> = [];
+    for (const file of allFiles) {
+      const basename = file.split("/").pop() ?? "";
+      const noExt = basename.replace(/\.[^.]+$/, "").toLowerCase();
+      for (const p of products) {
+        if (p.imageUrl) continue;
+        const nameLower = p.name.toLowerCase().replace(/[^a-z0-9]/g, "");
+        const fileLower = noExt.replace(/[^a-z0-9]/g, "");
+        if (fileLower.includes(nameLower) || nameLower.includes(fileLower) || String(p.id) === noExt) {
+          matched.push({
+            productId: p.id,
+            productName: p.name,
+            file,
+            url: `/api/storage/public-objects/${file}`,
+          });
+          break;
+        }
+      }
+    }
+
+    return res.json({ files: allFiles.length, matched, allFiles: allFiles.map((f) => ({ file: f, url: `/api/storage/public-objects/${f}` })) });
+  } catch (err) {
+    return res.status(500).json({ message: String(err) });
+  }
+});
+
+// POST /api/ecommerce/products/apply-storage-images — terapkan hasil scan ke DB (admin)
+router.post("/products/apply-storage-images", requireClerkUser, async (req, res) => {
+  const { assignments } = req.body ?? {};
+  if (!Array.isArray(assignments)) return res.status(400).json({ message: "assignments harus array" });
+  let applied = 0;
+  for (const a of assignments) {
+    if (typeof a.productId !== "number" || typeof a.url !== "string") continue;
+    const normalized = normalizeImage(a.url);
+    if (!normalized) continue;
+    const [existing] = await db.select({ id: productsTable.id, mediaItems: productsTable.mediaItems }).from(productsTable).where(eq(productsTable.id, a.productId));
+    if (!existing) continue;
+    let media: Array<{ type: string; url: string }> = [];
+    try { media = JSON.parse(existing.mediaItems ?? "[]"); } catch { /* empty */ }
+    if (!media.some((m) => m.type === "image")) {
+      media = [{ type: "image", url: normalized }, ...media];
+    }
+    await db.update(productsTable).set({ imageUrl: normalized, mediaItems: JSON.stringify(media) }).where(eq(productsTable.id, a.productId));
+    applied++;
+  }
+  broadcastToPortal("price_sync", { ts: Date.now() });
+  return res.json({ applied });
 });
 
 // POST /api/ecommerce/seed-items — seed initial logistics service items (idempotent)
@@ -734,5 +967,20 @@ router.get("/usd-idr-rate", async (_req, res) => {
   const rate = _usdIdrCache?.rate ?? _USD_IDR_FALLBACK;
   return res.json({ rate, source: "fallback" });
 });
+
+export async function runProductVolumeCbmMigration() {
+  const { db } = await import("@workspace/db");
+  const { sql } = await import("drizzle-orm");
+  await db.execute(sql`
+    DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'products' AND column_name = 'volume_cbm'
+      ) THEN
+        ALTER TABLE products ADD COLUMN volume_cbm NUMERIC(12,4);
+      END IF;
+    END $$;
+  `);
+}
 
 export default router;

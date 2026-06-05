@@ -20,12 +20,23 @@ async function insertAccountingPaymentForSportCenter(args: {
   createdById?: string | null;
 }): Promise<void> {
   try {
+    // Idempoten: skip jika accounting_payment untuk sport_payment ini sudah ada
+    const dupCheck = await db.execute(sql`
+      SELECT 1 FROM accounting_payments
+      WHERE source_type = 'sport_center' AND source_doc_id = ${args.sourceDocId}
+      LIMIT 1
+    `);
+    if (dupCheck.rows.length > 0) return;
+
     const settings = await ensureAccountingSettings(args.companyId);
     const isCash = ["cash", "tunai"].includes(args.method?.toLowerCase() ?? "");
     const journalId = isCash
       ? (settings.cashJournalId ?? settings.bankJournalId)
       : (settings.bankJournalId ?? settings.cashJournalId);
-    if (!journalId) return;
+    if (!journalId) {
+      console.error(`[sport-center] insertAccountingPaymentForSportCenter: tidak ada jurnal kas/bank untuk companyId=${args.companyId}, sourceDocId=${args.sourceDocId}`);
+      return;
+    }
     const payDate = args.date ?? new Date().toISOString().split("T")[0]!;
     const year = payDate.slice(0, 4);
     const cntRes = await db.execute(sql`SELECT CAST(COUNT(*) AS int) AS seq FROM accounting_payments`);
@@ -489,6 +500,99 @@ router.post("/sync/pull-legacy", async (req, res) => {
   }
 });
 
+// Push booking dari frontend (Supabase anon) ke local PostgreSQL
+router.post("/sync/push-bookings", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  try {
+    const { bookings, companyId } = req.body as {
+      bookings: Array<{
+        booking_code?: string | null;
+        customer_name?: string | null;
+        customer_phone?: string | null;
+        customer_email?: string | null;
+        facility_name?: string | null;
+        date?: string | null;
+        start_time?: string | null;
+        end_time?: string | null;
+        total_hours?: number | null;
+        total_price?: number | null;
+        status?: string | null;
+        payment_status?: string | null;
+        notes?: string | null;
+        created_at?: string | null;
+      }>;
+      companyId?: number;
+    };
+    if (!Array.isArray(bookings) || bookings.length === 0) {
+      return res.json({ success: true, pushed: 0, errors: 0, total: 0 });
+    }
+    const cId = companyId ?? 1;
+    let pushed = 0;
+    let errors = 0;
+    for (const row of bookings) {
+      try {
+        const bookingNumber = row.booking_code ?? `LEGACY-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+        const facilityName = row.facility_name ?? "Unknown";
+        const bookingDate = row.date;
+        if (!bookingDate) { errors++; continue; }
+        const startTime = (row.start_time ?? "").slice(0, 5) || "00:00";
+        const endTime   = (row.end_time   ?? "").slice(0, 5) || "01:00";
+        const durationHours = Number(row.total_hours ?? 1);
+        const totalAmount   = Number(row.total_price ?? 0);
+        const rawStatus     = row.status ?? "pending";
+        const mappedStatus  = rawStatus === "confirmed" ? "confirmed"
+          : rawStatus === "cancelled" ? "cancelled"
+          : rawStatus === "completed" ? "completed"
+          : "pending";
+        const paymentStatus = row.payment_status ?? "unpaid";
+        const existing = await db.execute(sql`SELECT id FROM sport_bookings WHERE booking_number = ${bookingNumber} LIMIT 1`);
+        if (existing.rows.length > 0) {
+          await db.execute(sql`
+            UPDATE sport_bookings SET
+              customer_name   = ${row.customer_name ?? ""},
+              customer_phone  = ${row.customer_phone ?? null},
+              facility_name   = ${facilityName},
+              booking_date    = ${bookingDate}::DATE,
+              start_time      = ${startTime}::TIME,
+              end_time        = ${endTime}::TIME,
+              duration_hours  = ${durationHours},
+              base_amount     = ${totalAmount},
+              total_amount    = ${totalAmount},
+              status          = ${mappedStatus},
+              payment_status  = ${paymentStatus},
+              notes           = ${row.notes ?? null},
+              updated_at      = NOW()
+            WHERE booking_number = ${bookingNumber}
+          `);
+        } else {
+          await db.execute(sql`
+            INSERT INTO sport_bookings
+              (company_id, booking_number, customer_name, customer_phone,
+               facility_name, booking_date, start_time, end_time,
+               duration_hours, base_amount, total_amount,
+               status, payment_status, notes, created_at, updated_at)
+            VALUES
+              (${cId}, ${bookingNumber}, ${row.customer_name ?? ""}, ${row.customer_phone ?? null},
+               ${facilityName}, ${bookingDate}::DATE, ${startTime}::TIME, ${endTime}::TIME,
+               ${durationHours}, ${totalAmount}, ${totalAmount},
+               ${mappedStatus}, ${paymentStatus}, ${row.notes ?? null},
+               ${row.created_at ?? new Date().toISOString()}::TIMESTAMPTZ, NOW())
+          `);
+        }
+        pushed++;
+      } catch (err) {
+        console.error("[sport-center] push-bookings row error:", err);
+        errors++;
+      }
+    }
+    // Invalidate dashboard after push
+    broadcastSportCenterEvent({ module: "sport-center", entity: "booking", action: "synced", data: { pushed, errors }, timestamp: new Date().toISOString() });
+    res.json({ success: true, pushed, errors, total: bookings.length });
+  } catch (err: any) {
+    res.status(500).json({ error: "Push bookings gagal", detail: err?.message });
+  }
+});
+
 router.get("/sync/status", async (req, res) => {
   if (!await requireAdmin(req, res)) return;
   try {
@@ -520,6 +624,7 @@ router.get("/bookings", async (req, res) => {
   try {
     const cId = req.query.companyId ? Number(req.query.companyId) : null;
     const status = (req.query.status as string) ?? null;
+    const paymentStatus = (req.query.payment_status as string) ?? null;
     const date = (req.query.date as string) ?? null;
     const page = Math.max(1, Number(req.query.page ?? 1));
     const limit = 50;
@@ -530,6 +635,7 @@ router.get("/bookings", async (req, res) => {
         SELECT * FROM sport_bookings
         WHERE (${cId}::int IS NULL OR company_id = ${cId})
           AND (${status}::text IS NULL OR status = ${status})
+          AND (${paymentStatus}::text IS NULL OR payment_status = ${paymentStatus})
           AND (${date}::date IS NULL OR booking_date = ${date}::date)
         ORDER BY booking_date DESC, start_time DESC
         LIMIT ${limit} OFFSET ${offset}
@@ -538,6 +644,7 @@ router.get("/bookings", async (req, res) => {
         SELECT COUNT(*) AS cnt FROM sport_bookings
         WHERE (${cId}::int IS NULL OR company_id = ${cId})
           AND (${status}::text IS NULL OR status = ${status})
+          AND (${paymentStatus}::text IS NULL OR payment_status = ${paymentStatus})
           AND (${date}::date IS NULL OR booking_date = ${date}::date)
       `),
     ]);
@@ -1263,86 +1370,203 @@ router.get("/payments", async (req, res) => {
 router.post("/payments", async (req, res) => {
   if (!await requireAdmin(req, res)) return;
   try {
-    const { company_id, booking_id, amount, method = "cash", notes } = req.body;
-    if (!booking_id || !amount) return res.status(400).json({ error: "booking_id dan amount wajib" });
-    const paymentNumber = await nextPaymentNumber(company_id);
-    const r = await db.execute(sql`
-      INSERT INTO sport_payments (company_id, booking_id, payment_number, amount, method, status, paid_at, notes)
-      VALUES (${company_id ?? null}, ${booking_id}, ${paymentNumber}, ${amount}, ${method}, 'paid', NOW(), ${notes ?? null})
-      RETURNING *
-    `);
-    await db.execute(sql`UPDATE sport_bookings SET payment_status = 'paid', updated_at = NOW() WHERE id = ${booking_id}`);
-    const row = r.rows[0] as Record<string, unknown>;
+    const {
+      booking_id,
+      notes,
+      payment_date,
+    } = req.body;
+    // Terima amount ATAU total_amount (alias)
+    const amount = req.body.amount ?? req.body.total_amount;
+    // Terima payment_method ATAU method (alias), default cash
+    const finalMethod: string = req.body.payment_method ?? req.body.method ?? "cash";
 
-    // Post jurnal accounting (dengan PPN jika ada) — fire-and-forget
-    const bookingRes = await db.execute(sql`
-      SELECT booking_number, customer_name, facility_name, booking_date, total_amount, tax_rate, tax_amount, company_id
-      FROM sport_bookings WHERE id = ${booking_id} LIMIT 1
-    `);
-    if (bookingRes.rows.length) {
-      const b = bookingRes.rows[0] as Record<string, unknown>;
-      const createdById = (req.user as { id: string } | undefined)?.id ?? null;
-      const bTaxAmount = Number(b.tax_amount ?? 0);
-      const bTotalAmount = Number(b.total_amount ?? amount);
-      const bCompanyId = b.company_id != null ? Number(b.company_id) : (company_id ?? null);
-      if (bTaxAmount > 0) {
-        postSportCenterBookingWithTax({
-          bookingId: booking_id,
-          bookingCode: String(b.booking_number ?? paymentNumber),
-          customerName: String(b.customer_name ?? ""),
-          facilityName: String(b.facility_name ?? ""),
-          date: String(b.booking_date ?? new Date().toISOString().slice(0, 10)),
-          baseAmount: bTotalAmount,
-          taxAmount: bTaxAmount,
-          createdById,
-          companyId: bCompanyId,
-        }).catch((err: unknown) => console.error('[sport-center] postSportCenterBookingWithTax failed:', err));
-      } else {
-        postSportCenterBooking({
-          bookingId: booking_id,
-          bookingCode: String(b.booking_number ?? paymentNumber),
-          customerName: String(b.customer_name ?? ""),
-          facilityName: String(b.facility_name ?? ""),
-          date: String(b.booking_date ?? new Date().toISOString().slice(0, 10)),
-          totalPrice: bTotalAmount,
-          createdById,
-          companyId: bCompanyId,
-        }).catch((err: unknown) => console.error('[sport-center] postSportCenterBooking failed:', err));
-      }
+    if (!booking_id || !amount) {
+      return res.status(400).json({ error: "booking_id dan amount wajib" });
     }
 
-    // Audit log pembayaran
-    const createdByIdForLog = (req.user as { id: string } | undefined)?.id ?? null;
+    // 1. Fetch booking DULU agar company_id benar (bukan dari req.body)
+    const bookingRes = await db.execute(sql`
+      SELECT id, booking_number, customer_name, customer_email, customer_phone,
+             facility_id, facility_name, booking_date, start_time, end_time,
+             duration_hours, base_amount, total_amount, tax_rate, tax_amount,
+             status, payment_status, company_id, notes
+      FROM sport_bookings WHERE id = ${booking_id} LIMIT 1
+    `);
+    if (!bookingRes.rows.length) {
+      return res.status(404).json({ error: "Booking tidak ditemukan" });
+    }
+    const b = bookingRes.rows[0] as Record<string, unknown>;
+    const bCompanyId: number = b.company_id != null ? Number(b.company_id) : 1;
+    const bTaxAmount = Number(b.tax_amount ?? 0);
+    const bTotalAmount = Number(b.total_amount ?? amount);
+    const bBookingDate = String(b.booking_date ?? new Date().toISOString().slice(0, 10));
+    const bCode = String(b.booking_number ?? "");
+    const bCustomer = String(b.customer_name ?? "");
+    const bFacility = String(b.facility_name ?? "");
+    const createdById = (req.user as { id: string } | undefined)?.id ?? null;
+
+    // Validasi payment_date
+    const isValidDate = payment_date && /^\d{4}-\d{2}-\d{2}$/.test(payment_date);
+    const paidAt = isValidDate ? `${payment_date}T00:00:00Z` : null; // null → NOW() di SQL
+    // Tanggal untuk accounting: payment_date jika valid, atau hari ini — BUKAN booking_date
+    // Ini penting agar KPI revenue_today dan Finance → Payments menampilkan data yang benar
+    const paymentAccountingDate: string = isValidDate ? (payment_date as string) : new Date().toISOString().slice(0, 10);
+
+    // 2. Generate payment number dengan company_id yang benar
+    const paymentNumber = await nextPaymentNumber(bCompanyId);
+
+    // 3. Insert ke sport_payments dengan source='SPORT_CENTER', status='paid'
+    const r = await db.execute(sql`
+      INSERT INTO sport_payments
+        (company_id, booking_id, payment_number, amount, method, status,
+         paid_at, notes, source, payment_type)
+      VALUES
+        (${bCompanyId}, ${booking_id}, ${paymentNumber}, ${amount}, ${finalMethod},
+         'paid', COALESCE(${paidAt}::timestamptz, NOW()), ${notes ?? null},
+         'SPORT_CENTER', 'booking')
+      RETURNING *
+    `);
+    const payRow = r.rows[0] as Record<string, unknown>;
+
+    // 4. Update sport_bookings.payment_status = 'paid'
     await db.execute(sql`
+      UPDATE sport_bookings
+      SET payment_status = 'paid', updated_at = NOW()
+      WHERE id = ${booking_id}
+    `);
+
+    // 5. Supabase sync (sport_center_bookings) — fire-and-forget
+    void syncBookingUpsert({
+      id: Number(b.id),
+      booking_number: bCode,
+      customer_name: bCustomer,
+      customer_email: b.customer_email as string | null,
+      customer_phone: b.customer_phone as string | null,
+      facility_id: b.facility_id != null ? Number(b.facility_id) : null,
+      facility_name: bFacility,
+      booking_date: bBookingDate,
+      start_time: String(b.start_time ?? ""),
+      end_time: String(b.end_time ?? ""),
+      duration_hours: b.duration_hours != null ? Number(b.duration_hours) : undefined,
+      base_amount: b.base_amount != null ? Number(b.base_amount) : undefined,
+      total_amount: bTotalAmount,
+      status: String(b.status ?? "confirmed"),
+      payment_status: "paid",
+      notes: b.notes as string | null,
+      company_id: bCompanyId,
+    });
+
+    // 6. Post jurnal accounting (Debit Kas ← Credit Pendapatan) — fire-and-forget
+    // Pakai paymentAccountingDate (bukan bBookingDate) agar revenue_today KPI akurat
+    if (bTaxAmount > 0) {
+      postSportCenterBookingWithTax({
+        bookingId: Number(booking_id),
+        bookingCode: bCode,
+        customerName: bCustomer,
+        facilityName: bFacility,
+        date: paymentAccountingDate,
+        baseAmount: bTotalAmount,
+        taxAmount: bTaxAmount,
+        createdById,
+        companyId: bCompanyId,
+      }).catch((err: unknown) => console.error('[sport-center] postSportCenterBookingWithTax failed:', err));
+    } else {
+      postSportCenterBooking({
+        bookingId: Number(booking_id),
+        bookingCode: bCode,
+        customerName: bCustomer,
+        facilityName: bFacility,
+        date: paymentAccountingDate,
+        totalPrice: bTotalAmount,
+        createdById,
+        companyId: bCompanyId,
+      }).catch((err: unknown) => console.error('[sport-center] postSportCenterBooking failed:', err));
+    }
+
+    // 7. Accounting Payments — agar muncul di Finance BizPortal → Payments
+    insertAccountingPaymentForSportCenter({
+      companyId: bCompanyId,
+      paymentNumber,
+      amount: Number(amount),
+      method: finalMethod,
+      partnerName: bCustomer,
+      ref: bCode,
+      memo: `Pembayaran booking sport center ${bCode}`,
+      sourceDocId: Number(payRow.id),
+      date: paymentAccountingDate,
+      createdById,
+    }).catch((err: unknown) => console.error("[sport-center] insertAccountingPayment failed:", err));
+
+    // 8. Audit log
+    db.execute(sql`
       INSERT INTO sport_audit_logs (company_id, entity_type, entity_id, action, actor, new_data)
       VALUES (
-        ${company_id ?? null}, 'payment', ${row.id ?? null},
-        'PAYMENT_CREATED', ${createdByIdForLog},
-        ${JSON.stringify({ booking_id, amount, method, payment_number: paymentNumber })}::jsonb
+        ${bCompanyId}, 'payment', ${payRow.id ?? null},
+        'PAYMENT_CREATED', ${createdById},
+        ${JSON.stringify({
+          booking_id,
+          amount: Number(amount),
+          method: finalMethod,
+          payment_number: paymentNumber,
+          source: 'SPORT_CENTER',
+        })}::jsonb
       )
     `).catch((err: unknown) => console.error('[sport-center] audit log failed:', err));
 
-    // Sync ke accounting_payments agar muncul di halaman Accounting → Payments
-    if (company_id != null) {
-      const bookingForPay = bookingRes.rows[0] as Record<string, unknown> | undefined;
-      insertAccountingPaymentForSportCenter({
-        companyId: Number(company_id),
-        paymentNumber,
-        amount: Number(amount),
-        method: method ?? "cash",
-        partnerName: bookingForPay ? String(bookingForPay.customer_name ?? "") : "",
-        ref: bookingForPay ? String(bookingForPay.booking_number ?? paymentNumber) : paymentNumber,
-        memo: `Pembayaran booking sport center`,
-        sourceDocId: Number(row.id),
-        date: bookingForPay ? String(bookingForPay.booking_date ?? new Date().toISOString().slice(0, 10)) : undefined,
-        createdById: (req.user as { id: string } | undefined)?.id ?? null,
-      }).catch((err: unknown) => console.error("[sport-center] insertAccountingPayment failed:", err));
-    }
+    broadcastSportCenterEvent(
+      { module: "sport-center", entity: "payment", action: "created", data: payRow, timestamp: new Date().toISOString() },
+      bCompanyId,
+    );
+    res.status(201).json(payRow);
+  } catch (err) {
+    console.error('[sport-center] POST /payments error:', err);
+    res.status(500).json({ error: "Gagal mencatat pembayaran" });
+  }
+});
 
-    broadcastSportCenterEvent({ module: "sport-center", entity: "payment", action: "created", data: row, timestamp: new Date().toISOString() }, company_id);
-    res.status(201).json(row);
-  } catch {
-    res.status(500).json({ error: "Gagal" });
+// ── REVENUE TRANSACTIONS (untuk expandable card di dashboard) ────────────────
+router.get("/revenue-transactions", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  try {
+    const cId = req.query.companyId ? Number(req.query.companyId) : null;
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const date = (req.query.date as string | undefined) ?? todayStr;
+    const from = (req.query.from as string | undefined) ?? date;
+    const to   = (req.query.to   as string | undefined) ?? date;
+
+    const rows = await db.execute(sql`
+      SELECT
+        ae.id           AS entry_id,
+        ae.date         AS payment_date,
+        ae.total_debit  AS amount,
+        ae.ref,
+        ae.source,
+        ae.source_id    AS booking_id,
+        b.booking_number,
+        b.customer_name,
+        b.facility_name,
+        b.booking_date,
+        b.start_time,
+        b.end_time,
+        b.status,
+        b.payment_status,
+        b.total_amount
+      FROM accounting_entries ae
+      LEFT JOIN sport_bookings b ON b.id = ae.source_id
+      WHERE ae.source = 'sport_center_booking'
+        AND ae.status  = 'posted'
+        AND ae.date   >= ${from}::date
+        AND ae.date   <= ${to}::date
+        AND (${cId}::int IS NULL OR ae.company_id = ${cId})
+      ORDER BY ae.date DESC, ae.id DESC
+      LIMIT 500
+    `);
+
+    const total = rows.rows.reduce((s, r) => s + Number((r as any).amount ?? 0), 0);
+    res.json({ data: rows.rows, total, date, from, to });
+  } catch (err) {
+    console.error("[sport-center] GET /revenue-transactions error:", err);
+    res.status(500).json({ error: "Gagal memuat transaksi revenue" });
   }
 });
 

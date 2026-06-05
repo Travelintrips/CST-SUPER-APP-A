@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams } from "wouter";
-import { CheckCircle2, XCircle, FileText, AlertCircle, Package, User, ShoppingBag, DollarSign } from "lucide-react";
+import { CheckCircle2, XCircle, FileText, AlertCircle, Package, User, ShoppingBag, DollarSign, Phone } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 function apiUrl(path: string) {
@@ -45,6 +45,7 @@ export default function VendorProductApprovalPage() {
 
   const [status, setStatus] = useState<"SETUJU" | "TOLAK" | null>(null);
   const [vendorName, setVendorName] = useState("");
+  const [vendorPhone, setVendorPhone] = useState("");
   const [quotedPrice, setQuotedPrice] = useState("");
   const [notes, setNotes] = useState("");
 
@@ -79,6 +80,7 @@ export default function VendorProductApprovalPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           vendorName: vendorName.trim() || null,
+          vendorPhone: vendorPhone.trim() || null,
           status,
           quotedPrice: quotedPrice ? parseFloat(quotedPrice) : null,
           notes: notes.trim() || null,
@@ -285,6 +287,21 @@ export default function VendorProductApprovalPage() {
                 placeholder="Contoh: PT Wangsamas Logistics"
                 className="w-full bg-slate-800 border border-slate-600 rounded-xl px-4 py-3 text-white placeholder-slate-500 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
               />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="flex items-center gap-2 text-xs font-semibold text-slate-400 uppercase tracking-wide">
+                <span className="text-blue-400"><Phone className="w-3.5 h-3.5" /></span>
+                No. HP / WhatsApp Vendor <span className="text-slate-500 normal-case font-normal">(opsional)</span>
+              </label>
+              <input
+                type="tel"
+                value={vendorPhone}
+                onChange={(e) => setVendorPhone(e.target.value)}
+                placeholder="Contoh: 08123456789"
+                className="w-full bg-slate-800 border border-slate-600 rounded-xl px-4 py-3 text-white placeholder-slate-500 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
+              />
+              <p className="text-xs text-slate-500">Digunakan untuk mengirim konfirmasi WA ke Anda</p>
             </div>
 
             <div className="space-y-2">

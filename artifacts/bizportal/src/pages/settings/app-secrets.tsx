@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import {
   KeyRound, Eye, EyeOff, Save, Loader2, CheckCircle, Trash2,
-  MessageCircle, Mail, Shield, Send, RotateCcw, Database, Server,
+  MessageCircle, Mail, Shield, Send, RotateCcw, Database, Server, ArrowLeft,
 } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,

@@ -1469,6 +1469,23 @@ logisticOrdersRouter.put("/:id/status", async (req: Request, res: Response) => {
     ipAddress: req.ip ?? null,
   }).catch(() => {});
 
+  if (status === "Completed" || status === "Delivered") {
+    const logTax = Number(updated.tax ?? 0);
+    const logBase = Number(updated.grandTotal ?? 0) - logTax;
+    if (logBase > 0) {
+      import("../lib/taxAutoService.js").then(({ recordTransactionTax }) => {
+        void recordTransactionTax({
+          companyId: updated.companyId ?? 1,
+          transactionType: "logistic_order",
+          transactionId: updated.id,
+          transactionRef: updated.orderNumber,
+          baseAmount: logBase,
+          taxAmount: logTax > 0 ? logTax : undefined,
+        });
+      }).catch(() => {});
+    }
+  }
+
   // Audit trail: catat di order_status_history + order_audit_logs
   logOrderStatusChange({
     orderId: updated.id,

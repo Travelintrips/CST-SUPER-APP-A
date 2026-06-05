@@ -155,14 +155,15 @@ export async function fetchSportCenterData(): Promise<SportCenterSupabaseData> {
   }
 
   // ── Booking Terbaru — 5 terbaru ─────────────────────────────────────────────
-  const recentBookings: Record<string, unknown>[] = bookings.slice(0, 5).map((b) => ({
+  const recentBookings: Record<string, unknown>[] = bookings.slice(0, 20).map((b) => ({
     id: b.booking_code ?? "-",
-    booking_number: b.booking_code ?? "-",
-    customer_name:  b.customer_name ?? "-",
-    facility_name:  b.facility_name ?? "-",
-    booking_date:   b.date ?? "-",
-    status:         b.status ?? "-",
-    total_amount:   Number(b.total_price ?? 0),
+    booking_number:  b.booking_code ?? "-",
+    customer_name:   b.customer_name ?? "-",
+    facility_name:   b.facility_name ?? "-",
+    booking_date:    b.date ?? "-",
+    status:          b.status ?? "-",
+    payment_status:  b.payment_status ?? "unpaid",
+    total_amount:    Number(b.total_price ?? 0),
   }));
 
   // ── Console log untuk verifikasi ───────────────────────────────────────────

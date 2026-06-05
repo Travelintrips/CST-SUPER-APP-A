@@ -381,6 +381,77 @@ router.post("/auth/supabase-exchange", async (req: Request, res: Response) => {
   });
 });
 
+// ─── Dev Login Bypass (dev only, disabled in production) ──────────────────────
+
+router.post("/auth/dev-login", async (req: Request, res: Response) => {
+  if (process.env.REPLIT_DEPLOYMENT) {
+    res.status(403).json({ error: "Not available in production" });
+    return;
+  }
+
+  const { email } = req.body as { email?: string };
+  if (!email || typeof email !== "string" || !email.includes("@")) {
+    res.status(400).json({ error: "email wajib diisi" });
+    return;
+  }
+
+  const normalizedEmail = email.trim().toLowerCase();
+
+  let [dbUser] = await db.select().from(usersTable).where(eq(usersTable.email, normalizedEmail));
+
+  if (!dbUser) {
+    const adminEmails = (process.env.ADMIN_EMAIL ?? "")
+      .split(",")
+      .map((e) => e.trim().toLowerCase())
+      .filter(Boolean);
+    const isAdmin = adminEmails.length === 0 || adminEmails.includes(normalizedEmail);
+    const parts = normalizedEmail.split("@")[0].split(".");
+    const firstName = parts[0] ? parts[0].charAt(0).toUpperCase() + parts[0].slice(1) : "Dev";
+    const lastName = parts[1] ? parts[1].charAt(0).toUpperCase() + parts[1].slice(1) : "User";
+    try {
+      const [created] = await db.insert(usersTable).values({
+        id: `dev_${crypto.randomBytes(8).toString("hex")}`,
+        email: normalizedEmail,
+        name: `${firstName} ${lastName}`.trim(),
+        firstName,
+        lastName,
+        role: isAdmin ? "admin" : "ecommerce",
+      }).returning();
+      dbUser = created;
+    } catch {
+      const [retry] = await db.select().from(usersTable).where(eq(usersTable.email, normalizedEmail));
+      if (!retry) { res.status(500).json({ error: "Gagal membuat user" }); return; }
+      dbUser = retry;
+    }
+  }
+
+  const sessionData: SessionData = {
+    user: {
+      id: dbUser.id,
+      email: dbUser.email,
+      firstName: dbUser.firstName,
+      lastName: dbUser.lastName,
+      profileImageUrl: dbUser.profileImageUrl,
+      role: dbUser.role,
+    },
+    access_token: `dev_${crypto.randomBytes(16).toString("hex")}`,
+    expires_at: Math.floor(Date.now() / 1000) + SESSION_TTL / 1000,
+  };
+
+  const sid = await createSession(sessionData);
+  setSessionCookie(res, sid);
+  res.json({
+    user: {
+      id: dbUser.id,
+      email: dbUser.email,
+      firstName: dbUser.firstName,
+      lastName: dbUser.lastName,
+      profileImageUrl: dbUser.profileImageUrl,
+      role: dbUser.role,
+    },
+  });
+});
+
 // ─── Google OAuth ─────────────────────────────────────────────────────────────
 
 router.get("/login/google", async (req: Request, res: Response) => {

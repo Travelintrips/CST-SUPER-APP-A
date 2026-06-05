@@ -190,9 +190,11 @@ function DevLoginSection() {
   const [users, setUsers] = React.useState<DevUser[]>([]);
   const [devEmail, setDevEmail] = React.useState("");
   const [mode, setMode] = React.useState<"pick" | "manual">("pick");
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    fetch("/api/dev-users")
+    fetch("/api/dev-users", { credentials: "include" })
       .then((r) => r.ok ? r.json() : { users: [] })
       .then((d: { users: DevUser[] }) => {
         setUsers(d.users ?? []);
@@ -213,6 +215,31 @@ function DevLoginSection() {
     return map;
   }, [users]);
 
+  async function handleDevLogin(e: React.FormEvent) {
+    e.preventDefault();
+    if (!devEmail || loading) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/dev-login", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: `email=${encodeURIComponent(devEmail)}`,
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({})) as { error?: string };
+        setError(data.error ?? `Login gagal (${res.status})`);
+        return;
+      }
+      window.location.href = "/bizportal/";
+    } catch (err) {
+      setError("Gagal terhubung ke server. Pastikan API Server berjalan.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <>
       <div className="flex items-center gap-3">
@@ -220,15 +247,10 @@ function DevLoginSection() {
         <span className="text-xs text-amber-400 font-mono">DEV ONLY</span>
         <div className="flex-1 h-px bg-slate-700" />
       </div>
-      <form
-        method="post"
-        action={`/api/dev-login?redirect=/bizportal/`}
-        className="flex flex-col gap-2"
-      >
+      <form onSubmit={handleDevLogin} className="flex flex-col gap-2">
         {mode === "pick" && users.length > 0 ? (
           <>
             <select
-              name="email"
               value={devEmail}
               onChange={(e) => setDevEmail(e.target.value)}
               className="rounded-lg bg-slate-800 border border-amber-600/40 px-3 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"
@@ -258,7 +280,6 @@ function DevLoginSection() {
           <>
             <input
               type="email"
-              name="email"
               placeholder="Email (dev bypass)"
               value={devEmail}
               onChange={(e) => setDevEmail(e.target.value)}
@@ -276,11 +297,15 @@ function DevLoginSection() {
             )}
           </>
         )}
+        {error && (
+          <p className="text-xs text-red-400 text-center">{error}</p>
+        )}
         <button
           type="submit"
-          className="rounded-lg bg-amber-600 px-6 py-2.5 text-sm font-medium text-white shadow hover:bg-amber-500 active:scale-95 transition-all"
+          disabled={loading}
+          className="rounded-lg bg-amber-600 px-6 py-2.5 text-sm font-medium text-white shadow hover:bg-amber-500 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          Dev Login (tanpa Google)
+          {loading ? "Logging in…" : "Dev Login (tanpa Google)"}
         </button>
       </form>
     </>

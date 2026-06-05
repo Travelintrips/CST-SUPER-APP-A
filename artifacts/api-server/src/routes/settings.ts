@@ -4,7 +4,11 @@ import { invalidateAppConfig } from "../lib/appConfig.js";
 import { getAdminWa, setAdminWa, getAdminGroupWa, setAdminGroupWa, getAdminPhones, setAdminPhones } from "../lib/adminWa.js";
 import { db, portalContentTable } from "@workspace/db";
 import { broadcastToPortal } from "../lib/sseManager.js";
-import { shortLinksTable, waTemplateConfigsTable, notificationLogsTable } from "@workspace/db/schema";
+import {
+  shortLinksTable, waTemplateConfigsTable, notificationLogsTable,
+  logisticOrdersTable, salesDocumentsTable, customersTable,
+  suppliersTable, freightShipmentsTable, usersTable,
+} from "@workspace/db/schema";
 import { eq, desc, ilike, or, sql, and, isNull, inArray } from "drizzle-orm";
 import { resolveCompanyId } from "../lib/resolveCompany.js";
 import { getAiIntakeSettings, saveAiIntakeSettings, type VendorFilterMode } from "../lib/aiOrderIntake.js";
@@ -1333,6 +1337,31 @@ router.get("/company-pickup-address", async (_req: Request, res: Response) => {
       companyName: d.companyName, companyAddress: d.companyAddress, companyPhone: d.companyPhone,
       originCity: "Jakarta", originAirport: "CGK", originPort: "Tanjung Priok, Jakarta",
     });
+  }
+});
+
+// GET /api/settings/quick-stats — ringkasan jumlah item utama ERP (admin)
+router.get("/quick-stats", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const companyId = await resolveCompanyId(req);
+    const [[orders], [salesOrders], [customers], [vendors], [shipments], [staff]] = await Promise.all([
+      db.select({ count: sql<number>`count(*)::int` }).from(logisticOrdersTable).where(eq(logisticOrdersTable.companyId, companyId)),
+      db.select({ count: sql<number>`count(*)::int` }).from(salesDocumentsTable).where(and(eq(salesDocumentsTable.companyId, companyId), eq(salesDocumentsTable.docType, "sales_order"))),
+      db.select({ count: sql<number>`count(*)::int` }).from(customersTable).where(eq(customersTable.companyId, companyId)),
+      db.select({ count: sql<number>`count(*)::int` }).from(suppliersTable).where(eq(suppliersTable.companyId, companyId)),
+      db.select({ count: sql<number>`count(*)::int` }).from(freightShipmentsTable).where(eq(freightShipmentsTable.companyId, companyId)),
+      db.select({ count: sql<number>`count(*)::int` }).from(usersTable).where(eq(usersTable.companyId, companyId)),
+    ]);
+    return res.json({
+      logisticOrders: orders?.count ?? 0,
+      salesOrders:    salesOrders?.count ?? 0,
+      customers:      customers?.count ?? 0,
+      vendors:        vendors?.count ?? 0,
+      shipments:      shipments?.count ?? 0,
+      staff:          staff?.count ?? 0,
+    });
+  } catch (err) {
+    return res.status(500).json({ message: String(err) });
   }
 });
 

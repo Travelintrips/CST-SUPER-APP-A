@@ -5,29 +5,37 @@ import * as schema from "./schema";
 const { Pool } = pg;
 
 function resolveConnectionString(): string {
-  const isDev = process.env.NODE_ENV !== "production";
+  const isProd = process.env.NODE_ENV === "production";
 
-  // In development, prefer DEV credentials; fall back to shared/prod if not set.
-  const candidates = [
-    process.env.SUPABASE_PG_URL,
-    isDev ? process.env.SUPABASE_DATABASE_URL_DEV : undefined,
-    process.env.SUPABASE_DATABASE_URL,
-    process.env.DATABASE_URL,
-  ];
+  const candidates = isProd
+    ? [
+        process.env.SUPABASE_PG_URL,
+        process.env.SUPABASE_DATABASE_URL,
+        process.env.DATABASE_URL,
+      ]
+    : [
+        process.env.SUPABASE_DATABASE_URL_DEV,
+        process.env.SUPABASE_PG_URL,
+        process.env.SUPABASE_DATABASE_URL,
+        process.env.DATABASE_URL,
+      ];
 
   for (const url of candidates) {
     if (url && /^postgres(?:ql)?:\/\//i.test(url)) {
+      const label = isProd ? "production" : "development";
+      const masked = url.replace(/\/\/[^@]+@/, "//***@").split("?")[0];
+      console.log(`[db] env=${label} → ${masked}`);
       return url;
     }
   }
 
   throw new Error(
-    "No valid PostgreSQL connection string found. Set SUPABASE_PG_URL, SUPABASE_DATABASE_URL, or DATABASE_URL.",
+    "No valid PostgreSQL connection string found. Set SUPABASE_DATABASE_URL_DEV (dev) or SUPABASE_PG_URL (prod).",
   );
 }
 
 const connectionString = resolveConnectionString();
-const isLocalConn = /localhost|127\.0\.0\.1/.test(connectionString);
+const isLocalConn = /localhost|127\.0\.0\.1|helium/.test(connectionString);
 
 export const pool = new Pool({
   connectionString,
