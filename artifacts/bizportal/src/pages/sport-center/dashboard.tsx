@@ -184,10 +184,11 @@ export default function SportCenterDashboard() {
     payment_status: string | null;
     total_amount: string | null;
   }
+  type RevenueTxQueryResult = { data: RevenueTxRow[]; total: number };
   const {
     data: revenueTxData,
     isLoading: revenueTxLoading,
-  } = useQuery<{ data: RevenueTxRow[]; total: number }>({
+  } = useQuery<RevenueTxQueryResult>({
     queryKey: ["sport-center-revenue-tx", activeCompanyId, costCenterId, kpiDate],
     queryFn: async () => {
       const qs = new URLSearchParams();
@@ -195,7 +196,7 @@ export default function SportCenterDashboard() {
       qs.set("date", kpiDate);
       const r = await fetch(`/api/sport-center/revenue-transactions?${qs}`, { credentials: "include" });
       if (!r.ok) throw new Error("Gagal memuat transaksi revenue");
-      return r.json() as Promise<{ data: RevenueTxRow[]; total: number }>;
+      return r.json() as Promise<RevenueTxQueryResult>;
     },
     enabled: expandedCard === "revenue",
     staleTime: 30_000,
