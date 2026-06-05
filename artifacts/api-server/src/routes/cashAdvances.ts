@@ -195,10 +195,17 @@ router.get("/", async (req: Request, res) => {
     SELECT ca.*,
       coa.code AS cash_bank_account_code,
       coa.name AS cash_bank_account_name,
-      sup.name AS vendor_name
+      sup.name AS vendor_name,
+      u.name AS employee_name,
+      u.email AS employee_email,
+      dep.name AS employee_department,
+      dv.name AS employee_division
     FROM cash_advances ca
     LEFT JOIN chart_of_accounts coa ON ca.cash_bank_account_id = coa.id
     LEFT JOIN suppliers sup ON ca.vendor_id = sup.id
+    LEFT JOIN users u ON ca.user_id = u.id
+    LEFT JOIN departments dep ON u.department_id = dep.id
+    LEFT JOIN divisions dv ON u.division_id = dv.id
     WHERE ${whereParts.join(" AND ")}
     ORDER BY ca.date DESC, ca.id DESC
     LIMIT 500
@@ -210,6 +217,9 @@ router.get("/", async (req: Request, res) => {
       ? { id: r.cash_bank_account_id, code: r.cash_bank_account_code, name: r.cash_bank_account_name }
       : null,
     vendor: r.vendor_id ? { id: r.vendor_id, name: r.vendor_name } : null,
+    employee: r.user_id
+      ? { id: r.user_id, name: r.employee_name, email: r.employee_email, department: r.employee_department, division: r.employee_division }
+      : null,
   })));
 });
 
@@ -217,7 +227,18 @@ router.get("/", async (req: Request, res) => {
 router.get("/:id", async (req, res) => {
   const id = Number(req.params.id);
   if (isNaN(id)) return res.status(400).json({ message: "Invalid id" });
-  const result = await db.execute(sql.raw(`SELECT * FROM cash_advances WHERE id = ${id}`));
+  const result = await db.execute(sql.raw(`
+    SELECT ca.*,
+      u.name AS employee_name, u.email AS employee_email,
+      dep.name AS employee_department, dv.name AS employee_division,
+      sec.name AS employee_section
+    FROM cash_advances ca
+    LEFT JOIN users u ON ca.user_id = u.id
+    LEFT JOIN departments dep ON u.department_id = dep.id
+    LEFT JOIN divisions dv ON u.division_id = dv.id
+    LEFT JOIN sections sec ON u.section_id = sec.id
+    WHERE ca.id = ${id}
+  `));
   const adv = result.rows[0] as any;
   if (!adv) return res.status(404).json({ message: "Not found" });
   const repayments = await db
@@ -227,7 +248,6 @@ router.get("/:id", async (req, res) => {
   const approvalResult = await db.execute(sql.raw(
     `SELECT * FROM expense_approval_requests WHERE ref_type IN ('kasbon','talangan') AND ref_id = ${id} ORDER BY id DESC LIMIT 1`
   ));
-  // Audit logs
   const auditResult = await db.execute(sql.raw(`
     SELECT action, module, new_data, created_at, user_email
     FROM erp_audit_logs
@@ -235,8 +255,18 @@ router.get("/:id", async (req, res) => {
     ORDER BY created_at DESC LIMIT 20
   `)).catch(() => ({ rows: [] }));
 
+  const employee = adv.user_id ? {
+    id: adv.user_id,
+    name: adv.employee_name,
+    email: adv.employee_email,
+    department: adv.employee_department,
+    division: adv.employee_division,
+    section: adv.employee_section,
+  } : null;
+
   return res.json({
     ...serializeAdv(adv),
+    employee,
     repayments: repayments.map(serializeRep),
     approvalRequest: approvalResult.rows[0] ?? null,
     auditLogs: auditResult.rows ?? [],
@@ -245,7 +275,7 @@ router.get("/:id", async (req, res) => {
 
 // ─── Create ────────────────────────────────────────────────────────────────────
 router.post("/", async (req: Request, res) => {
-  const { type, partyName, amount, paymentMethod, date, notes, vendorId, sourceAccountId, category } = req.body ?? {};
+  const { type, partyName, amount, paymentMethod, date, notes, vendorId, sourceAccountId, category, userId: bodyUserId } = req.body ?? {};
   if (!type || !["kasbon", "talangan"].includes(type))
     return res.status(400).json({ message: "type harus 'kasbon' atau 'talangan'." });
   if (!partyName?.trim()) return res.status(400).json({ message: "Nama pihak wajib diisi." });
@@ -269,7 +299,9 @@ router.post("/", async (req: Request, res) => {
 
   const { needsApproval, limit } = await checkApprovalLimit(type, companyId, amountN);
   const advanceNumber = await nextAdvanceNumber(type);
-  const userId = (req as any).userId ?? null;
+  const creatorUserId = (req as any).userId ?? null;
+  // bodyUserId = karyawan yang menerima kasbon (dari combobox di frontend)
+  const employeeUserId = bodyUserId ? String(bodyUserId) : null;
   const categoryVal = category ? String(category).trim() : null;
 
   if (needsApproval && limit) {
@@ -288,8 +320,8 @@ router.post("/", async (req: Request, res) => {
       receivableAccountId,
       cashBankAccountId,
       vendorId: vendorId ? Number(vendorId) : null,
-      userId,
-      createdById: userId,
+      userId: employeeUserId,
+      createdById: creatorUserId,
     }).returning();
 
     // Set category via raw SQL (column added via migration)
@@ -298,8 +330,8 @@ router.post("/", async (req: Request, res) => {
     }
 
     let requesterName: string | null = null;
-    if (userId) {
-      const ur = await db.execute(sql.raw(`SELECT name FROM users WHERE id = '${userId}' LIMIT 1`));
+    if (creatorUserId) {
+      const ur = await db.execute(sql.raw(`SELECT name FROM users WHERE id = '${creatorUserId}' LIMIT 1`));
       requesterName = (ur.rows[0] as any)?.name ?? null;
     }
     let l1Name: string | null = null, l2Name: string | null = null;
@@ -323,7 +355,7 @@ router.post("/", async (req: Request, res) => {
       VALUES
         (${companyId ?? "NULL"}, '${type}', ${adv!.id},
          '${desc.replace(/'/g, "''")}', ${amountN},
-         ${userId ? `'${userId}'` : "NULL"},
+         ${creatorUserId ? `'${creatorUserId}'` : "NULL"},
          ${requesterName ? `'${requesterName.replace(/'/g, "''")}'` : "NULL"},
          'pending',
          ${limit.l1_approver_id ? `'${limit.l1_approver_id}'` : "NULL"},
@@ -381,8 +413,8 @@ router.post("/", async (req: Request, res) => {
     receivableAccountId,
     cashBankAccountId,
     vendorId: vendorId ? Number(vendorId) : null,
-    userId,
-    createdById: userId,
+    userId: employeeUserId,
+    createdById: creatorUserId,
   }).returning();
 
   if (categoryVal) {

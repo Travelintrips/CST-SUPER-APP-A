@@ -11,6 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
@@ -19,7 +21,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft, Plus, Loader2, Wallet, RefreshCw, Trash2, ChevronsRight,
   Clock, ShieldCheck, XCircle, CheckCircle, Upload, Scan, Check,
-  AlertTriangle, FileText, ChevronRight, History,
+  AlertTriangle, FileText, ChevronRight, History, ChevronsUpDown, User,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -129,6 +131,10 @@ export default function KasbonPage() {
     queryKey: ["expense-payment-accounts"],
     queryFn: () => apiFetch("/api/expenses/payment-accounts"),
   });
+  const { data: userList = [] } = useQuery<any[]>({
+    queryKey: ["users-list"],
+    queryFn: () => apiFetch("/api/users"),
+  });
 
   const [selected, setSelected] = useState<any | null>(null);
   const [detail, setDetail] = useState<any | null>(null);
@@ -147,6 +153,9 @@ export default function KasbonPage() {
   const today = new Date().toISOString().slice(0, 10);
   const [showForm, setShowForm] = useState(false);
   const [partyName, setPartyName] = useState("");
+  const [selectedUserId, setSelectedUserId] = useState<string>("");
+  const [userSearchOpen, setUserSearchOpen] = useState(false);
+  const [userSearch, setUserSearch] = useState("");
   const [amountRaw, setAmountRaw] = useState("");
   const [pm, setPm] = useState("bank");
   const [sourceAccountId, setSourceAccountId] = useState("");
@@ -165,20 +174,27 @@ export default function KasbonPage() {
         toast({ title: `✓ ${d.advanceNumber} — ${idr(d.amount)} berhasil dibuat.` });
       }
       qc.invalidateQueries({ queryKey: ["cash-advances", "kasbon"] });
-      setShowForm(false); setPartyName(""); setAmountRaw(""); setNotes(""); setDate(today); setSourceAccountId(""); setCategory("");
+      setShowForm(false); setPartyName(""); setSelectedUserId(""); setUserSearch(""); setAmountRaw(""); setNotes(""); setDate(today); setSourceAccountId(""); setCategory("");
     },
     onError: (e: Error) => toast({ title: e.message, variant: "destructive" }),
   });
 
   const handleCreate = () => {
     const amount = parseIDR(amountRaw);
-    if (!partyName.trim()) return toast({ title: "Nama karyawan wajib diisi.", variant: "destructive" });
+    if (!partyName.trim()) return toast({ title: "Karyawan wajib dipilih.", variant: "destructive" });
     if (amount <= 0) return toast({ title: "Nominal harus lebih dari 0.", variant: "destructive" });
     createMut.mutate({
       type: "kasbon", partyName, amount, paymentMethod: pm, date, notes, category: category || undefined,
       sourceAccountId: sourceAccountId ? Number(sourceAccountId) : undefined,
+      userId: selectedUserId || undefined,
     });
   };
+
+  // filtered users for combobox
+  const filteredUsers = (userList as any[]).filter((u) =>
+    !userSearch || (u.name ?? "").toLowerCase().includes(userSearch.toLowerCase()) ||
+    (u.email ?? "").toLowerCase().includes(userSearch.toLowerCase())
+  ).slice(0, 50);
 
   // ── Approve / Reject ─────────────────────────────────────────────────────────
   const [showRejectDialog, setShowRejectDialog] = useState(false);
@@ -338,8 +354,81 @@ export default function KasbonPage() {
             <CardContent className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <Label>Nama Karyawan <span className="text-destructive">*</span></Label>
-                  <Input placeholder="Nama karyawan..." value={partyName} onChange={(e) => setPartyName(e.target.value)} />
+                  <Label>Karyawan <span className="text-destructive">*</span></Label>
+                  <Popover open={userSearchOpen} onOpenChange={setUserSearchOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        role="combobox"
+                        className={cn("w-full justify-between font-normal", !partyName && "text-muted-foreground")}
+                      >
+                        <span className="flex items-center gap-2 truncate">
+                          <User size={13} className="shrink-0 text-muted-foreground" />
+                          {partyName || "Pilih karyawan..."}
+                        </span>
+                        <ChevronsUpDown size={13} className="shrink-0 text-muted-foreground" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-72 p-0" align="start">
+                      <Command>
+                        <CommandInput
+                          placeholder="Cari nama atau email..."
+                          value={userSearch}
+                          onValueChange={setUserSearch}
+                        />
+                        <CommandList className="max-h-52">
+                          <CommandEmpty>
+                            {userSearch ? (
+                              <div className="p-2 text-center">
+                                <p className="text-xs text-muted-foreground mb-2">Karyawan tidak ditemukan.</p>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="text-xs"
+                                  onClick={() => {
+                                    setPartyName(userSearch);
+                                    setSelectedUserId("");
+                                    setUserSearchOpen(false);
+                                  }}
+                                >
+                                  Gunakan "{userSearch}" sebagai nama
+                                </Button>
+                              </div>
+                            ) : "Tidak ada karyawan."}
+                          </CommandEmpty>
+                          {filteredUsers.map((u: any) => (
+                            <CommandItem
+                              key={u.id}
+                              value={u.name}
+                              onSelect={() => {
+                                setPartyName(u.name ?? "");
+                                setSelectedUserId(String(u.id));
+                                setUserSearchOpen(false);
+                                setUserSearch("");
+                              }}
+                            >
+                              <div className="flex flex-col min-w-0">
+                                <span className="font-medium text-sm truncate">{u.name}</span>
+                                <span className="text-xs text-muted-foreground truncate">
+                                  {u.email}
+                                  {u.departmentName ? ` · ${u.departmentName}` : ""}
+                                  {u.divisionName ? ` · ${u.divisionName}` : ""}
+                                </span>
+                              </div>
+                              {selectedUserId === String(u.id) && (
+                                <Check size={13} className="ml-auto text-primary shrink-0" />
+                              )}
+                            </CommandItem>
+                          ))}
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                  {partyName && !selectedUserId && (
+                    <p className="text-xs text-amber-400 flex items-center gap-1">
+                      <AlertTriangle size={11} /> Input manual (bukan dari sistem)
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-1.5">
                   <Label>Tanggal <span className="text-destructive">*</span></Label>
@@ -476,6 +565,22 @@ export default function KasbonPage() {
               </SheetHeader>
 
               <div className="mt-4 space-y-4">
+                {/* Employee info card */}
+                {detail?.employee && (
+                  <div className="rounded-md border bg-muted/20 px-3 py-2 flex items-start gap-2">
+                    <User size={14} className="mt-0.5 text-muted-foreground shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{detail.employee.name ?? (selected.party_name ?? selected.partyName)}</p>
+                      <p className="text-xs text-muted-foreground truncate">{detail.employee.email}</p>
+                      {(detail.employee.department || detail.employee.division || detail.employee.section) && (
+                        <p className="text-xs text-muted-foreground truncate mt-0.5">
+                          {[detail.employee.department, detail.employee.division, detail.employee.section].filter(Boolean).join(" · ")}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {/* Timeline */}
                 <div className="rounded-md bg-muted/20 border px-3 py-2">
                   <StatusTimeline status={selected.status} />
