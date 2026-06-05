@@ -23,7 +23,8 @@ const idr = (n: number) =>
 type Payment = {
   id: number; payment_number: string; booking_id: number;
   booking_number: string; customer_name: string; booking_date: string;
-  amount: number; method: string; status: string; paid_at: string; notes: string;
+  amount: number; method: string; status: string; paid_at: string | null;
+  notes: string; facility_name: string | null;
 };
 
 const METHOD_LABEL: Record<string, string> = {
@@ -145,22 +146,27 @@ export default function SportCenterPayments() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border/40 bg-muted/20">
-                  {["No. Pembayaran", "No. Booking", "Pelanggan", "Tanggal Booking", "Metode", "Status", "Jumlah"].map((h) => (
+                  {["No. Pembayaran", "No. Booking", "Pelanggan", "Tgl Pembayaran", "Tanggal Booking", "Metode", "Status", "Jumlah", "Fasilitas"].map((h) => (
                     <th key={h} className="text-left py-3 px-3 text-xs text-muted-foreground font-medium">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {isLoading ? (
-                  <tr><td colSpan={7} className="py-10 text-center text-muted-foreground">Memuat…</td></tr>
+                  <tr><td colSpan={9} className="py-10 text-center text-muted-foreground">Memuat…</td></tr>
                 ) : (data?.data ?? []).length === 0 ? (
-                  <tr><td colSpan={7} className="py-10 text-center text-muted-foreground">Belum ada pembayaran</td></tr>
+                  <tr><td colSpan={9} className="py-10 text-center text-muted-foreground">Belum ada pembayaran</td></tr>
                 ) : (data?.data ?? []).map((p) => (
                   <tr key={p.id} className="border-b border-border/20 hover:bg-muted/20">
                     <td className="py-2.5 px-3 font-mono text-xs text-muted-foreground">{p.payment_number}</td>
                     <td className="py-2.5 px-3 font-mono text-xs text-muted-foreground">{p.booking_number}</td>
                     <td className="py-2.5 px-3 text-foreground">{p.customer_name}</td>
-                    <td className="py-2.5 px-3 text-muted-foreground">{p.booking_date}</td>
+                    <td className="py-2.5 px-3 text-muted-foreground text-xs">
+                      {p.paid_at
+                        ? new Date(p.paid_at).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })
+                        : <span className="text-muted-foreground/50">—</span>}
+                    </td>
+                    <td className="py-2.5 px-3 text-muted-foreground text-xs">{p.booking_date ?? "—"}</td>
                     <td className="py-2.5 px-3">
                       <Badge className="bg-blue-900/30 text-blue-300 border-blue-700 text-xs">
                         {METHOD_LABEL[p.method] ?? p.method}
@@ -169,12 +175,15 @@ export default function SportCenterPayments() {
                     <td className="py-2.5 px-3">
                       <Badge className={p.status === "paid"
                         ? "bg-emerald-900/30 text-emerald-300 border-emerald-700 text-xs"
-                        : "bg-yellow-900/30 text-yellow-300 border-yellow-700 text-xs"
+                        : p.status === "pending"
+                        ? "bg-yellow-900/30 text-yellow-300 border-yellow-700 text-xs"
+                        : "bg-red-900/30 text-red-300 border-red-700 text-xs"
                       }>
-                        {p.status === "paid" ? "Lunas" : p.status}
+                        {p.status === "paid" ? "Lunas" : p.status === "pending" ? "Pending" : p.status}
                       </Badge>
                     </td>
                     <td className="py-2.5 px-3 font-medium text-foreground text-right">{idr(Number(p.amount))}</td>
+                    <td className="py-2.5 px-3 text-muted-foreground text-xs">{p.facility_name ?? "—"}</td>
                   </tr>
                 ))}
               </tbody>
