@@ -136,6 +136,11 @@ export default function KasbonPage() {
     queryFn: () => apiFetch("/api/users"),
   });
 
+  const { data: userList = [] } = useQuery({
+    queryKey: ["users-list"],
+    queryFn: () => apiFetch("/api/users"),
+  });
+
   const [selected, setSelected] = useState<any | null>(null);
   const [detail, setDetail] = useState<any | null>(null);
 
@@ -156,6 +161,7 @@ export default function KasbonPage() {
   const [selectedUserId, setSelectedUserId] = useState<string>("");
   const [userSearchOpen, setUserSearchOpen] = useState(false);
   const [userSearch, setUserSearch] = useState("");
+  const [selectedUserId, setSelectedUserId] = useState("");
   const [amountRaw, setAmountRaw] = useState("");
   const [pm, setPm] = useState("bank");
   const [sourceAccountId, setSourceAccountId] = useState("");
@@ -175,6 +181,7 @@ export default function KasbonPage() {
       }
       qc.invalidateQueries({ queryKey: ["cash-advances", "kasbon"] });
       setShowForm(false); setPartyName(""); setSelectedUserId(""); setUserSearch(""); setAmountRaw(""); setNotes(""); setDate(today); setSourceAccountId(""); setCategory("");
+      setShowForm(false); setPartyName(""); setSelectedUserId(""); setAmountRaw(""); setNotes(""); setDate(today); setSourceAccountId("");
     },
     onError: (e: Error) => toast({ title: e.message, variant: "destructive" }),
   });
@@ -429,6 +436,22 @@ export default function KasbonPage() {
                       <AlertTriangle size={11} /> Input manual (bukan dari sistem)
                     </p>
                   )}
+                  <Select
+                    value={selectedUserId}
+                    onValueChange={(v) => {
+                      setSelectedUserId(v);
+                      const u = (userList as any[]).find((u: any) => u.id === v);
+                      if (u) setPartyName(u.name ?? "");
+                    }}
+                  >
+                    <SelectTrigger><SelectValue placeholder="Pilih karyawan..." /></SelectTrigger>
+                    <SelectContent>
+                      {(userList as any[]).map((u: any) => (
+                        <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Input placeholder="Atau ketik nama manual..." value={partyName} onChange={(e) => setPartyName(e.target.value)} className="text-xs" />
                 </div>
                 <div className="space-y-1.5">
                   <Label>Tanggal <span className="text-destructive">*</span></Label>
@@ -528,6 +551,7 @@ export default function KasbonPage() {
                     <TableCell className="font-mono text-xs text-primary">{row.advance_number ?? row.advanceNumber}</TableCell>
                     <TableCell className="text-sm">{row.date}</TableCell>
                     <TableCell className="text-sm font-medium">{row.party_name ?? row.partyName}</TableCell>
+                    <TableCell className="text-sm font-medium">{row.user?.name ?? row.partyName}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">
                       {row.category ? (
                         <Badge variant="outline" className="text-xs font-normal">{row.category}</Badge>

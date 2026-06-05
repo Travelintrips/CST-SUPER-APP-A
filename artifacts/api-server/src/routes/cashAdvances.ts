@@ -200,6 +200,7 @@ router.get("/", async (req: Request, res) => {
       u.email AS employee_email,
       dep.name AS employee_department,
       dv.name AS employee_division
+      u.name   AS user_name
     FROM cash_advances ca
     LEFT JOIN chart_of_accounts coa ON ca.cash_bank_account_id = coa.id
     LEFT JOIN suppliers sup ON ca.vendor_id = sup.id
@@ -220,6 +221,7 @@ router.get("/", async (req: Request, res) => {
     employee: r.user_id
       ? { id: r.user_id, name: r.employee_name, email: r.employee_email, department: r.employee_department, division: r.employee_division }
       : null,
+    user: r.user_id ? { id: r.user_id, name: r.user_name } : null,
   })));
 });
 
