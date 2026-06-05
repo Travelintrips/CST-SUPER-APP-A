@@ -196,7 +196,7 @@ export default function SportCenterReports() {
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="border-b border-border/40 bg-muted/30">
-                      {["No. Pembayaran", "Booking", "Pelanggan", "Fasilitas", "Metode", "Tipe", "Waktu Bayar", "Jumlah"].map(h => (
+                      {["No. Pembayaran", "No. Booking", "Pelanggan", "Tanggal Booking", "Metode", "Status", "Jumlah", "Sumber Fasilitas"].map(h => (
                         <th key={h} className="text-left py-2.5 px-3 text-muted-foreground font-medium whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
@@ -213,26 +213,30 @@ export default function SportCenterReports() {
                         <td className="py-2 px-3 text-foreground max-w-[140px] truncate">
                           {tx.customer_name || "-"}
                         </td>
-                        <td className="py-2 px-3 text-muted-foreground max-w-[120px] truncate">
-                          {tx.facility_name || "-"}
+                        <td className="py-2 px-3 text-muted-foreground whitespace-nowrap">
+                          {tx.booking_date
+                            ? new Intl.DateTimeFormat("id-ID", { day: "2-digit", month: "short", year: "numeric" }).format(new Date(tx.booking_date))
+                            : "-"}
                         </td>
                         <td className="py-2 px-3 text-muted-foreground capitalize">
                           {tx.payment_method ?? "cash"}
                         </td>
                         <td className="py-2 px-3">
                           <span className={`inline-flex px-1.5 py-0.5 rounded border text-[10px] font-medium ${
-                            tx.payment_type === "membership"
-                              ? "bg-purple-900/40 text-purple-300 border-purple-600"
-                              : "bg-emerald-900/40 text-emerald-300 border-emerald-600"
+                            tx.payment_status === "paid"
+                              ? "bg-emerald-900/40 text-emerald-300 border-emerald-600"
+                              : tx.payment_status === "pending"
+                              ? "bg-yellow-900/40 text-yellow-300 border-yellow-600"
+                              : "bg-muted/40 text-muted-foreground border-border"
                           }`}>
-                            {tx.payment_type === "membership" ? "Membership" : "Booking"}
+                            {tx.payment_status === "paid" ? "Lunas" : tx.payment_status === "pending" ? "Pending" : (tx.payment_status ?? "-")}
                           </span>
-                        </td>
-                        <td className="py-2 px-3 text-muted-foreground whitespace-nowrap">
-                          {fmtTs(tx.paid_at)}
                         </td>
                         <td className="py-2 px-3 text-right font-medium text-foreground whitespace-nowrap">
                           {idr(Number(tx.amount ?? 0))}
+                        </td>
+                        <td className="py-2 px-3 text-muted-foreground max-w-[140px] truncate">
+                          {tx.facility_name || "-"}
                         </td>
                       </tr>
                     ))}

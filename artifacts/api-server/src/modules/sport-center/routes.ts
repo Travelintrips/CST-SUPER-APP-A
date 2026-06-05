@@ -1721,7 +1721,7 @@ router.get("/reports/revenue", async (req, res) => {
         GROUP BY sp.method
         ORDER BY total DESC
       `),
-      // Transaksi detail: sport_payments JOIN sport_bookings
+      // Transaksi detail: sport_payments JOIN sport_bookings JOIN sport_facilities
       db.execute(sql`
         SELECT
           sp.id,
@@ -1731,8 +1731,8 @@ router.get("/reports/revenue", async (req, res) => {
           sp.method AS payment_method,
           sp.paid_at,
           sp.payment_type,
-          sp.status,
-          COALESCE(sb.facility_name, '') AS facility_name,
+          sp.status AS payment_status,
+          COALESCE(f.name, sb.facility_name, 'Lainnya') AS facility_name,
           COALESCE(sb.customer_name, '') AS customer_name,
           sb.booking_number,
           sb.booking_date,
@@ -1741,6 +1741,7 @@ router.get("/reports/revenue", async (req, res) => {
           sb.payment_status AS booking_payment_status
         FROM sport_payments sp
         LEFT JOIN sport_bookings sb ON sb.id = sp.booking_id
+        LEFT JOIN sport_facilities f ON f.id = sb.facility_id
         WHERE sp.status = 'paid'
           AND (${cId}::int IS NULL OR sp.company_id = ${cId})
           AND (${from}::date IS NULL OR sp.paid_at::date >= ${from}::date)
