@@ -252,6 +252,66 @@ uri = "file://artifacts/customer-portal/public/menu/roti-bakar.png"
 type = "image"
 title = "grilled toast bread snack"
 
+[[generated]]
+id = "gXF0H7tIeoSoLvc7MJEOK"
+uri = "file://artifacts/customer-portal/public/images/products/meja-standing-desk.png"
+type = "image"
+title = "standing desk product"
+
+[[generated]]
+id = "eAegp039DCEVMGkf020kl"
+uri = "file://artifacts/customer-portal/public/images/products/customs-clearance.png"
+type = "image"
+title = "customs clearance"
+
+[[generated]]
+id = "XNDRqCTHs8QIkxywdNFs_"
+uri = "file://artifacts/customer-portal/public/images/products/freight-laut-lcl.png"
+type = "image"
+title = "LCL sea freight"
+
+[[generated]]
+id = "LcQrIzvSrDSdSWgAgRn8q"
+uri = "file://artifacts/customer-portal/public/images/products/freight-laut-fcl-20ft.png"
+type = "image"
+title = "FCL 20ft container ship"
+
+[[generated]]
+id = "Zx981vaR4eppGYj_jCdG2"
+uri = "file://artifacts/customer-portal/public/images/products/kursi-kantor-ergonomik.png"
+type = "image"
+title = "ergonomic office chair"
+
+[[generated]]
+id = "npNsaJ9eYvfAAq2dUdosk"
+uri = "file://artifacts/customer-portal/public/images/products/handling.png"
+type = "image"
+title = "warehouse handling"
+
+[[generated]]
+id = "ljI9JtVDT95ji-rFdfrPo"
+uri = "file://artifacts/customer-portal/public/images/products/emkl.png"
+type = "image"
+title = "EMKL freight forwarding"
+
+[[generated]]
+id = "X2SEHqT0TatOu1KmYz8Sg"
+uri = "file://artifacts/customer-portal/public/images/products/freight-udara.png"
+type = "image"
+title = "air freight cargo plane"
+
+[[generated]]
+id = "iE8myRaxfEKT555EC9UO5"
+uri = "file://artifacts/customer-portal/public/images/products/handling-cargo-udara.png"
+type = "image"
+title = "air cargo handling workers"
+
+[[generated]]
+id = "7-tySKi-7nLsDUXk5EKaq"
+uri = "file://artifacts/customer-portal/public/images/products/container.png"
+type = "image"
+title = "stacked shipping containers port"
+
 [[outputs]]
 id = "jbw844mUijSYeJ7x1ujqa"
 uri = "file://attached_assets/logo_composited.png"
