@@ -9,6 +9,7 @@ export interface SecretDef {
   label: string;
   description: string;
   envFallback: string;
+  envFallbackAlt?: string[];
   sensitive: boolean;
   group: string;
 }
@@ -95,9 +96,18 @@ export const SECRETS_CATALOG: SecretDef[] = [
     group: "AI",
   },
   {
+    key: "supabase_url",
+    label: "Supabase URL (Prod)",
+    description: "URL project Supabase produksi — dipakai storage & admin API (VITE_SUPABASE_URL atau SUPABASE_URL)",
+    envFallback: "VITE_SUPABASE_URL",
+    envFallbackAlt: ["SUPABASE_URL"],
+    sensitive: false,
+    group: "Supabase",
+  },
+  {
     key: "supabase_service_role_key",
     label: "Supabase Service Role Key (Prod)",
-    description: "Service role key Supabase produksi — untuk storage, admin API",
+    description: "Service role key Supabase produksi — untuk storage, admin API. Nilai JWT dimulai 'eyJ'",
     envFallback: "SUPABASE_SERVICE_ROLE_KEY",
     sensitive: true,
     group: "Supabase",

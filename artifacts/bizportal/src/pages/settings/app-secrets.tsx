@@ -283,7 +283,7 @@ export default function AppSecretsPage() {
 
   useEffect(() => { void loadSecrets(); }, []);
 
-  const groups = [...new Set(secrets.map((s) => s.group))];
+  const groups = [...new Set(secrets.map((s) => s.group).filter((g): g is string => !!g))];
 
   return (
     <AppShell>
