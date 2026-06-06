@@ -34,9 +34,6 @@ const BASE_DELAY    = Number(process.env.GW_BASE_DELAY    ?? 200);
 const RETRYABLE_CODES = new Set(["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "ENOTFOUND"]);
 
 
-const API_PORT            = Number(process.env.API_PORT            ?? 8080);
-const BIZPORTAL_PORT      = 18442;
-const CUSTOMER_PORT       = 5174;
 const API_PORT            = Number(process.env.API_PORT            ?? 18444);
 const BIZPORTAL_PORT      = Number(process.env.BIZPORTAL_PORT      ?? 18442);
 const CUSTOMER_PORT       = Number(process.env.CUSTOMER_PORT       ?? 23434);
