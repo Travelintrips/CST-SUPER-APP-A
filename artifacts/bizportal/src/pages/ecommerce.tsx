@@ -32,7 +32,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, ShoppingBag, Pencil, Trash2, Printer, Search, ChevronDown, X, RefreshCw, Clock, ExternalLink, Database, Copy, CheckCheck } from "lucide-react";
+import { Plus, ShoppingBag, Pencil, Trash2, Printer, Search, ChevronDown, X, RefreshCw, Clock, ExternalLink, Database, Copy, CheckCheck, Link, Check } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import {
   AlertDialog,
@@ -811,6 +811,7 @@ export default function EcommercePage() {
                         isUploading={createImageUploader.isUploading}
                         onPickFile={(file) => createImageUploader.uploadFile(file)}
                         onRemove={() => setCreateImageUrl(null)}
+                        onSetUrl={(url) => setCreateImageUrl(url)}
                         resolveImage={resolveImage}
                         idPrefix="create"
                       />
@@ -1816,6 +1817,7 @@ export default function EcommercePage() {
                   isUploading={editImageUploader.isUploading}
                   onPickFile={(file) => editImageUploader.uploadFile(file)}
                   onRemove={() => setEditImageUrl(null)}
+                  onSetUrl={(url) => setEditImageUrl(url)}
                   resolveImage={resolveImage}
                   idPrefix="edit"
                 />
@@ -2293,13 +2295,26 @@ interface ProductImageFieldProps {
   isUploading: boolean;
   onPickFile: (file: File) => void;
   onRemove: () => void;
+  onSetUrl: (url: string) => void;
   resolveImage: (url?: string | null) => string | null;
   idPrefix: string;
 }
 
-function ProductImageField({ imageUrl, isUploading, onPickFile, onRemove, resolveImage, idPrefix }: ProductImageFieldProps) {
+function ProductImageField({ imageUrl, isUploading, onPickFile, onRemove, onSetUrl, resolveImage, idPrefix }: ProductImageFieldProps) {
   const inputId = `${idPrefix}-product-image-input`;
   const preview = resolveImage(imageUrl);
+  const [showUrlInput, setShowUrlInput] = React.useState(false);
+  const [urlValue, setUrlValue] = React.useState("");
+
+  const handleConfirmUrl = () => {
+    const trimmed = urlValue.trim();
+    if (trimmed) {
+      onSetUrl(trimmed);
+      setUrlValue("");
+      setShowUrlInput(false);
+    }
+  };
+
   return (
     <div className="grid gap-2">
       <Label>Foto Produk</Label>
@@ -2318,9 +2333,13 @@ function ProductImageField({ imageUrl, isUploading, onPickFile, onRemove, resolv
               e.target.value = "";
             }}
           />
-          <Button type="button" variant="outline" size="sm" disabled={isUploading} onClick={() => document.getElementById(inputId)?.click()} data-testid={`button-${idPrefix}-upload-image`}>
+          <Button type="button" variant="outline" size="sm" disabled={isUploading} onClick={() => { setShowUrlInput(false); document.getElementById(inputId)?.click(); }} data-testid={`button-${idPrefix}-upload-image`}>
             {isUploading ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <ImagePlus className="h-4 w-4 mr-1.5" />}
             {isUploading ? "Mengunggah..." : imageUrl ? "Ganti Foto" : "Unggah Foto"}
+          </Button>
+          <Button type="button" variant="outline" size="sm" disabled={isUploading} onClick={() => setShowUrlInput((v) => !v)} data-testid={`button-${idPrefix}-url-image`}>
+            <Link className="h-4 w-4 mr-1.5" />
+            Gunakan Link
           </Button>
           {imageUrl && !isUploading && (
             <Button type="button" variant="ghost" size="sm" onClick={onRemove} className="text-muted-foreground hover:text-destructive" data-testid={`button-${idPrefix}-remove-image`}>
@@ -2329,7 +2348,26 @@ function ProductImageField({ imageUrl, isUploading, onPickFile, onRemove, resolv
           )}
         </div>
       </div>
-      <p className="text-xs text-muted-foreground">Format: JPG/PNG, maks 10MB.</p>
+      {showUrlInput && (
+        <div className="flex gap-2 items-center mt-1">
+          <Input
+            type="url"
+            placeholder="https://example.com/gambar.jpg"
+            value={urlValue}
+            onChange={(e) => setUrlValue(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleConfirmUrl(); } }}
+            className="flex-1 h-8 text-sm"
+            data-testid={`input-${idPrefix}-image-url`}
+          />
+          <Button type="button" size="sm" className="h-8 px-3" onClick={handleConfirmUrl} disabled={!urlValue.trim()}>
+            <Check className="h-4 w-4" />
+          </Button>
+          <Button type="button" size="sm" variant="ghost" className="h-8 px-2" onClick={() => { setShowUrlInput(false); setUrlValue(""); }}>
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
+      <p className="text-xs text-muted-foreground">Format: JPG/PNG, maks 10MB. Atau tempel link URL gambar.</p>
     </div>
   );
 }

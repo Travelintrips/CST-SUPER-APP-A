@@ -1,5 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/lib/supabase";
 import { Link, useLocation } from "wouter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -51,6 +52,34 @@ const stripJasa = (name: string) => name.replace(/^Jasa\s+/i, "");
 const formatIDR = (v: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(v);
 
+function useServicesRealtime(queryKey: string) {
+  const qc = useQueryClient();
+  const [connected, setConnected] = useState(false);
+  const [justUpdated, setJustUpdated] = useState(false);
+
+  const handleChange = useCallback(() => {
+    qc.invalidateQueries({ queryKey: [queryKey] });
+    setJustUpdated(true);
+    setTimeout(() => setJustUpdated(false), 3000);
+  }, [qc, queryKey]);
+
+  useEffect(() => {
+    if (!supabase) return;
+    const channel = supabase
+      .channel("portal-services-jasa-realtime")
+      .on("postgres_changes", { event: "*", schema: "public", table: "products" }, handleChange)
+      .subscribe((status) => {
+        setConnected(status === "SUBSCRIBED");
+      });
+    return () => {
+      supabase!.removeChannel(channel);
+      setConnected(false);
+    };
+  }, [handleChange]);
+
+  return { connected, justUpdated };
+}
+
 export default function Jasa() {
   const [, setLocation] = useLocation();
   const [searchQuery, setSearchQuery] = useState("");
@@ -58,6 +87,7 @@ export default function Jasa() {
   const [activeCategory, setActiveCategory] = useState<string>("__all__");
   const [failedImages, setFailedImages] = useState<Set<number>>(new Set());
   const qc = useQueryClient();
+  const { connected: realtimeConnected, justUpdated: realtimeUpdated } = useServicesRealtime("listPortalServicesJasa");
 
   useEffect(() => {
     const es = new EventSource("/api/ecommerce/events");
@@ -304,6 +334,31 @@ export default function Jasa() {
           }
           .cat-chip.active:hover { box-shadow: 0 6px 22px rgba(11,92,173,0.38), 0 2px 6px rgba(11,92,173,0.18), inset 0 1px 0 rgba(255,255,255,0.18) !important; }
         `}</style>
+        <div className="flex items-center justify-between mb-4">
+          <span className="text-[13px] text-slate-500 font-medium">
+            {services.length} layanan
+          </span>
+          {realtimeConnected && (
+            <span
+              className="inline-flex items-center gap-1.5 text-[11px] font-semibold rounded-full px-2.5 py-1"
+              style={{
+                background: realtimeUpdated ? "rgba(245,158,11,0.10)" : "rgba(34,197,94,0.10)",
+                color: realtimeUpdated ? "#B45309" : "#15803D",
+                border: `1px solid ${realtimeUpdated ? "rgba(245,158,11,0.25)" : "rgba(34,197,94,0.25)"}`,
+              }}
+            >
+              <span
+                className="w-1.5 h-1.5 rounded-full"
+                style={{
+                  background: realtimeUpdated ? "#F59E0B" : "#22C55E",
+                  animation: "pulse 1.5s ease-in-out infinite",
+                }}
+              />
+              {realtimeUpdated ? "Diperbarui" : "Live"}
+            </span>
+          )}
+        </div>
+
         <div className="flex flex-wrap gap-2 mb-7">
           <button
             key="__all__"
