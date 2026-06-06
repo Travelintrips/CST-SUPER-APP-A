@@ -161,7 +161,13 @@ export function buildCatalogFilters(items: MarketplaceItem[]): FilterFieldDef[] 
     if (def.type === "select") {
       const uniqueVals = [...def._values];
       if (uniqueVals.length < 2) continue;
-      const opts = def.options && def.options.length > 0 ? def.options.filter((o) => uniqueVals.includes(o)) : uniqueVals;
+      // Try to preserve template option ordering; fall back to actual unique values
+      // when none of the template options match the actual data (e.g. vendor uses
+      // custom grade terminology like "Grade B" vs template's "Grade 1").
+      const optsByTemplate = def.options && def.options.length > 0
+        ? def.options.filter((o) => uniqueVals.includes(o))
+        : [];
+      const opts = optsByTemplate.length >= 2 ? optsByTemplate : uniqueVals;
       if (opts.length < 2) continue;
       filters.push({ key: def.key, label: def.label, type: "select", options: opts, source: "template" });
     } else if (def.type === "number-range") {
