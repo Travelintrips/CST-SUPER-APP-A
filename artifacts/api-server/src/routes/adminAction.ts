@@ -1445,9 +1445,9 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
 
     return res.status(400).json({ error: "actionType tidak dikenal" });
   } catch (err) {
-    // Pastikan blast guard dilepas jika terjadi error di tengah proses
     if (_blastGuardOrderId !== null) blastInProgress.delete(_blastGuardOrderId);
     logger.error({ err }, "admin-action POST error");
-    return res.status(500).json({ error: "Gagal memproses aksi" });
+    const msg = err instanceof Error ? err.message : String(err);
+    return res.status(500).json({ error: "Gagal memproses aksi", detail: msg });
   }
 });

@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,7 +14,6 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { useCompany } from "@/contexts/CompanyContext";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Plus, Loader2, HandCoins, RefreshCw, Trash2, ChevronsRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -47,6 +47,16 @@ export default function TalanganPage() {
     queryFn: () => apiFetch(`/api/cash-advances?type=talangan${activeCompanyId ? `&company=${activeCompanyId}` : ""}`),
   });
 
+  const { data: paymentAccounts = [] } = useQuery({
+    queryKey: ["expense-payment-accounts"],
+    queryFn: () => apiFetch("/api/expenses/payment-accounts"),
+  });
+
+  const { data: vendorList = [] } = useQuery({
+    queryKey: ["suppliers", activeCompanyId],
+    queryFn: () => apiFetch(`/api/trading/suppliers${activeCompanyId ? `?company=${activeCompanyId}` : ""}`),
+  });
+
   const [selected, setSelected] = useState<any | null>(null);
   const [detail, setDetail] = useState<any | null>(null);
 
@@ -62,6 +72,8 @@ export default function TalanganPage() {
   const [partyName, setPartyName] = useState("");
   const [amountRaw, setAmountRaw] = useState("");
   const [pm, setPm] = useState("bank");
+  const [sourceAccountId, setSourceAccountId] = useState("");
+  const [vendorId, setVendorId] = useState("");
   const [date, setDate] = useState(today);
   const [notes, setNotes] = useState("");
 
@@ -73,6 +85,7 @@ export default function TalanganPage() {
       toast({ title: `✓ ${d.advanceNumber} — ${idr(d.amount)} berhasil dibuat.` });
       qc.invalidateQueries({ queryKey: ["cash-advances", "talangan"] });
       setShowForm(false); setPartyName(""); setAmountRaw(""); setNotes(""); setDate(today);
+      setSourceAccountId(""); setVendorId("");
     },
     onError: (e: Error) => toast({ title: e.message, variant: "destructive" }),
   });
@@ -81,7 +94,11 @@ export default function TalanganPage() {
     const amount = parseIDR(amountRaw);
     if (!partyName.trim()) return toast({ title: "Nama pihak wajib diisi.", variant: "destructive" });
     if (amount <= 0) return toast({ title: "Nominal harus lebih dari 0.", variant: "destructive" });
-    createMut.mutate({ type: "talangan", partyName, amount, paymentMethod: pm, date, notes });
+    createMut.mutate({
+      type: "talangan", partyName, amount, paymentMethod: pm, date, notes,
+      sourceAccountId: sourceAccountId ? Number(sourceAccountId) : undefined,
+      vendorId: vendorId ? Number(vendorId) : undefined,
+    });
   };
 
   const [repAmtRaw, setRepAmtRaw] = useState("");
@@ -163,23 +180,52 @@ export default function TalanganPage() {
                   <Input placeholder="0" className="font-mono" value={amountRaw} onChange={(e) => setAmountRaw(fmtIDR(e.target.value))} />
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Sumber Dana</Label>
-                  <Select value={pm} onValueChange={setPm}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                  <Label>Sumber Dana (Akun)</Label>
+                  <Select
+                    value={sourceAccountId}
+                    onValueChange={(v) => {
+                      setSourceAccountId(v);
+                      const acc = (paymentAccounts as any[]).find((a: any) => String(a.id) === v);
+                      if (acc) setPm((acc.name ?? "").toLowerCase().includes("kas") ? "cash" : "bank");
+                    }}
+                  >
+                    <SelectTrigger><SelectValue placeholder="Pilih akun kas/bank..." /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="bank">🏦 Bank</SelectItem>
-                      <SelectItem value="cash">💵 Kas</SelectItem>
+                      {(paymentAccounts as any[]).map((a: any) => (
+                        <SelectItem key={a.id} value={String(a.id)}>{a.code} – {a.name}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
               </div>
-              <div className="space-y-1.5">
-                <Label>Keterangan</Label>
-                <Textarea rows={2} placeholder="Opsional..." value={notes} onChange={(e) => setNotes(e.target.value)} />
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label>Vendor / Pihak Penerima (Master)</Label>
+                  <Select value={vendorId} onValueChange={(v) => {
+                    setVendorId(v);
+                    const vnd = (vendorList as any[]).find((s: any) => String(s.id) === v);
+                    if (vnd && !partyName.trim()) setPartyName(vnd.name ?? "");
+                  }}>
+                    <SelectTrigger><SelectValue placeholder="Pilih dari vendor master..." /></SelectTrigger>
+                    <SelectContent>
+                      {(vendorList as any[]).map((s: any) => (
+                        <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Keterangan</Label>
+                  <Textarea rows={1} placeholder="Opsional..." value={notes} onChange={(e) => setNotes(e.target.value)} />
+                </div>
               </div>
               {parseIDR(amountRaw) > 0 && (
                 <div className="rounded-md bg-muted/40 border px-4 py-2 text-xs text-muted-foreground">
-                  Jurnal: <strong>DR Piutang Dana Talangan</strong> {idr(parseIDR(amountRaw))} · <strong>CR {pm === "cash" ? "Kas" : "Bank"}</strong> {idr(parseIDR(amountRaw))}
+                  Jurnal: <strong>DR Piutang Dana Talangan</strong> {idr(parseIDR(amountRaw))} · <strong>CR {
+                    sourceAccountId
+                      ? ((paymentAccounts as any[]).find((a: any) => String(a.id) === sourceAccountId)?.name ?? (pm === "cash" ? "Kas" : "Bank"))
+                      : (pm === "cash" ? "Kas" : "Bank")
+                  }</strong> {idr(parseIDR(amountRaw))}
                 </div>
               )}
               <div className="flex gap-2">
@@ -200,6 +246,8 @@ export default function TalanganPage() {
                   <TableHead>No. Talangan</TableHead>
                   <TableHead>Tanggal</TableHead>
                   <TableHead>Pihak Penerima</TableHead>
+                  <TableHead>Vendor</TableHead>
+                  <TableHead>Sumber Dana</TableHead>
                   <TableHead className="text-right">Nominal</TableHead>
                   <TableHead className="text-right">Terbayar</TableHead>
                   <TableHead className="text-right">Sisa</TableHead>
@@ -208,13 +256,17 @@ export default function TalanganPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {isLoading && <TableRow><TableCell colSpan={8} className="text-center py-10 text-muted-foreground">Memuat...</TableCell></TableRow>}
-                {!isLoading && list.length === 0 && <TableRow><TableCell colSpan={8} className="text-center py-10 text-muted-foreground">Belum ada dana talangan.</TableCell></TableRow>}
+                {isLoading && <TableRow><TableCell colSpan={10} className="text-center py-10 text-muted-foreground">Memuat...</TableCell></TableRow>}
+                {!isLoading && list.length === 0 && <TableRow><TableCell colSpan={10} className="text-center py-10 text-muted-foreground">Belum ada dana talangan.</TableCell></TableRow>}
                 {list.map((row: any) => (
                   <TableRow key={row.id} className="cursor-pointer hover:bg-muted/50" onClick={() => openDetail(row)}>
                     <TableCell className="font-mono text-xs text-primary">{row.advanceNumber}</TableCell>
                     <TableCell className="text-sm">{row.date}</TableCell>
                     <TableCell className="text-sm font-medium">{row.partyName}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{row.vendor?.name ?? "—"}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {row.cashBankAccount?.name ?? (row.paymentMethod === "cash" ? "Kas" : "Bank")}
+                    </TableCell>
                     <TableCell className="text-right font-mono text-sm">{idr(row.amount)}</TableCell>
                     <TableCell className="text-right font-mono text-sm text-emerald-400">{idr(row.paidAmount)}</TableCell>
                     <TableCell className="text-right font-mono text-sm text-amber-400">{idr(row.remainingAmount)}</TableCell>

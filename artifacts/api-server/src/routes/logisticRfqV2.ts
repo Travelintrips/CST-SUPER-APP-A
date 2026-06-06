@@ -34,6 +34,7 @@ import {
   sendVendorSelectedAdminWa,
   sendVendorAwardedWa,
   sendTruckAssignedCustomerWa,
+  sendOpRequestNotification,
   type LogisticOrderData,
 } from "../lib/orderNotification.js";
 
@@ -1458,6 +1459,27 @@ logisticRfqV2Router.get("/rfq/:rfqId/comparison", async (req: Request, res: Resp
   const rfqId = parseInt(req.params.rfqId as string, 10);
   if (isNaN(rfqId)) return res.status(400).json({ message: "rfqId tidak valid" });
 
+  // Ensure vendor_performance table exists (may not have been migrated yet)
+  await db.execute(sql.raw(`
+    CREATE TABLE IF NOT EXISTS vendor_performance (
+      id SERIAL PRIMARY KEY,
+      vendor_id INTEGER NOT NULL REFERENCES suppliers(id) ON DELETE CASCADE,
+      total_orders INTEGER NOT NULL DEFAULT 0,
+      completed_orders INTEGER NOT NULL DEFAULT 0,
+      cancelled_orders INTEGER NOT NULL DEFAULT 0,
+      ontime_percentage NUMERIC(5,2) DEFAULT 0,
+      average_response_minutes NUMERIC(10,2) DEFAULT 0,
+      pod_completeness_score NUMERIC(5,2) DEFAULT 0,
+      eta_accuracy_score NUMERIC(5,2) DEFAULT 0,
+      customer_rating NUMERIC(3,2) DEFAULT 0,
+      order_success_rate NUMERIC(5,2) DEFAULT 0,
+      cancel_rate NUMERIC(5,2) DEFAULT 0,
+      total_complaints INTEGER NOT NULL DEFAULT 0,
+      recommendation_score NUMERIC(5,2) DEFAULT 0,
+      updated_at TIMESTAMP DEFAULT NOW() NOT NULL
+    )
+  `)).catch(() => {});
+
   // Use raw SQL to include freight_shipment_id added via migration
   const rfqRows = await db.execute(sql`
     SELECT *, freight_shipment_id FROM logistic_order_rfqs WHERE id = ${rfqId}
@@ -1943,8 +1965,8 @@ logisticRfqV2Router.post("/rfq/:rfqId/select-vendor", async (req: Request, res: 
     `Admin memilih vendor: ${vendorName} — ${fmtRp(link.offeredPrice ?? link.basicPrice)}`);
 
   // Kirim WA "Penawaran Anda Dipilih" ke vendor
+  const domain = getPreferredDomain() || "cstlogistic.co.id";
   if (vendor?.phone) {
-    const domain = getPreferredDomain() || "cstlogistic.co.id";
     const vendorFormUrl = `https://${domain}/vendor-form/${link.token}`;
     sendVendorAwardedWa({
       vendorName,
@@ -1960,6 +1982,22 @@ logisticRfqV2Router.post("/rfq/:rfqId/select-vendor", async (req: Request, res: 
       fulfillUrl: vendorFormUrl,
     }).catch(() => {});
   }
+
+  // Kirim WA notif ke admin grup bahwa vendor sudah dipilih
+  sendVendorSelectedAdminWa({
+    rfqNumber: rfqRow?.rfqNumber ?? `RFQ#${rfqId}`,
+    orderNumber: orderRow?.orderNumber ?? "",
+    customerName: orderRow?.customerName ?? "—",
+    shipmentType: orderRow?.shipmentType ?? "—",
+    origin: orderRow?.origin ?? "—",
+    destination: orderRow?.destination ?? "—",
+    vendorName,
+    vendorCost: link.offeredPrice ?? link.basicPrice,
+    sellingPrice: sellingPrice ?? null,
+    eta: link.eta ?? null,
+    quoteSentToCustomer: false,
+    forwardVendorUrl: vendor?.phone ? `https://${domain}/vendor-form/${link.token}` : null,
+  }).catch(() => {});
 
   return res.json({ ok: true, selectedVendorName: vendorName });
 });
@@ -2197,6 +2235,35 @@ logisticRfqV2Router.post("/rfq/quote-respond", async (req: Request, res: Respons
       quotedPrice: rfq.quotedPrice ? fmtRp(rfq.quotedPrice) : null,
       notes: notes ?? null,
     }).catch(() => {});
+  }
+
+  // Jika customer approve → kirim otomatis WA OP Request ke vendor
+  if (response === "approved") {
+    const selectedLink = await db.select({
+      id: rfqVendorLinksTable.id,
+      token: rfqVendorLinksTable.token,
+      vendorId: rfqVendorLinksTable.vendorId,
+    }).from(rfqVendorLinksTable)
+      .where(and(eq(rfqVendorLinksTable.rfqId, rfq.id), eq(rfqVendorLinksTable.status, "selected")))
+      .limit(1)
+      .then((r) => r[0]);
+
+    if (selectedLink) {
+      const [selectedVendor] = await db.select({ name: suppliersTable.name, phone: suppliersTable.phone })
+        .from(suppliersTable).where(eq(suppliersTable.id, selectedLink.vendorId));
+
+      if (selectedVendor?.phone) {
+        const opDomain = getPreferredDomain() || "cstlogistic.co.id";
+        const operationalFormLink = `https://${opDomain}/vendor-form/${selectedLink.token}`;
+        sendOpRequestNotification(
+          buildOrderData(order),
+          selectedVendor.name ?? `Vendor #${selectedLink.vendorId}`,
+          selectedVendor.phone,
+          operationalFormLink,
+          null,
+        ).catch(() => {});
+      }
+    }
   }
 
   await logActivity(rfq.id, "customer", order.customerName, `customer_${response}`,

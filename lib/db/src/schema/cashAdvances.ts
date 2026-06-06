@@ -22,6 +22,8 @@ export const cashAdvancesTable = pgTable("cash_advances", {
   cashBankAccountId: integer("cash_bank_account_id").references(
     () => chartOfAccountsTable.id, { onDelete: "set null" }
   ),
+  vendorId: integer("vendor_id"),
+  userId: text("user_id"),
   entryId: integer("entry_id"),
   createdById: text("created_by_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),

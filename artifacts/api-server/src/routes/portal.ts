@@ -94,6 +94,7 @@ async function listByType(type: string) {
       imageUrl: p.imageUrl ?? null,
       mediaItems,
       categories: catMap[p.id] ?? [],
+      currencyCode: p.currencyCode ?? "IDR",
     };
   });
 }

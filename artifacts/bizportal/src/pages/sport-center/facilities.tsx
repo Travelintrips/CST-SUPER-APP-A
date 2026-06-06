@@ -12,7 +12,7 @@ import { Switch } from "@/components/ui/switch";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCompany } from "@/contexts/CompanyContext";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Pencil, Trash2, Activity, Building2, RefreshCw, ArrowLeft } from "lucide-react";
+import { Plus, Pencil, Trash2, Activity, Building2, RefreshCw, ArrowLeft, AlertCircle } from "lucide-react";
 
 const idr = (n: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
@@ -35,12 +35,16 @@ export default function SportCenterFacilities() {
   const [editId, setEditId] = useState<number | null>(null);
   const [form, setForm] = useState<typeof EMPTY>(EMPTY);
 
-  const { data: facilities, isLoading } = useQuery<Facility[]>({
+  const { data: facilities, isLoading, isError, error, refetch } = useQuery<Facility[]>({
     queryKey: ["sport-center-facilities", activeCompanyId],
     queryFn: async () => {
-      const qs = activeCompanyId ? `?companyId=${activeCompanyId}` : "";
+      const cId = activeCompanyId && activeCompanyId > 0 ? activeCompanyId : undefined;
+      const qs = cId ? `?companyId=${cId}` : "";
       const r = await fetch(`/api/sport-center/facilities${qs}`, { credentials: "include" });
-      if (!r.ok) throw new Error("Gagal memuat");
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({}));
+        throw new Error(body.error ?? body.message ?? `HTTP ${r.status}`);
+      }
       return r.json();
     },
   });
@@ -126,6 +130,15 @@ export default function SportCenterFacilities() {
             {Array.from({ length: 3 }).map((_, i) => (
               <Card key={i} className="animate-pulse"><CardContent className="p-5 h-32" /></Card>
             ))}
+          </div>
+        ) : isError ? (
+          <div className="col-span-3 py-16 text-center">
+            <AlertCircle className="h-10 w-10 mx-auto mb-3 text-red-400 opacity-80" />
+            <p className="text-red-400 font-medium mb-1">Gagal memuat fasilitas</p>
+            <p className="text-xs text-muted-foreground mb-4">{(error as Error)?.message}</p>
+            <Button variant="outline" size="sm" onClick={() => refetch()} className="gap-2">
+              <RefreshCw className="h-3.5 w-3.5" /> Coba Lagi
+            </Button>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

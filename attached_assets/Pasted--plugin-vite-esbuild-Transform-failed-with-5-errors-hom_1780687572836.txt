@@ -1,0 +1,53 @@
+[plugin:vite:esbuild] Transform failed with 5 errors:
+/home/runner/workspace/artifacts/bizportal/src/components/layout/AppShell.tsx:1013:10: ERROR: Unexpected closing "Sidebar" tag does not match opening "SidebarHeader" tag
+/home/runner/workspace/artifacts/bizportal/src/components/layout/AppShell.tsx:1121:8: ERROR: Unexpected closing "div" tag does not match opening "Sidebar" tag
+/home/runner/workspace/artifacts/bizportal/src/components/layout/AppShell.tsx:1122:6: ERROR: Unexpected closing "SidebarProvider" tag does not match opening "div" tag
+/home/runner/workspace/artifacts/bizportal/src/components/layout/AppShell.tsx:1124:0: ERROR: The character "}" is not valid inside a JSX element
+/home/runner/workspace/artifacts/bizportal/src/components/layout/AppShell.tsx:1125:0: ERROR: Unexpected end of file before a closing "SidebarProvider" tag
+/home/runner/workspace/artifacts/bizportal/src/components/layout/AppShell.tsx:1013:10
+Unexpected closing "Sidebar" tag does not match opening "SidebarHeader" tag
+1011 |  
+1012 |            <SidebarFooter />
+1013 |          </Sidebar>
+     |            ^
+1014 |  
+1015 |          <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
+
+Unexpected closing "div" tag does not match opening "Sidebar" tag
+1119 |            </div>
+1120 |          </main>
+1121 |        </div>
+     |          ^
+1122 |      </SidebarProvider>
+1123 |    );
+
+Unexpected closing "SidebarProvider" tag does not match opening "div" tag
+1120 |          </main>
+1121 |        </div>
+1122 |      </SidebarProvider>
+     |        ^
+1123 |    );
+1124 |  }
+
+The character "}" is not valid inside a JSX element
+1122 |      </SidebarProvider>
+1123 |    );
+1124 |  }
+     |  ^
+1125 |  
+
+Unexpected end of file before a closing "SidebarProvider" tag
+1123 |    );
+1124 |  }
+1125 |  
+     |  ^
+    at failureErrorWithLog (/home/runner/workspace/node_modules/.pnpm/esbuild@0.27.3/node_modules/esbuild/lib/main.js:1467:15)
+    at /home/runner/workspace/node_modules/.pnpm/esbuild@0.27.3/node_modules/esbuild/lib/main.js:736:50
+    at responseCallbacks.<computed> (/home/runner/workspace/node_modules/.pnpm/esbuild@0.27.3/node_modules/esbuild/lib/main.js:603:9)
+    at handleIncomingPacket (/home/runner/workspace/node_modules/.pnpm/esbuild@0.27.3/node_modules/esbuild/lib/main.js:658:12)
+    at Socket.readFromStdout (/home/runner/workspace/node_modules/.pnpm/esbuild@0.27.3/node_modules/esbuild/lib/main.js:581:7)
+    at Socket.emit (node:events:524:28)
+    at addChunk (node:internal/streams/readable:561:12)
+    at readableAddChunkPushByteMode (node:internal/streams/readable:512:3)
+    at Readable.push (node:internal/streams/readable:392:5)
+    at Pipe.onStreamRead (node:internal/stream_base_commons:191:23)

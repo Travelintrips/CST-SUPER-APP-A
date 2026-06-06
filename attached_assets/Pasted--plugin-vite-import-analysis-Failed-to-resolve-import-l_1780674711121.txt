@@ -1,0 +1,18 @@
+[plugin:vite:import-analysis] Failed to resolve import "@/lib/api" from "src/pages/expense/editor.tsx". Does the file exist?
+/home/runner/workspace/artifacts/bizportal/src/pages/expense/editor.tsx:4:25
+4  |  import { useLocation, useParams } from "wouter";
+5  |  import { useQuery } from "@tanstack/react-query";
+6  |  import { apiFetch } from "@/lib/api";
+   |                            ^
+7  |  import { AppShell } from "@/components/layout/AppShell";
+8  |  import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+    at TransformPluginContext._formatLog (file:///home/runner/workspace/node_modules/.pnpm/vite@7.3.2_@types+node@25.3.5_jiti@2.6.1_lightningcss@1.31.1_terser@5.46.2_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/config.js:29003:43)
+    at TransformPluginContext.error (file:///home/runner/workspace/node_modules/.pnpm/vite@7.3.2_@types+node@25.3.5_jiti@2.6.1_lightningcss@1.31.1_terser@5.46.2_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/config.js:29000:14)
+    at normalizeUrl (file:///home/runner/workspace/node_modules/.pnpm/vite@7.3.2_@types+node@25.3.5_jiti@2.6.1_lightningcss@1.31.1_terser@5.46.2_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/config.js:27123:18)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async file:///home/runner/workspace/node_modules/.pnpm/vite@7.3.2_@types+node@25.3.5_jiti@2.6.1_lightningcss@1.31.1_terser@5.46.2_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/config.js:27181:32
+    at async Promise.all (index 4)
+    at async TransformPluginContext.transform (file:///home/runner/workspace/node_modules/.pnpm/vite@7.3.2_@types+node@25.3.5_jiti@2.6.1_lightningcss@1.31.1_terser@5.46.2_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/config.js:27149:4)
+    at async EnvironmentPluginContainer.transform (file:///home/runner/workspace/node_modules/.pnpm/vite@7.3.2_@types+node@25.3.5_jiti@2.6.1_lightningcss@1.31.1_terser@5.46.2_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/config.js:28801:14)
+    at async loadAndTransform (file:///home/runner/workspace/node_modules/.pnpm/vite@7.3.2_@types+node@25.3.5_jiti@2.6.1_lightningcss@1.31.1_terser@5.46.2_tsx@4.21.0_yaml@2.8.3/node_modules/vite/dist/node/chunks/config.js:22670:26)
+    at async viteTransformMiddleware (file:///home/runner/workspace/node_modules/.pnpm/vite@7.3.2_@types+node@25.3.5_jiti@2.6.1_lightning

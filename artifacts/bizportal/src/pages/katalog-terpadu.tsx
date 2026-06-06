@@ -130,7 +130,7 @@ function MasterItemTab({ initialSearch = "" }: { initialSearch?: string }) {
   const [editingItem, setEditingItem] = useState<{ id: number; name: string; sku: string; itemType: string; subcategory: string | null; unit: string; price: number; isActive: boolean; description: string | null } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; name: string } | null>(null);
 
-  const [form, setForm] = useState({ name: "", sku: "", itemType: "barang", kategori: "", subcategory: "", unit: "pcs", price: "0", isActive: true, description: "" });
+  const [form, setForm] = useState({ name: "", sku: "", itemType: "barang", kategori: "", subcategory: "", unit: "pcs", price: "0", isActive: true, description: "", currencyCode: "IDR" });
 
   const { data: _productsPaginated, isLoading } = useListProducts({ limit: 500 }, { query: { queryKey: getListProductsQueryKey({}) } });
   const products = _productsPaginated?.data ?? [];
@@ -158,14 +158,14 @@ function MasterItemTab({ initialSearch = "" }: { initialSearch?: string }) {
 
   const openCreate = () => {
     setEditingItem(null);
-    setForm({ name: "", sku: "", itemType: "barang", kategori: "", subcategory: "", unit: "pcs", price: "0", isActive: true, description: "" });
+    setForm({ name: "", sku: "", itemType: "barang", kategori: "", subcategory: "", unit: "pcs", price: "0", isActive: true, description: "", currencyCode: "IDR" });
     setDialogOpen(true);
   };
 
   const openEdit = (p: typeof products[0]) => {
     setEditingItem({ id: p.id, name: p.name, sku: p.sku, itemType: p.itemType, subcategory: p.subcategory ?? null, unit: p.unit, price: p.price, isActive: p.isActive, description: p.description ?? null });
     const existingKategori = (p.categories as string[] | undefined)?.[0] ?? "";
-    setForm({ name: p.name, sku: p.sku, itemType: p.itemType, kategori: existingKategori, subcategory: p.subcategory ?? "", unit: p.unit, price: String(p.price), isActive: p.isActive, description: p.description ?? "" });
+    setForm({ name: p.name, sku: p.sku, itemType: p.itemType, kategori: existingKategori, subcategory: p.subcategory ?? "", unit: p.unit, price: String(p.price), isActive: p.isActive, description: p.description ?? "", currencyCode: (p as unknown as { currencyCode?: string }).currencyCode ?? "IDR" });
     setDialogOpen(true);
   };
 
@@ -176,7 +176,7 @@ function MasterItemTab({ initialSearch = "" }: { initialSearch?: string }) {
     }
     const kategoriVal = (form.kategori && form.kategori !== "_none") ? form.kategori : null;
     const subcategoryVal = (form.subcategory && form.subcategory !== "_none") ? form.subcategory : null;
-    const body = { name: form.name.trim(), sku: form.sku.trim(), itemType: form.itemType as "barang" | "jasa", subcategory: subcategoryVal, unit: form.unit, price: Number(form.price) || 0, isActive: form.isActive, description: form.description || null, categories: kategoriVal ? [kategoriVal] : [], stock: 0, unitOptions: [] };
+    const body = { name: form.name.trim(), sku: form.sku.trim(), itemType: form.itemType as "barang" | "jasa", subcategory: subcategoryVal, unit: form.unit, price: Number(form.price) || 0, isActive: form.isActive, description: form.description || null, categories: kategoriVal ? [kategoriVal] : [], stock: 0, unitOptions: [], currencyCode: form.currencyCode || "IDR" };
     try {
       if (editingItem) {
         await updateMut.mutateAsync({ id: editingItem.id, data: body });
@@ -356,8 +356,17 @@ function MasterItemTab({ initialSearch = "" }: { initialSearch?: string }) {
                 <SelectContent>{UNITS_SALES.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
               </Select>
             </div>
-            <div className="col-span-2 space-y-1">
-              <Label>Harga Jual (Rp)</Label>
+            <div className="space-y-1">
+              <Label>Mata Uang</Label>
+              <Select value={form.currencyCode} onValueChange={(v) => setForm(f => ({ ...f, currencyCode: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {["IDR","USD","EUR","SGD","CNY","JPY","MYR","AUD"].map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label>Harga Jual</Label>
               <Input type="number" value={form.price} onChange={(e) => setForm(f => ({ ...f, price: e.target.value }))} placeholder="0" />
             </div>
             <div className="col-span-2 space-y-1">

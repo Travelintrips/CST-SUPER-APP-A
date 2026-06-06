@@ -73,6 +73,8 @@ function useUsdRate(): number {
   return rate;
 }
 
+const CURRENCIES = ["IDR", "USD", "EUR", "SGD", "CNY", "JPY", "MYR", "AUD"];
+
 interface ItemForm {
   name: string;
   sku: string;
@@ -95,6 +97,7 @@ interface ItemForm {
   widthCm: string;
   heightCm: string;
   goodsType: string;
+  currencyCode: string;
 }
 
 interface InlineEdit {
@@ -198,6 +201,7 @@ const emptyForm = (): ItemForm => ({
   widthCm: "",
   heightCm: "",
   goodsType: "",
+  currencyCode: "IDR",
 });
 
 function parseMediaItems(raw: MediaItem[] | string | null | undefined): MediaItem[] {
@@ -277,6 +281,7 @@ function formFromProduct(p: Product): ItemForm {
     widthCm:   p.widthCm   != null ? String(p.widthCm)   : "",
     heightCm:  p.heightCm  != null ? String(p.heightCm)  : "",
     goodsType: p.goodsType ?? "",
+    currencyCode: (p as unknown as { currencyCode?: string }).currencyCode ?? "IDR",
   };
 }
 
@@ -866,6 +871,7 @@ export default function SalesItemsPage() {
       widthCm:   form.widthCm   !== "" ? Number(form.widthCm)   : null,
       heightCm:  form.heightCm  !== "" ? Number(form.heightCm)  : null,
       goodsType: form.goodsType.trim() || null,
+      currencyCode: form.currencyCode || "IDR",
     };
 
     try {
@@ -1511,6 +1517,19 @@ export default function SalesItemsPage() {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
+                <Label className="text-slate-300">Mata Uang</Label>
+                <Select value={form.currencyCode} onValueChange={(v) => setF("currencyCode", v)}>
+                  <SelectTrigger className="bg-slate-800 border-slate-600 text-slate-200">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-slate-800 border-slate-700">
+                    {CURRENCIES.map((c) => (
+                      <SelectItem key={c} value={c}>{c}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
                 <Label className="text-slate-300">Harga Jual Default</Label>
                 <Input
                   type="number"
@@ -1521,7 +1540,7 @@ export default function SalesItemsPage() {
                 />
               </div>
               {form.itemType === "barang" && (
-                <div className="space-y-1.5">
+                <div className="space-y-1.5 col-span-2">
                   <Label className="text-slate-300">Stok</Label>
                   <Input
                     type="number"

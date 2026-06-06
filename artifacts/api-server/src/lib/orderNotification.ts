@@ -2111,6 +2111,7 @@ export interface ProductOrderData {
   email: string;
   phone: string;
   shippingAddress: string;
+  shippingMethod?: string | null;
   notes?: string | null;
   grandTotal: number;
   subtotal?: number | null;
@@ -2203,6 +2204,54 @@ export async function sendProductOrderWaNotification(order: ProductOrderData): P
   if (order.phone) {
     sendWhatsApp(order.phone, renderTemplate(tplCustomer, vars)).catch((err: unknown) =>
       logger.error({ err }, "WA product_order_new (customer) failed"),
+    );
+  }
+}
+
+// ── sendProductOrderPickupWaNotification ─────────────────────────────────────
+export async function sendProductOrderPickupWaNotification(order: {
+  orderNumber: string;
+  customerName: string;
+  phone: string;
+  email: string;
+  grandTotal: number;
+  notes?: string | null;
+  items: { productName: string; qty: number; unit?: string | null; subtotal: number; sku?: string | null }[];
+  orderUrl?: string;
+}): Promise<void> {
+  const itemList = order.items
+    .map((i) => {
+      const skuPart = i.sku ? ` [${i.sku}]` : "";
+      return `• ${i.productName}${skuPart} — ${i.qty} ${i.unit ?? "pcs"} (Rp ${formatRupiah(i.subtotal)})`;
+    })
+    .join("\n");
+
+  const adminGroupWa = await getAdminGroupWa();
+  const msg = [
+    "🏭 *[AMBIL SENDIRI] PESANAN PRODUK BARU*",
+    "━━━━━━━━━━━━━━━━━━",
+    `No. Order   : \`${order.orderNumber}\``,
+    `👤 Customer  : *${order.customerName}*`,
+    `📞 HP        : ${order.phone}`,
+    `📧 Email     : ${order.email}`,
+    "━━━━━━━━━━━━━━━━━━",
+    "⚠️ *Customer akan AMBIL SENDIRI di gudang*",
+    "Mohon tim gudang menyiapkan barang sebelum customer tiba.",
+    "━━━━━━━━━━━━━━━━━━",
+    "📦 Detail Produk:",
+    itemList,
+    "────────────────",
+    `💰 Grand Total: *Rp ${formatRupiah(order.grandTotal)}*`,
+    order.notes ? `📝 Catatan     : ${order.notes}` : null,
+    "━━━━━━━━━━━━━━━━━━",
+    order.orderUrl ? `🔗 Lihat di BizPortal:\n${order.orderUrl}` : null,
+    "",
+    `_Dikirim: ${nowWIB()}_`,
+  ].filter((l) => l !== null).join("\n");
+
+  if (adminGroupWa) {
+    sendWhatsApp(adminGroupWa, msg).catch((err: unknown) =>
+      logger.error({ err }, "WA product_order_pickup (admin_group) failed"),
     );
   }
 }

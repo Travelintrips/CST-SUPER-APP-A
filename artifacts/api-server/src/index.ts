@@ -1,7 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { seedAccountingDefaults, seedAdditionalTaxes } from "./lib/accountingSeed";
-import { fixExpenseCategoryDefaultTax } from "./routes/expenses.js";
 import { seedLogisticsServiceItems } from "./lib/seedLogisticsItems";
 import { seedCatalogProducts } from "./lib/seedCatalogProducts";
 import { seedDemoData, seedDemoDrivers } from "./lib/seedDemoData";
@@ -244,6 +243,235 @@ async function runCriticalPreStartMigrations() {
       END IF;
     END $$;
   `);
+
+  // Add missing columns to logistic_orders (multi-mode, product, AI, truck fields)
+  await db.execute(sql`
+    DO $$ BEGIN
+      IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'logistic_orders') THEN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='logistic_orders' AND column_name='transport_mode') THEN
+          ALTER TABLE logistic_orders ADD COLUMN transport_mode TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='logistic_orders' AND column_name='origin_district') THEN
+          ALTER TABLE logistic_orders ADD COLUMN origin_district TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='logistic_orders' AND column_name='dest_district') THEN
+          ALTER TABLE logistic_orders ADD COLUMN dest_district TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='logistic_orders' AND column_name='etd') THEN
+          ALTER TABLE logistic_orders ADD COLUMN etd TIMESTAMPTZ;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='logistic_orders' AND column_name='eta') THEN
+          ALTER TABLE logistic_orders ADD COLUMN eta TIMESTAMPTZ;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='logistic_orders' AND column_name='origin_port') THEN
+          ALTER TABLE logistic_orders ADD COLUMN origin_port TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='logistic_orders' AND column_name='dest_port') THEN
+          ALTER TABLE logistic_orders ADD COLUMN dest_port TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='logistic_orders' AND column_name='options_token') THEN
+          ALTER TABLE logistic_orders ADD COLUMN options_token TEXT UNIQUE;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='logistic_orders' AND column_name='options_sent_at') THEN
+          ALTER TABLE logistic_orders ADD COLUMN options_sent_at TIMESTAMPTZ;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='logistic_orders' AND column_name='direction') THEN
+          ALTER TABLE logistic_orders ADD COLUMN direction TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='logistic_orders' AND column_name='is_dangerous_good') THEN
+          ALTER TABLE logistic_orders ADD COLUMN is_dangerous_good BOOLEAN DEFAULT FALSE;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='logistic_orders' AND column_name='service_category') THEN
+          ALTER TABLE logistic_orders ADD COLUMN service_category TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='logistic_orders' AND column_name='cargo_special_tags') THEN
+          ALTER TABLE logistic_orders ADD COLUMN cargo_special_tags TEXT[];
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='logistic_orders' AND column_name='required_docs') THEN
+          ALTER TABLE logistic_orders ADD COLUMN required_docs TEXT[];
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='logistic_orders' AND column_name='truck_vendor_id') THEN
+          ALTER TABLE logistic_orders ADD COLUMN truck_vendor_id INTEGER;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='logistic_orders' AND column_name='truck_price') THEN
+          ALTER TABLE logistic_orders ADD COLUMN truck_price NUMERIC(14,2);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='logistic_orders' AND column_name='truck_source') THEN
+          ALTER TABLE logistic_orders ADD COLUMN truck_source TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='logistic_orders' AND column_name='product_price') THEN
+          ALTER TABLE logistic_orders ADD COLUMN product_price NUMERIC(14,2);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='logistic_orders' AND column_name='ai_session_token') THEN
+          ALTER TABLE logistic_orders ADD COLUMN ai_session_token TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='logistic_orders' AND column_name='payment_type') THEN
+          ALTER TABLE logistic_orders ADD COLUMN payment_type TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='logistic_orders' AND column_name='payment_method') THEN
+          ALTER TABLE logistic_orders ADD COLUMN payment_method TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='logistic_orders' AND column_name='nama_penerima') THEN
+          ALTER TABLE logistic_orders ADD COLUMN nama_penerima TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='logistic_orders' AND column_name='nomor_penerima') THEN
+          ALTER TABLE logistic_orders ADD COLUMN nomor_penerima TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='logistic_orders' AND column_name='pickup_date') THEN
+          ALTER TABLE logistic_orders ADD COLUMN pickup_date TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='logistic_orders' AND column_name='pickup_time') THEN
+          ALTER TABLE logistic_orders ADD COLUMN pickup_time TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='logistic_orders' AND column_name='truck_type') THEN
+          ALTER TABLE logistic_orders ADD COLUMN truck_type TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='logistic_orders' AND column_name='markup_percent') THEN
+          ALTER TABLE logistic_orders ADD COLUMN markup_percent NUMERIC(5,2) DEFAULT 20;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='logistic_orders' AND column_name='final_price') THEN
+          ALTER TABLE logistic_orders ADD COLUMN final_price NUMERIC(14,2);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='logistic_orders' AND column_name='final_selling_price') THEN
+          ALTER TABLE logistic_orders ADD COLUMN final_selling_price NUMERIC(14,2);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='logistic_orders' AND column_name='quotation_sent_at') THEN
+          ALTER TABLE logistic_orders ADD COLUMN quotation_sent_at TIMESTAMP;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='logistic_orders' AND column_name='customer_confirm_token') THEN
+          ALTER TABLE logistic_orders ADD COLUMN customer_confirm_token TEXT UNIQUE;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='logistic_orders' AND column_name='customer_confirm_status') THEN
+          ALTER TABLE logistic_orders ADD COLUMN customer_confirm_status TEXT DEFAULT 'pending';
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='logistic_orders' AND column_name='customer_confirmed_at') THEN
+          ALTER TABLE logistic_orders ADD COLUMN customer_confirmed_at TIMESTAMP;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='logistic_orders' AND column_name='approved_quote_id') THEN
+          ALTER TABLE logistic_orders ADD COLUMN approved_quote_id INTEGER;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='logistic_orders' AND column_name='admin_approval_status') THEN
+          ALTER TABLE logistic_orders ADD COLUMN admin_approval_status TEXT DEFAULT 'pending';
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='logistic_orders' AND column_name='approved_at') THEN
+          ALTER TABLE logistic_orders ADD COLUMN approved_at TIMESTAMP;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='logistic_orders' AND column_name='approved_vendor_id') THEN
+          ALTER TABLE logistic_orders ADD COLUMN approved_vendor_id INTEGER;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='logistic_orders' AND column_name='source') THEN
+          ALTER TABLE logistic_orders ADD COLUMN source TEXT NOT NULL DEFAULT 'manual';
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='logistic_orders' AND column_name='jam_order') THEN
+          ALTER TABLE logistic_orders ADD COLUMN jam_order TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='logistic_orders' AND column_name='required_date') THEN
+          ALTER TABLE logistic_orders ADD COLUMN required_date TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='logistic_orders' AND column_name='jumlah_koli') THEN
+          ALTER TABLE logistic_orders ADD COLUMN jumlah_koli INTEGER;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='logistic_orders' AND column_name='cargo_description') THEN
+          ALTER TABLE logistic_orders ADD COLUMN cargo_description TEXT;
+        END IF;
+      END IF;
+    END $$;
+  `);
+
+  // Add missing columns to drivers table
+  await db.execute(sql`
+    DO $$ BEGIN
+      IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'drivers') THEN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='drivers' AND column_name='company_id') THEN
+          ALTER TABLE drivers ADD COLUMN company_id INTEGER;
+        END IF;
+      END IF;
+    END $$;
+  `);
+
+  // Add kategori to vendor_catalog_items
+  await db.execute(sql`
+    DO $$ BEGIN
+      IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'vendor_catalog_items') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'vendor_catalog_items' AND column_name = 'kategori'
+        ) THEN
+          ALTER TABLE vendor_catalog_items ADD COLUMN kategori TEXT;
+        END IF;
+      END IF;
+    END $$;
+  `);
+
+  // Add lead_time_days and stock_availability to rfq_vendor_links
+  await db.execute(sql`
+    DO $$ BEGIN
+      IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'rfq_vendor_links') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'rfq_vendor_links' AND column_name = 'lead_time_days'
+        ) THEN
+          ALTER TABLE rfq_vendor_links ADD COLUMN lead_time_days INTEGER;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'rfq_vendor_links' AND column_name = 'stock_availability'
+        ) THEN
+          ALTER TABLE rfq_vendor_links ADD COLUMN stock_availability TEXT DEFAULT 'unknown';
+        END IF;
+      END IF;
+    END $$;
+  `);
+
+  // Add template columns to logistic_order_rfqs
+  await db.execute(sql`
+    DO $$ BEGIN
+      IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'logistic_order_rfqs') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'logistic_order_rfqs' AND column_name = 'template_id'
+        ) THEN
+          ALTER TABLE logistic_order_rfqs ADD COLUMN template_id INTEGER;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'logistic_order_rfqs' AND column_name = 'template_version'
+        ) THEN
+          ALTER TABLE logistic_order_rfqs ADD COLUMN template_version TEXT;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'logistic_order_rfqs' AND column_name = 'template_snapshot'
+        ) THEN
+          ALTER TABLE logistic_order_rfqs ADD COLUMN template_snapshot JSONB;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'logistic_order_rfqs' AND column_name = 'created_by_user_id'
+        ) THEN
+          ALTER TABLE logistic_order_rfqs ADD COLUMN created_by_user_id TEXT;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'logistic_order_rfqs' AND column_name = 'created_by_user_name'
+        ) THEN
+          ALTER TABLE logistic_order_rfqs ADD COLUMN created_by_user_name TEXT;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'logistic_order_rfqs' AND column_name = 'opened_vendor_ids'
+        ) THEN
+          ALTER TABLE logistic_order_rfqs ADD COLUMN opened_vendor_ids INTEGER[] NOT NULL DEFAULT '{}';
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'logistic_order_rfqs' AND column_name = 'vendor_ids'
+        ) THEN
+          ALTER TABLE logistic_order_rfqs ADD COLUMN vendor_ids INTEGER[] NOT NULL DEFAULT '{}';
+        END IF;
+      END IF;
+    END $$;
+  `);
 }
 
 async function startServer() {
@@ -367,9 +595,6 @@ async function startServer() {
     }))
     .then(() => seedAdditionalTaxes().catch((err) => {
       logger.warn({ err }, "Additional tax seed failed (non-fatal)");
-    }))
-    .then(() => fixExpenseCategoryDefaultTax().catch((err) => {
-      logger.warn({ err }, "Expense category default tax fix failed (non-fatal)");
     }))
     .then(() => seedUom().catch((err) => {
       logger.warn({ err }, "UOM seed failed (non-fatal)");

@@ -16,7 +16,7 @@ import { eq, ilike, and, or, sql } from "drizzle-orm";
 import { resolveTemplate, resolveAllTemplates, validateTemplatePayload, CATEGORY_LABELS } from "@workspace/product-templates";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { getPreferredDomain } from "../lib/domain";
-import { sendProductOrderWaNotification, sendProductOrderStatusUpdateWa, sendProductVendorResponseAdminWa, sendInvoiceIssuedNotification } from "../lib/orderNotification";
+import { sendProductOrderWaNotification, sendProductOrderStatusUpdateWa, sendProductVendorResponseAdminWa, sendInvoiceIssuedNotification, sendProductOrderPickupWaNotification } from "../lib/orderNotification";
 import { sendMail, isSmtpConfigured } from "../lib/mailer";
 import { logger } from "../lib/logger";
 import { saveAndBroadcast } from "../lib/notificationStore";
@@ -85,6 +85,12 @@ db.execute(sql`
 db.execute(sql`
   ALTER TABLE portal_product_vendor_responses
     ADD COLUMN IF NOT EXISTS vendor_phone TEXT
+`).catch(() => {});
+
+// Add shipping_method column
+db.execute(sql`
+  ALTER TABLE portal_product_orders
+    ADD COLUMN IF NOT EXISTS shipping_method TEXT
 `).catch(() => {});
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -435,7 +441,7 @@ portalProductOrdersRouter.get("/products", async (req: Request, res: Response) =
 // ── POST /api/portal-product/orders — buat order baru (public) ───────────────
 portalProductOrdersRouter.post("/orders", async (req: Request, res: Response) => {
   const {
-    customerName, email, phone, shippingAddress, notes, items,
+    customerName, email, phone, shippingAddress, shippingMethod, notes, items,
     productCategory, templateId: _tid, templateVersion: _tv,
     customFieldValues, uploadedDocuments, checklistStatus,
     packagingNotes, conditionalFlags,
@@ -443,7 +449,8 @@ portalProductOrdersRouter.post("/orders", async (req: Request, res: Response) =>
     customerName?: string;
     email?: string;
     phone?: string;
-    shippingAddress?: string;
+    shippingAddress?: string | null;
+    shippingMethod?: string;
     notes?: string;
     items?: { productId?: number; productName: string; productSku?: string; unit?: string; unitPrice: number; qty: number; subtotal: number; weightKg?: number | null; lengthCm?: number | null; widthCm?: number | null; heightCm?: number | null; goodsType?: string | null }[];
     productCategory?: string;
@@ -456,9 +463,10 @@ portalProductOrdersRouter.post("/orders", async (req: Request, res: Response) =>
     conditionalFlags?: Record<string, string | number | boolean>;
   };
 
-  if (!customerName?.trim() || !email?.trim() || !phone?.trim() || !shippingAddress?.trim()) {
-    return res.status(400).json({ message: "customerName, email, phone, shippingAddress wajib diisi" });
+  if (!customerName?.trim() || !email?.trim() || !phone?.trim()) {
+    return res.status(400).json({ message: "customerName, email, phone wajib diisi" });
   }
+  const isPickup = shippingMethod === "pickup" || !shippingAddress?.trim();
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ message: "Minimal satu produk harus dipilih" });
   }
@@ -523,7 +531,7 @@ portalProductOrdersRouter.post("/orders", async (req: Request, res: Response) =>
       customerName: customerName.trim(),
       email: email.trim(),
       phone: phone.trim(),
-      shippingAddress: shippingAddress.trim(),
+      shippingAddress: shippingAddress?.trim() ?? (isPickup ? "AMBIL SENDIRI" : ""),
       notes: notes?.trim() ?? null,
       subtotal: String(subtotal),
       grandTotal: String(grandTotal),
@@ -539,6 +547,8 @@ portalProductOrdersRouter.post("/orders", async (req: Request, res: Response) =>
       templateSnapshot: resolvedTpl as unknown as Record<string, unknown>,
     } as any)
     .returning();
+
+  await db.execute(sql`UPDATE portal_product_orders SET shipping_method = ${shippingMethod ?? (isPickup ? "pickup" : "delivery")} WHERE id = ${order.id}`);
 
   await db.execute(sql`UPDATE portal_product_orders SET tracking_token = ${trackingToken} WHERE id = ${order.id}`);
 
@@ -584,9 +594,30 @@ portalProductOrdersRouter.post("/orders", async (req: Request, res: Response) =>
     createdAt: (order.createdAt as Date).toISOString(),
   }).catch(() => {});
 
-  sendProductOrderNotification(orderOut, itemsOut).catch((err: unknown) => {
-    req.log?.error({ err }, "sendProductOrderNotification failed");
-  });
+  if (isPickup) {
+    const domain = getPreferredDomain();
+    const orderUrl = domain ? `https://${domain}/bizportal/logistics/portal-orders` : undefined;
+    sendProductOrderPickupWaNotification({
+      orderNumber,
+      customerName: customerName.trim(),
+      phone: phone.trim(),
+      email: email.trim(),
+      grandTotal,
+      notes: notes?.trim() ?? null,
+      items: itemsOut.map((i) => ({
+        productName: i.productName,
+        qty: i.qty,
+        unit: i.unit ?? null,
+        subtotal: i.subtotal,
+        sku: i.productSku ?? null,
+      })),
+      orderUrl,
+    }).catch((err: unknown) => req.log?.error({ err }, "WA pickup notification failed"));
+  } else {
+    sendProductOrderNotification(orderOut, itemsOut).catch((err: unknown) => {
+      req.log?.error({ err }, "sendProductOrderNotification failed");
+    });
+  }
 
   // Kirim email dengan link tracking
   if (isSmtpConfigured() && email?.trim() && trackingUrl) {

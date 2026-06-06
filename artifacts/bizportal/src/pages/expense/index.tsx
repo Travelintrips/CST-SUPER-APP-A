@@ -22,7 +22,7 @@ import { usePrefetchOnHover } from "@/hooks/use-prefetch-on-hover";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useCompany } from "@/contexts/CompanyContext";
-import { ShoppingCart, Ship, Plus, Receipt, Search, Trash2, X, CalendarRange, Zap, Wallet, HandCoins, Building2, Landmark, Package, ShieldCheck, LayoutDashboard, Layers, PieChart, Banknote, TrendingDown } from "lucide-react";
+import { ShoppingCart, Ship, Plus, Receipt, Search, Trash2, X, CalendarRange, Zap, Wallet, HandCoins, Building2, Landmark, Package, ShieldCheck, LayoutDashboard, Layers, PieChart, Banknote, TrendingDown, TrendingUp } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -35,6 +35,7 @@ const STATUS_LABELS: Record<string, string> = {
   draft: "Draft",
   submitted: "Diajukan",
   approved: "Disetujui",
+  pending_approval: "Menunggu Approval",
   posted: "Diposting",
   paid: "Lunas",
   rejected: "Ditolak",
@@ -44,6 +45,7 @@ const STATUS_COLORS: Record<string, string> = {
   draft: "bg-slate-800 text-slate-300 border-slate-600",
   submitted: "bg-sky-900/40 text-sky-300 border-sky-600",
   approved: "bg-indigo-900/40 text-indigo-300 border-indigo-600",
+  pending_approval: "bg-amber-900/40 text-amber-300 border-amber-600",
   posted: "bg-emerald-900/40 text-emerald-300 border-emerald-600",
   paid: "bg-green-900/50 text-green-300 border-green-600",
   rejected: "bg-red-900/40 text-red-300 border-red-600",
@@ -53,10 +55,15 @@ const TYPE_LABELS: Record<string, string> = {
   vendor_bill: "Tagihan Vendor",
   reimbursement: "Reimburse",
   internal: "Internal",
+  routine: "Rutin / Kas",
+  kasbon: "Kasbon",
+  talangan: "Dana Talangan",
+  fixed_asset: "Aset Tetap",
 };
 
 const LS_STATUS_FILTER    = "expense_list_statusFilter";
 const LS_TYPE_FILTER      = "expense_list_typeFilter";
+const LS_TX_TYPE_FILTER   = "expense_list_txTypeFilter";
 const LS_CAT_FILTER       = "expense_list_catFilter";
 const LS_SALES_DOC_FILTER = "expense_list_salesDocFilter";
 const LS_SHIPMENT_FILTER  = "expense_list_shipmentFilter";
@@ -111,10 +118,17 @@ export default function ExpenseListPage() {
       return v && (v === "all" || /^\d+$/.test(v)) ? v : "all";
     } catch { return "all"; }
   });
+  const [txTypeFilter, setTxTypeFilter] = useState(() => {
+    try {
+      const v = localStorage.getItem(LS_TX_TYPE_FILTER);
+      return v && ["all", "expense", "income"].includes(v) ? v : "all";
+    } catch { return "all"; }
+  });
 
   const { data: expenses = [], isLoading } = useListExpenses({
     status: statusFilter !== "all" ? statusFilter : undefined,
     expenseType: typeFilter !== "all" ? typeFilter : undefined,
+    transactionType: txTypeFilter !== "all" ? txTypeFilter : undefined,
     categoryId: catFilter !== "all" ? Number(catFilter) : undefined,
     salesDocId: salesDocFilter !== "all" ? Number(salesDocFilter) : undefined,
     shipmentId: shipmentFilter !== "all" ? Number(shipmentFilter) : undefined,
@@ -328,6 +342,20 @@ export default function ExpenseListPage() {
               ))}
             </SelectContent>
           </Select>
+          <Select value={txTypeFilter} onValueChange={(v) => { setTxTypeFilter(v); try { localStorage.setItem(LS_TX_TYPE_FILTER, v); } catch {} }}>
+            <SelectTrigger className="w-[170px]">
+              <SelectValue placeholder="Semua Jenis" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Pengeluaran & Penerimaan</SelectItem>
+              <SelectItem value="expense">
+                <span className="flex items-center gap-1.5"><TrendingDown size={12} className="text-red-400" />Pengeluaran</span>
+              </SelectItem>
+              <SelectItem value="income">
+                <span className="flex items-center gap-1.5"><TrendingUp size={12} className="text-emerald-400" />Penerimaan</span>
+              </SelectItem>
+            </SelectContent>
+          </Select>
           <Select value={catFilter} onValueChange={(v) => { setCatFilter(v); try { localStorage.setItem(LS_CAT_FILTER, v); } catch {} }}>
             <SelectTrigger className="w-[180px]">
               <SelectValue placeholder="Semua kategori" />
@@ -378,6 +406,7 @@ export default function ExpenseListPage() {
                   <TableHead>Vendor/Karyawan</TableHead>
                   <TableHead>Deskripsi</TableHead>
                   <TableHead>Kategori</TableHead>
+                  <TableHead>Sumber Dana</TableHead>
                   <TableHead>Job / Referensi</TableHead>
                   <TableHead className="text-right">Total</TableHead>
                   <TableHead>Status</TableHead>
@@ -387,17 +416,18 @@ export default function ExpenseListPage() {
               <TableBody>
                 {isLoading && (
                   <TableRow>
-                    <TableCell colSpan={10} className="text-center py-10 text-muted-foreground">Memuat data...</TableCell>
+                    <TableCell colSpan={11} className="text-center py-10 text-muted-foreground">Memuat data...</TableCell>
                   </TableRow>
                 )}
                 {!isLoading && expenses.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={10} className="text-center py-10 text-muted-foreground">
+                    <TableCell colSpan={11} className="text-center py-10 text-muted-foreground">
                       Belum ada expense. Klik "Buat Expense" untuk memulai.
                     </TableCell>
                   </TableRow>
                 )}
                 {expenses.map((exp) => {
+                  const expAny = exp as any;
                   const cat = cats.find((c) => c.id === exp.categoryId);
                   return (
                     <TableRow key={exp.id} className="cursor-pointer hover:bg-muted/50" {...prefetchHover(getGetExpenseQueryOptions(exp.id))}>
@@ -408,14 +438,29 @@ export default function ExpenseListPage() {
                       </TableCell>
                       <TableCell className="text-sm">{exp.date}</TableCell>
                       <TableCell>
-                        <Badge variant="outline" className="text-xs">{TYPE_LABELS[exp.expenseType] ?? exp.expenseType}</Badge>
+                        <div className="flex flex-col gap-0.5">
+                          <Badge variant="outline" className="text-xs">{TYPE_LABELS[exp.expenseType] ?? exp.expenseType}</Badge>
+                          {(expAny.transactionType === "income") ? (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-400">
+                              <TrendingUp size={10} />Penerimaan
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-red-400">
+                              <TrendingDown size={10} />Pengeluaran
+                            </span>
+                          )}
+                        </div>
                       </TableCell>
-                      <TableCell className="text-sm">{exp.vendorEmployee ?? "—"}</TableCell>
+                      <TableCell className="text-sm">{expAny.vendor?.name ?? expAny.user?.name ?? exp.vendorEmployee ?? "—"}</TableCell>
                       <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">{exp.description ?? "—"}</TableCell>
                       <TableCell>
-                        {cat ? (
-                          <Badge variant="secondary" className="text-xs">{cat.name}</Badge>
-                        ) : <span className="text-xs text-muted-foreground">—</span>}
+                        {expAny.categoryName
+                          ? <Badge variant="secondary" className="text-xs">{expAny.categoryName}</Badge>
+                          : cat ? <Badge variant="secondary" className="text-xs">{cat.name}</Badge>
+                          : <span className="text-xs text-muted-foreground">—</span>}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {expAny.sourceAccountName ?? expAny.sourceAccount?.name ?? "—"}
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-col gap-0.5">

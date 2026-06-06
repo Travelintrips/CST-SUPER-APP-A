@@ -1,0 +1,55 @@
+TASK: Perbaiki Laporan Revenue Sport Center agar tampil lengkap
+
+Tujuan:
+- Semua pembayaran Sport Center muncul di dashboard Revenue
+- Tampilkan kolom baru:
+  - Tanggal Booking
+  - Sumber Fasilitas (nama fasilitas)
+- Semua transaksi sudah sinkron dengan tabel accounting_entries
+- KPI Live Revenue tetap konsisten
+
+Instruksi Backend:
+1. Endpoint GET /api/sport-center/reports/revenue:
+   - LEFT JOIN sport_facilities f ON f.id = sb.facility_id → ambil f.name sebagai "Sumber Fasilitas"
+   - Gunakan fallback sb.facility_name jika join gagal
+   - Pastikan booking_date tersedia → tampilkan sebagai "Tanggal Booking"
+   - Rename sp.status → payment_status
+   - Filter source='SPORT_CENTER' dan company_id valid
+
+2. Endpoint POST /api/sport-center/payments:
+   - Pastikan insert payment memiliki:
+     - source='SPORT_CENTER'
+     - company_id sesuai booking
+     - payment_status='paid'
+     - paid_at = COALESCE(payment_date, NOW())
+   - Update sport_bookings.payment_status='paid'
+   - Fire-and-forget:
+     - postSportCenterBookingWithTax() → jurnal ke accounting_entries
+     - insertAccountingPaymentForSportCenter() → tampil di Finance → Payments
+   - Sync Supabase: syncBookingUpsert() → update sport_center_bookings
+   - Audit log: catat booking_id, amount, method, payment_number, source
+
+Instruksi Frontend:
+1. Table Laporan Revenue:
+   - Tambahkan kolom:
+     - Tanggal Booking setelah Pelanggan
+     - Sumber Fasilitas di ujung kanan
+   - Kolom Status → menampilkan payment_status dengan badge warna:
+     - Hijau = Lunas
+     - Kuning = Pending
+   - Pastikan table bind ke state dari endpoint GET /reports/revenue
+
+2. Refresh / Load:
+   - Pastikan fetch ulang data saat klik Tampilkan atau reload dashboard
+   - Clear cache browser jika perlu
+
+Testing:
+- Buat booking → bayar → pastikan muncul di table Revenue
+- Total Revenue sesuai KPI Live
+- Kolom Tanggal Booking & Sumber Fasilitas muncul
+- Finance → Payments menampilkan semua pembayaran SPORT_CENTER
+
+Middleware:
+- requireAdmin untuk semua endpoint
+
+STOP setelah semua transaksi Sport Center muncul di laporan dengan kolom baru.
