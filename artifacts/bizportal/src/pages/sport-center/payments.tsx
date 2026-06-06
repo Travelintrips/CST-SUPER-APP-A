@@ -15,16 +15,32 @@ import { Label } from "@/components/ui/label";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCompany } from "@/contexts/CompanyContext";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Activity, DollarSign, RefreshCw, ArrowLeft } from "lucide-react";
+import {
+  Plus, Activity, DollarSign, RefreshCw, ArrowLeft,
+  Eye, XCircle, CalendarDays,
+} from "lucide-react";
 
 const idr = (n: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
 
+const fmtDate = (s: string | null | undefined) => {
+  if (!s) return "—";
+  return new Date(s).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
+};
+
+const fmtDateTime = (s: string | null | undefined) => {
+  if (!s) return "—";
+  return new Date(s).toLocaleDateString("id-ID", {
+    day: "2-digit", month: "short", year: "numeric",
+    hour: "2-digit", minute: "2-digit",
+  });
+};
+
 type Payment = {
-  id: number; payment_number: string; booking_id: number;
-  booking_number: string; customer_name: string; booking_date: string;
+  id: number; payment_number: string; booking_id: number | null;
+  booking_number: string | null; customer_name: string | null; booking_date: string | null;
   amount: number; method: string; status: string; paid_at: string | null;
-  notes: string; facility_name: string | null;
+  notes: string | null; facility_name: string | null; payment_type: string | null;
 };
 
 const METHOD_LABEL: Record<string, string> = {
@@ -40,16 +56,21 @@ export default function SportCenterPayments() {
   const [realtimeCount, setRealtimeCount] = useState(0);
 
   const [statusFilter, setStatusFilter] = useState("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(1);
   const [showDialog, setShowDialog] = useState(false);
+  const [detailPayment, setDetailPayment] = useState<Payment | null>(null);
   const [form, setForm] = useState({ booking_id: "", amount: "", method: "cash", notes: "" });
 
   const { data, isLoading } = useQuery<{ data: Payment[]; total: number }>({
-    queryKey: ["sport-center-payments", activeCompanyId, statusFilter, page],
+    queryKey: ["sport-center-payments", activeCompanyId, statusFilter, dateFrom, dateTo, page],
     queryFn: async () => {
       const qs = new URLSearchParams();
       if (activeCompanyId) qs.set("companyId", String(activeCompanyId));
       if (statusFilter !== "all") qs.set("status", statusFilter);
+      if (dateFrom) qs.set("date_from", dateFrom);
+      if (dateTo) qs.set("date_to", dateTo);
       qs.set("page", String(page));
       const r = await fetch(`/api/sport-center/payments?${qs}`, { credentials: "include" });
       return r.json();
@@ -85,18 +106,31 @@ export default function SportCenterPayments() {
     },
     onSuccess: () => {
       toast({ title: "Pembayaran dicatat" });
-      setShowDialog(false); setForm({ booking_id: "", amount: "", method: "cash", notes: "" });
+      setShowDialog(false);
+      setForm({ booking_id: "", amount: "", method: "cash", notes: "" });
       qc.invalidateQueries({ queryKey: ["sport-center-payments"] });
       qc.invalidateQueries({ queryKey: ["sport-center-dashboard"] });
     },
     onError: (e: Error) => toast({ title: e.message, variant: "destructive" }),
   });
 
-  const totalRevenue = (data?.data ?? []).reduce((s, p) => s + (p.status === "paid" ? Number(p.amount) : 0), 0);
+  const totalRevenue = (data?.data ?? []).reduce(
+    (s, p) => s + (p.status === "paid" ? Number(p.amount) : 0), 0
+  );
+
+  const hasDateFilter = dateFrom || dateTo;
+
+  const resetFilters = () => {
+    setStatusFilter("all");
+    setDateFrom("");
+    setDateTo("");
+    setPage(1);
+  };
 
   return (
     <AppShell>
       <div className="p-6 space-y-4">
+        {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Button variant="ghost" size="icon" onClick={() => navigate("/sport-center/dashboard")} className="h-8 w-8 shrink-0">
@@ -104,7 +138,7 @@ export default function SportCenterPayments() {
             </Button>
             <DollarSign className="h-6 w-6 text-green-400" />
             <div>
-              <h1 className="text-2xl font-bold text-foreground">Pembayaran</h1>
+              <h1 className="text-2xl font-bold text-foreground">Pembayaran Sport Center</h1>
               <p className="text-sm text-muted-foreground">Total: {data?.total ?? 0} transaksi</p>
             </div>
           </div>
@@ -120,70 +154,122 @@ export default function SportCenterPayments() {
           </div>
         </div>
 
+        {/* Summary Card */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Card className="border-border/60 bg-emerald-900/10">
             <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">Revenue Halaman Ini</p>
+              <p className="text-xs text-muted-foreground">Revenue (halaman ini)</p>
               <p className="text-xl font-bold text-emerald-400 mt-1">{idr(totalRevenue)}</p>
             </CardContent>
           </Card>
         </div>
 
-        <div className="flex gap-2">
-          <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
-            <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Semua Status</SelectItem>
-              <SelectItem value="paid">Lunas</SelectItem>
-              <SelectItem value="pending">Pending</SelectItem>
-              <SelectItem value="failed">Gagal</SelectItem>
-            </SelectContent>
-          </Select>
+        {/* Filter Bar */}
+        <div className="flex flex-wrap items-end gap-2">
+          {/* Status */}
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">Status</Label>
+            <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
+              <SelectTrigger className="w-36 h-8 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua Status</SelectItem>
+                <SelectItem value="paid">Lunas</SelectItem>
+                <SelectItem value="pending">Pending</SelectItem>
+                <SelectItem value="failed">Gagal</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Date From */}
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground flex items-center gap-1">
+              <CalendarDays className="h-3 w-3" /> Dari Tanggal
+            </Label>
+            <Input
+              type="date"
+              className="h-8 text-xs w-36"
+              value={dateFrom}
+              onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
+            />
+          </div>
+
+          {/* Date To */}
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground flex items-center gap-1">
+              <CalendarDays className="h-3 w-3" /> Sampai Tanggal
+            </Label>
+            <Input
+              type="date"
+              className="h-8 text-xs w-36"
+              value={dateTo}
+              onChange={(e) => { setDateTo(e.target.value); setPage(1); }}
+            />
+          </div>
+
+          {/* Reset */}
+          {(statusFilter !== "all" || hasDateFilter) && (
+            <Button variant="ghost" size="sm" className="h-8 gap-1 text-xs text-muted-foreground" onClick={resetFilters}>
+              <XCircle className="h-3.5 w-3.5" /> Reset Filter
+            </Button>
+          )}
         </div>
 
+        {/* Table */}
         <Card className="border-border/60">
-          <CardContent className="p-0">
+          <CardContent className="p-0 overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border/40 bg-muted/20">
-                  {["No. Pembayaran", "No. Booking", "Pelanggan", "Tgl Pembayaran", "Tanggal Booking", "Metode", "Status", "Jumlah", "Fasilitas"].map((h) => (
-                    <th key={h} className="text-left py-3 px-3 text-xs text-muted-foreground font-medium">{h}</th>
+                  {[
+                    "No. Pembayaran", "No. Booking", "Pelanggan",
+                    "Fasilitas", "Tgl Booking", "Tgl Pembayaran",
+                    "Metode", "Status", "Jumlah", "",
+                  ].map((h) => (
+                    <th key={h} className="text-left py-3 px-3 text-xs text-muted-foreground font-medium whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {isLoading ? (
-                  <tr><td colSpan={9} className="py-10 text-center text-muted-foreground">Memuat…</td></tr>
+                  <tr><td colSpan={10} className="py-10 text-center text-muted-foreground">Memuat…</td></tr>
                 ) : (data?.data ?? []).length === 0 ? (
-                  <tr><td colSpan={9} className="py-10 text-center text-muted-foreground">Belum ada pembayaran</td></tr>
+                  <tr><td colSpan={10} className="py-10 text-center text-muted-foreground">Belum ada pembayaran</td></tr>
                 ) : (data?.data ?? []).map((p) => (
-                  <tr key={p.id} className="border-b border-border/20 hover:bg-muted/20">
-                    <td className="py-2.5 px-3 font-mono text-xs text-muted-foreground">{p.payment_number}</td>
-                    <td className="py-2.5 px-3 font-mono text-xs text-muted-foreground">{p.booking_number}</td>
-                    <td className="py-2.5 px-3 text-foreground">{p.customer_name}</td>
-                    <td className="py-2.5 px-3 text-muted-foreground text-xs">
-                      {p.paid_at
-                        ? new Date(p.paid_at).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })
-                        : <span className="text-muted-foreground/50">—</span>}
-                    </td>
-                    <td className="py-2.5 px-3 text-muted-foreground text-xs">{p.booking_date ?? "—"}</td>
-                    <td className="py-2.5 px-3">
+                  <tr key={p.id} className="border-b border-border/20 hover:bg-muted/20 transition-colors">
+                    <td className="py-2.5 px-3 font-mono text-xs text-muted-foreground whitespace-nowrap">{p.payment_number}</td>
+                    <td className="py-2.5 px-3 font-mono text-xs text-muted-foreground whitespace-nowrap">{p.booking_number ?? "—"}</td>
+                    <td className="py-2.5 px-3 text-foreground whitespace-nowrap">{p.customer_name ?? "—"}</td>
+                    <td className="py-2.5 px-3 text-muted-foreground text-xs whitespace-nowrap">{p.facility_name ?? "—"}</td>
+                    <td className="py-2.5 px-3 text-muted-foreground text-xs whitespace-nowrap">{fmtDate(p.booking_date)}</td>
+                    <td className="py-2.5 px-3 text-muted-foreground text-xs whitespace-nowrap">{fmtDateTime(p.paid_at)}</td>
+                    <td className="py-2.5 px-3 whitespace-nowrap">
                       <Badge className="bg-blue-900/30 text-blue-300 border-blue-700 text-xs">
                         {METHOD_LABEL[p.method] ?? p.method}
                       </Badge>
                     </td>
-                    <td className="py-2.5 px-3">
-                      <Badge className={p.status === "paid"
-                        ? "bg-emerald-900/30 text-emerald-300 border-emerald-700 text-xs"
-                        : p.status === "pending"
-                        ? "bg-yellow-900/30 text-yellow-300 border-yellow-700 text-xs"
-                        : "bg-red-900/30 text-red-300 border-red-700 text-xs"
+                    <td className="py-2.5 px-3 whitespace-nowrap">
+                      <Badge className={
+                        p.status === "paid"
+                          ? "bg-emerald-900/30 text-emerald-300 border-emerald-700 text-xs"
+                          : p.status === "pending"
+                          ? "bg-yellow-900/30 text-yellow-300 border-yellow-700 text-xs"
+                          : "bg-red-900/30 text-red-300 border-red-700 text-xs"
                       }>
                         {p.status === "paid" ? "Lunas" : p.status === "pending" ? "Pending" : p.status}
                       </Badge>
                     </td>
-                    <td className="py-2.5 px-3 font-medium text-foreground text-right">{idr(Number(p.amount))}</td>
-                    <td className="py-2.5 px-3 text-muted-foreground text-xs">{p.facility_name ?? "—"}</td>
+                    <td className="py-2.5 px-3 font-medium text-foreground text-right whitespace-nowrap">
+                      {idr(Number(p.amount))}
+                    </td>
+                    <td className="py-2.5 px-3 whitespace-nowrap">
+                      <Button
+                        variant="ghost" size="sm"
+                        className="h-7 px-2 text-xs gap-1 text-muted-foreground hover:text-foreground"
+                        onClick={() => setDetailPayment(p)}
+                      >
+                        <Eye className="h-3.5 w-3.5" /> Detail
+                      </Button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -191,13 +277,16 @@ export default function SportCenterPayments() {
           </CardContent>
         </Card>
 
+        {/* Pagination */}
         {(data?.total ?? 0) > 50 && (
           <div className="flex justify-end gap-2">
             <Button variant="outline" size="sm" disabled={page === 1} onClick={() => setPage((p) => p - 1)}>Prev</Button>
+            <span className="text-xs text-muted-foreground self-center">Hal. {page}</span>
             <Button variant="outline" size="sm" disabled={page * 50 >= (data?.total ?? 0)} onClick={() => setPage((p) => p + 1)}>Next</Button>
           </div>
         )}
 
+        {/* Dialog: Catat Pembayaran */}
         <Dialog open={showDialog} onOpenChange={setShowDialog}>
           <DialogContent className="max-w-md">
             <DialogHeader><DialogTitle>Catat Pembayaran</DialogTitle></DialogHeader>
@@ -206,13 +295,17 @@ export default function SportCenterPayments() {
                 <Label className="text-xs">ID Booking *</Label>
                 <Input
                   type="number" placeholder="Masukkan ID booking"
-                  value={form.booking_id} onChange={(e) => setForm((p) => ({ ...p, booking_id: e.target.value }))}
+                  value={form.booking_id}
+                  onChange={(e) => setForm((p) => ({ ...p, booking_id: e.target.value }))}
                 />
                 <p className="text-xs text-muted-foreground">ID booking tersedia di halaman Bookings</p>
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Jumlah (IDR) *</Label>
-                <Input type="number" min={0} value={form.amount} onChange={(e) => setForm((p) => ({ ...p, amount: e.target.value }))} />
+                <Input
+                  type="number" min={0} value={form.amount}
+                  onChange={(e) => setForm((p) => ({ ...p, amount: e.target.value }))}
+                />
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Metode Pembayaran</Label>
@@ -229,7 +322,10 @@ export default function SportCenterPayments() {
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Catatan</Label>
-                <Input value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} />
+                <Input
+                  value={form.notes}
+                  onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))}
+                />
               </div>
             </div>
             <DialogFooter>
@@ -247,6 +343,88 @@ export default function SportCenterPayments() {
                 {createMutation.isPending ? <RefreshCw className="h-4 w-4 animate-spin" /> : "Catat Pembayaran"}
               </Button>
             </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Dialog: Detail Pembayaran */}
+        <Dialog open={!!detailPayment} onOpenChange={(o) => { if (!o) setDetailPayment(null); }}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <DollarSign className="h-4 w-4 text-emerald-400" />
+                Detail Pembayaran
+              </DialogTitle>
+            </DialogHeader>
+            {detailPayment && (
+              <div className="space-y-3 text-sm">
+                <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                  <div>
+                    <p className="text-xs text-muted-foreground">No. Pembayaran</p>
+                    <p className="font-mono font-medium">{detailPayment.payment_number}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Status</p>
+                    <Badge className={
+                      detailPayment.status === "paid"
+                        ? "bg-emerald-900/30 text-emerald-300 border-emerald-700 text-xs mt-0.5"
+                        : detailPayment.status === "pending"
+                        ? "bg-yellow-900/30 text-yellow-300 border-yellow-700 text-xs mt-0.5"
+                        : "bg-red-900/30 text-red-300 border-red-700 text-xs mt-0.5"
+                    }>
+                      {detailPayment.status === "paid" ? "Lunas" : detailPayment.status === "pending" ? "Pending" : detailPayment.status}
+                    </Badge>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">No. Booking</p>
+                    <p className="font-mono">{detailPayment.booking_number ?? "—"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Pelanggan</p>
+                    <p>{detailPayment.customer_name ?? "—"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Fasilitas</p>
+                    <p>{detailPayment.facility_name ?? "—"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Tanggal Booking</p>
+                    <p>{fmtDate(detailPayment.booking_date)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Tanggal Bayar</p>
+                    <p>{fmtDateTime(detailPayment.paid_at)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Metode</p>
+                    <p>{METHOD_LABEL[detailPayment.method] ?? detailPayment.method}</p>
+                  </div>
+                  <div className="col-span-2 border-t border-border/30 pt-2">
+                    <p className="text-xs text-muted-foreground">Jumlah</p>
+                    <p className="text-xl font-bold text-emerald-400">{idr(Number(detailPayment.amount))}</p>
+                  </div>
+                  {detailPayment.notes && (
+                    <div className="col-span-2">
+                      <p className="text-xs text-muted-foreground">Catatan</p>
+                      <p className="text-muted-foreground">{detailPayment.notes}</p>
+                    </div>
+                  )}
+                </div>
+
+                {detailPayment.booking_id && (
+                  <div className="pt-2 border-t border-border/30">
+                    <Button
+                      variant="outline" size="sm" className="gap-1 text-xs w-full"
+                      onClick={() => {
+                        setDetailPayment(null);
+                        navigate(`/sport-center/bookings`);
+                      }}
+                    >
+                      <Eye className="h-3.5 w-3.5" /> Lihat Booking Terkait
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
           </DialogContent>
         </Dialog>
       </div>

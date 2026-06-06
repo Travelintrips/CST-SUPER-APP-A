@@ -1431,6 +1431,8 @@ router.get("/payments", async (req, res) => {
     const offset = (page - 1) * limit;
 
     const statusFilter = req.query.status ? String(req.query.status) : null;
+    const dateFrom = req.query.date_from ? String(req.query.date_from) : null;
+    const dateTo   = req.query.date_to   ? String(req.query.date_to)   : null;
 
     const [dataRes, countRes] = await Promise.all([
       db.execute(sql`
@@ -1446,12 +1448,16 @@ router.get("/payments", async (req, res) => {
         LEFT JOIN sport_facilities f ON f.id = b.facility_id
         WHERE (${cId}::int IS NULL OR p.company_id = ${cId})
           AND (${statusFilter}::text IS NULL OR p.status = ${statusFilter})
+          AND (${dateFrom}::date IS NULL OR p.paid_at::date >= ${dateFrom}::date)
+          AND (${dateTo}::date   IS NULL OR p.paid_at::date <= ${dateTo}::date)
         ORDER BY p.created_at DESC LIMIT ${limit} OFFSET ${offset}
       `),
       db.execute(sql`
         SELECT COUNT(*) AS cnt FROM sport_payments p
         WHERE (${cId}::int IS NULL OR p.company_id = ${cId})
           AND (${statusFilter}::text IS NULL OR p.status = ${statusFilter})
+          AND (${dateFrom}::date IS NULL OR p.paid_at::date >= ${dateFrom}::date)
+          AND (${dateTo}::date   IS NULL OR p.paid_at::date <= ${dateTo}::date)
       `),
     ]);
     res.json({ data: dataRes.rows, total: Number((countRes.rows[0] as any).cnt) });
