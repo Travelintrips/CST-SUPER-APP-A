@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from "react";
 import { useParams } from "wouter";
 import type { ProductTemplate, DynamicFormValues } from "@workspace/product-templates";
 import { validateTemplatePayload } from "@workspace/product-templates";
+import type { ServiceTemplate } from "@workspace/service-templates";
+import { validateServicePayload } from "@workspace/service-templates";
 import {
   TemplateFieldRenderer,
   TemplateDocumentRenderer,
@@ -25,6 +27,7 @@ type FormMeta = {
   orderNumber: string | null; orderItemId: number | null; phase: string | null;
   alreadySubmitted?: boolean;
   productTemplate?: ProductTemplate | null;
+  serviceTemplate?: ServiceTemplate | null;
 };
 
 function Skeleton({ className }: { className?: string }) {
@@ -172,10 +175,21 @@ export default function CustomerMiniFormPage() {
     e.preventDefault();
     if (!meta?.schema) return;
 
-    const missing = meta.schema.fields
-      .filter(f => f.required && !values[f.key]?.trim())
-      .map(f => f.label);
-    if (missing.length) { setSubmitError(`Field wajib belum diisi: ${missing.join(", ")}`); return; }
+    const activePhase = (meta.phase === "operational" ? "operational" : "quotation") as "quotation" | "operational";
+
+    if (meta.serviceTemplate) {
+      const svcErrors = validateServicePayload(meta.serviceTemplate, values as Record<string, unknown>, activePhase);
+      if (svcErrors.length > 0) { setSubmitError(svcErrors[0]); return; }
+    } else {
+      const missing = meta.schema.fields
+        .filter(f => {
+          if (!f.required) return false;
+          if (f.section && f.section !== activePhase && f.section !== "both") return false;
+          return !values[f.key]?.trim();
+        })
+        .map(f => f.label);
+      if (missing.length) { setSubmitError(`Field wajib belum diisi: ${missing.join(", ")}`); return; }
+    }
 
     if (meta.productTemplate) {
       const tplErrors = validateTemplatePayload(meta.productTemplate, templateValues);
