@@ -312,6 +312,66 @@ uri = "file://artifacts/customer-portal/public/images/products/container.png"
 type = "image"
 title = "stacked shipping containers port"
 
+[[generated]]
+id = "RxKIzGalCAwc7V6X7D-x0"
+uri = "file://artifacts/customer-portal/public/images/products/ocean-freight.png"
+type = "image"
+title = "ocean freight cargo ship"
+
+[[generated]]
+id = "ALBppJbQwj6Nwy-gzpLiR"
+uri = "file://artifacts/customer-portal/public/images/products/asuransi-kargo.png"
+type = "image"
+title = "cargo insurance shield"
+
+[[generated]]
+id = "uWA99_pWyKQ-v7xYEWIAv"
+uri = "file://artifacts/customer-portal/public/images/products/pengurusan-dokumen-ppjk.png"
+type = "image"
+title = "PPJK customs documents"
+
+[[generated]]
+id = "3UmddehVRnHsnWR8KGdDP"
+uri = "file://artifacts/customer-portal/public/images/products/port-charges.png"
+type = "image"
+title = "port charges terminal"
+
+[[generated]]
+id = "EL6dfBd4ydeGypcUwVSzN"
+uri = "file://artifacts/customer-portal/public/images/products/storage-demurrage.png"
+type = "image"
+title = "warehouse storage facility"
+
+[[generated]]
+id = "UgZephpurCDWNY-sWd2cq"
+uri = "file://artifacts/customer-portal/public/images/products/trucking.png"
+type = "image"
+title = "trucking freight transport"
+
+[[generated]]
+id = "mzJ006PwWQFEjJ6p4sTpv"
+uri = "file://artifacts/customer-portal/public/images/products/urus-dokumen-pabean.png"
+type = "image"
+title = "customs document clearance"
+
+[[generated]]
+id = "n-LhXaqmKBWGTo1xF3Y_2"
+uri = "file://artifacts/customer-portal/public/images/products/handling-cargo-laut.png"
+type = "image"
+title = "sea cargo port handling"
+
+[[generated]]
+id = "iRLaKLQkAe0ZSSgUecRC2"
+uri = "file://artifacts/customer-portal/public/images/products/green-bean-arabica-grade1.png"
+type = "image"
+title = "green arabica coffee beans"
+
+[[generated]]
+id = "Y8DM19gHa7JaDrb8UZw0h"
+uri = "file://artifacts/customer-portal/public/images/products/biaya-storage.png"
+type = "image"
+title = "warehouse storage cost"
+
 [[outputs]]
 id = "jbw844mUijSYeJ7x1ujqa"
 uri = "file://attached_assets/logo_composited.png"
