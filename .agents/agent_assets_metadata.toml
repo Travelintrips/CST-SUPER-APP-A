@@ -491,3 +491,9 @@ id = "LqmvhZ7kxrAwhGN0zMQSf"
 uri = "file://VENDOR CATALOG SCHEMA REPORT.md"
 type = "text"
 title = "VENDOR CATALOG SCHEMA REPORT"
+
+[[outputs]]
+id = "v-OQE6kUe4COZqMcY5G7s"
+uri = "file://SUBMISSION TO CATALOG REPORT.md"
+type = "text"
+title = "SUBMISSION TO CATALOG REPORT"
