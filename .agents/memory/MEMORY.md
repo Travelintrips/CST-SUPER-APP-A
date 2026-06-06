@@ -31,3 +31,4 @@
 - [Accounting Seed Fast-Path Bug](accounting-seed-fastpath.md) — fast-path di seedAccountingDefaults hanya cek COA count, skip journal+settings; fix: tambah journal count + null-settings check; direct SQL repair jika DB sudah jalan.
 - [Tax SSE & Journal Mapping](tax-sse-journal-mapping.md) — taxAutoService expanded (PPh 15 Pelayaran DN/LN, PPh 4(2) Sewa, PPh 26); journalMappingService.ts for kasbon/talangan/loan/depreciation; routes POST /api/accounting/journal-mapping/*
 - [Expense Fase 10-13](expense-fase10-13.md) — Reminder worker, dashboard, templates, budget+currency; apiFetch pattern; no useListChartOfAccounts in api-client.
+- [WATI Integration](wati-integration.md) — migrasi bertahap; waTransport.ts auto-route ke WATI (session) atau Fonnte; grup WA admin SELALU Fonnte; template HSM via sendWatiTemplate; admin API di /api/wati/*.

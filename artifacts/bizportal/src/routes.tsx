@@ -133,6 +133,7 @@ import AuditComparePage from "@/pages/audit/compare";
 import WaNotificationLogsPage from "@/pages/settings/wa-notification-logs";
 import DocumentTemplatesPage from "@/pages/settings/document-templates";
 import AppSecretsPage from "@/pages/settings/app-secrets";
+import WatiSettingsPage from "@/pages/settings/wati";
 import SystemHealthPage from "@/pages/system-health";
 
 // Products
@@ -364,6 +365,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/settings/approval-rules" component={PR(SettingsApprovalRulesPage)} />
       <Route path="/settings/product-templates" component={PR(ProductTemplatesPage)} />
       <Route path="/settings/service-templates" component={PR(ServiceTemplatesSettingsPage)} />
+      <Route path="/settings/wati" component={PR(WatiSettingsPage)} />
       <Route path="/settings" component={PR(SettingsPage)} />
 
       {/* ── Users & Org ────────────────────────────────────────────────── */}

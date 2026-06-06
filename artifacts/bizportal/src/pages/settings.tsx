@@ -1644,15 +1644,26 @@ function WaTemplatesCard() {
             <span>🛍️ Customer</span>
             <span>🏭 Vendor</span>
           </div>
-          <Button
-            size="sm"
-            variant="outline"
-            className="gap-2 shrink-0"
-            onClick={() => { window.location.href = "/bizportal/settings/wa-templates"; }}
-          >
-            <MessageCircle className="h-4 w-4 text-green-500" />
-            Buka WA Template Manager
-          </Button>
+          <div className="flex gap-2 shrink-0">
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-2"
+              onClick={() => { window.location.href = "/bizportal/settings/wati"; }}
+            >
+              <MessageCircle className="h-4 w-4 text-emerald-500" />
+              WATI Settings
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-2"
+              onClick={() => { window.location.href = "/bizportal/settings/wa-templates"; }}
+            >
+              <MessageCircle className="h-4 w-4 text-green-500" />
+              Buka WA Template Manager
+            </Button>
+          </div>
         </div>
         {loading ? (
           <div className="space-y-3">{[1,2,3,4].map(i => <div key={i} className="h-8 bg-muted rounded animate-pulse" />)}</div>
