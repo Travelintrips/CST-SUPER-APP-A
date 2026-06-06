@@ -1574,14 +1574,6 @@ export default function BookPage() {
                   <span className="text-[11px] text-slate-400 italic">Sesuai rute</span>
                 )}
               </div>
-              <div className="px-4 py-3 flex items-start gap-3">
-                <MapPin className="w-4 h-4 text-orange-500 shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-[10px] font-bold text-orange-500 uppercase tracking-wide">Alamat Pengirim (Kita)</p>
-                  <p className="text-xs font-semibold text-slate-800">{productShipping.companyName}</p>
-                  <p className="text-xs text-slate-500">{productShipping.companyAddress}</p>
-                </div>
-              </div>
             </div>
           )}
 
