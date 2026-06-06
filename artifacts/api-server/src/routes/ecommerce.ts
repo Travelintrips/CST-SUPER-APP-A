@@ -228,7 +228,7 @@ router.post("/products", async (req, res) => {
     name, sku, price, stock, categories, description, imageUrl, mediaItems,
     defaultSalesTaxId, defaultPurchaseTaxId,
     itemType, unit, unitOptions, subcategory, isActive,
-    weightKg, lengthCm, widthCm, heightCm, goodsType,
+    weightKg, lengthCm, widthCm, heightCm, goodsType, currencyCode,
   } = req.body;
   if (!name || !sku || price == null) return res.status(400).json({ message: "name, sku, price are required" });
   const categoryNames: string[] = Array.isArray(categories) ? categories.map(String) : [];
@@ -263,6 +263,7 @@ router.post("/products", async (req, res) => {
       widthCm:  widthCm  != null ? String(widthCm)  : null,
       heightCm: heightCm != null ? String(heightCm) : null,
       goodsType: goodsType ?? null,
+      currencyCode: currencyCode ?? "IDR",
     }).returning();
     if (validCats.length > 0) {
       await tx.insert(productCategoryMapTable).values(
@@ -472,7 +473,7 @@ router.put("/products/:id", async (req, res) => {
     name, sku, price, stock, categories, description, imageUrl, mediaItems,
     defaultSalesTaxId, defaultPurchaseTaxId,
     itemType, unit, unitOptions, subcategory, isActive,
-    weightKg, volumeCbm, lengthCm, widthCm, heightCm, goodsType,
+    weightKg, volumeCbm, lengthCm, widthCm, heightCm, goodsType, currencyCode,
   } = req.body;
   const requestedNames: string[] = Array.isArray(categories) ? categories.map(String).filter(Boolean) : [];
 
@@ -520,6 +521,7 @@ router.put("/products/:id", async (req, res) => {
       heightCm:  heightCm  != null ? String(heightCm)  : null,
       goodsType: goodsType ?? null,
       isActive: isActive !== undefined ? Boolean(isActive) : true,
+      currencyCode: currencyCode ?? "IDR",
     }).where(eq(productsTable.id, id)).returning();
     if (!p) return null;
     if (requestedNames.length > 0) {
