@@ -1438,35 +1438,49 @@ async function notifyAdmin(order: LogisticOrderData): Promise<void> {
   // Generate admin review link upfront — used in both WA and email
   const adminReviewUrl = await createAdminReviewLink(order.id).catch(() => "");
 
-  // order_new → kirim ke Admin Group; fallback ke Personal Admin WA jika group tidak dikonfigurasi
-  const [tplAdminGroup, adminGroupWa, personalAdminWa] = await Promise.all([
+  // order_new → kirim ke Admin Personal DAN Admin Group secara terpisah (bukan OR)
+  const [tplAdminPersonal, tplAdminGroup, adminGroupWa, personalAdminWa] = await Promise.all([
+    getWaTemplateConfig("admin_personal", "order_new", DEFAULT_TPL.admin_personal.order_new),
     getWaTemplateConfig("admin_group", "order_new", DEFAULT_TPL.admin_group.order_new),
     getAdminGroupWa(),
     getAdminWa(),
   ]);
-  const targetAdminWa = adminGroupWa || personalAdminWa;
-  if (targetAdminWa) {
-    const isGroup = !!adminGroupWa;
-    logger.info({ target: targetAdminWa, isGroup, orderNumber: order.orderNumber }, "Sending admin WA notification");
-    let groupActionUrl: string | undefined;
-    if (order.publicRfqToken) {
-      const domain = getPreferredDomain() || "cstlogistic.co.id";
-      const longUrl = `https://${domain}/admin-action/${order.publicRfqToken}`;
-      groupActionUrl = await generateShortLink(longUrl, {
-        context: "admin_action",
-        refType: "order",
-        refId: order.orderNumber,
-      }).catch((err: unknown) => {
-        logger.warn({ err }, "admin WA: failed to generate short link, using long URL");
-        return longUrl;
-      });
-    }
-    const wrappedActionUrl = groupActionUrl ? `_${groupActionUrl}_` : groupActionUrl;
-    sendWhatsApp(targetAdminWa, buildAdminGroupWaMessage(order, tplAdminGroup, wrappedActionUrl)).catch((err: unknown) =>
-      logger.error({ err }, "WA admin notification failed")
+
+  if (!adminGroupWa && !personalAdminWa) {
+    logger.warn("Admin WA not configured — skipping (set FONNTE_ADMIN_WA atau FONNTE_ADMIN_GROUP_ID, atau konfigurasikan via admin panel)");
+  }
+
+  // Buat short link sekali — dipakai bersama oleh personal & group
+  let adminActionUrl: string | undefined;
+  if (order.publicRfqToken) {
+    const domain = getPreferredDomain() || "cstlogistic.co.id";
+    const longUrl = `https://${domain}/admin-action/${order.publicRfqToken}`;
+    adminActionUrl = await generateShortLink(longUrl, {
+      context: "admin_action",
+      refType: "order",
+      refId: order.orderNumber,
+    }).catch((err: unknown) => {
+      logger.warn({ err }, "admin WA: failed to generate short link, using long URL");
+      return longUrl;
+    });
+  }
+
+  // Kirim ke Admin Personal (template detail dengan semua info)
+  if (personalAdminWa) {
+    logger.info({ target: personalAdminWa, orderNumber: order.orderNumber }, "Sending admin personal WA notification");
+    const personalActionUrl = adminActionUrl;
+    sendWhatsApp(personalAdminWa, buildAdminWaMessage(order, tplAdminPersonal, personalActionUrl)).catch((err: unknown) =>
+      logger.error({ err }, "WA admin personal notification failed")
     );
-  } else {
-    logger.warn("Admin WA not configured — skipping (set FONNTE_ADMIN_WA or FONNTE_ADMIN_GROUP_ID, or configure via admin panel)");
+  }
+
+  // Kirim ke Admin Group (template ringkas untuk grup)
+  if (adminGroupWa) {
+    logger.info({ target: adminGroupWa, orderNumber: order.orderNumber }, "Sending admin group WA notification");
+    const wrappedActionUrl = adminActionUrl ? `_${adminActionUrl}_` : adminActionUrl;
+    sendWhatsApp(adminGroupWa, buildAdminGroupWaMessage(order, tplAdminGroup, wrappedActionUrl)).catch((err: unknown) =>
+      logger.error({ err }, "WA admin group notification failed")
+    );
   }
 
   if (isSmtpConfigured()) {
