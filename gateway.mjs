@@ -324,19 +324,4 @@ async function startGateway() {
 
 startGateway();
 
-// Also listen on EXTRA_PORT (default 23434) to mirror the gateway
-const EXTRA_PORT = Number(process.env.EXTRA_PORT ?? 23434);
-if (EXTRA_PORT !== PORT) {
-  const extra = http.createServer(handleRequest);
-  extra.on("upgrade", handleUpgrade);
-  extra.on("error", (err) => {
-    if (err.code === "EADDRINUSE" || err.code === "EADDRNOTAVAIL") {
-      console.log(`Gateway: EXTRA_PORT ${EXTRA_PORT} unavailable (${err.code}) — skipping mirror`);
-    } else {
-      console.error("Gateway extra server error:", err.message);
-    }
-  });
-  extra.listen(EXTRA_PORT, () => {
-    console.log(`Gateway also listening on port ${EXTRA_PORT} (mirror)`);
-  });
-}
+// EXTRA_PORT mirror disabled — port 23434 dipakai Customer Portal dev server

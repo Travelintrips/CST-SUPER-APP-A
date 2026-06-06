@@ -1223,8 +1223,11 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
     const schema = SERVICE_SCHEMAS[link.serviceType];
     if (schema) {
       const activePhase = link.phase ?? "quotation";
+      // Ketika link punya templateSnapshot (product template engine), field
+      // product_name / unit_price / unit dihandle oleh template — skip dari validasi schema
+      const tplManagedKeys = link.templateSnapshot ? ["product_name", "unit_price", "unit"] : [];
       const requiredKeys = schema.fields
-        .filter(f => f.required && (!f.section || f.section === activePhase || f.section === "both"))
+        .filter(f => f.required && !tplManagedKeys.includes(f.key) && (!f.section || f.section === activePhase || f.section === "both"))
         .map(f => f.key);
       const missingFields = requiredKeys.filter(k => {
         const val = (formData as Record<string, unknown>)[k];
