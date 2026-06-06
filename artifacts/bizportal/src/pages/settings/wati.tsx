@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, Fragment } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -410,39 +410,43 @@ export default function WatiSettingsPage() {
                       {templates.map((t, idx) => {
                         const name = t.elementName ?? t.templateName ?? `template-${idx}`;
                         const isExpanded = expandedTpl === name;
+                        const cat = typeof t.category === "object" ? JSON.stringify(t.category) : (t.category ?? "—");
+                        const lang = typeof t.language === "object" ? JSON.stringify(t.language) : (t.language ?? "—");
+                        const status = typeof t.status === "object" ? JSON.stringify(t.status) : (t.status ?? "—");
+                        const bodyText = typeof t.body === "object" ? JSON.stringify(t.body, null, 2) : (t.body ?? "");
                         return (
-                          <>
-                            <TableRow key={name} className="cursor-pointer" onClick={() => setExpandedTpl(isExpanded ? null : name)}>
+                          <Fragment key={name}>
+                            <TableRow className="cursor-pointer" onClick={() => setExpandedTpl(isExpanded ? null : name)}>
                               <TableCell className="text-xs font-mono">{name}</TableCell>
-                              <TableCell className="text-xs">{t.category ?? "—"}</TableCell>
-                              <TableCell className="text-xs">{t.language ?? "—"}</TableCell>
+                              <TableCell className="text-xs">{cat}</TableCell>
+                              <TableCell className="text-xs">{lang}</TableCell>
                               <TableCell className="text-xs">
                                 <Badge
                                   variant="outline"
-                                  className={cn("text-xs", t.status === "APPROVED"
+                                  className={cn("text-xs", status === "APPROVED"
                                     ? "border-emerald-600 text-emerald-400"
-                                    : t.status === "PENDING"
+                                    : status === "PENDING"
                                     ? "border-amber-600 text-amber-400"
                                     : "border-red-600 text-red-400"
                                   )}
                                 >
-                                  {t.status ?? "—"}
+                                  {status}
                                 </Badge>
                               </TableCell>
                               <TableCell>
                                 {isExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
                               </TableCell>
                             </TableRow>
-                            {isExpanded && t.body && (
-                              <TableRow key={`${name}-body`}>
+                            {isExpanded && bodyText && (
+                              <TableRow>
                                 <TableCell colSpan={5} className="bg-muted/10">
                                   <pre className="text-xs text-muted-foreground whitespace-pre-wrap font-mono p-2 rounded">
-                                    {t.body}
+                                    {bodyText}
                                   </pre>
                                 </TableCell>
                               </TableRow>
                             )}
-                          </>
+                          </Fragment>
                         );
                       })}
                     </TableBody>
