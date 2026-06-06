@@ -147,6 +147,40 @@ watiRouter.post("/validate-phone", async (req: Request, res) => {
   }
 });
 
+// ─── Bulk validate phones ──────────────────────────────────────────────────────
+watiRouter.post("/validate-phones-bulk", async (req: Request, res) => {
+  const { phones } = req.body ?? {};
+  if (!Array.isArray(phones) || phones.length === 0) {
+    return res.status(400).json({ message: "phones harus berupa array tidak kosong." });
+  }
+  if (phones.length > 100) {
+    return res.status(400).json({ message: "Maksimal 100 nomor per request." });
+  }
+  if (!(await isWatiConfigured())) {
+    return res.status(400).json({ message: "WATI belum dikonfigurasi." });
+  }
+
+  const results: { phone: string; valid: boolean; name?: string; source?: string; error?: string }[] = [];
+  for (const raw of phones) {
+    const phone = String(raw).replace(/\D/g, "").replace(/^0/, "62").trim();
+    if (!phone) {
+      results.push({ phone: String(raw).trim(), valid: false, error: "Format tidak valid" });
+      continue;
+    }
+    try {
+      const r = await validateWatiPhone(phone);
+      results.push({ phone, valid: r.valid, name: r.name, source: r.source, error: r.error });
+    } catch (err: any) {
+      results.push({ phone, valid: false, error: err?.message ?? "Gagal" });
+    }
+    // small delay to avoid WATI rate limit
+    await new Promise((ok) => setTimeout(ok, 120));
+  }
+
+  const validCount = results.filter((r) => r.valid).length;
+  return res.json({ results, validCount, invalidCount: results.length - validCount });
+});
+
 // ─── Send template ────────────────────────────────────────────────────────────
 watiRouter.post("/send-template", async (req: Request, res) => {
   const { phone, templateName, params, broadcastName } = req.body ?? {};
