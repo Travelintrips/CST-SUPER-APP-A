@@ -12,8 +12,9 @@ import { Search, ShoppingCart, Truck, ChevronRight, X, Container, ArrowLeft } fr
 import { useLocation } from "wouter";
 import { resolveImageUrl } from "@/lib/utils";
 import { getServiceFallbackImage } from "@/lib/categoryImages";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/lib/supabase";
 import { useLanguage } from "@/i18n/LanguageContext";
 import { translateServiceName, translateCategory } from "@/i18n/serviceData";
 import { GROUPED_DISPLAY_CATEGORIES } from "@workspace/logistics-constants";
@@ -58,12 +59,42 @@ function ServiceImage({ service, className = "" }: { service: Service; className
   );
 }
 
+function useServicesRealtime() {
+  const qc = useQueryClient();
+  const [connected, setConnected] = useState(false);
+  const [justUpdated, setJustUpdated] = useState(false);
+
+  const handleChange = useCallback(() => {
+    qc.invalidateQueries({ queryKey: ["listPortalServices"] });
+    qc.invalidateQueries({ queryKey: ["listPortalServicesJasa"] });
+    setJustUpdated(true);
+    setTimeout(() => setJustUpdated(false), 3000);
+  }, [qc]);
+
+  useEffect(() => {
+    if (!supabase) return;
+    const channel = supabase
+      .channel("portal-services-realtime")
+      .on("postgres_changes", { event: "*", schema: "public", table: "products" }, handleChange)
+      .subscribe((status) => {
+        setConnected(status === "SUBSCRIBED");
+      });
+    return () => {
+      supabase!.removeChannel(channel);
+      setConnected(false);
+    };
+  }, [handleChange]);
+
+  return { connected, justUpdated };
+}
+
 export default function Services() {
   const [searchQuery, setSearchQuery] = useState("");
   const [truckingOpen, setTruckingOpen] = useState(false);
   const { t, locale } = useLanguage();
   const [, setLocation] = useLocation();
   const qc = useQueryClient();
+  const { connected: realtimeConnected, justUpdated: realtimeUpdated } = useServicesRealtime();
 
   const { data: servicesData, isLoading } = useListPortalServices({
     query: { queryKey: ["listPortalServices"] }
@@ -267,6 +298,31 @@ export default function Services() {
 
       {/* Catalog Grid */}
       <div className="container px-4 md:px-6 mt-12">
+        <div className="flex items-center justify-between mb-6">
+          <span className="text-[13px] text-slate-500 font-medium">
+            {allServices.length} layanan
+          </span>
+          {realtimeConnected && (
+            <span
+              className="inline-flex items-center gap-1.5 text-[11px] font-semibold rounded-full px-2.5 py-1"
+              style={{
+                background: realtimeUpdated ? "rgba(245,158,11,0.10)" : "rgba(34,197,94,0.10)",
+                color: realtimeUpdated ? "#B45309" : "#15803D",
+                border: `1px solid ${realtimeUpdated ? "rgba(245,158,11,0.25)" : "rgba(34,197,94,0.25)"}`,
+              }}
+            >
+              <span
+                className="w-1.5 h-1.5 rounded-full"
+                style={{
+                  background: realtimeUpdated ? "#F59E0B" : "#22C55E",
+                  animation: "pulse 1.5s ease-in-out infinite",
+                }}
+              />
+              {realtimeUpdated ? "Diperbarui" : "Live"}
+            </span>
+          )}
+        </div>
+
         {isLoading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {[1, 2, 3, 4, 5, 6].map((i) => (

@@ -1,5 +1,6 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/lib/supabase";
 import { useLocation } from "wouter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -502,6 +503,39 @@ function ProductModal({ product, onClose }: { product: Product; onClose: () => v
   );
 }
 
+// ── Supabase Realtime — auto-refresh products on any DB change ─────────────
+function useProductsRealtime() {
+  const qc = useQueryClient();
+  const [connected, setConnected] = useState(false);
+  const [justUpdated, setJustUpdated] = useState(false);
+
+  const handleChange = useCallback(() => {
+    qc.invalidateQueries({ queryKey: ["portal-products"] });
+    setJustUpdated(true);
+    setTimeout(() => setJustUpdated(false), 3000);
+  }, [qc]);
+
+  useEffect(() => {
+    if (!supabase) return;
+
+    const channel = supabase
+      .channel("portal-products-realtime")
+      .on("postgres_changes", { event: "*", schema: "public", table: "products" }, handleChange)
+      .on("postgres_changes", { event: "*", schema: "public", table: "product_category_map" }, handleChange)
+      .on("postgres_changes", { event: "*", schema: "public", table: "product_categories" }, handleChange)
+      .subscribe((status) => {
+        setConnected(status === "SUBSCRIBED");
+      });
+
+    return () => {
+      supabase!.removeChannel(channel);
+      setConnected(false);
+    };
+  }, [handleChange]);
+
+  return { connected, justUpdated };
+}
+
 // ── Product hero background — swap this path to change the image ───────────
 const PRODUCT_HERO_BG = `${import.meta.env.BASE_URL}images/product-hero-brand.png`;
 
@@ -513,6 +547,7 @@ export default function Products() {
   const { t } = useLanguage();
   const usdIdrRate = useUsdIdrRate();
   const qc = useQueryClient();
+  const { connected: realtimeConnected, justUpdated: realtimeUpdated } = useProductsRealtime();
 
   useEffect(() => {
     const es = new EventSource("/api/ecommerce/events");
@@ -692,6 +727,23 @@ export default function Products() {
               Lihat Jasa/Services <ArrowRight className="h-3.5 w-3.5" />
             </button>
           </Link>
+        </div>
+
+        {/* Realtime status + product count row */}
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-sm text-slate-500">
+            {filtered.length > 0 && (
+              <span>{filtered.length} produk{selectedCategory ? ` dalam "${selectedCategory}"` : ""}</span>
+            )}
+          </p>
+          {realtimeConnected && (
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full" style={{ background: realtimeUpdated ? "rgba(251,191,36,0.12)" : "rgba(16,185,129,0.10)", border: `1px solid ${realtimeUpdated ? "rgba(251,191,36,0.35)" : "rgba(16,185,129,0.30)"}`, transition: "all 0.4s ease" }}>
+              <span className={`w-1.5 h-1.5 rounded-full ${realtimeUpdated ? "bg-amber-400 animate-ping" : "bg-emerald-400"}`} style={{ transition: "background 0.4s" }} />
+              <span className="text-[11px] font-semibold" style={{ color: realtimeUpdated ? "#d97706" : "#059669", transition: "color 0.4s" }}>
+                {realtimeUpdated ? "Diperbarui" : "Live"}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Category filter chips */}

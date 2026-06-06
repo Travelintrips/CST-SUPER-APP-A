@@ -35,9 +35,9 @@ const RETRYABLE_CODES = new Set(["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "ENO
 
 
 const API_PORT            = Number(process.env.API_PORT            ?? 8080);
-const BIZPORTAL_PORT      = Number(process.env.BIZPORTAL_PORT      ?? 18442);
-const CUSTOMER_PORT       = Number(process.env.CUSTOMER_PORT       ?? 5174);
-const LOGISTIC_ORDER_PORT = Number(process.env.LOGISTIC_ORDER_PORT ?? 19368);
+const BIZPORTAL_PORT      = Number(process.env.BIZPORTAL_PORT      ?? 6800);
+const CUSTOMER_PORT       = Number(process.env.CUSTOMER_PORT       ?? 6000);
+const LOGISTIC_ORDER_PORT = Number(process.env.LOGISTIC_ORDER_PORT ?? 3002);
 
 const ROUTES = [
   { prefix: "/api",             upstream: { host: "localhost", port: API_PORT } },
@@ -324,19 +324,4 @@ async function startGateway() {
 
 startGateway();
 
-// Also listen on EXTRA_PORT (default 23434) to mirror the gateway
-const EXTRA_PORT = Number(process.env.EXTRA_PORT ?? 23434);
-if (EXTRA_PORT !== PORT) {
-  const extra = http.createServer(handleRequest);
-  extra.on("upgrade", handleUpgrade);
-  extra.on("error", (err) => {
-    if (err.code === "EADDRINUSE" || err.code === "EADDRNOTAVAIL") {
-      console.log(`Gateway: EXTRA_PORT ${EXTRA_PORT} unavailable (${err.code}) — skipping mirror`);
-    } else {
-      console.error("Gateway extra server error:", err.message);
-    }
-  });
-  extra.listen(EXTRA_PORT, () => {
-    console.log(`Gateway also listening on port ${EXTRA_PORT} (mirror)`);
-  });
-}
+// EXTRA_PORT mirror disabled — port 23434 dipakai Customer Portal dev server
