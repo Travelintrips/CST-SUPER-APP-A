@@ -17,7 +17,7 @@ import { useCompany } from "@/contexts/CompanyContext";
 import { useToast } from "@/hooks/use-toast";
 import {
   Plus, Activity, DollarSign, RefreshCw, ArrowLeft,
-  Eye, XCircle, CalendarDays,
+  Eye, XCircle, CalendarDays, Search,
 } from "lucide-react";
 
 const idr = (n: number) =>
@@ -58,6 +58,7 @@ export default function SportCenterPayments() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
   const [page, setPage] = useState(1);
   const [showDialog, setShowDialog] = useState(false);
   const [detailPayment, setDetailPayment] = useState<Payment | null>(null);
@@ -120,10 +121,22 @@ export default function SportCenterPayments() {
 
   const hasDateFilter = dateFrom || dateTo;
 
+  const displayedRows = (data?.data ?? []).filter((p) => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      (p.booking_number ?? "").toLowerCase().includes(q) ||
+      (p.customer_name ?? "").toLowerCase().includes(q) ||
+      (p.payment_number ?? "").toLowerCase().includes(q) ||
+      (p.facility_name ?? "").toLowerCase().includes(q)
+    );
+  });
+
   const resetFilters = () => {
     setStatusFilter("all");
     setDateFrom("");
     setDateTo("");
+    setSearchQuery("");
     setPage(1);
   };
 
@@ -166,6 +179,23 @@ export default function SportCenterPayments() {
 
         {/* Filter Bar */}
         <div className="flex flex-wrap items-end gap-2">
+          {/* Search */}
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground flex items-center gap-1">
+              <Search className="h-3 w-3" /> Cari
+            </Label>
+            <div className="relative">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+              <Input
+                type="text"
+                placeholder="No. booking / nama / fasilitas…"
+                className="h-8 text-xs pl-7 w-56"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+          </div>
+
           {/* Status */}
           <div className="space-y-1">
             <Label className="text-xs text-muted-foreground">Status</Label>
@@ -207,7 +237,7 @@ export default function SportCenterPayments() {
           </div>
 
           {/* Reset */}
-          {(statusFilter !== "all" || hasDateFilter) && (
+          {(statusFilter !== "all" || hasDateFilter || searchQuery) && (
             <Button variant="ghost" size="sm" className="h-8 gap-1 text-xs text-muted-foreground" onClick={resetFilters}>
               <XCircle className="h-3.5 w-3.5" /> Reset Filter
             </Button>
@@ -232,9 +262,11 @@ export default function SportCenterPayments() {
               <tbody>
                 {isLoading ? (
                   <tr><td colSpan={10} className="py-10 text-center text-muted-foreground">Memuat…</td></tr>
-                ) : (data?.data ?? []).length === 0 ? (
-                  <tr><td colSpan={10} className="py-10 text-center text-muted-foreground">Belum ada pembayaran</td></tr>
-                ) : (data?.data ?? []).map((p) => (
+                ) : displayedRows.length === 0 ? (
+                  <tr><td colSpan={10} className="py-10 text-center text-muted-foreground">
+                    {searchQuery ? `Tidak ada hasil untuk "${searchQuery}"` : "Belum ada pembayaran"}
+                  </td></tr>
+                ) : displayedRows.map((p) => (
                   <tr key={p.id} className="border-b border-border/20 hover:bg-muted/20 transition-colors">
                     <td className="py-2.5 px-3 font-mono text-xs text-muted-foreground whitespace-nowrap">{p.payment_number}</td>
                     <td className="py-2.5 px-3 font-mono text-xs text-muted-foreground whitespace-nowrap">{p.booking_number ?? "—"}</td>
