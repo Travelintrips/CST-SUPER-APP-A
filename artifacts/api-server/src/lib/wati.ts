@@ -214,14 +214,20 @@ export async function listWatiTemplates(): Promise<any[]> {
 export async function testWatiConnection(): Promise<{ ok: boolean; error?: string; accountName?: string }> {
   const cfg = getWatiConfig();
   if (!cfg) return { ok: false, error: "WATI_BASE_URL atau WATI_API_TOKEN tidak dikonfigurasi" };
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
   try {
     const res = await fetch(`${cfg.baseUrl}/api/v1/getMessageTemplates?pageSize=1`, {
       headers: { Authorization: `Bearer ${cfg.token}` },
+      signal: controller.signal,
     });
+    clearTimeout(timer);
     if (res.status === 401) return { ok: false, error: "Token tidak valid (401 Unauthorized)" };
     if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
     return { ok: true };
-  } catch (err) {
+  } catch (err: any) {
+    clearTimeout(timer);
+    if (err?.name === "AbortError") return { ok: false, error: "Timeout: WATI server tidak merespons dalam 8 detik" };
     return { ok: false, error: String(err) };
   }
 }
