@@ -28,7 +28,7 @@ import {
   Search, RefreshCw, Package, Trash2, CheckCircle2, Circle,
   Clock, Truck, XCircle, ChevronRight, AlertTriangle, User,
   Mail, Phone, MapPin, StickyNote, Loader2, Tag, FileText,
-  ClipboardList, Wrench, ChevronDown, Eye, CreditCard, Send, ExternalLink,
+  ClipboardList, Wrench, ChevronDown, Eye, CreditCard, Send, ExternalLink, Store,
 } from "lucide-react";
 import { getTemplate } from "@/lib/productTemplates";
 import type { ProductTemplate } from "@/lib/productTemplates";
@@ -819,6 +819,12 @@ export default function PortalProductOrdersPage() {
                   {STATUS_ICONS[detailOrder.status as OrderStatus]}
                   {detailOrder.status}
                 </Badge>
+                {(detailOrder.templateSnapshot as any)?.catalogSource === "catalog" && (
+                  <Badge variant="outline" className="text-[10px] h-4 border-violet-400 text-violet-700 bg-violet-50 gap-1">
+                    <Store className="w-2.5 h-2.5" />
+                    Vendor Catalog
+                  </Badge>
+                )}
               </DialogTitle>
             </DialogHeader>
 

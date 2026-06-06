@@ -21,6 +21,8 @@ export interface MarketplaceItem {
   leadTime: string | null;
   location: string | null;
   origin: string | null;
+  validityDate: string | null;
+  documents: unknown;
   publishedAt: string | null;
   sortOrder: number;
 }

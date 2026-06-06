@@ -407,7 +407,6 @@ function FilterSidebar({
 export default function MarketplacePage() {
   const [activeTab, setActiveTab] = useState<"product" | "service">("product");
   const [activeCategory, setActiveCategory] = useState("all");
-  const [selectedItem, setSelectedItem] = useState<MarketplaceItem | null>(null);
   const [activeFilters, setActiveFilters] = useState<ActiveFilters>({});
   const [searchQuery, setSearchQuery] = useState("");
   const [showMobileFilter, setShowMobileFilter] = useState(false);
@@ -615,18 +614,13 @@ export default function MarketplacePage() {
             {!isLoading && visibleItems.length > 0 && (
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
                 {visibleItems.map((item) => (
-                  <ItemCard key={item.id} item={item} onClick={() => setSelectedItem(item)} />
+                  <ItemCard key={item.id} item={item} onClick={() => setLocation(`/marketplace/${item.id}`)} />
                 ))}
               </div>
             )}
           </div>
         </div>
       </div>
-
-      {/* ── Detail Modal ────────────────────────────────────────────────────── */}
-      {selectedItem && (
-        <ItemDetailModal item={selectedItem} onClose={() => setSelectedItem(null)} />
-      )}
     </div>
   );
 }
