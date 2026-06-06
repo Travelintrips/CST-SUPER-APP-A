@@ -20,6 +20,22 @@ author = "agent"
 task = "workflow.run"
 args = "Gateway"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "API Server"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Customer Portal"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "BizPortal"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Logistic Order"
+
 [[workflows.workflow]]
 name = "Gateway"
 author = "agent"
@@ -31,6 +47,54 @@ waitForPort = 5000
 
 [workflows.workflow.metadata]
 outputType = "webview"
+
+[[workflows.workflow]]
+name = "API Server"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd artifacts/api-server && PORT=8080 pnpm run dev"
+waitForPort = 8080
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow]]
+name = "Customer Portal"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd artifacts/customer-portal && PORT=6000 BASE_PATH=/ pnpm run dev"
+waitForPort = 6000
+
+[[workflows.workflow]]
+name = "BizPortal"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd artifacts/bizportal && PORT=6800 BASE_PATH=/bizportal/ pnpm run dev"
+waitForPort = 6800
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow]]
+name = "Logistic Order"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd artifacts/logistic-order && PORT=3002 pnpm run dev"
+waitForPort = 3002
+
+[workflows.workflow.metadata]
+outputType = "console"
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
@@ -105,6 +169,10 @@ localPort = 4200
 externalPort = 4200
 
 [[ports]]
+localPort = 3002
+externalPort = 3002
+
+[[ports]]
 localPort = 5000
 externalPort = 80
 
@@ -117,12 +185,16 @@ localPort = 5174
 externalPort = 3003
 
 [[ports]]
-localPort = 8080
-externalPort = 8080
+localPort = 6000
+externalPort = 6000
 
 [[ports]]
-localPort = 8081
-externalPort = 8081
+localPort = 6800
+externalPort = 6800
+
+[[ports]]
+localPort = 8080
+externalPort = 8080
 
 [[ports]]
 localPort = 18442
