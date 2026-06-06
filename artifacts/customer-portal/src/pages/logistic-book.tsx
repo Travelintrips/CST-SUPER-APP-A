@@ -100,6 +100,7 @@ const STEPS = [
   "Pilih Layanan",
   "Ringkasan",
   "Data Pemesan",
+  "Konfirmasi",
 ];
 
 type Step = 0 | 1 | 2 | 3 | 4;
@@ -553,7 +554,7 @@ export default function BookPage() {
   const [selectedCategory, setSelectedCategory] = useState<ServiceCategory | null>(null);
   const [selectedItem, setSelectedItem] = useState<ServiceItem | null>(null);
   const [editCartId, setEditCartId] = useState<string | null>(null);
-  const { items: cartItems, addItem, removeItem, clearCart, subtotal, tax, grandTotal } = useCart();
+  const { items: cartItems, addItem, removeItem, updateItem, clearCart, subtotal, tax, grandTotal } = useCart();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const createOrder = useCreateLogisticOrder();
@@ -622,6 +623,7 @@ export default function BookPage() {
   const [quickTruckEstimate, setQuickTruckEstimate] = useState<number | null>(null);
   const [quickEstimating, setQuickEstimating] = useState(false);
   const [quickDeliveryAddressError, setQuickDeliveryAddressError] = useState(false);
+  const [confirmEditShipping, setConfirmEditShipping] = useState(false);
 
   // Persist orderType + shipmentType to localStorage whenever they change
   useEffect(() => {
@@ -1816,6 +1818,233 @@ export default function BookPage() {
       );
     }
 
+    // ── Step 4: Konfirmasi & Review ──────────────────────────────────────
+    if (step === 4) {
+      const hasProductOnly = cartItems.every(c => c.calculatorType === "product") && cartItems.length > 0;
+
+      const SHIPPING_LABEL: Record<string, string> = {
+        darat: "Darat (Trucking)", laut: "Laut (Sea Freight)", udara: "Udara (Air Freight)",
+      };
+      const SHIPPING_ICON: Record<string, JSX.Element> = {
+        darat: <Truck className="w-5 h-5 text-orange-600" />,
+        laut: <Ship className="w-5 h-5 text-blue-600" />,
+        udara: <Plane className="w-5 h-5 text-sky-600" />,
+      };
+      const SHIPPING_METHODS = [
+        { id: "darat" as const, label: "Darat", icon: <Truck className="w-5 h-5 text-orange-600" />, desc: "Trucking" },
+        { id: "laut"  as const, label: "Laut",  icon: <Ship  className="w-5 h-5 text-blue-600"   />, desc: "Sea Freight" },
+        { id: "udara" as const, label: "Udara", icon: <Plane className="w-5 h-5 text-sky-600"    />, desc: "Air Freight" },
+      ];
+
+      function handleQtyChange(item: CartItem, delta: number) {
+        const curQty = Number(item.inputData?.qty ?? 1);
+        const newQty = curQty + delta;
+        if (newQty <= 0) { removeItem(item.cartId); return; }
+        const price = Number(item.inputData?.price ?? 0);
+        updateItem(item.cartId, { inputData: { ...item.inputData, qty: newQty }, subtotal: price * newQty });
+      }
+
+      function handleChangeShipping(method: "darat" | "laut" | "udara") {
+        const updated = {
+          method,
+          estimate: method === "darat" ? (productShipping?.estimate ?? null) : null,
+          companyName: productShipping?.companyName ?? companyOrigin?.name ?? "",
+          companyAddress: productShipping?.companyAddress ?? companyOrigin?.address ?? "",
+        };
+        setProductShipping(updated);
+        try { localStorage.setItem("logistic_product_shipping", JSON.stringify(updated)); } catch { /* ignore */ }
+        setConfirmEditShipping(false);
+      }
+
+      const shippingEstimate = hasProductOnly && productShipping?.estimate ? productShipping.estimate : 0;
+      const totalWithShipping = grandTotal + shippingEstimate;
+
+      return (
+        <div className="space-y-5">
+          <div>
+            <h2 className="text-xl font-bold text-foreground mb-1">Konfirmasi Pesanan</h2>
+            <p className="text-sm text-muted-foreground">Periksa kembali sebelum submit</p>
+          </div>
+
+          {/* Section 1 — Produk & Layanan */}
+          <div className="rounded-xl border border-border overflow-hidden">
+            <div className="px-4 py-2.5 bg-muted/50 border-b border-border flex items-center gap-2">
+              <ShoppingCart className="w-4 h-4 text-muted-foreground" />
+              <span className="text-sm font-semibold">Produk &amp; Layanan</span>
+              <Badge variant="secondary" className="ml-auto text-xs">{cartItems.length} item</Badge>
+            </div>
+            <div className="divide-y divide-border">
+              {cartItems.map(item => {
+                const isProduct = item.calculatorType === "product";
+                const qty = Number(item.inputData?.qty ?? 1);
+                return (
+                  <div key={item.cartId} className="p-4 flex items-start gap-3">
+                    <div className="flex-1 min-w-0">
+                      <Badge variant="outline" className="text-[10px] mb-1">{item.category}</Badge>
+                      <p className="font-semibold text-sm text-foreground">{item.serviceName}</p>
+                      {!isProduct && (
+                        <dl className="mt-1 space-y-0.5">
+                          {getServiceDetailRows(item.calculatorType, item.inputData).map(({ label, value }) => (
+                            <div key={label} className="flex gap-2 text-xs">
+                              <dt className="text-muted-foreground w-24 shrink-0">{label}</dt>
+                              <dd className="font-medium text-foreground">{value}</dd>
+                            </div>
+                          ))}
+                        </dl>
+                      )}
+                    </div>
+                    <div className="flex flex-col items-end gap-2 shrink-0">
+                      {isProduct && (
+                        <div className="flex items-center border border-border rounded-lg overflow-hidden">
+                          <button
+                            className="w-7 h-7 flex items-center justify-center hover:bg-muted text-muted-foreground text-base leading-none"
+                            onClick={() => handleQtyChange(item, -1)}
+                          >−</button>
+                          <span className="w-8 text-center text-sm font-bold">{qty}</span>
+                          <button
+                            className="w-7 h-7 flex items-center justify-center hover:bg-muted text-muted-foreground text-base leading-none"
+                            onClick={() => handleQtyChange(item, +1)}
+                          >+</button>
+                        </div>
+                      )}
+                      <span className="text-sm font-bold text-accent">
+                        {item.subtotal > 0
+                          ? formatCurrency(item.subtotal)
+                          : <span className="text-amber-600 text-xs font-medium">Harga nego</span>}
+                      </span>
+                      <button
+                        className="text-destructive/60 hover:text-destructive transition-colors"
+                        onClick={() => removeItem(item.cartId)}
+                        title="Hapus item"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Section 2 — Metode Pengiriman (product-only) */}
+          {hasProductOnly && (
+            <div className="rounded-xl border border-border overflow-hidden">
+              <div className="px-4 py-2.5 bg-muted/50 border-b border-border flex items-center gap-2">
+                <Truck className="w-4 h-4 text-muted-foreground" />
+                <span className="text-sm font-semibold">Metode Pengiriman</span>
+                <button
+                  className="ml-auto text-xs text-accent font-medium hover:underline"
+                  onClick={() => setConfirmEditShipping(p => !p)}
+                >
+                  {confirmEditShipping ? "Batal" : "Ubah"}
+                </button>
+              </div>
+              {confirmEditShipping ? (
+                <div className="p-4 grid grid-cols-3 gap-2">
+                  {SHIPPING_METHODS.map(m => (
+                    <button
+                      key={m.id}
+                      onClick={() => handleChangeShipping(m.id)}
+                      className={`rounded-xl border-2 p-3 flex flex-col items-center gap-1.5 transition-all ${
+                        productShipping?.method === m.id
+                          ? "border-accent bg-accent/5"
+                          : "border-border hover:border-accent/40 hover:bg-muted/50"
+                      }`}
+                    >
+                      {m.icon}
+                      <span className="text-xs font-bold">{m.label}</span>
+                      <span className="text-[10px] text-muted-foreground">{m.desc}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : productShipping ? (
+                <div className="p-4 space-y-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                      {SHIPPING_ICON[productShipping.method]}
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-foreground">{SHIPPING_LABEL[productShipping.method]}</p>
+                      {productShipping.estimate
+                        ? <p className="text-xs text-accent font-medium">Estimasi: {formatCurrency(productShipping.estimate)}</p>
+                        : <p className="text-xs text-muted-foreground italic">Harga sesuai rute</p>}
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-2 bg-orange-50 border border-orange-100 rounded-lg px-3 py-2">
+                    <MapPin className="w-3.5 h-3.5 text-orange-500 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-[10px] font-bold text-orange-500 uppercase tracking-wide">Pengirim</p>
+                      <p className="text-xs font-semibold text-slate-800">{productShipping.companyName}</p>
+                      <p className="text-xs text-muted-foreground">{productShipping.companyAddress}</p>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-4 text-center text-sm text-muted-foreground">
+                  Belum dipilih.{" "}
+                  <button className="text-accent underline" onClick={() => setConfirmEditShipping(true)}>Pilih sekarang</button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Section 3 — Data Pemesan */}
+          <div className="rounded-xl border border-border overflow-hidden">
+            <div className="px-4 py-2.5 bg-muted/50 border-b border-border flex items-center gap-2">
+              <User className="w-4 h-4 text-muted-foreground" />
+              <span className="text-sm font-semibold">Data Pemesan</span>
+              <Button
+                variant="ghost" size="sm"
+                className="ml-auto h-7 text-xs gap-1 text-accent"
+                onClick={() => setStep(3)}
+              >
+                <Edit2 className="w-3 h-3" /> Edit
+              </Button>
+            </div>
+            <div className="p-4 grid grid-cols-2 gap-x-6 gap-y-3">
+              {([
+                ["Nama PIC", customerForm.customerName],
+                ["Perusahaan", customerForm.companyName],
+                ["Email", customerForm.email],
+                ["Telepon", customerForm.phone],
+                ...(customerForm.shippingAddress ? [["Alamat Tujuan", customerForm.shippingAddress]] : []),
+                ...(customerForm.notes ? [["Catatan", customerForm.notes]] : []),
+              ] as [string, string][]).filter(([, v]) => !!v).map(([label, value]) => (
+                <div key={label} className={label === "Alamat Tujuan" || label === "Catatan" ? "col-span-2" : ""}>
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide mb-0.5">{label}</p>
+                  <p className="text-sm font-medium text-foreground break-words">{value}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Section 4 — Total */}
+          <div className="rounded-xl border border-accent/30 bg-accent/5 px-4 py-4 space-y-2">
+            {grandTotal > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Subtotal Produk &amp; Layanan</span>
+                <span className="font-medium">{formatCurrency(grandTotal)}</span>
+              </div>
+            )}
+            {hasProductOnly && (
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Estimasi Ongkos Kirim</span>
+                {shippingEstimate > 0
+                  ? <span className="font-medium">{formatCurrency(shippingEstimate)}</span>
+                  : <span className="text-muted-foreground italic text-xs">Dikonfirmasi setelah order</span>}
+              </div>
+            )}
+            <Separator />
+            <div className="flex justify-between items-baseline">
+              <span className="font-bold text-base">Total Estimasi</span>
+              <span className="font-bold text-lg text-accent">{formatCurrency(totalWithShipping)}</span>
+            </div>
+            <p className="text-[11px] text-muted-foreground">Harga final dikonfirmasi oleh tim kami setelah pesanan diterima.</p>
+          </div>
+        </div>
+      );
+    }
+
     return null;
   };
 
@@ -1824,6 +2053,7 @@ export default function BookPage() {
     if (step === 1) return false;
     if (step === 2) return cartItems.length > 0;
     if (step === 3) return !!(customerForm.customerName && customerForm.email);
+    if (step === 4) return !!(customerForm.customerName && customerForm.email) && cartItems.length > 0;
     return false;
   };
 
@@ -1905,13 +2135,20 @@ export default function BookPage() {
               >
                 Lanjutkan <ChevronRight className="w-4 h-4 ml-1" />
               </Button>
+            ) : step === 3 ? (
+              <Button
+                onClick={() => setStep(4)}
+                disabled={!canProceed()}
+              >
+                Review Pesanan <ChevronRight className="w-4 h-4 ml-1" />
+              </Button>
             ) : (
               <Button
                 onClick={handleSubmit}
                 disabled={createOrder.isPending || !canProceed()}
-                className="bg-accent hover:bg-accent/90 text-accent-foreground font-semibold"
+                className="bg-accent hover:bg-accent/90 text-accent-foreground font-semibold gap-2"
               >
-                {createOrder.isPending ? "Menyimpan..." : "Submit Pesanan"}
+                {createOrder.isPending ? "Menyimpan..." : <><CheckCircle2 className="w-4 h-4" /> Konfirmasi &amp; Submit</>}
               </Button>
             )}
           </div>
