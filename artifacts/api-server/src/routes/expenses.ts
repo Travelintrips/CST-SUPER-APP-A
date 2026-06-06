@@ -380,6 +380,59 @@ router.patch("/:id", async (req, res) => {
   return res.json(serializeExpense(row));
 });
 
+// ─── Missing journals: list ────────────────────────────────────────────────
+router.get("/missing-journals", async (req: Request, res) => {
+  const companyId = resolveCompanyId(req);
+  const rows = await db.execute(sql.raw(`
+    SELECT e.id, e.expense_number, e.date, e.description, e.total, e.transaction_type, e.status,
+           ec.name AS category_name
+    FROM expenses e
+    LEFT JOIN expense_categories ec ON ec.id = e.category_id
+    WHERE e.status = 'active' AND e.entry_id IS NULL
+      ${companyId ? `AND e.company_id = ${companyId}` : ""}
+    ORDER BY e.date DESC, e.id DESC
+    LIMIT 500
+  `));
+  return res.json({ count: rows.rows.length, items: rows.rows });
+});
+
+// ─── Re-post jurnal: single expense ────────────────────────────────────────
+router.post("/:id/repost-journal", async (req: Request, res) => {
+  const id = Number(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ message: "Invalid id" });
+  try {
+    const entry = await postQuickExpenseJournal(id);
+    return res.json({ success: true, entryId: entry.id });
+  } catch (e: any) {
+    return res.status(400).json({ success: false, message: e.message });
+  }
+});
+
+// ─── Re-post jurnal: bulk (semua yang missing) ─────────────────────────────
+router.post("/bulk-repost", async (req: Request, res) => {
+  const companyId = resolveCompanyId(req);
+  const rows = await db.execute(sql.raw(`
+    SELECT id FROM expenses
+    WHERE status = 'active' AND entry_id IS NULL
+      ${companyId ? `AND company_id = ${companyId}` : ""}
+    ORDER BY date, id
+    LIMIT 500
+  `));
+  const ids = (rows.rows as any[]).map((r) => Number(r.id));
+  const results: { id: number; success: boolean; entryId?: number; error?: string }[] = [];
+  for (const id of ids) {
+    try {
+      const entry = await postQuickExpenseJournal(id);
+      results.push({ id, success: true, entryId: entry.id });
+    } catch (e: any) {
+      results.push({ id, success: false, error: e.message });
+    }
+  }
+  const succeeded = results.filter((r) => r.success).length;
+  const failed = results.filter((r) => !r.success).length;
+  return res.json({ total: ids.length, succeeded, failed, results });
+});
+
 // ─── Helper: post journal untuk expense / penerimaan lain ────────────────────
 export async function postQuickExpenseJournal(expId: number) {
   const result = await db.execute(sql.raw(`
