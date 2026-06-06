@@ -17,12 +17,12 @@ import {
   getGetExpenseQueryOptions,
   type Expense,
 } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { usePrefetchOnHover } from "@/hooks/use-prefetch-on-hover";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useCompany } from "@/contexts/CompanyContext";
-import { ShoppingCart, Ship, Plus, Receipt, Search, Trash2, X, CalendarRange, Zap, Wallet, HandCoins, Building2, Landmark, Package, ShieldCheck, LayoutDashboard, Layers, PieChart, Banknote, TrendingDown, TrendingUp } from "lucide-react";
+import { ShoppingCart, Ship, Plus, Receipt, Search, Trash2, X, CalendarRange, Zap, Wallet, HandCoins, Building2, Landmark, Package, ShieldCheck, LayoutDashboard, Layers, PieChart, Banknote, TrendingDown, TrendingUp, Wrench, ChevronDown, ChevronUp, CheckCircle2, AlertCircle } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -125,6 +125,57 @@ export default function ExpenseListPage() {
     } catch { return "all"; }
   });
 
+  const [repairOpen, setRepairOpen] = useState(false);
+  const [repairing, setRepairing] = useState(false);
+  const [repairResult, setRepairResult] = useState<{ total: number; succeeded: number; failed: number; results: { id: number; success: boolean; error?: string }[] } | null>(null);
+
+  const { data: missingJournals, refetch: refetchMissing } = useQuery<{ count: number; items: { id: number; expense_number: string; date: string; description: string; total: string; transaction_type: string; category_name: string }[] }>({
+    queryKey: ["expense-missing-journals", activeCompanyId],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (activeCompanyId) params.set("company", String(activeCompanyId));
+      const res = await fetch(`/api/expenses/missing-journals?${params}`);
+      if (!res.ok) return { count: 0, items: [] };
+      return res.json();
+    },
+    refetchInterval: repairOpen ? 30000 : false,
+  });
+
+  const handleBulkRepost = async () => {
+    setRepairing(true);
+    setRepairResult(null);
+    try {
+      const params = new URLSearchParams();
+      if (activeCompanyId) params.set("company", String(activeCompanyId));
+      const res = await fetch(`/api/expenses/bulk-repost?${params}`, { method: "POST" });
+      const data = await res.json();
+      setRepairResult(data);
+      refetchMissing();
+      qc.invalidateQueries({ queryKey: getListExpensesQueryKey() });
+      toast({ title: `Selesai: ${data.succeeded} jurnal berhasil di-posting` });
+    } catch (e: any) {
+      toast({ title: e?.message ?? "Gagal", variant: "destructive" });
+    } finally {
+      setRepairing(false);
+    }
+  };
+
+  const handleSingleRepost = async (id: number) => {
+    try {
+      const res = await fetch(`/api/expenses/${id}/repost-journal`, { method: "POST" });
+      const data = await res.json();
+      if (data.success) {
+        toast({ title: `Jurnal expense #${id} berhasil di-posting` });
+        refetchMissing();
+        qc.invalidateQueries({ queryKey: getListExpensesQueryKey() });
+      } else {
+        toast({ title: data.message ?? "Gagal", variant: "destructive" });
+      }
+    } catch (e: any) {
+      toast({ title: e?.message ?? "Gagal", variant: "destructive" });
+    }
+  };
+
   const { data: expenses = [], isLoading } = useListExpenses({
     status: statusFilter !== "all" ? statusFilter : undefined,
     expenseType: typeFilter !== "all" ? typeFilter : undefined,
@@ -178,6 +229,74 @@ export default function ExpenseListPage() {
             </Link>
           </div>
         </div>
+
+        {/* ── Panel Perbaiki Jurnal ────────────────────────────────────── */}
+        {(missingJournals?.count ?? 0) > 0 && (
+          <Card className="border-amber-500/50 bg-amber-950/20">
+            <CardContent className="p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-amber-400">
+                  <Wrench size={15} className="shrink-0" />
+                  <span className="text-sm font-medium">
+                    {missingJournals!.count} expense aktif belum punya jurnal akuntansi
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm" variant="outline"
+                    className="h-7 text-xs border-amber-500/50 text-amber-400 hover:bg-amber-950/40"
+                    onClick={() => setRepairOpen((v) => !v)}
+                  >
+                    {repairOpen ? <ChevronUp size={12} className="mr-1" /> : <ChevronDown size={12} className="mr-1" />}
+                    {repairOpen ? "Tutup" : "Lihat Detail"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="h-7 text-xs bg-amber-600 hover:bg-amber-700 text-white"
+                    onClick={handleBulkRepost}
+                    disabled={repairing}
+                  >
+                    <Wrench size={12} className="mr-1" />
+                    {repairing ? "Memproses..." : "Perbaiki Semua"}
+                  </Button>
+                </div>
+              </div>
+
+              {repairResult && (
+                <div className="mt-2 text-xs flex gap-4 text-muted-foreground">
+                  <span className="text-emerald-400 flex items-center gap-1"><CheckCircle2 size={11} />{repairResult.succeeded} berhasil</span>
+                  {repairResult.failed > 0 && <span className="text-rose-400 flex items-center gap-1"><AlertCircle size={11} />{repairResult.failed} gagal (akun COA belum diset)</span>}
+                </div>
+              )}
+
+              {repairOpen && (
+                <div className="mt-3 border-t border-amber-500/20 pt-3 space-y-1 max-h-56 overflow-y-auto">
+                  {missingJournals!.items.map((item) => (
+                    <div key={item.id} className="flex items-center justify-between gap-2 text-xs py-1">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="font-mono text-muted-foreground shrink-0">{item.expense_number}</span>
+                        <span className="truncate text-foreground">{item.description || item.category_name || "—"}</span>
+                        <Badge variant="outline" className={`text-[10px] shrink-0 ${item.transaction_type === "income" ? "border-emerald-500/40 text-emerald-400" : "border-rose-500/40 text-rose-400"}`}>
+                          {item.transaction_type === "income" ? "Penerimaan" : "Expense"}
+                        </Badge>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="font-mono text-muted-foreground">{idr(Number(item.total))}</span>
+                        <Button
+                          size="sm" variant="ghost"
+                          className="h-6 px-2 text-[10px] text-amber-400 hover:text-amber-300"
+                          onClick={() => handleSingleRepost(item.id)}
+                        >
+                          <Wrench size={10} className="mr-0.5" />Post
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* ── Modul Cepat ────────────────────────────────────────────── */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

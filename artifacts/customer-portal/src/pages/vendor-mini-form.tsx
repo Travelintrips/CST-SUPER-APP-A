@@ -415,6 +415,8 @@ export default function VendorMiniFormPage() {
   // Vendor-only fields when productTemplate is active
   const [tplStockStatus, setTplStockStatus] = useState("");
   const [tplHarga, setTplHarga] = useState("");
+  const [tplHargaError, setTplHargaError] = useState(false);
+  const tplHargaRef = useRef<HTMLDivElement>(null);
   const [tplLeadTime, setTplLeadTime] = useState("");
   const [tplMoq, setTplMoq] = useState("");
   const [tplNotes, setTplNotes] = useState("");
@@ -452,19 +454,39 @@ export default function VendorMiniFormPage() {
 
     // Validate required fields — prefer serviceTemplate fields, fallback to schema
     if (meta?.serviceTemplate && !meta?.productTemplate) {
-      const missing = (meta.serviceTemplate.fields ?? [])
+      const phase = meta.phase ?? "quotation";
+      const visibleFields = (meta.serviceTemplate.fields ?? []).filter(f =>
+        phase === "operational"
+          ? (f.section === "operational" || f.section === "both")
+          : (f.section === "quotation" || f.section === "both" || !f.section)
+      );
+      const missing = visibleFields
         .filter(f => f.required && !f.isUpload && !values[f.key]?.trim())
         .map(f => f.label);
       if (missing.length) { setSubmitError(`Field wajib belum diisi: ${missing.join(", ")}`); return; }
     } else if (meta?.schema) {
+      const phase = meta.phase ?? "quotation";
+      // Ketika productTemplate ada, field product_name / unit_price / unit
+      // dihandle oleh template — tidak perlu divalidasi dari schema umum
+      const tplManagedKeys = meta?.productTemplate ? ["product_name", "unit_price", "unit"] : [];
       const missing = meta.schema.fields
-        .filter(f => f.required && !values[f.key]?.trim())
+        .filter(f =>
+          f.required &&
+          !f.isUpload &&
+          !tplManagedKeys.includes(f.key) &&
+          (!f.section || f.section === phase || f.section === "both") &&
+          !values[f.key]?.trim()
+        )
         .map(f => f.label);
       if (missing.length) { setSubmitError(`Field wajib belum diisi: ${missing.join(", ")}`); return; }
     }
 
     if (meta?.productTemplate && (!tplHarga || Number(tplHarga) <= 0)) {
-      setSubmitError("Harga dasar wajib diisi"); return;
+      setTplHargaError(true);
+      setSubmitError("Harga dasar wajib diisi");
+      tplHargaRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      tplHargaRef.current?.querySelector("input")?.focus();
+      return;
     }
     if (meta?.mode === "order_based" && !meta?.productTemplate && (!vendorUnitPrice || Number(vendorUnitPrice) <= 0)) {
       setSubmitError("Harga satuan dasar wajib diisi"); return;
@@ -968,16 +990,30 @@ export default function VendorMiniFormPage() {
                 Isi <strong>Harga Dasar</strong> dan detail penawaran Anda. Harga jual ke customer ditentukan oleh admin.
               </p>
               <div className="space-y-4">
-                <FormField label="Harga Dasar (Rp, belum PPN)" required>
-                  <div className="flex gap-2">
-                    <select value={currency} onChange={e => setCurrency(e.target.value)}
-                      className="rounded-lg border border-slate-200 px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white w-24">
-                      {["IDR","USD","SGD","EUR"].map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                    <input type="number" min="0" step="any" value={tplHarga} onChange={e => setTplHarga(e.target.value)}
-                      required placeholder="Contoh: 5000000" className={`${INPUT_CLS} flex-1`} />
-                  </div>
-                </FormField>
+                <div ref={tplHargaRef}>
+                  <FormField label="Harga Dasar (Rp, belum PPN)" required>
+                    <div className={`flex gap-2 rounded-lg transition-all ${tplHargaError ? "ring-2 ring-red-400" : ""}`}>
+                      <select value={currency} onChange={e => setCurrency(e.target.value)}
+                        className={`rounded-lg border px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white w-24 ${tplHargaError ? "border-red-400" : "border-slate-200"}`}>
+                        {["IDR","USD","SGD","EUR"].map(c => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                      <input
+                        type="number" min="0" step="any" value={tplHarga}
+                        onChange={e => { setTplHarga(e.target.value); if (tplHargaError) setTplHargaError(false); }}
+                        required placeholder="Contoh: 5000000"
+                        className={`flex-1 rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 ${tplHargaError ? "border-red-400 focus:ring-red-400 bg-red-50" : "border-slate-200 focus:ring-indigo-400"}`}
+                      />
+                    </div>
+                    {tplHargaError && (
+                      <p className="mt-1.5 flex items-center gap-1 text-xs text-red-600 font-medium">
+                        <svg className="w-3.5 h-3.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd"/>
+                        </svg>
+                        Harga dasar wajib diisi dan harus lebih dari 0
+                      </p>
+                    )}
+                  </FormField>
+                </div>
                 <FormField label="Status Stok">
                   <select value={tplStockStatus} onChange={e => setTplStockStatus(e.target.value)}
                     className={`${INPUT_CLS} bg-white`}>

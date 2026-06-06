@@ -8,8 +8,9 @@
 
 import { Router, type Request } from "express";
 import { requireAdmin } from "../lib/requireAdmin.js";
-import { testWatiConnection, listWatiTemplates, sendWatiTemplate, sendWatiSession, isWatiConfigured } from "../lib/wati.js";
+import { testWatiConnection, listWatiTemplates, sendWatiTemplate, sendWatiSession, isWatiConfigured, getWatiAccountInfo } from "../lib/wati.js";
 import { logger } from "../lib/logger.js";
+import { setSetting, getSetting } from "../lib/appSecrets.js";
 
 export const watiRouter = Router();
 watiRouter.use(async (req, res, next) => {
@@ -30,17 +31,66 @@ watiRouter.get("/status", async (_req, res) => {
     });
   }
 
-  const test = await testWatiConnection();
+  const [test, account] = await Promise.all([testWatiConnection(), getWatiAccountInfo()]);
+
+  // Auto-save nomor ke DB jika terdeteksi dari API (bukan manual) & belum ada setting manual
+  if (test.ok && account.phone && account.source !== "manual" && account.source !== undefined) {
+    const existing = (await getSetting("wati_phone_number", "")).trim();
+    if (!existing) {
+      try {
+        await setSetting("wati_phone_number", account.phone);
+        logger.info({ phone: account.phone, source: account.source }, "[wati] auto-saved phone from API");
+      } catch (e) {
+        logger.warn({ e }, "[wati] failed to auto-save phone");
+      }
+    }
+  }
+
+  const baseUrlRaw = (await getSetting("wati_base_url", process.env.WATI_BASE_URL ?? "")).trim();
+  const baseUrlDisplay = baseUrlRaw.replace(/^(https?:\/\/[^/]+).*/, "$1") || null;
+
   return res.json({
     provider: "wati",
     wati: {
       configured: true,
       connected: test.ok,
       error: test.error ?? null,
-      baseUrl: process.env.WATI_BASE_URL?.replace(/^(https?:\/\/[^/]+).*/, "$1") ?? null,
+      baseUrl: baseUrlDisplay,
+      phone: account.phone ?? null,
+      accountName: account.name ?? null,
+      phoneSource: account.source ?? null,
     },
     fonnte: { configured: fonnteConfigured, note: "digunakan sebagai fallback untuk grup WA admin" },
   });
+});
+
+// ─── Self-ping test ────────────────────────────────────────────────────────────
+// Kirim pesan ke nomor WATI sendiri (untuk tes koneksi kirim)
+watiRouter.post("/self-ping", async (_req, res) => {
+  if (!(await isWatiConfigured())) {
+    return res.status(400).json({ message: "WATI belum dikonfigurasi." });
+  }
+  const account = await getWatiAccountInfo();
+  const phone = account.phone;
+  if (!phone) {
+    return res.status(400).json({
+      message: "Nomor WATI tidak diketahui. Isi manual di Settings → WATI.",
+    });
+  }
+  const message = `[BizPortal Self-Ping] Test koneksi WATI berhasil ✅\nWaktu: ${new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })}`;
+  try {
+    const result = await sendWatiSession(phone, message, { context: "wati_self_ping", refId: String(Date.now()) });
+    if (!result.ok) {
+      return res.status(400).json({
+        message: result.error ?? "WATI menolak pengiriman",
+        hint: "Session message hanya berfungsi dalam 24 jam session window. Jika nomor WATI belum pernah mengirim/menerima pesan, gunakan Template Message.",
+        watiResponse: result.watiResponse,
+      });
+    }
+    return res.json({ ok: true, sentTo: phone, message: "Self-ping berhasil dikirim." });
+  } catch (err: any) {
+    return res.status(500).json({ message: err?.message ?? "Gagal self-ping." });
+  }
 });
 
 // ─── List templates ────────────────────────────────────────────────────────────
@@ -63,11 +113,18 @@ watiRouter.post("/test-send", async (req: Request, res) => {
   }
 
   try {
-    await sendWatiSession(String(phone).trim(), String(message).trim(), {
+    const result = await sendWatiSession(String(phone).trim(), String(message).trim(), {
       context: "wati_test",
       refId: String(Date.now()),
     });
-    return res.json({ ok: true, message: "Pesan test berhasil dikirim via WATI." });
+    if (!result.ok) {
+      return res.status(400).json({
+        message: result.error ?? "WATI menolak pengiriman",
+        watiResponse: result.watiResponse,
+        hint: "Session message hanya berfungsi jika nomor tujuan pernah menghubungi WATI Business number dalam 24 jam terakhir. Gunakan Template Message untuk kirim kapan saja.",
+      });
+    }
+    return res.json({ ok: true, message: "Pesan berhasil dikirim via WATI.", watiResponse: result.watiResponse });
   } catch (err: any) {
     logger.error({ err }, "[wati] test-send error");
     return res.status(500).json({ message: err?.message ?? "Gagal kirim." });

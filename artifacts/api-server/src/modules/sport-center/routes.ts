@@ -1057,7 +1057,16 @@ router.get("/members", async (req, res) => {
           NULL::numeric AS total_price,
           NULL::text AS payment_method,
           NULL::int AS months,
-          created_at
+          created_at,
+          CASE
+            WHEN start_date IS NOT NULL AND end_date IS NOT NULL
+            THEN (
+              (EXTRACT(YEAR FROM end_date) - EXTRACT(YEAR FROM start_date)) * 12
+              + (EXTRACT(MONTH FROM end_date) - EXTRACT(MONTH FROM start_date))
+              + 1
+            )::int
+            ELSE NULL
+          END AS duration_months
         FROM sport_members
         WHERE (${cId}::int IS NULL OR company_id = ${cId})
           AND (${memberType}::text IS NULL OR member_type = ${memberType})
@@ -1072,7 +1081,8 @@ router.get("/members", async (req, res) => {
           'SCM-' || LPAD(id::text, 4, '0') AS member_number,
           start_date::text, end_date::text, status, notes,
           total_price, payment_method, months,
-          created_at
+          created_at,
+          months AS duration_months
         FROM sport_center_memberships
         WHERE (${memberType}::text IS NULL OR ${memberType} = 'gym' OR ${memberType} = 'all')
           AND (${status}::text IS NULL OR status = ${status})
@@ -1092,7 +1102,11 @@ router.get("/members", async (req, res) => {
       `),
     ]);
 
-    res.json({ data: dataRes.rows, total: Number((countRes.rows[0] as any).cnt) });
+    const data = (dataRes.rows as any[]).map((m) => ({
+      ...m,
+      duration: m.duration_months != null ? `${m.duration_months} bulan` : null,
+    }));
+    res.json({ data, total: Number((countRes.rows[0] as any).cnt) });
   } catch (e) {
     console.error("GET /members error:", e);
     res.status(500).json({ error: "Gagal" });
@@ -1431,6 +1445,10 @@ router.get("/payments", async (req, res) => {
     const offset = (page - 1) * limit;
 
     const statusFilter = req.query.status ? String(req.query.status) : null;
+    const dateFrom = req.query.date_from ? String(req.query.date_from) : null;
+    const dateTo   = req.query.date_to   ? String(req.query.date_to)   : null;
+    const search   = req.query.search    ? String(req.query.search).trim() : null;
+    const searchPattern = search ? `%${search}%` : null;
 
     const [dataRes, countRes] = await Promise.all([
       db.execute(sql`
@@ -1446,12 +1464,28 @@ router.get("/payments", async (req, res) => {
         LEFT JOIN sport_facilities f ON f.id = b.facility_id
         WHERE (${cId}::int IS NULL OR p.company_id = ${cId})
           AND (${statusFilter}::text IS NULL OR p.status = ${statusFilter})
+          AND (${dateFrom}::date IS NULL OR p.paid_at::date >= ${dateFrom}::date)
+          AND (${dateTo}::date   IS NULL OR p.paid_at::date <= ${dateTo}::date)
+          AND (${searchPattern}::text IS NULL
+               OR b.booking_number ILIKE ${searchPattern}
+               OR b.customer_name  ILIKE ${searchPattern}
+               OR p.payment_number ILIKE ${searchPattern}
+               OR COALESCE(f.name, b.facility_name) ILIKE ${searchPattern})
         ORDER BY p.created_at DESC LIMIT ${limit} OFFSET ${offset}
       `),
       db.execute(sql`
         SELECT COUNT(*) AS cnt FROM sport_payments p
+        LEFT JOIN sport_bookings b ON p.booking_id = b.id
+        LEFT JOIN sport_facilities f ON f.id = b.facility_id
         WHERE (${cId}::int IS NULL OR p.company_id = ${cId})
           AND (${statusFilter}::text IS NULL OR p.status = ${statusFilter})
+          AND (${dateFrom}::date IS NULL OR p.paid_at::date >= ${dateFrom}::date)
+          AND (${dateTo}::date   IS NULL OR p.paid_at::date <= ${dateTo}::date)
+          AND (${searchPattern}::text IS NULL
+               OR b.booking_number ILIKE ${searchPattern}
+               OR b.customer_name  ILIKE ${searchPattern}
+               OR p.payment_number ILIKE ${searchPattern}
+               OR COALESCE(f.name, b.facility_name) ILIKE ${searchPattern})
       `),
     ]);
     res.json({ data: dataRes.rows, total: Number((countRes.rows[0] as any).cnt) });

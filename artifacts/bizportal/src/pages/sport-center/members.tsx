@@ -22,6 +22,7 @@ type Member = {
   start_date: string | null; end_date: string | null;
   status: string; notes: string | null;
   total_price: string | null; payment_method: string | null; months: number | null;
+  duration: string | null;
 };
 
 type UpcomingMember = {
@@ -398,6 +399,49 @@ export default function SportCenterMembers() {
                             {d.reason && <span className="text-red-400/80">— {d.reason}</span>}
                           </div>
                         ))}
+        <Card className="border-border/60">
+          <CardContent className="p-0">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border/40 bg-muted/20">
+                  {["No. Member","Nama","Tipe","Mulai","Selesai","Durasi","Status","Aksi"].map((h) => (
+                    <th key={h} className="text-left py-3 px-3 text-xs text-muted-foreground font-medium">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {isLoading ? (
+                  <tr><td colSpan={8} className="py-10 text-center text-muted-foreground">Memuat…</td></tr>
+                ) : (data?.data ?? []).length === 0 ? (
+                  <tr><td colSpan={8} className="py-10 text-center text-muted-foreground">Belum ada member</td></tr>
+                ) : (data?.data ?? []).map((m) => (
+                  <tr key={m.id} className="border-b border-border/20 hover:bg-muted/20">
+                    <td className="py-2.5 px-3 font-mono text-xs text-muted-foreground">{m.member_number}</td>
+                    <td className="py-2.5 px-3">
+                      <p className="font-medium text-foreground">{m.name}</p>
+                      <p className="text-xs text-muted-foreground">{m.phone}</p>
+                    </td>
+                    <td className="py-2.5 px-3">
+                      <Badge className="bg-blue-900/30 text-blue-300 border-blue-700 text-xs">
+                        {MEMBER_TYPE_LABEL[m.member_type] ?? m.member_type}
+                      </Badge>
+                    </td>
+                    <td className="py-2.5 px-3 text-muted-foreground">{m.start_date}</td>
+                    <td className="py-2.5 px-3 text-muted-foreground">{m.end_date ?? "—"}</td>
+                    <td className="py-2.5 px-3 text-muted-foreground">{m.duration ?? "—"}</td>
+                    <td className="py-2.5 px-3">
+                      <Badge className={`text-xs border ${STATUS_COLOR[m.status] ?? "bg-gray-800/40 text-gray-400 border-gray-600"}`}>
+                        {STATUS_LABEL[m.status] ?? m.status}
+                      </Badge>
+                    </td>
+                    <td className="py-2.5 px-3">
+                      <div className="flex gap-1">
+                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => openEdit(m)}>
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-red-400" onClick={() => setDeleteTarget(m)}>
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
                       </div>
                     )}
                   </div>

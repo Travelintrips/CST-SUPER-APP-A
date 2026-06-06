@@ -2112,6 +2112,49 @@ router.get("/reports/profit-loss", async (req, res) => {
   });
 });
 
+router.get("/reports/profit-loss-monthly", async (req, res) => {
+  const scope = resolveCompanyScope(req);
+  const range = parseDateRange(req);
+  if (range.error) return res.status(400).json({ message: range.error });
+
+  const dateFrom = range.from ? range.from.toISOString().slice(0, 10) : null;
+  const dateTo   = range.to   ? range.to.toISOString().slice(0, 10)   : null;
+
+  const dateFilter = dateFrom && dateTo
+    ? `AND ae.entry_date BETWEEN '${dateFrom}' AND '${dateTo}'`
+    : dateFrom ? `AND ae.entry_date >= '${dateFrom}'`
+    : dateTo   ? `AND ae.entry_date <= '${dateTo}'`
+    : "";
+
+  const companyFilter = scope === "all" || !scope
+    ? ""
+    : `AND ael.company_id = ${Number(scope)}`;
+
+  const result = await db.execute(sql.raw(`
+    SELECT
+      TO_CHAR(ae.entry_date, 'YYYY-MM') AS month,
+      COALESCE(SUM(CASE WHEN coa.type = 'revenue' THEN COALESCE(ael.credit,0) - COALESCE(ael.debit,0) ELSE 0 END), 0) AS revenue,
+      COALESCE(SUM(CASE WHEN coa.type = 'expense' THEN COALESCE(ael.debit,0) - COALESCE(ael.credit,0) ELSE 0 END), 0) AS expense
+    FROM accounting_entry_lines ael
+    JOIN chart_of_accounts coa ON coa.id = ael.account_id
+    JOIN accounting_entries ae ON ae.id = ael.entry_id
+    WHERE ae.status = 'posted'
+      ${dateFilter}
+      ${companyFilter}
+    GROUP BY month
+    ORDER BY month
+  `));
+
+  const months = (result.rows as any[]).map((r) => ({
+    month: r.month as string,
+    revenue:   Math.round(Number(r.revenue)  * 100) / 100,
+    expense:   Math.round(Number(r.expense)  * 100) / 100,
+    netIncome: Math.round((Number(r.revenue) - Number(r.expense)) * 100) / 100,
+  }));
+
+  return res.json({ months });
+});
+
 router.get("/reports/balance-sheet", async (req, res) => {
   const scope = resolveCompanyScope(req);
   // Balance sheet is "as of" date — use 'to' as cutoff, ignore 'from'

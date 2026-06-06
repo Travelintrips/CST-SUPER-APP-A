@@ -30,6 +30,45 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   Package, Warehouse, Truck, FileCheck, Shield, FileText,
 };
 
+const QUICK_SERVICES = [
+  {
+    id: "freight",
+    name: "Freight",
+    description: "Air & sea forwarding, domestic delivery",
+    category: "Freight" as const,
+    isTrucking: false,
+    icon: <Ship className="w-5 h-5 text-blue-600" />,
+    color: "border-blue-200 bg-blue-50/60 hover:border-blue-400 text-blue-900",
+  },
+  {
+    id: "customs",
+    name: "Customs",
+    description: "Import/export customs clearance",
+    category: "Customs" as const,
+    isTrucking: false,
+    icon: <FileCheck className="w-5 h-5 text-orange-600" />,
+    color: "border-orange-200 bg-orange-50/60 hover:border-orange-400 text-orange-900",
+  },
+  {
+    id: "trucking",
+    name: "Trucking",
+    description: "Pickup, delivery & container transport",
+    category: "Trucking" as const,
+    isTrucking: true,
+    icon: <Truck className="w-5 h-5 text-amber-600" />,
+    color: "border-amber-200 bg-amber-50/60 hover:border-amber-400 text-amber-900",
+  },
+  {
+    id: "storage",
+    name: "Storage",
+    description: "Warehouse & bonded storage",
+    category: "Storage" as const,
+    isTrucking: false,
+    icon: <Warehouse className="w-5 h-5 text-teal-600" />,
+    color: "border-teal-200 bg-teal-50/60 hover:border-teal-400 text-teal-900",
+  },
+];
+
 function getServiceDetailRows(
   calculatorType: string,
   inputData: Record<string, unknown>

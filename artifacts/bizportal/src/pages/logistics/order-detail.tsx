@@ -274,6 +274,148 @@ async function apiFetch<T>(url: string, opts?: RequestInit): Promise<T> {
   return data;
 }
 
+// ── Create Customer Approval Dialog ───────────────────────────────────────────
+// Dipakai untuk VMF flow: buat link approval langsung dari Order Detail
+// tanpa perlu buka halaman Purchase > Vendor Forms.
+
+function CreateApprovalDialog({ order, onCreated }: { order: Order; onCreated: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [sellingPrice, setSellingPrice] = useState(order.finalSellingPrice ?? "");
+  const [currency, setCurrency] = useState("IDR");
+  const [termsNotes, setTermsNotes] = useState("");
+  const [expiresInDays, setExpiresInDays] = useState("7");
+  const [loading, setLoading] = useState(false);
+  const { toast } = useToast();
+
+  const vendorCostNum = order.vendorCost ? Number(order.vendorCost) : null;
+  const sellingNum = sellingPrice ? Number(sellingPrice) : null;
+  const profitMarginPct = sellingNum && vendorCostNum && sellingNum > 0
+    ? Number((((sellingNum - vendorCostNum) / sellingNum) * 100).toFixed(2))
+    : null;
+
+  const handleCreate = async () => {
+    if (!sellingPrice) { toast({ title: "Harga jual wajib diisi", variant: "destructive" }); return; }
+    setLoading(true);
+    try {
+      const result = await apiFetch<{ ok: boolean; token: string }>("/api/vendor-form/admin/customer-approvals", {
+        method: "POST",
+        body: JSON.stringify({
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          customerName: order.customerName,
+          customerPhone: order.phone,
+          sellingPrice: Number(sellingPrice),
+          currency,
+          termsNotes: termsNotes || undefined,
+          expiresInDays: expiresInDays ? Number(expiresInDays) : 7,
+          vendorCost: vendorCostNum ?? undefined,
+          profitMarginPct: profitMarginPct ?? undefined,
+        }),
+      });
+      const approvalUrl = `${window.location.origin}/vendor-form/customer-approval/${result.token}`;
+      navigator.clipboard.writeText(approvalUrl).catch(() => {});
+      toast({ title: "✅ Link approval berhasil dibuat!", description: "Link telah disalin ke clipboard." });
+      setOpen(false);
+      onCreated();
+    } catch (e: unknown) {
+      toast({ title: "Gagal buat approval", description: (e as Error).message, variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <>
+      <Button
+        onClick={() => setOpen(true)}
+        className="bg-violet-600 hover:bg-violet-700 text-white"
+        size="sm"
+      >
+        <Send className="w-4 h-4 mr-1" />
+        Kirim Penawaran ke Customer
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Kirim Penawaran ke Customer</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="text-sm text-slate-600 bg-slate-50 rounded-lg p-3 space-y-1">
+              <div><span className="text-slate-400">Order:</span> <strong>{order.orderNumber}</strong></div>
+              <div><span className="text-slate-400">Customer:</span> {order.customerName}</div>
+              {order.phone && <div><span className="text-slate-400">WA:</span> {order.phone}</div>}
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Harga Jual ke Customer (Rp) <span className="text-red-500">*</span></Label>
+              <Input
+                type="number"
+                value={sellingPrice}
+                onChange={e => setSellingPrice(e.target.value)}
+                placeholder="0"
+              />
+              {vendorCostNum && sellingPrice && Number(sellingPrice) > 0 && (
+                <p className="text-xs text-slate-500">
+                  Harga vendor: {idr(vendorCostNum)}
+                  {profitMarginPct !== null && (
+                    <span className={`ml-2 font-medium ${profitMarginPct < 0 ? "text-red-600" : "text-emerald-600"}`}>
+                      Margin: {profitMarginPct}%
+                    </span>
+                  )}
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Mata Uang</Label>
+              <Select value={currency} onValueChange={setCurrency}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {["IDR", "USD", "SGD", "EUR"].map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Link berlaku (hari)</Label>
+              <Input
+                type="number"
+                value={expiresInDays}
+                onChange={e => setExpiresInDays(e.target.value)}
+                min={1}
+                max={30}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Syarat &amp; Ketentuan / Catatan</Label>
+              <Textarea
+                value={termsNotes}
+                onChange={e => setTermsNotes(e.target.value)}
+                rows={3}
+                placeholder="Contoh: Harga sudah termasuk PPN 11%, pembayaran 50% DP..."
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpen(false)}>Batal</Button>
+            <Button
+              onClick={handleCreate}
+              disabled={loading}
+              className="bg-violet-600 hover:bg-violet-700 text-white"
+            >
+              {loading
+                ? <Loader2 className="w-4 h-4 animate-spin mr-1" />
+                : <Send className="w-4 h-4 mr-1" />}
+              Buat &amp; Salin Link
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 // ── Send Quote Dialog ──────────────────────────────────────────────────────────
 
 function SendQuoteDialog({ order, rfqId, onSent }: { order: Order; rfqId: number | null; onSent: () => void }) {
@@ -2686,6 +2828,9 @@ export default function LogisticOrderDetailPage() {
             <UpdateStatusDialog orderId={orderId} currentStatus={order.status} currentVersion={order.version} onUpdated={() => qc.invalidateQueries({ queryKey: ["order-detail", orderId] })} />
             <CreateTaskLinkDialog orderId={orderId} vendorId={order.approvedVendorId} onCreated={() => qc.invalidateQueries({ queryKey: ["order-detail", orderId] })} />
             {hasVendorSelected && (
+              <CreateApprovalDialog order={order} onCreated={() => void refetchApprovals()} />
+            )}
+            {hasVendorSelected && activeRfqId && (
               <SendQuoteDialog order={order} rfqId={activeRfqId} onSent={() => qc.invalidateQueries({ queryKey: ["order-detail", orderId] })} />
             )}
             <AssignVendorDialog orderId={orderId} onAssigned={() => qc.invalidateQueries({ queryKey: ["order-detail", orderId] })} />
@@ -2844,7 +2989,7 @@ export default function LogisticOrderDetailPage() {
             )}
 
             {/* Customer Approval & SO */}
-            {(approvalData?.length ?? 0) > 0 && (
+            {hasVendorSelected && (
               <Card className="border-violet-200">
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm font-semibold text-violet-700 uppercase tracking-wide flex items-center gap-1.5">
@@ -2852,7 +2997,13 @@ export default function LogisticOrderDetailPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  {approvalData!.map(a => {
+                  {(approvalData?.length ?? 0) === 0 && (
+                    <div className="rounded-lg border border-dashed border-violet-200 bg-violet-50/40 px-4 py-5 text-center space-y-2">
+                      <p className="text-sm text-slate-500">Belum ada link penawaran yang dikirim ke customer.</p>
+                      <CreateApprovalDialog order={order} onCreated={() => void refetchApprovals()} />
+                    </div>
+                  )}
+                  {approvalData?.map(a => {
                     const APPROVAL_COLOR: Record<string, string> = {
                       pending: "bg-amber-100 text-amber-700",
                       approved: "bg-emerald-100 text-emerald-800",

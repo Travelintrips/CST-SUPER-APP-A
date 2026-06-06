@@ -1,0 +1,97 @@
+import { useState, useEffect } from "react";
+import api from "../../lib/api";
+
+export default function PaymentsPage() {
+  const [payments, setPayments] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState("");
+  const [page, setPage] = useState(1);
+
+  const pageSize = 20;
+
+  const fetchPayments = async () => {
+    const { payments, total } = await api.get("/sport-center/payments", {
+      params: { search, status, page, pageSize },
+    });
+    setPayments(payments);
+    setTotal(total);
+  };
+
+  useEffect(() => {
+    fetchPayments();
+  }, [search, status, page]);
+
+  const totalRevenue = payments.reduce((acc, p) => acc + Number(p.amount), 0);
+
+  return (
+    <div>
+      <h1>Pembayaran</h1>
+
+      {/* Filter */}
+      <input
+        placeholder="Cari nomor booking / nama customer..."
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        className="border px-2 py-1 mb-2"
+      />
+      <select value={status} onChange={(e) => setStatus(e.target.value)}>
+        <option value="">Semua Status</option>
+        <option value="paid">Lunas</option>
+        <option value="pending">Pending</option>
+      </select>
+
+      {/* Table */}
+      <table className="w-full mt-4 border">
+        <thead>
+          <tr>
+            <th>No. Pembayaran</th>
+            <th>No. Booking</th>
+            <th>Customer</th>
+            <th>Tgl Pembayaran</th>
+            <th>Tanggal Booking</th>
+            <th>Metode</th>
+            <th>Status</th>
+            <th>Jumlah</th>
+            <th>Fasilitas</th>
+          </tr>
+        </thead>
+        <tbody>
+          {payments.map((p) => (
+            <tr key={p.payment_id}>
+              <td>{p.payment_number}</td>
+              <td>{p.booking_number}</td>
+              <td>{p.customer_name}</td>
+              <td>{new Date(p.tgl_pembayaran).toLocaleString()}</td>
+              <td>{new Date(p.booking_date).toLocaleDateString()}</td>
+              <td>{p.method}</td>
+              <td>{p.payment_status}</td>
+              <td>{p.amount}</td>
+              <td>{p.fasilitas}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {/* Statcard di bawah */}
+      <div className="mt-4 flex gap-4">
+        <div className="p-4 border bg-green-50">
+          <h2>Total Transaksi</h2>
+          <p>{total}</p>
+        </div>
+        <div className="p-4 border bg-blue-50">
+          <h2>Total Revenue</h2>
+          <p>Rp {totalRevenue.toLocaleString()}</p>
+        </div>
+        <div className="p-4 border bg-yellow-50">
+          <h2>Halaman / Page</h2>
+          <p>{page}</p>
+        </div>
+      </div>
+
+      {/* Pagination sederhana */}
+      <button disabled={page === 1} onClick={() => setPage(page - 1)}>Prev</button>
+      <button disabled={page * pageSize >= total} onClick={() => setPage(page + 1)}>Next</button>
+    </div>
+  );
+}

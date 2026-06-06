@@ -25,12 +25,13 @@ import {
   serviceTemplatesTable,
   customerQuoteLinksTable,
 } from "@workspace/db";
-import { getInCodeTemplate, resolveTemplate } from "@workspace/product-templates";
-import type { ProductTemplateOverride } from "@workspace/product-templates";
+import { getInCodeTemplate, resolveTemplate, validateTemplatePayload } from "@workspace/product-templates";
+import type { ProductTemplateOverride, DynamicFormValues } from "@workspace/product-templates";
 import {
   resolveServiceTemplate,
   getInCodeServiceTemplate,
   hasInCodeServiceTemplate,
+  validateServicePayload,
 } from "@workspace/service-templates";
 import type { ServiceTemplate, ServiceTemplateField, ServiceTemplateOverride as SvcTemplateOverride } from "@workspace/service-templates";
 import { requireClerkUser } from "../lib/requireAdmin";
@@ -134,10 +135,8 @@ const PUBLIC_CACHE = "public, max-age=300, stale-while-revalidate=600";
 const USE_PRODUCT_TEMPLATE_ENGINE = process.env.USE_PRODUCT_TEMPLATE_ENGINE === "true";
 
 // ── Feature flag: Service Template Engine ─────────────────────────────────────
-// Set USE_SERVICE_TEMPLATE_ENGINE=true untuk mengaktifkan resolver berbasis
-// service_templates (DB + in-code). Bila false (default), SERVICE_SCHEMAS tetap
-// menjadi satu-satunya sumber. Flag OFF = zero behavior change.
-const USE_SERVICE_TEMPLATE_ENGINE = process.env.USE_SERVICE_TEMPLATE_ENGINE === "true";
+// Default ON. Set USE_SERVICE_TEMPLATE_ENGINE=false untuk fallback ke SERVICE_SCHEMAS saja.
+const USE_SERVICE_TEMPLATE_ENGINE = process.env.USE_SERVICE_TEMPLATE_ENGINE !== "false";
 
 /**
  * Resolve ProductTemplate dari product_templates DB menggunakan resolveTemplate().
@@ -1219,23 +1218,95 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
       }
     }
 
-    // Validasi server-side untuk field required berdasarkan SERVICE_SCHEMAS
-    const schema = SERVICE_SCHEMAS[link.serviceType];
-    if (schema) {
-      const activePhase = link.phase ?? "quotation";
-      const requiredKeys = schema.fields
-        .filter(f => f.required && (!f.section || f.section === activePhase || f.section === "both"))
-        .map(f => f.key);
-      const missingFields = requiredKeys.filter(k => {
-        const val = (formData as Record<string, unknown>)[k];
-        return val === undefined || val === null || String(val).trim() === "";
-      });
+    // Validasi server-side untuk field required
+    // Ketika link punya templateSnapshot, field yang ada di template
+    // dihandle oleh template engine — skip dari validasi schema / service template.
+    // Derive dari customFields dan requiredDocuments snapshot, bukan hardcode.
+    const activePhase = (link.phase ?? "quotation") as "quotation" | "operational";
+    const tplManagedKeys: string[] = (() => {
+      if (!link.templateSnapshot) return [];
+      const snap = link.templateSnapshot as Record<string, unknown>;
+      const cfKeys = Array.isArray(snap.customFields)
+        ? (snap.customFields as Array<{ key?: string }>).map(f => f.key ?? "").filter(Boolean)
+        : [];
+      const docKeys = Array.isArray(snap.requiredDocuments)
+        ? (snap.requiredDocuments as Array<{ key?: string }>).map(d => `_doc_${d.key ?? ""}`).filter(k => k !== "_doc_")
+        : [];
+      return [...cfKeys, ...docKeys];
+    })();
+
+    const schemaFallback = SERVICE_SCHEMAS[link.serviceType];
+    if (schemaFallback) {
+      // SERVICE_SCHEMAS validation — tampilkan label user-friendly bukan key teknis
+      const missingFields = schemaFallback.fields
+        .filter(f =>
+          f.required &&
+          !tplManagedKeys.includes(f.key) &&
+          (!f.section || f.section === activePhase || f.section === "both") &&
+          !(f as { isUpload?: boolean }).isUpload
+        )
+        .filter(f => {
+          const val = (formData as Record<string, unknown>)[f.key];
+          return val === undefined || val === null || String(val).trim() === "";
+        });
       if (missingFields.length > 0) {
+        const missingLabels = missingFields.map(f => f.label);
+        const missingKeys = missingFields.map(f => f.key);
         return res.status(400).json({
-          error: `Field wajib belum diisi: ${missingFields.join(", ")}`,
-          missingFields,
+          error: `Field wajib belum diisi: ${missingLabels.join(", ")}`,
+          missingFields: missingKeys,
         });
       }
+    } else if (USE_SERVICE_TEMPLATE_ENGINE) {
+      // Service type tidak ada di SERVICE_SCHEMAS — gunakan service template engine
+      // agar service type custom yang didefinisikan di DB tetap tervalidasi server-side
+      try {
+        const svcTemplate = await resolveFromServiceTemplates(link.serviceType);
+        const svcErrors = validateServicePayload(svcTemplate, formData as Record<string, unknown>, activePhase);
+        // Filter out error untuk field yang dihandle product template (jika ada)
+        const filteredErrors = tplManagedKeys.length > 0
+          ? svcErrors.filter(msg => {
+              const field = svcTemplate.fields.find(f => tplManagedKeys.includes(f.key) && msg.includes(f.label));
+              return !field;
+            })
+          : svcErrors;
+        if (filteredErrors.length > 0) {
+          return res.status(400).json({
+            error: filteredErrors[0],
+            validationErrors: filteredErrors,
+          });
+        }
+      } catch { /* non-fatal — skip validasi service template engine jika error */ }
+    }
+
+    // Validasi product template custom fields (server-side defense)
+    // Hanya jika link.templateSnapshot ada dan USE_PRODUCT_TEMPLATE_ENGINE aktif
+    if (link.templateSnapshot && USE_PRODUCT_TEMPLATE_ENGINE) {
+      try {
+        const snap = link.templateSnapshot as unknown as import("@workspace/product-templates").ProductTemplate;
+        const fd = formData as Record<string, unknown>;
+        // Rekonstruksi DynamicFormValues dari formData
+        const customFieldValues: Record<string, string> = {};
+        const uploadedDocuments: Array<{ key: string; reference: string }> = [];
+        const checklistStatus: Record<string, boolean> = {};
+        let packagingNotes: string | undefined;
+        for (const [k, v] of Object.entries(fd)) {
+          if (k.startsWith("_doc_")) {
+            uploadedDocuments.push({ key: k.slice(5), reference: String(v ?? "") });
+          } else if (k.startsWith("_chk_")) {
+            checklistStatus[k.slice(5)] = Boolean(v);
+          } else if (k === "_packagingNotes") {
+            packagingNotes = String(v ?? "");
+          } else if (!k.startsWith("_")) {
+            customFieldValues[k] = String(v ?? "");
+          }
+        }
+        const tplValues: DynamicFormValues = { customFieldValues, uploadedDocuments, checklistStatus, packagingNotes };
+        const tplErrors = validateTemplatePayload(snap, tplValues);
+        if (tplErrors.length > 0) {
+          return res.status(400).json({ error: tplErrors[0], validationErrors: tplErrors });
+        }
+      } catch { /* non-fatal — skip jika snapshot tidak valid sebagai ProductTemplate */ }
     }
 
     // Capture IP and UA
