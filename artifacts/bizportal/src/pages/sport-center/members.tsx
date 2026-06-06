@@ -21,12 +21,18 @@ type Member = {
 };
 
 const STATUS_COLOR: Record<string, string> = {
-  active: "bg-emerald-900/30 text-emerald-300 border-emerald-700",
-  expired: "bg-red-900/30 text-red-300 border-red-700",
+  active:    "bg-emerald-900/30 text-emerald-300 border-emerald-700",
+  expired:   "bg-red-900/30 text-red-300 border-red-700",
   suspended: "bg-yellow-900/30 text-yellow-300 border-yellow-700",
+  inactive:  "bg-gray-800/40 text-gray-400 border-gray-600",
+};
+const STATUS_LABEL: Record<string, string> = {
+  active: "Aktif", expired: "Expired", suspended: "Suspend", inactive: "Tidak Aktif",
 };
 const MEMBER_TYPE_LABEL: Record<string, string> = {
   gym: "Gym", ap: "AP (Aqua Park)", court: "Lapangan", vip: "VIP",
+  swimming: "Renang", badminton: "Badminton", tennis: "Tennis",
+  futsal: "Futsal", basketball: "Basket", premium: "Premium", regular: "Regular",
 };
 
 export default function SportCenterMembers() {
@@ -44,7 +50,7 @@ export default function SportCenterMembers() {
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [form, setForm] = useState({ name: "", email: "", phone: "", member_type: "gym", start_date: "", end_date: "", notes: "" });
 
-  const { data, isLoading } = useQuery<{ data: Member[]; total: number }>({
+  const { data, isLoading, refetch } = useQuery<{ data: Member[]; total: number }>({
     queryKey: ["sport-center-members", activeCompanyId, memberType, statusFilter, page],
     queryFn: async () => {
       const qs = new URLSearchParams();
@@ -55,6 +61,7 @@ export default function SportCenterMembers() {
       const r = await fetch(`/api/sport-center/members?${qs}`, { credentials: "include" });
       return r.json();
     },
+    refetchInterval: 30_000,
   });
 
   useEffect(() => {
@@ -124,6 +131,9 @@ export default function SportCenterMembers() {
                 <Activity className="h-3 w-3" /> Live
               </Badge>
             )}
+            <Button variant="outline" size="sm" className="gap-1" onClick={() => refetch()}>
+              <RefreshCw className="h-4 w-4" />
+            </Button>
             <Button onClick={() => { setEditId(null); setShowDialog(true); }} size="sm" className="gap-1">
               <Plus className="h-4 w-4" /> Tambah Member
             </Button>
@@ -182,7 +192,9 @@ export default function SportCenterMembers() {
                     <td className="py-2.5 px-3 text-muted-foreground">{m.start_date}</td>
                     <td className="py-2.5 px-3 text-muted-foreground">{m.end_date ?? "—"}</td>
                     <td className="py-2.5 px-3">
-                      <Badge className={`text-xs border ${STATUS_COLOR[m.status] ?? ""}`}>{m.status}</Badge>
+                      <Badge className={`text-xs border ${STATUS_COLOR[m.status] ?? "bg-gray-800/40 text-gray-400 border-gray-600"}`}>
+                        {STATUS_LABEL[m.status] ?? m.status}
+                      </Badge>
                     </td>
                     <td className="py-2.5 px-3">
                       <div className="flex gap-1">
