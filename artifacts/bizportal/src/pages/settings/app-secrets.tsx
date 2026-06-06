@@ -9,7 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   KeyRound, Eye, EyeOff, Save, Loader2,
   MessageCircle, Mail, Shield, Send, RotateCcw, Database, Server, ArrowLeft,
-  Bot, HardDrive, Bell,
+  Bot, HardDrive, Bell, Layers,
 } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
@@ -34,6 +34,7 @@ const GROUP_ICONS: Record<string, React.ReactNode> = {
   AI: <Bot className="h-4 w-4 text-purple-500" />,
   Storage: <HardDrive className="h-4 w-4 text-cyan-500" />,
   Notifikasi: <Bell className="h-4 w-4 text-yellow-500" />,
+  Supabase: <Layers className="h-4 w-4 text-emerald-500" />,
 };
 
 function SourceBadge({ hasDbValue, hasEnvValue }: { hasDbValue: boolean; hasEnvValue: boolean }) {
