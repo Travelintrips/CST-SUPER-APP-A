@@ -4,7 +4,7 @@ import { rateLimit, ipKeyGenerator } from "express-rate-limit";
 import { db, productsTable, productCategoryMapTable, productCategoriesTable, portalCustomersTable, portalCustomerServicesTable, portalContentTable, accountingSettingsTable, salesDocumentsTable, salesDocumentLinesTable, customersTable, logisticOrdersTable, suppliersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, quoteRequestsTable, userProfilesTable, identityDocumentsTable, ocrResultsTable, vendorProfilesTable, driverProfilesTable, employeeProfilesTable, onboardingApprovalsTable, waOtpCodesTable, trustedDevicesTable, vendorMiniFormLinksTable, vendorMiniFormSubmissionsTable } from "@workspace/db";
 import { deleteFromSupabase } from "../lib/supabaseStorage.js";
 import { invalidateTokenCache, SERVICE_SCHEMAS } from "./vendorMiniForm";
-import { eq, inArray, and, sql, desc, gte, lte, ilike, or } from "drizzle-orm";
+import { eq, inArray, and, ne, isNull, sql, desc, gte, lte, ilike, or } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getAdminWa } from "../lib/adminWa.js";
@@ -74,7 +74,11 @@ async function listByType(type: string) {
   const rows = await db
     .select()
     .from(productsTable)
-    .where(and(eq(productsTable.isActive, true), eq(productsTable.itemType, type)));
+    .where(and(
+      eq(productsTable.isActive, true),
+      eq(productsTable.itemType, type),
+      or(isNull(productsTable.subcategory), ne(productsTable.subcategory, "bahan_thai_tea")),
+    ));
   const ids = rows.map((p) => p.id);
   const catMap = await getProductCategories(ids);
   return rows.map((p) => {
