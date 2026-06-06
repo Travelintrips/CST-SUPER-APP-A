@@ -1433,6 +1433,8 @@ router.get("/payments", async (req, res) => {
     const statusFilter = req.query.status ? String(req.query.status) : null;
     const dateFrom = req.query.date_from ? String(req.query.date_from) : null;
     const dateTo   = req.query.date_to   ? String(req.query.date_to)   : null;
+    const search   = req.query.search    ? String(req.query.search).trim() : null;
+    const searchPattern = search ? `%${search}%` : null;
 
     const [dataRes, countRes] = await Promise.all([
       db.execute(sql`
@@ -1450,14 +1452,26 @@ router.get("/payments", async (req, res) => {
           AND (${statusFilter}::text IS NULL OR p.status = ${statusFilter})
           AND (${dateFrom}::date IS NULL OR p.paid_at::date >= ${dateFrom}::date)
           AND (${dateTo}::date   IS NULL OR p.paid_at::date <= ${dateTo}::date)
+          AND (${searchPattern}::text IS NULL
+               OR b.booking_number ILIKE ${searchPattern}
+               OR b.customer_name  ILIKE ${searchPattern}
+               OR p.payment_number ILIKE ${searchPattern}
+               OR COALESCE(f.name, b.facility_name) ILIKE ${searchPattern})
         ORDER BY p.created_at DESC LIMIT ${limit} OFFSET ${offset}
       `),
       db.execute(sql`
         SELECT COUNT(*) AS cnt FROM sport_payments p
+        LEFT JOIN sport_bookings b ON p.booking_id = b.id
+        LEFT JOIN sport_facilities f ON f.id = b.facility_id
         WHERE (${cId}::int IS NULL OR p.company_id = ${cId})
           AND (${statusFilter}::text IS NULL OR p.status = ${statusFilter})
           AND (${dateFrom}::date IS NULL OR p.paid_at::date >= ${dateFrom}::date)
           AND (${dateTo}::date   IS NULL OR p.paid_at::date <= ${dateTo}::date)
+          AND (${searchPattern}::text IS NULL
+               OR b.booking_number ILIKE ${searchPattern}
+               OR b.customer_name  ILIKE ${searchPattern}
+               OR p.payment_number ILIKE ${searchPattern}
+               OR COALESCE(f.name, b.facility_name) ILIKE ${searchPattern})
       `),
     ]);
     res.json({ data: dataRes.rows, total: Number((countRes.rows[0] as any).cnt) });

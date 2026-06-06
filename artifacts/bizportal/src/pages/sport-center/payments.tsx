@@ -64,14 +64,21 @@ export default function SportCenterPayments() {
   const [detailPayment, setDetailPayment] = useState<Payment | null>(null);
   const [form, setForm] = useState({ booking_id: "", amount: "", method: "cash", notes: "" });
 
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => { setDebouncedSearch(searchQuery); setPage(1); }, 350);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
+
   const { data, isLoading } = useQuery<{ data: Payment[]; total: number }>({
-    queryKey: ["sport-center-payments", activeCompanyId, statusFilter, dateFrom, dateTo, page],
+    queryKey: ["sport-center-payments", activeCompanyId, statusFilter, dateFrom, dateTo, debouncedSearch, page],
     queryFn: async () => {
       const qs = new URLSearchParams();
       if (activeCompanyId) qs.set("companyId", String(activeCompanyId));
       if (statusFilter !== "all") qs.set("status", statusFilter);
       if (dateFrom) qs.set("date_from", dateFrom);
       if (dateTo) qs.set("date_to", dateTo);
+      if (debouncedSearch) qs.set("search", debouncedSearch);
       qs.set("page", String(page));
       const r = await fetch(`/api/sport-center/payments?${qs}`, { credentials: "include" });
       return r.json();
@@ -120,17 +127,7 @@ export default function SportCenterPayments() {
   );
 
   const hasDateFilter = dateFrom || dateTo;
-
-  const displayedRows = (data?.data ?? []).filter((p) => {
-    if (!searchQuery) return true;
-    const q = searchQuery.toLowerCase();
-    return (
-      (p.booking_number ?? "").toLowerCase().includes(q) ||
-      (p.customer_name ?? "").toLowerCase().includes(q) ||
-      (p.payment_number ?? "").toLowerCase().includes(q) ||
-      (p.facility_name ?? "").toLowerCase().includes(q)
-    );
-  });
+  const displayedRows = data?.data ?? [];
 
   const resetFilters = () => {
     setStatusFilter("all");
