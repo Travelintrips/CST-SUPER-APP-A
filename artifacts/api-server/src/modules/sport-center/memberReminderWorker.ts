@@ -1,0 +1,256 @@
+/**
+ * memberReminderWorker.ts
+ *
+ * Worker harian yang mengirim reminder WhatsApp ke anggota sport center
+ * yang masa keanggotaannya akan habis dalam N hari.
+ *
+ * Jadwal reminder (configurable, default: 4 hari & 1 hari sebelum end_date):
+ *   - "4days"  → 4 hari sebelum end_date
+ *   - "1day"   → 1 hari sebelum end_date
+ *
+ * Dedup: via tabel sport_member_reminder_logs
+ *   (member_id + reminder_type + sent_date UNIQUE) — tidak kirim dua kali di hari yang sama.
+ *
+ * Transport: sendViaService (auto-route WATI/Fonnte sesuai konfigurasi).
+ */
+
+import { db } from "@workspace/db";
+import { sql } from "drizzle-orm";
+import { sendViaService } from "../../lib/waTransport.js";
+import { logger } from "../../lib/logger.js";
+
+const PREFIX = "[memberReminderWorker]";
+
+export interface ReminderConfig {
+  daysAhead: number;
+  reminderType: string;
+  label: string;
+}
+
+const DEFAULT_REMINDERS: ReminderConfig[] = [
+  { daysAhead: 4, reminderType: "4days", label: "4 hari lagi" },
+  { daysAhead: 1, reminderType: "1day",  label: "1 hari lagi" },
+];
+
+export interface ReminderResult {
+  sent: number;
+  skipped: number;
+  errors: number;
+  details: Array<{ memberId: number; name: string; phone: string; reminderType: string; status: "sent" | "skipped" | "error"; reason?: string }>;
+}
+
+async function ensureLogTable(): Promise<void> {
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS sport_member_reminder_logs (
+      id              SERIAL PRIMARY KEY,
+      member_id       INT         NOT NULL,
+      reminder_type   TEXT        NOT NULL,
+      sent_date       DATE        NOT NULL DEFAULT CURRENT_DATE,
+      phone           TEXT,
+      status          TEXT        NOT NULL DEFAULT 'sent',
+      error_message   TEXT,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (member_id, reminder_type, sent_date)
+    )
+  `);
+}
+
+function formatDate(dateStr: string): string {
+  try {
+    const d = new Date(dateStr);
+    return new Intl.DateTimeFormat("id-ID", {
+      day: "2-digit",
+      month: "long",
+      year: "numeric",
+      timeZone: "Asia/Jakarta",
+    }).format(d);
+  } catch {
+    return dateStr;
+  }
+}
+
+function buildMessage(name: string, endDate: string, label: string): string {
+  const formatted = formatDate(endDate);
+  return (
+    `Halo *${name}*! 👋\n\n` +
+    `Kami ingin menginformasikan bahwa masa keanggotaan Anda di Sport Center akan berakhir *${label}* (${formatted}).\n\n` +
+    `Segera perpanjang keanggotaan Anda agar tetap dapat menikmati fasilitas kami tanpa gangguan.\n\n` +
+    `Untuk informasi perpanjangan, silakan hubungi kami atau kunjungi langsung Sport Center.\n\n` +
+    `Terima kasih atas kepercayaan Anda! 🏆`
+  );
+}
+
+async function processReminder(
+  config: ReminderConfig,
+): Promise<{ sent: number; skipped: number; errors: number; details: ReminderResult["details"] }> {
+  const { daysAhead, reminderType, label } = config;
+  const details: ReminderResult["details"] = [];
+  let sent = 0;
+  let skipped = 0;
+  let errors = 0;
+
+  const membersRes = await db.execute(sql`
+    SELECT id, name, phone, end_date, company_id
+    FROM sport_members
+    WHERE status = 'active'
+      AND end_date IS NOT NULL
+      AND end_date = (CURRENT_DATE + ${daysAhead} * INTERVAL '1 day')::date
+  `);
+
+  const members = membersRes.rows as Array<{
+    id: number;
+    name: string;
+    phone: string | null;
+    end_date: string;
+    company_id: number | null;
+  }>;
+
+  if (members.length === 0) {
+    logger.debug(
+      { reminderType, daysAhead },
+      `${PREFIX} tidak ada member yang jatuh tempo ${daysAhead} hari lagi`,
+    );
+    return { sent, skipped, errors, details };
+  }
+
+  for (const member of members) {
+    const phone = member.phone?.trim() ?? "";
+    if (!phone) {
+      details.push({ memberId: member.id, name: member.name, phone: "", reminderType, status: "skipped", reason: "phone kosong" });
+      skipped++;
+      continue;
+    }
+
+    // Dedup check: sudah kirim hari ini untuk tipe ini?
+    const existing = await db.execute(sql`
+      SELECT id FROM sport_member_reminder_logs
+      WHERE member_id = ${member.id}
+        AND reminder_type = ${reminderType}
+        AND sent_date = CURRENT_DATE
+      LIMIT 1
+    `);
+    if (existing.rows.length > 0) {
+      details.push({ memberId: member.id, name: member.name, phone, reminderType, status: "skipped", reason: "sudah dikirim hari ini" });
+      skipped++;
+      continue;
+    }
+
+    const message = buildMessage(member.name, member.end_date, label);
+
+    try {
+      await sendViaService(phone, message, {
+        context: "sport_member_reminder",
+        refType: "sport_member",
+        refId: `member_${member.id}_${reminderType}_${new Date().toISOString().slice(0, 10)}`,
+      });
+
+      await db.execute(sql`
+        INSERT INTO sport_member_reminder_logs (member_id, reminder_type, sent_date, phone, status)
+        VALUES (${member.id}, ${reminderType}, CURRENT_DATE, ${phone}, 'sent')
+        ON CONFLICT (member_id, reminder_type, sent_date) DO NOTHING
+      `);
+
+      logger.info({ memberId: member.id, name: member.name, phone, reminderType, daysAhead }, `${PREFIX} reminder terkirim`);
+      details.push({ memberId: member.id, name: member.name, phone, reminderType, status: "sent" });
+      sent++;
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      logger.error({ err, memberId: member.id, reminderType }, `${PREFIX} gagal kirim reminder`);
+
+      await db.execute(sql`
+        INSERT INTO sport_member_reminder_logs (member_id, reminder_type, sent_date, phone, status, error_message)
+        VALUES (${member.id}, ${reminderType}, CURRENT_DATE, ${phone}, 'error', ${errMsg})
+        ON CONFLICT (member_id, reminder_type, sent_date) DO UPDATE SET status = 'error', error_message = EXCLUDED.error_message
+      `).catch(() => {});
+
+      details.push({ memberId: member.id, name: member.name, phone, reminderType, status: "error", reason: errMsg });
+      errors++;
+    }
+  }
+
+  return { sent, skipped, errors, details };
+}
+
+/**
+ * Jalankan semua reminder config sekarang. Dipanggil oleh worker interval
+ * dan oleh endpoint manual trigger di routes.ts.
+ */
+export async function runMemberReminders(
+  reminders: ReminderConfig[] = DEFAULT_REMINDERS,
+): Promise<ReminderResult> {
+  await ensureLogTable();
+
+  let totalSent = 0;
+  let totalSkipped = 0;
+  let totalErrors = 0;
+  const allDetails: ReminderResult["details"] = [];
+
+  for (const config of reminders) {
+    const r = await processReminder(config);
+    totalSent    += r.sent;
+    totalSkipped += r.skipped;
+    totalErrors  += r.errors;
+    allDetails.push(...r.details);
+  }
+
+  logger.info(
+    { sent: totalSent, skipped: totalSkipped, errors: totalErrors },
+    `${PREFIX} run selesai`,
+  );
+
+  return { sent: totalSent, skipped: totalSkipped, errors: totalErrors, details: allDetails };
+}
+
+/**
+ * Ambil log reminder terbaru.
+ */
+export async function getMemberReminderLogs(limit = 50): Promise<unknown[]> {
+  await ensureLogTable();
+  try {
+    const res = await db.execute(sql`
+      SELECT
+        l.id,
+        l.member_id,
+        m.name     AS member_name,
+        l.phone,
+        l.reminder_type,
+        l.sent_date,
+        l.status,
+        l.error_message,
+        l.created_at
+      FROM sport_member_reminder_logs l
+      LEFT JOIN sport_members m ON m.id = l.member_id
+      ORDER BY l.created_at DESC
+      LIMIT ${limit}
+    `);
+    return res.rows;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Start background worker — cek setiap 1 jam, initial delay 5 menit.
+ */
+export function startMemberReminderWorker(
+  intervalMs  = 60 * 60 * 1000,
+  initialDelayMin = 5,
+): void {
+  const initialDelay = initialDelayMin * 60 * 1000;
+
+  setTimeout(() => {
+    runMemberReminders().catch((err: unknown) => {
+      logger.error({ err }, `${PREFIX} tick error`);
+    });
+    setInterval(() => {
+      runMemberReminders().catch((err: unknown) => {
+        logger.error({ err }, `${PREFIX} tick error`);
+      });
+    }, intervalMs).unref();
+  }, initialDelay).unref();
+
+  logger.info(
+    { intervalMin: Math.round(intervalMs / 60_000), initialDelayMin },
+    `${PREFIX} started`,
+  );
+}
