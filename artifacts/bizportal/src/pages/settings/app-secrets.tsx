@@ -7,8 +7,9 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import {
-  KeyRound, Eye, EyeOff, Save, Loader2, CheckCircle, Trash2,
+  KeyRound, Eye, EyeOff, Save, Loader2,
   MessageCircle, Mail, Shield, Send, RotateCcw, Database, Server, ArrowLeft,
+  Bot, HardDrive, Bell,
 } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
@@ -30,6 +31,9 @@ const GROUP_ICONS: Record<string, React.ReactNode> = {
   WhatsApp: <MessageCircle className="h-4 w-4 text-green-500" />,
   Email: <Mail className="h-4 w-4 text-blue-500" />,
   Auth: <Shield className="h-4 w-4 text-orange-500" />,
+  AI: <Bot className="h-4 w-4 text-purple-500" />,
+  Storage: <HardDrive className="h-4 w-4 text-cyan-500" />,
+  Notifikasi: <Bell className="h-4 w-4 text-yellow-500" />,
 };
 
 function SourceBadge({ hasDbValue, hasEnvValue }: { hasDbValue: boolean; hasEnvValue: boolean }) {

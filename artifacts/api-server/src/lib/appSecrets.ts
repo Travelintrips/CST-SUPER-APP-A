@@ -78,6 +78,46 @@ export const SECRETS_CATALOG: SecretDef[] = [
     sensitive: true,
     group: "Auth",
   },
+  {
+    key: "google_client_secret",
+    label: "Google OAuth Client Secret",
+    description: "Client secret untuk login via Google OAuth",
+    envFallback: "GOOGLE_CLIENT_SECRET",
+    sensitive: true,
+    group: "Auth",
+  },
+  {
+    key: "openai_api_key",
+    label: "OpenAI API Key",
+    description: "API key OpenAI untuk fitur AI (OCR, scan dokumen, chat)",
+    envFallback: "OPENAI_API_KEY",
+    sensitive: true,
+    group: "AI",
+  },
+  {
+    key: "supabase_service_role_key",
+    label: "Supabase Service Role Key",
+    description: "Service role key Supabase untuk akses storage privat",
+    envFallback: "SUPABASE_SERVICE_ROLE_KEY",
+    sensitive: true,
+    group: "Storage",
+  },
+  {
+    key: "vapid_public_key",
+    label: "VAPID Public Key",
+    description: "Public key untuk Web Push Notifications",
+    envFallback: "VAPID_PUBLIC_KEY",
+    sensitive: false,
+    group: "Notifikasi",
+  },
+  {
+    key: "vapid_private_key",
+    label: "VAPID Private Key",
+    description: "Private key untuk Web Push Notifications",
+    envFallback: "VAPID_PRIVATE_KEY",
+    sensitive: true,
+    group: "Notifikasi",
+  },
 ];
 
 export function maskSecret(value: string): string {
