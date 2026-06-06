@@ -16,8 +16,10 @@ import { getSetting } from "./appSecrets.js";
 
 async function getWatiConfig(): Promise<{ baseUrl: string; token: string } | null> {
   const baseUrl = (await getSetting("wati_base_url", process.env.WATI_BASE_URL ?? "")).trim();
-  const token   = (await getSetting("wati_api_token", process.env.WATI_API_TOKEN ?? "")).trim();
-  if (!baseUrl || !token) return null;
+  const rawToken = (await getSetting("wati_api_token", process.env.WATI_API_TOKEN ?? "")).trim();
+  if (!baseUrl || !rawToken) return null;
+  // Strip "Bearer " prefix jika user paste token lengkap dari WATI dashboard
+  const token = rawToken.replace(/^Bearer\s+/i, "");
   return { baseUrl: baseUrl.replace(/\/$/, ""), token };
 }
 
