@@ -37,6 +37,9 @@ const RETRYABLE_CODES = new Set(["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "ENO
 const API_PORT            = Number(process.env.API_PORT            ?? 8080);
 const BIZPORTAL_PORT      = 18442;
 const CUSTOMER_PORT       = 5174;
+const API_PORT            = Number(process.env.API_PORT            ?? 18444);
+const BIZPORTAL_PORT      = Number(process.env.BIZPORTAL_PORT      ?? 18442);
+const CUSTOMER_PORT       = Number(process.env.CUSTOMER_PORT       ?? 23434);
 const LOGISTIC_ORDER_PORT = Number(process.env.LOGISTIC_ORDER_PORT ?? 19368);
 
 const ROUTES = [
@@ -330,8 +333,8 @@ if (EXTRA_PORT !== PORT) {
   const extra = http.createServer(handleRequest);
   extra.on("upgrade", handleUpgrade);
   extra.on("error", (err) => {
-    if (err.code === "EADDRINUSE") {
-      console.log(`Gateway: EXTRA_PORT ${EXTRA_PORT} already in use — skipping mirror`);
+    if (err.code === "EADDRINUSE" || err.code === "EADDRNOTAVAIL") {
+      console.log(`Gateway: EXTRA_PORT ${EXTRA_PORT} unavailable (${err.code}) — skipping mirror`);
     } else {
       console.error("Gateway extra server error:", err.message);
     }

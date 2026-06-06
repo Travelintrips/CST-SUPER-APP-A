@@ -34,6 +34,7 @@ interface Product {
   widthCm: number | null;
   heightCm: number | null;
   goodsType: string | null;
+  currencyCode?: string;
 }
 
 
@@ -44,7 +45,7 @@ const formatUSD = (v: number) =>
   new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
 
 function isUsdProduct(product: Product): boolean {
-  return product.subcategory === "Green Bean";
+  return (product.currencyCode ?? "IDR") === "USD";
 }
 
 // ── USD/IDR exchange rate — fetched from server (H6 fix) ────────────────────
