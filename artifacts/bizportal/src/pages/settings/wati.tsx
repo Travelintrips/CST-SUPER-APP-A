@@ -12,7 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   ArrowLeft, CheckCircle2, XCircle, Loader2, Send, RefreshCw,
   Wifi, WifiOff, MessageCircle, FileText, ChevronDown, ChevronRight,
-  AlertTriangle, Info,
+  AlertTriangle, Info, Phone,
 } from "lucide-react";
 import { Link } from "wouter";
 import { cn } from "@/lib/utils";
@@ -34,7 +34,7 @@ function StatusBadge({ ok }: { ok: boolean }) {
 
 interface WatiStatus {
   provider: "wati" | "fonnte";
-  wati: { configured: boolean; connected?: boolean; error?: string | null; baseUrl?: string | null };
+  wati: { configured: boolean; connected?: boolean; error?: string | null; baseUrl?: string | null; phone?: string | null; accountName?: string | null };
   fonnte: { configured: boolean; note?: string };
 }
 
@@ -164,6 +164,36 @@ export default function WatiSettingsPage() {
                   </div>
                   {status?.wati?.configured && <StatusBadge ok={watiOk} />}
                 </div>
+
+                {/* Nomor WhatsApp terhubung */}
+                {watiOk && (
+                  <div className="rounded-lg border bg-emerald-950/20 border-emerald-800/40 p-3 flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-emerald-600/20 border border-emerald-600/40 flex items-center justify-center shrink-0">
+                      <Phone size={14} className="text-emerald-400" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wide">Nomor WhatsApp Terhubung</p>
+                      {status?.wati?.phone ? (
+                        <p className="text-sm font-bold text-emerald-300 font-mono tracking-wide mt-0.5">
+                          +{status.wati.phone.replace(/^\+/, "")}
+                        </p>
+                      ) : (
+                        <p className="text-xs text-amber-400 mt-0.5">
+                          Nomor tidak tersedia — cek dashboard WATI di{" "}
+                          <a href="https://app.wati.io" target="_blank" rel="noreferrer" className="underline">
+                            app.wati.io
+                          </a>
+                        </p>
+                      )}
+                      {status?.wati?.accountName && (
+                        <p className="text-[11px] text-muted-foreground mt-0.5">{status.wati.accountName}</p>
+                      )}
+                    </div>
+                    <Badge variant="outline" className="text-xs border-emerald-600/50 text-emerald-400 shrink-0">
+                      Aktif
+                    </Badge>
+                  </div>
+                )}
 
                 {/* Error */}
                 {status?.wati?.error && (

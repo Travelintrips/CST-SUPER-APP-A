@@ -8,7 +8,7 @@
 
 import { Router, type Request } from "express";
 import { requireAdmin } from "../lib/requireAdmin.js";
-import { testWatiConnection, listWatiTemplates, sendWatiTemplate, sendWatiSession, isWatiConfigured } from "../lib/wati.js";
+import { testWatiConnection, listWatiTemplates, sendWatiTemplate, sendWatiSession, isWatiConfigured, getWatiAccountInfo } from "../lib/wati.js";
 import { logger } from "../lib/logger.js";
 
 export const watiRouter = Router();
@@ -30,7 +30,7 @@ watiRouter.get("/status", async (_req, res) => {
     });
   }
 
-  const test = await testWatiConnection();
+  const [test, account] = await Promise.all([testWatiConnection(), getWatiAccountInfo()]);
   return res.json({
     provider: "wati",
     wati: {
@@ -38,6 +38,8 @@ watiRouter.get("/status", async (_req, res) => {
       connected: test.ok,
       error: test.error ?? null,
       baseUrl: process.env.WATI_BASE_URL?.replace(/^(https?:\/\/[^/]+).*/, "$1") ?? null,
+      phone: account.phone ?? null,
+      accountName: account.name ?? null,
     },
     fonnte: { configured: fonnteConfigured, note: "digunakan sebagai fallback untuk grup WA admin" },
   });

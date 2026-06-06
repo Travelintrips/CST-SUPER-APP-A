@@ -238,3 +238,42 @@ export async function testWatiConnection(): Promise<{ ok: boolean; error?: strin
     return { ok: false, error: String(err) };
   }
 }
+
+/**
+ * Ambil info akun WATI (nomor WhatsApp & nama).
+ * Strategi:
+ *  1. Decode JWT token untuk ekstrak claims tanpa API call tambahan.
+ *  2. Fallback ke GET /api/v1/me jika JWT tidak berisi info nomor.
+ */
+export async function getWatiAccountInfo(): Promise<{ phone?: string; name?: string }> {
+  const cfg = await getWatiConfig();
+  if (!cfg) return {};
+
+  try {
+    const parts = cfg.token.split(".");
+    if (parts.length === 3) {
+      const pad = (s: string) => s + "=".repeat((4 - (s.length % 4)) % 4);
+      const payload = JSON.parse(Buffer.from(pad(parts[1]), "base64").toString("utf-8")) as Record<string, unknown>;
+      const phone =
+        (payload.phone ?? payload.wa_number ?? payload.waNumber ?? payload.phoneNumber ?? payload.number) as string | undefined;
+      const name =
+        (payload.name ?? payload.displayName ?? payload.account_name ?? payload.clientName ?? payload.sub) as string | undefined;
+      if (phone || name) return { phone: phone ? String(phone) : undefined, name: name ? String(name) : undefined };
+    }
+  } catch { /* ignore — malformed token */ }
+
+  try {
+    const res = await fetch(`${cfg.baseUrl}/api/v1/me`, {
+      headers: { Authorization: `Bearer ${cfg.token}` },
+      signal: AbortSignal.timeout(5000),
+    });
+    if (res.ok) {
+      const body = await res.json() as Record<string, unknown>;
+      const phone = String(body.phoneNumber ?? body.phone ?? body.waNumber ?? "").trim() || undefined;
+      const name = String(body.name ?? body.displayName ?? body.businessName ?? "").trim() || undefined;
+      return { phone, name };
+    }
+  } catch { /* ignore */ }
+
+  return {};
+}
