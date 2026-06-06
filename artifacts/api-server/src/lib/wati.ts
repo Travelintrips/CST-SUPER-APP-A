@@ -137,22 +137,22 @@ export async function sendWatiSession(
   }
 
   const normalizedPhone = normalizePhone(phone);
-  const url = `${cfg.baseUrl}/api/v1/sendSessionMessage/${normalizedPhone}`;
+  const url = `${cfg.baseUrl}/api/v1/sendSessionMessage/${normalizedPhone}?messageText=${encodeURIComponent(message)}`;
 
   try {
     const res = await fetch(url, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${cfg.token}`,
-        "Content-Type": "application/json",
       },
-      body: JSON.stringify({ messageText: message }),
     });
 
     const resBody = await res.json().catch(() => ({})) as Record<string, unknown>;
 
-    if (!res.ok) {
-      const errMsg = (resBody as any)?.message ?? (resBody as any)?.error ?? `HTTP ${res.status}`;
+    // WATI kadang kembalikan HTTP 200 tapi result: false saat gagal
+    const watiOk = res.ok && resBody.result !== false;
+    if (!watiOk) {
+      const errMsg = String((resBody as any)?.info ?? (resBody as any)?.message ?? (resBody as any)?.error ?? `HTTP ${res.status}`);
       logger.warn({ status: res.status, resBody, phone: normalizedPhone }, "[wati] sendSessionMessage non-OK");
       await logNotification({
         channel: "wa",
