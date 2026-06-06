@@ -387,9 +387,9 @@ export default function ProductOrderPage() {
     if (!customerName.trim() || !email.trim() || !phone.trim()) {
       toast({ title: "Isi semua kolom data pemesan", variant: "destructive" }); return;
     }
-    if (!address.trim()) {
+    if (selectedService && !address.trim()) {
       setCheckoutAddressError(true);
-      toast({ title: "Alamat Pengiriman wajib diisi", variant: "destructive" }); return;
+      toast({ title: "Alamat Pengiriman wajib diisi jika menggunakan layanan pengiriman", variant: "destructive" }); return;
     }
     const formErrors = validateTemplatePayload(template, dynamicValues);
     if (formErrors.length > 0) { toast({ title: formErrors[0], variant: "destructive" }); return; }
@@ -929,12 +929,22 @@ export default function ProductOrderPage() {
                 <Input value={email} onChange={e => setEmail(e.target.value)} placeholder="email@example.com" type="email" />
               </div>
               <div className="space-y-1.5 sm:col-span-2">
-                <Label className="text-xs">Alamat Pengiriman <span className="text-destructive">*</span></Label>
+                <Label className="text-xs">
+                  Alamat Pengiriman{" "}
+                  {selectedService
+                    ? <span className="text-destructive">*</span>
+                    : <span className="text-muted-foreground font-normal">(opsional — kosongkan jika ambil sendiri)</span>}
+                </Label>
                 <Input value={address}
                   className={checkoutAddressError ? "border-destructive focus-visible:ring-destructive" : ""}
                   onChange={e => { setCheckoutAddressError(false); setAddress(e.target.value); }}
-                  placeholder="Jl. ..., Kota, Provinsi" />
-                {checkoutAddressError && <p className="text-[11px] text-destructive">Alamat pengiriman wajib diisi.</p>}
+                  placeholder={selectedService ? "Jl. ..., Kota, Provinsi" : "Kosongkan jika ambil sendiri di gudang kami"} />
+                {checkoutAddressError && <p className="text-[11px] text-destructive">Alamat pengiriman wajib diisi jika menggunakan layanan pengiriman.</p>}
+                {!selectedService && !address.trim() && (
+                  <p className="text-[11px] text-green-600 flex items-center gap-1">
+                    <Warehouse className="w-3 h-3" /> Pesanan akan disiapkan untuk diambil di gudang kami
+                  </p>
+                )}
               </div>
               <div className="space-y-1.5 sm:col-span-2">
                 <Label className="text-xs">Catatan Tambahan (opsional)</Label>
