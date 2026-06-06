@@ -1440,6 +1440,45 @@ router.post("/order-upload", requirePortalAuth, (req, res, next) => {
   }
 });
 
+// POST /api/portal/payment-proof-upload — public, rate-limited 5/IP/hour
+// Menerima file bukti pembayaran, simpan ke object storage, kembalikan objectPath.
+const _proofUploadMap = new Map<string, { count: number; resetAt: number }>();
+function _checkProofUploadLimit(ip: string): boolean {
+  const now = Date.now();
+  let e = _proofUploadMap.get(ip);
+  if (!e || now > e.resetAt) e = { count: 0, resetAt: now + 3_600_000 };
+  if (e.count >= 5) return false;
+  e.count++;
+  _proofUploadMap.set(ip, e);
+  return true;
+}
+const _proofUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+router.post("/payment-proof-upload", (req, res, next) => {
+  _proofUpload.single("file")(req, res, (err) => {
+    if (err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE") {
+      res.status(413).json({ message: "Ukuran file melebihi batas 10 MB." }); return;
+    }
+    if (err) { res.status(400).json({ message: "Upload gagal" }); return; }
+    next();
+  });
+}, async (req, res) => {
+  const ip = ((req.ip ?? req.socket?.remoteAddress) || "unknown").replace(/^::ffff:/, "");
+  if (!_checkProofUploadLimit(ip)) {
+    return res.status(429).json({ message: "Terlalu banyak upload. Coba lagi dalam 1 jam." });
+  }
+  if (!req.file) return res.status(400).json({ message: "File wajib diunggah" });
+  const mime = req.file.mimetype;
+  if (!mime.startsWith("image/") && mime !== "application/pdf") {
+    return res.status(415).json({ message: "Hanya file gambar (JPG/PNG/WebP) atau PDF yang diizinkan" });
+  }
+  try {
+    const objectPath = await _objectStorage.uploadPrivateEntity(req.file.buffer, mime);
+    return res.json({ objectPath });
+  } catch {
+    return res.status(500).json({ message: "Gagal mengunggah file" });
+  }
+});
+
 // POST /api/portal/order-upload-url  — DEPRECATED, kept for backward compat.
 // Returns 410 Gone so old clients fail visibly rather than silently.
 router.post("/order-upload-url", requirePortalAuth, (_req, res) => {

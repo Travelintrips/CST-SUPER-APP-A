@@ -1,24 +1,56 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { CheckCircle2, Search, LayoutDashboard, Boxes } from "lucide-react";
+import { CheckCircle2, Search, LayoutDashboard, Boxes, Upload, FileCheck, AlertCircle, Loader2 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import type { LogisticOrderDetail } from "@workspace/api-client-react";
 
 export default function OrderSuccessPage() {
   const [order, setOrder] = useState<LogisticOrderDetail | null>(null);
   const [, setLocation] = useLocation();
+  const [proofUploading, setProofUploading] = useState(false);
+  const [proofUploaded, setProofUploaded] = useState(false);
+  const [proofError, setProofError] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     try {
       const stored = localStorage.getItem("last_order");
       if (stored) setOrder(JSON.parse(stored));
+      if (localStorage.getItem("last_order_proof_uploaded") === "1") setProofUploaded(true);
     } catch {
       // ignore
     }
   }, []);
+
+  async function handleProofUpload(file: File) {
+    setProofError("");
+    setProofUploading(true);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const r = await fetch("/api/portal/payment-proof-upload", { method: "POST", body: form });
+      const json = await r.json() as { objectPath?: string; message?: string };
+      if (!r.ok) throw new Error(json.message ?? "Upload gagal");
+      const objectPath = json.objectPath ?? "";
+      const orderNum = order?.orderNumber;
+      if (orderNum && objectPath) {
+        await fetch(`/api/logistic/orders/${orderNum}/payment-proof`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ proofUrl: objectPath }),
+        });
+      }
+      setProofUploaded(true);
+      localStorage.setItem("last_order_proof_uploaded", "1");
+    } catch (err) {
+      setProofError(String(err));
+    } finally {
+      setProofUploading(false);
+    }
+  }
 
   if (!order) {
     return (
@@ -146,6 +178,59 @@ export default function OrderSuccessPage() {
             </div>
           )}
         </div>
+
+        {/* Upload Bukti Pembayaran — hanya tampil jika transfer bank */}
+        {(order.paymentMethod === "transfer" || (order.paymentType ?? "").startsWith("transfer")) && (
+          <div className="bg-card border border-border rounded-xl overflow-hidden">
+            <div className="px-5 py-3 bg-blue-50 border-b border-blue-200 flex items-center gap-2">
+              <Upload className="w-4 h-4 text-blue-600 shrink-0" />
+              <p className="text-sm font-semibold text-blue-900">Upload Bukti Transfer</p>
+            </div>
+            <div className="p-5 space-y-3">
+              {proofUploaded ? (
+                <div className="flex items-center gap-3 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3">
+                  <FileCheck className="w-5 h-5 text-emerald-600 shrink-0" />
+                  <div>
+                    <p className="text-sm font-bold text-emerald-800">Bukti pembayaran diterima ✓</p>
+                    <p className="text-xs text-emerald-700">Tim kami akan memverifikasi pembayaran Anda segera.</p>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <p className="text-sm text-muted-foreground">
+                    Unggah screenshot atau foto struk transfer untuk mempercepat verifikasi pembayaran.
+                  </p>
+                  {proofError && (
+                    <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                      <AlertCircle className="w-4 h-4 shrink-0" /> {proofError}
+                    </div>
+                  )}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*,application/pdf"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) handleProofUpload(f);
+                    }}
+                  />
+                  <Button
+                    className="w-full"
+                    variant="outline"
+                    disabled={proofUploading}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    {proofUploading
+                      ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Mengunggah…</>
+                      : <><Upload className="w-4 h-4 mr-2" /> Pilih File (JPG/PNG/PDF, maks. 10 MB)</>
+                    }
+                  </Button>
+                </>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Actions */}
         <div className="flex flex-col sm:flex-row gap-3">

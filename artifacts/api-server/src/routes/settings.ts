@@ -1207,6 +1207,43 @@ router.get("/company-pickup-address", async (_req: Request, res: Response) => {
   }
 });
 
+// ── Bank Transfer Info ────────────────────────────────────────────────────────
+const BANK_TRANSFER_KEY = "bank_transfer_info";
+const DEFAULT_BANK_INFO = {
+  bankName: "BCA",
+  accountNumber: "123-456-7890",
+  accountName: "PT CST Logistik Indonesia",
+  branch: "Jakarta Pusat",
+  notes: "Cantumkan nomor pesanan sebagai keterangan transfer.",
+};
+
+// GET /api/settings/bank-transfer-info — public (dipakai customer portal step pembayaran)
+router.get("/bank-transfer-info", async (_req: Request, res: Response) => {
+  try {
+    const [row] = await db.select().from(portalContentTable).where(eq(portalContentTable.key, BANK_TRANSFER_KEY));
+    const info = row ? { ...DEFAULT_BANK_INFO, ...(JSON.parse(row.value) as Partial<typeof DEFAULT_BANK_INFO>) } : DEFAULT_BANK_INFO;
+    return res.json(info);
+  } catch {
+    return res.json(DEFAULT_BANK_INFO);
+  }
+});
+
+// PUT /api/settings/bank-transfer-info — admin only
+router.put("/bank-transfer-info", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  try {
+    const { bankName, accountNumber, accountName, branch, notes } = req.body as Record<string, string>;
+    const value = JSON.stringify({ bankName: bankName?.trim(), accountNumber: accountNumber?.trim(), accountName: accountName?.trim(), branch: branch?.trim(), notes: notes?.trim() });
+    await db.execute(sql`
+      INSERT INTO portal_content (key, value) VALUES (${BANK_TRANSFER_KEY}, ${value})
+      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+    `);
+    return res.json({ ok: true });
+  } catch (err) {
+    return res.status(500).json({ message: String(err) });
+  }
+});
+
 // GET /api/settings/quick-stats — ringkasan jumlah item utama ERP (admin)
 router.get("/quick-stats", requireAdmin, async (req: Request, res: Response) => {
   try {

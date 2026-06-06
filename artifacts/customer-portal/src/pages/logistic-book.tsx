@@ -620,12 +620,47 @@ export default function BookPage() {
   const [transferTerm, setTransferTerm] = useState<"full" | "termin" | "dp" | "">("");
   const [paymentTerm, setPaymentTerm] = useState<"net7" | "net14" | "net30" | "net60" | "">("");
   const [dpNext, setDpNext] = useState<"lunas-delivery" | "lunas-net30" | "lunas-net60" | "cicil" | "">("");
+  const [bankInfo, setBankInfo] = useState<{ bankName: string; accountNumber: string; accountName: string; branch?: string; notes?: string } | null>(null);
+  const [proofFile, setProofFile] = useState<File | null>(null);
+  const [proofObjectPath, setProofObjectPath] = useState<string>("");
+  const [proofUploading, setProofUploading] = useState(false);
+  const [proofUploaded, setProofUploaded] = useState(false);
   const [quickTrucking, setQuickTrucking] = useState<"detail" | "calculator" | null>(null);
   const [quickTruckData, setQuickTruckData] = useState<Record<string, string>>({});
   const [quickTruckEstimate, setQuickTruckEstimate] = useState<number | null>(null);
   const [quickEstimating, setQuickEstimating] = useState(false);
   const [quickDeliveryAddressError, setQuickDeliveryAddressError] = useState(false);
   const [confirmEditShipping, setConfirmEditShipping] = useState(false);
+
+  // Fetch bank transfer info ketika user pilih Transfer Bank
+  useEffect(() => {
+    if (paymentType === "transfer" && !bankInfo) {
+      fetch("/api/settings/bank-transfer-info")
+        .then(r => r.ok ? r.json() : null)
+        .then((d: { bankName: string; accountNumber: string; accountName: string; branch?: string; notes?: string } | null) => {
+          if (d) setBankInfo(d);
+        })
+        .catch(() => {});
+    }
+  }, [paymentType, bankInfo]);
+
+  async function uploadProof(file: File) {
+    setProofUploading(true);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const r = await fetch("/api/portal/payment-proof-upload", { method: "POST", body: form });
+      const json = await r.json() as { objectPath?: string; message?: string };
+      if (!r.ok) throw new Error(json.message ?? "Upload gagal");
+      setProofObjectPath(json.objectPath ?? "");
+      setProofUploaded(true);
+      toast({ title: "Bukti pembayaran berhasil diunggah ✓" });
+    } catch (err) {
+      toast({ title: "Gagal mengunggah bukti", description: String(err), variant: "destructive" });
+    } finally {
+      setProofUploading(false);
+    }
+  }
 
   // Persist orderType + shipmentType to localStorage whenever they change
   useEffect(() => {
@@ -977,6 +1012,19 @@ export default function BookPage() {
         localStorage.setItem("last_order", JSON.stringify(data));
         localStorage.removeItem("logistic_cart");
         try { localStorage.removeItem(DRAFT_META_KEY); } catch { /* ignore */ }
+        if (proofObjectPath) {
+          const orderNum = (data as { orderNumber?: string })?.orderNumber;
+          if (orderNum) {
+            fetch(`/api/logistic/orders/${orderNum}/payment-proof`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ proofUrl: proofObjectPath }),
+            }).catch(() => {});
+          }
+          localStorage.setItem("last_order_proof_uploaded", "1");
+        } else {
+          localStorage.removeItem("last_order_proof_uploaded");
+        }
         setLocation("/logistic-order-success");
       },
       onError: () => {
@@ -1989,6 +2037,84 @@ export default function BookPage() {
                       >{d.label}</button>
                     ))}
                   </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Bank Transfer Info + Bukti Upload */}
+          {paymentType === "transfer" && (
+            <div className="rounded-xl border border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50 overflow-hidden">
+              <div className="px-4 py-2.5 bg-blue-100/70 border-b border-blue-200 flex items-center gap-2">
+                <Building2 className="w-4 h-4 text-blue-700" />
+                <p className="text-sm font-semibold text-blue-900">Informasi Rekening Tujuan</p>
+              </div>
+              {bankInfo ? (
+                <div className="p-4 space-y-3">
+                  <div className="grid grid-cols-2 gap-y-2 text-sm">
+                    <span className="text-muted-foreground font-medium">Bank</span>
+                    <span className="font-bold text-foreground">{bankInfo.bankName}</span>
+                    <span className="text-muted-foreground font-medium">No. Rekening</span>
+                    <span className="font-bold text-foreground tracking-widest">{bankInfo.accountNumber}</span>
+                    <span className="text-muted-foreground font-medium">Atas Nama</span>
+                    <span className="font-semibold text-foreground">{bankInfo.accountName}</span>
+                    {bankInfo.branch && <>
+                      <span className="text-muted-foreground font-medium">Cabang</span>
+                      <span className="text-foreground">{bankInfo.branch}</span>
+                    </>}
+                  </div>
+                  {bankInfo.notes && (
+                    <p className="text-xs text-blue-700 bg-blue-100 rounded-lg px-3 py-2">{bankInfo.notes}</p>
+                  )}
+                </div>
+              ) : (
+                <div className="p-4 flex items-center gap-2 text-sm text-muted-foreground">
+                  <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+                  Memuat info rekening…
+                </div>
+              )}
+
+              {/* Upload Bukti Pembayaran */}
+              <div className="border-t border-blue-200 px-4 py-4 space-y-3">
+                <p className="text-sm font-semibold text-blue-900">Upload Bukti Transfer <span className="text-xs font-normal text-muted-foreground">(opsional, bisa dilakukan setelah konfirmasi)</span></p>
+                {proofUploaded ? (
+                  <div className="flex items-center gap-2 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <p className="text-sm font-semibold text-emerald-800">Bukti pembayaran berhasil diunggah ✓</p>
+                    <button
+                      className="ml-auto text-xs text-muted-foreground underline"
+                      onClick={() => { setProofUploaded(false); setProofObjectPath(""); setProofFile(null); }}
+                    >Ganti</button>
+                  </div>
+                ) : (
+                  <label className={`flex flex-col items-center gap-2 rounded-xl border-2 border-dashed cursor-pointer transition-all px-4 py-5 ${
+                    proofFile ? "border-blue-400 bg-blue-50" : "border-blue-200 hover:border-blue-400 hover:bg-blue-50/50"
+                  }`}>
+                    <input
+                      type="file"
+                      accept="image/*,application/pdf"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const f = e.target.files?.[0];
+                        if (!f) return;
+                        setProofFile(f);
+                        await uploadProof(f);
+                      }}
+                    />
+                    {proofUploading ? (
+                      <>
+                        <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                        <p className="text-xs text-blue-700">Mengunggah…</p>
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="w-6 h-6 text-blue-400" />
+                        <p className="text-xs text-center text-muted-foreground">
+                          {proofFile ? proofFile.name : "Klik untuk pilih file (JPG, PNG, PDF, maks. 10 MB)"}
+                        </p>
+                      </>
+                    )}
+                  </label>
                 )}
               </div>
             </div>

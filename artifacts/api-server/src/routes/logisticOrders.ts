@@ -70,6 +70,10 @@ import { getAdminWa } from "../lib/adminWa.js";
 
 export const logisticOrdersRouter = Router();
 
+// Inline migration: payment_proof_url column
+db.execute(sql`ALTER TABLE logistic_orders ADD COLUMN IF NOT EXISTS payment_proof_url TEXT`)
+  .catch(() => {});
+
 // [C4-FIX] IP-based rate limit for public order creation: max 10 orders per IP per hour
 const _publicOrderRateMap = new Map<string, { count: number; resetAt: number }>();
 function _checkPublicOrderRate(ip: string): boolean {
@@ -2036,4 +2040,24 @@ logisticOrdersRouter.post("/:id/delivery/:phase", async (req: Request, res: Resp
   })();
 
   return res.json({ ok: true, status: cfg.status, orderId: id, phase });
+});
+
+// PATCH /api/logistic/orders/:orderNumber/payment-proof — public, simpan URL bukti bayar
+// Guard: order harus dibuat dalam 24 jam terakhir agar tidak bisa di-spam ke order lama.
+logisticOrdersRouter.patch("/:orderNumber/payment-proof", async (req: Request, res: Response) => {
+  const { orderNumber } = req.params;
+  const { proofUrl } = req.body as { proofUrl?: unknown };
+  if (!proofUrl || typeof proofUrl !== "string" || !proofUrl.trim()) {
+    return res.status(400).json({ message: "proofUrl wajib diisi" });
+  }
+  const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const [order] = await db
+    .select({ id: logisticOrdersTable.id, createdAt: logisticOrdersTable.createdAt })
+    .from(logisticOrdersTable)
+    .where(eq(logisticOrdersTable.orderNumber, orderNumber))
+    .limit(1);
+  if (!order) return res.status(404).json({ message: "Pesanan tidak ditemukan" });
+  if (order.createdAt < dayAgo) return res.status(403).json({ message: "Batas waktu upload bukti telah lewat (24 jam)" });
+  await db.execute(sql`UPDATE logistic_orders SET payment_proof_url = ${proofUrl.trim()} WHERE id = ${order.id}`);
+  return res.json({ ok: true });
 });
