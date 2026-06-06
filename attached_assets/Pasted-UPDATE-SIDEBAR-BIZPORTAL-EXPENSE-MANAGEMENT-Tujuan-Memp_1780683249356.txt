@@ -1,0 +1,83 @@
+UPDATE SIDEBAR BIZPORTAL — EXPENSE MANAGEMENT
+
+Tujuan:
+Memperbaiki sidebar BizPortal berdasarkan hasil audit, dengan fokus pada semua sub-menu Expense.
+
+---
+
+A. BACKEND / CONFIG
+
+1. **Tambahkan Parent Menu Baru**
+
+   * Label: `Expense Management`
+   * Icon: sesuai tema
+   * Role access: admin, owner, manager, finance
+
+2. **Tambahkan Child Menu Expense**
+
+   * Kasbon Karyawan (`/expense/kasbon`)
+   * Dana Talangan (`/expense/talangan`)
+   * Vendor Installments (`/expense/vendor-installments`)
+   * Bank Loans (`/expense/bank-loans`)
+   * Fixed Assets (`/expense/fixed-assets`)
+   * Vendor Payments (`/expense/vendor-payments`)
+   * Asset Depreciation (`/expense/asset-depreciation`)
+   * Approvals (`/expense/approvals`)
+   * Templates (`/expense/templates`)
+   * Budget (`/expense/budget`)
+   * Setiap child menu → route valid, page component terkait
+
+3. **Mapping Route / Page Component**
+
+   * Pastikan setiap child menu mengarah ke halaman kanan panel yang sesuai
+   * Tambahkan audit / log jika perlu untuk tracking klik menu
+
+4. **Idempotensi**
+
+   * Jika parent atau child menu sudah ada → jangan duplikat
+   * Merge menu duplikat jika page component sama
+
+---
+
+B. FRONTEND
+
+1. **Sidebar Rendering**
+
+   * Parent menu `Expense Management` muncul di posisi logis (misal di bawah Operations)
+   * Child menu tampil collapsible
+   * Label, icon, badge role sesuai access control
+   * Urutan child:
+     Kasbon → Talangan → Vendor Installments → Approvals → Fixed Assets → Asset Depreciation → Vendor Payments → Templates → Budget
+
+2. **Test Klik Menu**
+
+   * Klik semua child → pastikan halaman kanan muncul sesuai route / page component
+   * Pastikan role access bekerja (admin / manager / finance / owner)
+
+3. **Visual / Layout**
+
+   * Collapsible group rapi, indentasi sesuai
+   * Tidak ada menu duplikat / page yang sama muncul di lebih dari satu parent
+
+---
+
+C. TESTING / QA
+
+| No | Step                                  | Expected Result                               |
+| -- | ------------------------------------- | --------------------------------------------- |
+| 1  | Parent menu Expense Management muncul | Collapsible & terlihat di sidebar             |
+| 2  | Semua child menu Expense muncul       | Label & route valid, icon & badge sesuai role |
+| 3  | Klik child menu                       | Halaman kanan panel muncul sesuai route       |
+| 4  | Role test                             | Menu hanya tampil sesuai role access          |
+| 5  | Duplikat                              | Tidak ada menu / child yang duplikat          |
+| 6  | Layout                                | Collapsible, indentasi, urutan rapi           |
+
+---
+
+Instruksi:
+
+* Update backend sidebar config → tambahkan parent Expense Management & semua child menu
+* Pastikan route → page component mapping benar
+* Frontend render sidebar → collapsible group dengan layout rapi
+* Partial test → klik semua child menu → halaman kanan panel muncul
+* Audit log klik menu jika perlu

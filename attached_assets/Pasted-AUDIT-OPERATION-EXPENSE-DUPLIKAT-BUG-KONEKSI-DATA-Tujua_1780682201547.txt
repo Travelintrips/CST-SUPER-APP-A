@@ -1,0 +1,78 @@
+AUDIT OPERATION → EXPENSE — DUPLIKAT, BUG, KONEKSI DATA
+
+Tujuan:
+Memastikan data expense bersih, kolom sesuai, mapping ke COA / user / vendor / kategori / invoice lengkap, dan tidak ada duplikat atau bug.
+
+---
+
+A. BACKEND AUDIT
+
+1. **Duplicate Check**
+
+   * Cek tabel expense (`expenses`, `kasbon`, `dana_talangan`, `cicilan_vendor`) untuk:
+
+     * Record dengan `id` sama lebih dari satu
+     * Record dengan kombinasi key unik (`logisticOrderId + category_id + source_account_id`)
+   * Laporkan record duplikat
+
+2. **Field Validation**
+
+   * Semua record harus punya:
+
+     * `category_id` → kategori valid
+     * `source_account_id` → link ke COA Bank/Kas
+     * `user_id` → untuk kasbon karyawan
+     * `vendor_id` / `recipient_id` → untuk Dana Talangan / Cicilan Vendor
+     * `amount` / `tax` terisi dan sesuai format
+   * Tampilkan record dengan field kosong / invalid
+
+3. **Link / Relasi Check**
+
+   * Pastikan semua foreign key (`category_id`, `source_account_id`, `user_id`, `vendor_id`) ada di master table masing-masing
+   * Pastikan invoice / POD / dokumen terkait (`invoice_id`, `receipt_url`) ada dan bisa diakses
+
+4. **Audit Logs**
+
+   * Pastikan setiap event expense (`created`, `approved`, `rejected`, `receipt_uploaded`, `payment_processed`) tercatat di `erp_audit_logs`
+   * Tampilkan record tanpa log atau log gagal
+
+---
+
+B. FRONTEND AUDIT
+
+1. **Expense List**
+
+   * Tampilkan kolom:
+
+     * Sumber Dana / Bank / Kas → `source_account.name`
+     * Kategori → `category.name`
+     * Karyawan → `user.name`
+     * Vendor / Pihak penerima → `vendor.name`
+     * Invoice / receipt → clickable link
+   * Cek apakah semua kolom terisi dan link valid
+
+2. **Validation**
+
+   * Pastikan tidak ada duplicate row di UI
+   * Pastikan dropdown & badge auto-fill bekerja untuk semua kategori dan sumber
+
+---
+
+C. TESTING / QA
+
+| No | Step                                            | Expected Result                                  |
+| -- | ----------------------------------------------- | ------------------------------------------------ |
+| 1  | Scan semua record expense                       | Tidak ada duplikat                               |
+| 2  | Cek kolom mapping                               | Semua kolom sudah terisi & valid                 |
+| 3  | Klik semua link terkait (COA, invoice, receipt) | Link dapat diakses / file tersedia               |
+| 4  | Audit logs                                      | Semua event tercatat lengkap                     |
+| 5  | Partial test                                    | Tidak mengganggu workflow lain, build / TS clean |
+
+---
+
+Instruksi:
+
+* Jalankan audit backend → duplikasi, field kosong, invalid FK, link rusak
+* Cek frontend → semua kolom tampil, dropdown & badge auto-fill bekerja
+* Tampilkan laporan record duplikat / error / invalid
+* Pastikan audit logs semua event expense lengkap

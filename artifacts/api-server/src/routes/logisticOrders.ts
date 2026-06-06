@@ -199,6 +199,7 @@ db.execute(sql.raw(`
   ALTER TABLE logistic_orders ADD COLUMN IF NOT EXISTS template_id INTEGER;
   ALTER TABLE logistic_orders ADD COLUMN IF NOT EXISTS template_version TEXT;
   ALTER TABLE logistic_orders ADD COLUMN IF NOT EXISTS template_snapshot JSONB;
+  ALTER TABLE logistic_orders ADD COLUMN IF NOT EXISTS tracking_token TEXT;
   ALTER TABLE logistic_order_rfqs ADD COLUMN IF NOT EXISTS template_id INTEGER;
   ALTER TABLE logistic_order_rfqs ADD COLUMN IF NOT EXISTS template_version TEXT;
   ALTER TABLE logistic_order_rfqs ADD COLUMN IF NOT EXISTS template_snapshot JSONB;

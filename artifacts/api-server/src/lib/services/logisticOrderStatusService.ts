@@ -24,6 +24,7 @@ import { logger } from "../logger.js";
 
 /** Status yang memicu notifikasi WA ke customer (In Progress sudah ditangani di confirm_fulfillment) */
 const CUSTOMER_NOTIFY_STATUS_SET = new Set([
+  "Vendor Confirmed",
   "Pickup", "In Transit", "Arrived", "Delivered", "POD Uploaded",
   "Invoice Issued", "Payment Received",
   "Completed", "Cancelled",

@@ -1,0 +1,94 @@
+UNIFIED EXPENSE / RECEIPT FORM — PENERIMAAN & PENGELUARAN
+
+Tujuan:
+Menyederhanakan menu dan form dengan menggabungkan semua expense dan penerimaan dalam satu form, dengan opsi:
+
+* Jenis: Penerimaan / Pengeluaran
+* Dropdown kategori menampilkan kategori sesuai jenis
+* Mapping otomatis ke COA / Pajak / User / Vendor
+
+---
+
+A. BACKEND
+
+1. **Kategori Field**
+
+   * Tambahkan `type` di kategori:
+
+     * `type = income` → Penerimaan
+     * `type = expense` → Pengeluaran
+
+2. **Endpoint GET /api/category**
+
+   * Sertakan field `type`
+   * Filter frontend sesuai pilihan jenis (Penerimaan / Pengeluaran)
+
+3. **Expense Table**
+
+   * Tambahkan field `transaction_type` → `income` / `expense`
+   * Field lain tetap:
+
+     * `category_id`
+     * `source_account_id`
+     * `user_id` / `vendor_id`
+     * `amount`
+     * `tax_id`
+     * `receipt_url` / `ocr_raw_data`
+
+4. **Validation**
+
+   * Pastikan saat submit:
+
+     * Penerimaan → kategori type=income
+     * Pengeluaran → kategori type=expense
+   * Mapping COA / Pajak / User / Vendor tetap valid
+
+---
+
+B. FRONTEND
+
+1. **Unified Form**
+
+   * Radio / toggle: `Jenis Transaksi` → Penerimaan / Pengeluaran
+   * Dropdown kategori:
+
+     * Filter otomatis berdasarkan jenis transaksi
+     * Auto-fill akun, pajak, source account
+   * Kolom nominal, tanggal, user / vendor, keterangan
+   * Upload receipt + OCR optional
+
+2. **Expense List**
+
+   * Tampilkan semua record → kolom Jenis (Penerimaan / Pengeluaran)
+   * Badge / label type jelas
+   * Filter: Tampilkan hanya Pengeluaran atau Penerimaan jika diperlukan
+
+3. **Partial Test**
+
+   * Pilih jenis Penerimaan → hanya kategori income muncul
+   * Pilih jenis Pengeluaran → hanya kategori expense muncul
+   * Submit → mapping ke COA / Pajak / User / Vendor benar
+   * Record tampil di list sesuai type
+
+---
+
+C. TESTING / QA
+
+| No | Step                                | Expected Result                                       |
+| -- | ----------------------------------- | ----------------------------------------------------- |
+| 1  | Pilih Jenis = Pengeluaran           | Dropdown kategori hanya menampilkan expense           |
+| 2  | Pilih Jenis = Penerimaan            | Dropdown kategori hanya menampilkan income            |
+| 3  | Pilih kategori → dropdown auto-fill | Akun / Pajak / Source account terisi                  |
+| 4  | Submit record                       | Tersimpan di DB dengan field `transaction_type` benar |
+| 5  | List / Timeline                     | Badge Jenis transaksi muncul, filter bekerja          |
+| 6  | Partial test                        | Tidak mengganggu workflow lain, build / TS clean      |
+
+---
+
+Instruksi:
+
+* Backend → tambahkan field `transaction_type` di expense / category schema
+* Frontend form → toggle Jenis Transaksi + filter kategori
+* Mapping COA / Pajak / User / Vendor tetap auto-fill
+* Expense list → tampil semua record dengan badge Jenis Transaksi
+* Test partial → pilih Pengeluaran / Penerimaan → submit → mapping & list valid

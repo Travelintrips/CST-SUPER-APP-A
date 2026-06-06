@@ -41,6 +41,7 @@ import { Link } from "wouter";
 const EMPTY_FORM = {
   name: "",
   code: "",
+  categoryType: "both" as "expense" | "income" | "both",
   expenseAccountId: null as number | null,
   payableAccountId: null as number | null,
   defaultTaxId: null as number | null,
@@ -79,6 +80,7 @@ export default function ExpenseCategoriesPage() {
     setForm({
       name: c.name,
       code: c.code,
+      categoryType: ((c as any).categoryType ?? "both") as "expense" | "income" | "both",
       expenseAccountId: c.expenseAccountId ?? null,
       payableAccountId: c.payableAccountId ?? null,
       defaultTaxId: (c as any).defaultTaxId ?? null,
@@ -98,6 +100,7 @@ export default function ExpenseCategoriesPage() {
       const body = {
         name: form.name,
         code: form.code.toUpperCase(),
+        categoryType: form.categoryType,
         expenseAccountId: form.expenseAccountId || undefined,
         payableAccountId: form.payableAccountId || undefined,
         defaultTaxId: form.defaultTaxId || undefined,
@@ -176,6 +179,7 @@ export default function ExpenseCategoriesPage() {
                 <TableRow>
                   <TableHead>Kode</TableHead>
                   <TableHead>Nama</TableHead>
+                  <TableHead>Jenis</TableHead>
                   <TableHead>Akun Biaya (DR)</TableHead>
                   <TableHead>Pajak Default</TableHead>
                   <TableHead>Lampiran</TableHead>
@@ -197,6 +201,13 @@ export default function ExpenseCategoriesPage() {
                   <TableRow key={c.id}>
                     <TableCell className="font-mono text-xs">{c.code}</TableCell>
                     <TableCell className="font-medium">{c.name}</TableCell>
+                    <TableCell>
+                      {(c as any).categoryType === "income"
+                        ? <Badge className="bg-emerald-900/40 text-emerald-300 border-emerald-700 text-xs">Penerimaan</Badge>
+                        : (c as any).categoryType === "expense"
+                        ? <Badge className="bg-red-900/40 text-red-300 border-red-700 text-xs">Pengeluaran</Badge>
+                        : <Badge variant="outline" className="text-muted-foreground text-xs">Keduanya</Badge>}
+                    </TableCell>
                     <TableCell className="text-sm text-muted-foreground">{getAccountName(c.expenseAccountId)}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {defaultTax
@@ -251,6 +262,21 @@ export default function ExpenseCategoriesPage() {
                   className={codeTaken === true ? "border-destructive focus-visible:ring-destructive" : ""} />
                 <CodeCheckIndicator checking={codeChecking} taken={codeTaken} />
               </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Jenis Transaksi</Label>
+              <Select
+                value={form.categoryType}
+                onValueChange={(v) => setForm((f) => ({ ...f, categoryType: v as any }))}
+              >
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="both">Pengeluaran & Penerimaan</SelectItem>
+                  <SelectItem value="expense">Pengeluaran saja</SelectItem>
+                  <SelectItem value="income">Penerimaan saja</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">Tentukan apakah kategori ini muncul di form Pengeluaran, Penerimaan, atau keduanya.</p>
             </div>
             <div className="space-y-1.5">
               <Label>Akun Biaya (Debit)</Label>

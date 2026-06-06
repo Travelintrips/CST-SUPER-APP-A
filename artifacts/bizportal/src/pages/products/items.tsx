@@ -80,10 +80,12 @@ function CategorySelect({
   );
 }
 
+const CURRENCIES = ["IDR", "USD", "EUR", "SGD", "CNY", "JPY", "MYR", "AUD"];
+
 interface Product {
   id: number; name: string; sku: string; unit: string;
   price: number; cost_price: number; is_active: boolean;
-  item_type: string; subcategory: string | null;
+  item_type: string; subcategory: string | null; currency_code: string;
 }
 interface RawMaterial {
   id: number; name: string; sku: string; unit: string;
@@ -120,6 +122,7 @@ function ProductDialog({
     itemType: editing?.item_type ?? "barang",
     subcategory: editing?.subcategory ?? "",
     isActive: editing?.is_active ?? true,
+    currencyCode: editing?.currency_code ?? "IDR",
   });
 
   const qc = useQueryClient();
@@ -129,7 +132,7 @@ function ProductDialog({
         name: form.name, sku: form.sku, unit: form.unit,
         price: Number(form.price), costPrice: Number(form.costPrice),
         itemType: form.itemType, subcategory: form.subcategory || null,
-        isActive: form.isActive,
+        isActive: form.isActive, currencyCode: form.currencyCode,
       };
       if (editing) return apiFetch(`/bom/products/${editing.id}`, { method: "PUT", body: JSON.stringify(payload) });
       return apiFetch("/bom/products", { method: "POST", body: JSON.stringify(payload) });
@@ -167,11 +170,18 @@ function ProductDialog({
             </Select>
           </div>
           <div className="space-y-1">
-            <Label>Harga Jual (Rp)</Label>
-            <Input type="number" value={form.price} onChange={f("price")} placeholder="0" />
+            <Label>Mata Uang</Label>
+            <Select value={form.currencyCode} onValueChange={(v) => setForm(p => ({ ...p, currencyCode: v }))}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>{CURRENCIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+            </Select>
           </div>
           <div className="space-y-1">
-            <Label>Harga Pokok (Rp)</Label>
+            <Label>Harga Jual</Label>
+            <Input type="number" value={form.price} onChange={f("price")} placeholder="0" />
+          </div>
+          <div className="space-y-1 col-span-2">
+            <Label>Harga Pokok</Label>
             <Input type="number" value={form.costPrice} onChange={f("costPrice")} placeholder="0" />
           </div>
           <div className="space-y-1">

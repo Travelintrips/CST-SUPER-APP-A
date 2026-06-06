@@ -3055,6 +3055,7 @@ paths:
               properties:
                 action: { type: string, enum: [submit, approve, reject, post, pay, reset] }
                 reason: { type: string, nullable: true }
+                paymentMethod: { type: string, nullable: true }
               required: [action]
       responses:
         "200":
@@ -5658,10 +5659,15 @@ components:
         expenseNumber: { type: string }
         date: { type: string }
         vendorEmployee: { type: string, nullable: true }
-        expenseType: { type: string, enum: [vendor_bill, reimbursement, internal] }
+        expenseType: { type: string, enum: [vendor_bill, reimbursement, internal, routine, kasbon, talangan, fixed_asset] }
         salesDocId: { type: integer, nullable: true }
         shipmentId: { type: integer, nullable: true }
         categoryId: { type: integer, nullable: true }
+        categoryName: { type: string, nullable: true }
+        sourceAccountId: { type: integer, nullable: true }
+        sourceAccountName: { type: string, nullable: true }
+        vendorId: { type: integer, nullable: true }
+        vendorName: { type: string, nullable: true }
         description: { type: string, nullable: true }
         qty: { type: number }
         unit: { type: string, nullable: true }
@@ -5671,7 +5677,7 @@ components:
         taxAmount: { type: number }
         total: { type: number }
         currency: { type: string }
-        status: { type: string, enum: [draft, submitted, approved, posted, paid, rejected] }
+        status: { type: string, enum: [draft, submitted, approved, pending_approval, posted, paid, rejected] }
         notes: { type: string, nullable: true }
         entryId: { type: integer, nullable: true }
         expenseAccountId: { type: integer, nullable: true }
@@ -5711,7 +5717,8 @@ components:
       properties:
         date: { type: string }
         vendorEmployee: { type: string, nullable: true }
-        expenseType: { type: string, enum: [vendor_bill, reimbursement, internal] }
+        vendorId: { type: integer, nullable: true }
+        expenseType: { type: string, enum: [vendor_bill, reimbursement, internal, routine, kasbon, talangan, fixed_asset] }
         salesDocId: { type: integer, nullable: true }
         shipmentId: { type: integer, nullable: true }
         categoryId: { type: integer, nullable: true }
@@ -5724,6 +5731,7 @@ components:
         notes: { type: string, nullable: true }
         expenseAccountId: { type: integer, nullable: true }
         payableAccountId: { type: integer, nullable: true }
+        sourceAccountId: { type: integer, nullable: true }
       required: [date]
 
     CreateExpenseAttachmentBody:

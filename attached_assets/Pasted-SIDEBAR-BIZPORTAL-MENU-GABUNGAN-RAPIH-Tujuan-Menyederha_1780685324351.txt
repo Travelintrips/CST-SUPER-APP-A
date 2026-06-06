@@ -1,0 +1,112 @@
+SIDEBAR BIZPORTAL — MENU GABUNGAN & RAPIH
+
+Tujuan:
+Menyederhanakan sidebar BizPortal agar lebih ringkas, menggabungkan menu kecil ke parent menu logis, dan menata child menu collapsible. Semua fungsi dan halaman kanan tetap valid.
+
+---
+
+A. PARENT MENU & CHILD MENU
+
+1. **Expense Management** (antara Operations & Finance)
+
+   * Child menu:
+
+     * Semua Pengeluaran (/expense)
+     * Biaya Rutin (/expense/routine)
+     * Kategori (/expense/categories)
+     * Laporan Expense (/expense/reports)
+     * Dashboard & Monitor (/expense/dashboard)
+     * Kasbon Karyawan (/expense/kasbon)
+     * Dana Talangan (/expense/talangan)
+     * Vendor Installments (/expense/vendor-installments)
+     * Approvals (/expense/approvals)
+     * Fixed Assets (/expense/fixed-assets)
+     * Asset Depreciation (/expense/asset-depreciation)
+     * Vendor Payments (/expense/vendor-payments)
+     * Templates Expense (/expense/templates)
+     * Budget & Kurs (/expense/budget)
+
+2. **Operations / Logistics**
+
+   * Parent menu: Operations / Logistics
+   * Child menu:
+
+     * Trading
+     * Freight Orders
+     * Assign Trucks (Internal / External)
+     * Track Shipments
+   * Collapse semua sub-menu menjadi grup logis
+
+3. **Procurement**
+
+   * Child menu:
+
+     * RFQ / Quotations
+     * Purchase Orders
+     * Vendor List / Profile
+     * Approvals
+
+4. **Asset Management**
+
+   * Child menu:
+
+     * Fixed Assets
+     * Asset Depreciation
+     * Reports
+
+5. **Reports & Dashboard**
+
+   * Child menu:
+
+     * Finance Reports
+     * Operations Reports
+     * Sport Center Reports
+
+6. **Administration / Settings**
+
+   * Child menu:
+
+     * User Management
+     * Role & Permission
+     * Document Templates (Invoice / PO / Contract / MOU)
+     * COA / Taxes / Payment Methods
+
+---
+
+B. BACKEND / CONFIG
+
+1. Update sidebar config → buat parent menu baru atau merge child menu sesuai di atas
+2. Mapping route / page component → pastikan setiap child mengarah ke halaman kanan panel yang benar
+3. Idempotensi → jika parent / child menu sudah ada → jangan duplikat
+4. Role access → parent / child menu muncul sesuai role (admin, owner, manager, logistics, trading)
+
+---
+
+C. FRONTEND
+
+1. Render sidebar → collapsible parent menu
+2. Child menu urut sesuai logika / workflow
+3. Badge / icon → sesuai role / akses
+4. Partial test → klik semua menu → halaman kanan panel muncul sesuai
+
+---
+
+D. TESTING / QA
+
+| No | Step           | Expected Result                               |
+| -- | -------------- | --------------------------------------------- |
+| 1  | Sidebar render | Semua parent menu muncul, collapsible         |
+| 2  | Child menu     | Semua child muncul, route valid, urutan logis |
+| 3  | Klik menu      | Halaman kanan muncul sesuai page component    |
+| 4  | Role test      | Menu muncul sesuai role access                |
+| 5  | Duplikat       | Tidak ada duplikat menu / page                |
+| 6  | Layout         | Collapsible & indentasi rapi, menu logis      |
+
+---
+
+Instruksi:
+
+* Backend → update sidebar config → gabungkan menu kecil ke parent logis
+* Frontend → render collapsible, urutan logis, role access valid
+* Mapping route / page component tetap benar
+* Test partial → klik semua child menu → halaman kanan panel muncul sesuai

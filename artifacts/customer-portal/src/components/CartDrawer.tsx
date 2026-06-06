@@ -213,8 +213,8 @@ export function CartDrawer() {
 
   const hasProductOnly = items.length > 0 && items.every(i => i.calculatorType === "product");
 
-  const [selectedShipping, setSelectedShipping] = useState<"darat" | "laut" | "udara" | null>(() => {
-    try { return (JSON.parse(localStorage.getItem("logistic_product_shipping") ?? "null") as { method?: string } | null)?.method as "darat" | "laut" | "udara" | null ?? null; }
+  const [selectedShipping, setSelectedShipping] = useState<"pickup" | "darat" | "laut" | "udara" | null>(() => {
+    try { return (JSON.parse(localStorage.getItem("logistic_product_shipping") ?? "null") as { method?: string } | null)?.method as "pickup" | "darat" | "laut" | "udara" | null ?? null; }
     catch { return null; }
   });
 
@@ -316,14 +316,10 @@ export function CartDrawer() {
   }
 
   function handleCheckout() {
-    if (hasProductOnly && !selectedShipping) {
-      toast({ title: "Pilih metode pengiriman terlebih dahulu", variant: "destructive" });
-      return;
-    }
-    if (hasProductOnly && selectedShipping) {
+    if (hasProductOnly) {
       try {
         localStorage.setItem("logistic_product_shipping", JSON.stringify({
-          method: selectedShipping,
+          method: selectedShipping ?? "pickup",
           estimate: selectedShipping === "darat" ? daratEstimate : null,
           companyName: companyPickup?.name ?? "CST Logistics",
           companyAddress: companyPickup?.address ?? DEFAULT_PICKUP,
@@ -639,22 +635,19 @@ export function CartDrawer() {
                     <div className="flex items-center gap-2 mb-2.5 px-0.5">
                       <Truck className="w-3.5 h-3.5 text-slate-400" />
                       <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">
-                        Metode Pengiriman <span className="text-red-400">*</span>
+                        Metode Pengiriman
                       </span>
-                    </div>
-                    {/* Alamat Pengirim (otomatis) */}
-                    <div className="mb-3 rounded-lg border border-orange-200 bg-orange-50/80 px-3 py-2.5">
-                      <p className="text-[10px] font-bold text-orange-400 uppercase tracking-wide mb-1">Pengirim (Otomatis)</p>
-                      <p className="text-[11px] font-semibold text-orange-700 leading-snug">🏭 {companyPickup?.name ?? "CST Logistics"}</p>
-                      <p className="text-[11px] text-orange-600 mt-0.5 leading-snug">{companyPickup?.address ?? DEFAULT_PICKUP}</p>
+                      <span className="text-[10px] text-slate-500 italic">(opsional)</span>
                     </div>
                     <div className="space-y-2">
                       {([
-                        { id: "darat" as const, name: "Pengiriman Darat",  Icon: Truck,  desc: "Trucking kota ke kota",    activeColor: "border-orange-400 bg-orange-50", iconColor: "text-orange-600", iconBg: "bg-orange-100", estimate: daratEstimate },
-                        { id: "laut"  as const, name: "Pengiriman Laut",   Icon: Ship,   desc: "Sea freight LCL / FCL",    activeColor: "border-blue-400 bg-blue-50",   iconColor: "text-blue-600",   iconBg: "bg-blue-100",   estimate: null },
-                        { id: "udara" as const, name: "Pengiriman Udara",  Icon: Plane,  desc: "Air freight ekspres",      activeColor: "border-sky-400 bg-sky-50",     iconColor: "text-sky-600",    iconBg: "bg-sky-100",    estimate: null },
+                        { id: "pickup" as const, name: "Ambil Sendiri",    Icon: Warehouse, desc: "Ambil langsung di gudang kami", activeColor: "border-green-400 bg-green-50",  iconColor: "text-green-600",  iconBg: "bg-green-100",  estimate: null },
+                        { id: "darat"  as const, name: "Pengiriman Darat", Icon: Truck,     desc: "Trucking kota ke kota",         activeColor: "border-orange-400 bg-orange-50", iconColor: "text-orange-600", iconBg: "bg-orange-100", estimate: daratEstimate },
+                        { id: "laut"   as const, name: "Pengiriman Laut",  Icon: Ship,      desc: "Sea freight LCL / FCL",         activeColor: "border-blue-400 bg-blue-50",    iconColor: "text-blue-600",   iconBg: "bg-blue-100",   estimate: null },
+                        { id: "udara"  as const, name: "Pengiriman Udara", Icon: Plane,     desc: "Air freight ekspres",           activeColor: "border-sky-400 bg-sky-50",      iconColor: "text-sky-600",    iconBg: "bg-sky-100",    estimate: null },
                       ]).map(m => (
-                        <button key={m.id} onClick={() => setSelectedShipping(m.id)}
+                        <button key={m.id}
+                          onClick={() => setSelectedShipping(selectedShipping === m.id ? null : m.id)}
                           className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left ${selectedShipping === m.id ? m.activeColor + " shadow-sm" : "border-slate-200 bg-white hover:border-slate-300"}`}
                         >
                           <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${selectedShipping === m.id ? m.iconBg : "bg-slate-100"}`}>
@@ -665,11 +658,11 @@ export function CartDrawer() {
                             <p className="text-[11px] text-slate-400 mt-0.5">{m.desc}</p>
                           </div>
                           <div className="text-right shrink-0 flex flex-col items-end gap-1">
-                            {m.estimate ? (
+                            {m.id !== "pickup" && (m.estimate ? (
                               <p className="text-xs font-bold text-slate-800">{formatCurrency(m.estimate)}</p>
                             ) : (
                               <p className="text-[10px] text-slate-400 italic">Sesuai rute</p>
-                            )}
+                            ))}
                             <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${selectedShipping === m.id ? "border-primary bg-primary" : "border-slate-300 bg-white"}`}>
                               {selectedShipping === m.id && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
                             </div>
@@ -677,6 +670,13 @@ export function CartDrawer() {
                         </button>
                       ))}
                     </div>
+                    {selectedShipping === "pickup" && (
+                      <div className="mt-2 rounded-lg border border-green-200 bg-green-50/80 px-3 py-2.5">
+                        <p className="text-[10px] font-bold text-green-600 uppercase tracking-wide mb-1">Lokasi Pengambilan</p>
+                        <p className="text-[11px] font-semibold text-green-800 leading-snug">🏭 {companyPickup?.name ?? "CST Logistics"}</p>
+                        <p className="text-[11px] text-green-700 mt-0.5 leading-snug">{companyPickup?.address ?? DEFAULT_PICKUP}</p>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <button
@@ -1466,8 +1466,8 @@ export function CartDrawer() {
               </div>
             )}
             {hasProductOnly && !selectedShipping && (
-              <p className="text-[11px] text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-center">
-                ⚠️ Pilih metode pengiriman sebelum checkout
+              <p className="text-[11px] text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-center">
+                Metode pengiriman belum dipilih — bisa dikonfirmasi nanti
               </p>
             )}
             <Button className="w-full gap-2 h-11 text-sm font-semibold" onClick={handleCheckout}>

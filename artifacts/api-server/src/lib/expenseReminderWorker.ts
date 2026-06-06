@@ -26,12 +26,17 @@ async function ensureReminderTable() {
       message TEXT NOT NULL,
       sent_wa BOOLEAN NOT NULL DEFAULT FALSE,
       dismissed BOOLEAN NOT NULL DEFAULT FALSE,
+      reminder_date DATE NOT NULL DEFAULT CURRENT_DATE,
       created_at TIMESTAMPTZ DEFAULT NOW()
     )
   `));
+  // add reminder_date column if table existed without it
+  await db.execute(sql.raw(`
+    ALTER TABLE expense_reminders ADD COLUMN IF NOT EXISTS reminder_date DATE NOT NULL DEFAULT CURRENT_DATE
+  `));
   await db.execute(sql.raw(`
     CREATE UNIQUE INDEX IF NOT EXISTS expense_reminders_daily_uniq
-      ON expense_reminders(ref_type, ref_id, DATE_TRUNC('day', created_at))
+      ON expense_reminders(ref_type, ref_id, reminder_date)
   `));
   await db.execute(sql.raw(`
     CREATE INDEX IF NOT EXISTS expense_reminders_company_idx ON expense_reminders(company_id)
@@ -81,10 +86,10 @@ async function upsertReminder(opts: {
   const msg    = opts.message.replace(/'/g, "''");
   await db.execute(sql.raw(`
     INSERT INTO expense_reminders
-      (company_id, ref_type, ref_id, ref_number, party_name, amount, due_days, severity, message)
+      (company_id, ref_type, ref_id, ref_number, party_name, amount, due_days, severity, message, reminder_date)
     VALUES
-      (${co}, '${opts.refType}', ${opts.refId}, ${refNum}, ${party}, ${amt}, ${days}, '${opts.severity}', '${msg}')
-    ON CONFLICT (ref_type, ref_id, DATE_TRUNC('day', created_at))
+      (${co}, '${opts.refType}', ${opts.refId}, ${refNum}, ${party}, ${amt}, ${days}, '${opts.severity}', '${msg}', CURRENT_DATE)
+    ON CONFLICT (ref_type, ref_id, reminder_date)
     DO UPDATE SET message = EXCLUDED.message, severity = EXCLUDED.severity
   `).catch(() => {}));
 }

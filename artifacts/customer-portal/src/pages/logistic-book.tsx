@@ -882,10 +882,6 @@ export default function BookPage() {
       return;
     }
     const hasProductOnly = cartItems.every(c => c.calculatorType === "product");
-    if (hasProductOnly && !customerForm.shippingAddress?.trim() && !customerForm.destination?.trim()) {
-      toast({ title: "Alamat Tujuan Pengiriman wajib diisi", variant: "destructive" });
-      return;
-    }
     const truckingInputData = (truckingItem?.inputData ?? {}) as Record<string, unknown>;
     const str = (v: unknown) => (v ? String(v) : "");
     const derivedOrderType: "product" | "service" | "shipment" | null = orderType ?? (
@@ -1578,14 +1574,6 @@ export default function BookPage() {
                   <span className="text-[11px] text-slate-400 italic">Sesuai rute</span>
                 )}
               </div>
-              <div className="px-4 py-3 flex items-start gap-3">
-                <MapPin className="w-4 h-4 text-orange-500 shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-[10px] font-bold text-orange-500 uppercase tracking-wide">Alamat Pengirim (Kita)</p>
-                  <p className="text-xs font-semibold text-slate-800">{productShipping.companyName}</p>
-                  <p className="text-xs text-slate-500">{productShipping.companyAddress}</p>
-                </div>
-              </div>
             </div>
           )}
 
@@ -1714,20 +1702,14 @@ export default function BookPage() {
                 <div className="col-span-2">
                   <Label className="text-xs">
                     Alamat Tujuan Pengiriman
-                    {hasProductOnly && <span className="text-destructive"> *</span>}
-                    {!hasProductOnly && hasShipmentInCart && <span className="text-muted-foreground font-normal"> (opsional)</span>}
+                    <span className="text-muted-foreground font-normal"> (opsional — kosongkan jika ambil sendiri)</span>
                   </Label>
                   <Input
-                    placeholder="Jl. ..., Kota, Provinsi — tujuan pengiriman barang"
+                    placeholder="Jl. ..., Kota, Provinsi — kosongkan jika ambil sendiri di gudang"
                     value={f.shippingAddress}
                     onChange={e => set("shippingAddress", e.target.value)}
                   />
-                  {hasProductOnly && (
-                    <p className="text-[11px] text-muted-foreground mt-1">Masukkan alamat lengkap tujuan pengiriman Anda.</p>
-                  )}
-                  {!hasProductOnly && hasShipmentInCart && (
-                    <p className="text-[11px] text-muted-foreground mt-1">Kosongkan jika pickup sendiri.</p>
-                  )}
+                  <p className="text-[11px] text-muted-foreground mt-1">Masukkan alamat tujuan pengiriman, atau kosongkan jika barang akan diambil sendiri.</p>
                 </div>
               )}
 

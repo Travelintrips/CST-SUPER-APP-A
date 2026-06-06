@@ -29,6 +29,7 @@ async function ensureTables() {
       accumulated_depreciation NUMERIC(14,2) NOT NULL DEFAULT 0,
       book_value NUMERIC(14,2) NOT NULL,
       payment_method TEXT NOT NULL DEFAULT 'bank',
+      payment_account_id INTEGER,
       notes TEXT,
       tax_related BOOLEAN NOT NULL DEFAULT FALSE,
       is_active BOOLEAN NOT NULL DEFAULT TRUE,
@@ -36,6 +37,7 @@ async function ensureTables() {
       created_by_id TEXT,
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
+    ALTER TABLE fixed_assets ADD COLUMN IF NOT EXISTS payment_account_id INTEGER;
     CREATE TABLE IF NOT EXISTS asset_depreciation_records (
       id SERIAL PRIMARY KEY,
       asset_id INTEGER NOT NULL,
@@ -79,6 +81,22 @@ function calcDecliningBalance(bookValue: number, usefulLifeMonths: number): numb
   return (bookValue * annualRate) / 12;
 }
 
+// ─── GET /api/fixed-assets/payment-accounts ──────────────────────────────────
+// Mengembalikan akun Kas & Bank dari COA (kode 1-1xxx) untuk dropdown sumber pembayaran
+router.get("/payment-accounts", async (req: Request, res) => {
+  await runMigration();
+  const companyId = await resolveCompanyId(req);
+  const rows = await db.execute(sql.raw(`
+    SELECT id, code, name
+    FROM chart_of_accounts
+    WHERE code LIKE '1-1%'
+      AND is_active = TRUE
+      AND (company_id = ${companyId ?? "NULL"} OR company_id IS NULL)
+    ORDER BY code ASC
+  `));
+  res.json(rows.rows);
+});
+
 // ─── GET /api/fixed-assets ────────────────────────────────────────────────────
 router.get("/", async (req: Request, res) => {
   await runMigration();
@@ -110,7 +128,7 @@ router.post("/", async (req: Request, res) => {
   const {
     assetName, assetType = "equipment", purchaseDate, purchasePrice,
     usefulLifeMonths = 60, salvageValue = 0, depreciationMethod = "straight_line",
-    paymentMethod = "bank", notes, taxRelated = false,
+    paymentMethod = "bank", paymentAccountId, notes, taxRelated = false,
   } = req.body;
 
   if (!assetName?.trim()) return res.status(400).json({ message: "Nama aset wajib diisi." });
@@ -120,15 +138,24 @@ router.post("/", async (req: Request, res) => {
 
   const assetNumber = await nextAssetNumber();
 
-  // ── Jurnal: DR Aset Tetap, CR Kas/Bank ───────────────────────────────────
+  // ── Jurnal: DR Aset Tetap, CR Akun Sumber Pembayaran ─────────────────────
   let journalEntryId: number | null = null;
   try {
-    const settings = await ensureAccountingSettings(companyId ?? undefined);
+    await ensureAccountingSettings(companyId ?? undefined);
     const assetCoa = await db.select().from(chartOfAccountsTable)
       .where(sql`code LIKE '1-2010%' AND (company_id = ${companyId} OR company_id IS NULL)`).limit(1);
-    const bankCoa = paymentMethod === "cash"
-      ? await db.select().from(chartOfAccountsTable).where(sql`code LIKE '1-1010%' AND (company_id = ${companyId} OR company_id IS NULL)`).limit(1)
-      : await db.select().from(chartOfAccountsTable).where(sql`code LIKE '1-1020%' AND (company_id = ${companyId} OR company_id IS NULL)`).limit(1);
+
+    // Gunakan paymentAccountId spesifik dari COA jika ada, fallback ke kode default
+    let bankCoa: any[] = [];
+    if (paymentAccountId) {
+      bankCoa = await db.select().from(chartOfAccountsTable)
+        .where(sql`id = ${paymentAccountId}`).limit(1);
+    }
+    if (!bankCoa[0]) {
+      bankCoa = paymentMethod === "cash"
+        ? await db.select().from(chartOfAccountsTable).where(sql`code LIKE '1-1010%' AND (company_id = ${companyId} OR company_id IS NULL)`).limit(1)
+        : await db.select().from(chartOfAccountsTable).where(sql`code LIKE '1-1020%' AND (company_id = ${companyId} OR company_id IS NULL)`).limit(1);
+    }
 
     if (assetCoa[0] && bankCoa[0]) {
       const [je] = await db.insert(accountingJournalsTable).values({
@@ -145,16 +172,19 @@ router.post("/", async (req: Request, res) => {
     }
   } catch {}
 
+  const resolvedPaymentAccountId = paymentAccountId ? parseInt(paymentAccountId) : null;
+
   const insertResult = await db.execute(sql.raw(`
     INSERT INTO fixed_assets
       (company_id, asset_number, asset_name, asset_type, purchase_date, purchase_price,
        useful_life_months, salvage_value, depreciation_method, accumulated_depreciation,
-       book_value, payment_method, notes, tax_related, is_active, journal_entry_id, created_by_id)
+       book_value, payment_method, payment_account_id, notes, tax_related, is_active, journal_entry_id, created_by_id)
     VALUES
       (${companyId ?? "NULL"}, '${assetNumber}', '${assetName.replace(/'/g, "''")}',
        '${assetType}', '${purchaseDate}', ${price}, ${parseInt(usefulLifeMonths) || 60},
        ${parseFloat(salvageValue) || 0}, '${depreciationMethod}', 0, ${price},
-       '${paymentMethod}', ${notes ? `'${String(notes).replace(/'/g, "''")}'` : "NULL"},
+       '${paymentMethod}', ${resolvedPaymentAccountId ?? "NULL"},
+       ${notes ? `'${String(notes).replace(/'/g, "''")}'` : "NULL"},
        ${taxRelated ? "TRUE" : "FALSE"}, TRUE, ${journalEntryId ?? "NULL"},
        ${userId ? `'${userId}'` : "NULL"})
     RETURNING *
