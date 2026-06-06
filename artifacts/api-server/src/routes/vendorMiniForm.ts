@@ -35,6 +35,8 @@ import {
 } from "@workspace/service-templates";
 import type { ServiceTemplate, ServiceTemplateField, ServiceTemplateOverride as SvcTemplateOverride } from "@workspace/service-templates";
 import { requireClerkUser } from "../lib/requireAdmin";
+import { upsertCatalogDraftFromSubmission } from "../lib/vendorCatalogDraft.js";
+import type { SubmissionForCatalog, LinkForCatalog } from "../lib/vendorCatalogDraft.js";
 import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStatusService.js";
 import { deleteFromSupabase } from "../lib/supabaseStorage.js";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
@@ -1415,6 +1417,38 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
         `Penawaran dari ${vendorName ?? link.vendorName ?? "vendor"}`,
         { linkId: link.id, orderNumber: link.orderNumber, vendorPrice, currency, eta });
     }
+
+    // ── Fase 3: buat/update vendor_catalog_items draft (fire-and-forget) ─────
+    // Tidak blocking — kegagalan diabaikan agar tidak mengganggu response vendor.
+    // Guard internal: skip jika data kurang (no vendorId, no priceBase, dll).
+    upsertCatalogDraftFromSubmission(
+      {
+        id:               submission.id,
+        supplierId:       submission.supplierId,
+        vendorName:       submission.vendorName,
+        serviceType:      submission.serviceType,
+        formData:         submission.formData as Record<string, unknown> | null,
+        vendorPrice:      submission.vendorPrice,
+        currency:         submission.currency,
+        attachmentUrl:    submission.attachmentUrl,
+        templateId:       submission.templateId,
+        templateVersion:  submission.templateVersion,
+        templateSnapshot: submission.templateSnapshot as Record<string, unknown> | null,
+      } satisfies SubmissionForCatalog,
+      {
+        supplierId:       link.supplierId,
+        vendorName:       link.vendorName,
+        serviceType:      link.serviceType,
+        categoryKey:      link.categoryKey,
+        templateId:       link.templateId,
+        templateVersion:  link.templateVersion,
+        templateSnapshot: link.templateSnapshot as Record<string, unknown> | null,
+      } satisfies LinkForCatalog,
+    ).then((result) => {
+      if (!result.skipped) {
+        console.info(`[catalog-draft] submission=${submission.id} → catalogItemId=${result.catalogItemId} status=pending_review`);
+      }
+    }).catch(() => {/* non-fatal */});
 
     // Update link item_status for order-based
     if (link.mode === "order_based") {
