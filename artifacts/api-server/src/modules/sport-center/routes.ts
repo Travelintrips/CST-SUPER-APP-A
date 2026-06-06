@@ -1057,7 +1057,16 @@ router.get("/members", async (req, res) => {
           NULL::numeric AS total_price,
           NULL::text AS payment_method,
           NULL::int AS months,
-          created_at
+          created_at,
+          CASE
+            WHEN start_date IS NOT NULL AND end_date IS NOT NULL
+            THEN (
+              (EXTRACT(YEAR FROM end_date) - EXTRACT(YEAR FROM start_date)) * 12
+              + (EXTRACT(MONTH FROM end_date) - EXTRACT(MONTH FROM start_date))
+              + 1
+            )::int
+            ELSE NULL
+          END AS duration_months
         FROM sport_members
         WHERE (${cId}::int IS NULL OR company_id = ${cId})
           AND (${memberType}::text IS NULL OR member_type = ${memberType})
@@ -1072,7 +1081,8 @@ router.get("/members", async (req, res) => {
           'SCM-' || LPAD(id::text, 4, '0') AS member_number,
           start_date::text, end_date::text, status, notes,
           total_price, payment_method, months,
-          created_at
+          created_at,
+          months AS duration_months
         FROM sport_center_memberships
         WHERE (${memberType}::text IS NULL OR ${memberType} = 'gym' OR ${memberType} = 'all')
           AND (${status}::text IS NULL OR status = ${status})
@@ -1092,7 +1102,11 @@ router.get("/members", async (req, res) => {
       `),
     ]);
 
-    res.json({ data: dataRes.rows, total: Number((countRes.rows[0] as any).cnt) });
+    const data = (dataRes.rows as any[]).map((m) => ({
+      ...m,
+      duration: m.duration_months != null ? `${m.duration_months} bulan` : null,
+    }));
+    res.json({ data, total: Number((countRes.rows[0] as any).cnt) });
   } catch (e) {
     console.error("GET /members error:", e);
     res.status(500).json({ error: "Gagal" });
