@@ -1,7 +1,7 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 import { LOGISTICS_SUBCATEGORIES as LOGISTICS_SUBCATEGORIES_FALLBACK } from "@workspace/logistics-constants";
 import { rateLimit, ipKeyGenerator } from "express-rate-limit";
-import { db, productsTable, productCategoryMapTable, productCategoriesTable, portalCustomersTable, portalCustomerServicesTable, portalContentTable, accountingSettingsTable, salesDocumentsTable, salesDocumentLinesTable, customersTable, logisticOrdersTable, suppliersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, quoteRequestsTable, userProfilesTable, identityDocumentsTable, ocrResultsTable, vendorProfilesTable, driverProfilesTable, employeeProfilesTable, onboardingApprovalsTable, waOtpCodesTable, trustedDevicesTable, vendorMiniFormLinksTable, vendorMiniFormSubmissionsTable } from "@workspace/db";
+import { db, productsTable, productCategoryMapTable, productCategoriesTable, portalCustomersTable, portalCustomerServicesTable, portalContentTable, accountingSettingsTable, salesDocumentsTable, salesDocumentLinesTable, customersTable, logisticOrdersTable, suppliersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, quoteRequestsTable, userProfilesTable, identityDocumentsTable, ocrResultsTable, vendorProfilesTable, driverProfilesTable, employeeProfilesTable, onboardingApprovalsTable, waOtpCodesTable, trustedDevicesTable, vendorMiniFormLinksTable, vendorMiniFormSubmissionsTable, vendorCatalogItemsTable } from "@workspace/db";
 import { deleteFromSupabase } from "../lib/supabaseStorage.js";
 import { invalidateTokenCache, SERVICE_SCHEMAS } from "./vendorMiniForm";
 import { eq, inArray, and, ne, isNull, sql, desc, gte, lte, ilike, or } from "drizzle-orm";
@@ -113,6 +113,65 @@ router.get("/services", async (_req, res) => {
 router.get("/products", async (_req, res) => {
   res.setHeader("Cache-Control", "no-store");
   return res.json(await listByType("barang"));
+});
+
+// GET /api/portal/marketplace — public vendor catalog (published only, NO priceBase)
+router.get("/marketplace", async (req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  const { kind, category } = req.query as { kind?: string; category?: string };
+
+  const conditions: ReturnType<typeof eq>[] = [eq(vendorCatalogItemsTable.isPublished, true)];
+
+  if (kind === "product" || kind === "service") {
+    conditions.push(eq(vendorCatalogItemsTable.templateKind, kind));
+  }
+  if (category && category !== "all") {
+    // match categoryKey (products) OR serviceType (services)
+    conditions.push(
+      or(
+        eq(vendorCatalogItemsTable.categoryKey, category),
+        eq(vendorCatalogItemsTable.serviceType, category),
+      ) as ReturnType<typeof eq>,
+    );
+  }
+
+  const rows = await db
+    .select({
+      id: vendorCatalogItemsTable.id,
+      vendorId: vendorCatalogItemsTable.vendorId,
+      vendorName: vendorCatalogItemsTable.vendorName,
+      templateKind: vendorCatalogItemsTable.templateKind,
+      categoryKey: vendorCatalogItemsTable.categoryKey,
+      serviceType: vendorCatalogItemsTable.serviceType,
+      templateId: vendorCatalogItemsTable.templateId,
+      templateSnapshot: vendorCatalogItemsTable.templateSnapshot,
+      name: vendorCatalogItemsTable.name,
+      description: vendorCatalogItemsTable.description,
+      kategori: vendorCatalogItemsTable.kategori,
+      subcategory: vendorCatalogItemsTable.subcategory,
+      specValues: vendorCatalogItemsTable.specValues,
+      priceSell: vendorCatalogItemsTable.priceSell,
+      currency: vendorCatalogItemsTable.currency,
+      unit: vendorCatalogItemsTable.unit,
+      moq: vendorCatalogItemsTable.moq,
+      stockStatus: vendorCatalogItemsTable.stockStatus,
+      stockQty: vendorCatalogItemsTable.stockQty,
+      leadTime: vendorCatalogItemsTable.leadTime,
+      location: vendorCatalogItemsTable.location,
+      origin: vendorCatalogItemsTable.origin,
+      publishedAt: vendorCatalogItemsTable.publishedAt,
+      sortOrder: vendorCatalogItemsTable.sortOrder,
+    })
+    .from(vendorCatalogItemsTable)
+    .where(and(...conditions))
+    .orderBy(vendorCatalogItemsTable.sortOrder, desc(vendorCatalogItemsTable.publishedAt));
+
+  return res.json(
+    rows.map((r) => ({
+      ...r,
+      priceSell: r.priceSell !== null ? Number(r.priceSell) : null,
+    })),
+  );
 });
 
 // ── Routes khusus untuk /logistic-admin (auth: portal admin JWT) ─────────────

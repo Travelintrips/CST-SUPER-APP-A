@@ -77,6 +77,7 @@ const GoodsReceiptFormPage      = lazy(() => import("@/pages/goods-receipt-form"
 const DriverProgressPage        = lazy(() => import("@/pages/driver-progress"));
 const PaymentProofPage          = lazy(() => import("@/pages/payment-proof"));
 const ProductOrderTrackPage     = lazy(() => import("@/pages/product-order-track"));
+const Marketplace               = lazy(() => import("@/pages/marketplace"));
 const NotFound                  = lazy(() => import("@/pages/not-found"));
 
 const queryClient = new QueryClient();
@@ -261,6 +262,7 @@ function AppShell() {
         <Route path="/goods-receipt/:token" component={GoodsReceiptFormPage} />
         <Route path="/payment-proof/:token" component={PaymentProofPage} />
         <Route path="/track-produk/:token" component={ProductOrderTrackPage} />
+        <Route path="/marketplace" component={Marketplace} />
         <Route component={NotFound} />
       </Switch>
     </Suspense>
