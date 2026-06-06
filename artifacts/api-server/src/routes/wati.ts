@@ -8,7 +8,7 @@
 
 import { Router, type Request } from "express";
 import { requireAdmin } from "../lib/requireAdmin.js";
-import { testWatiConnection, listWatiTemplates, sendWatiTemplate, sendWatiSession, isWatiConfigured, getWatiAccountInfo } from "../lib/wati.js";
+import { testWatiConnection, listWatiTemplates, sendWatiTemplate, sendWatiSession, isWatiConfigured, getWatiAccountInfo, validateWatiPhone } from "../lib/wati.js";
 import { logger } from "../lib/logger.js";
 import { setSetting, getSetting } from "../lib/appSecrets.js";
 
@@ -128,6 +128,22 @@ watiRouter.post("/test-send", async (req: Request, res) => {
   } catch (err: any) {
     logger.error({ err }, "[wati] test-send error");
     return res.status(500).json({ message: err?.message ?? "Gagal kirim." });
+  }
+});
+
+// ─── Validate phone ────────────────────────────────────────────────────────────
+watiRouter.post("/validate-phone", async (req: Request, res) => {
+  const { phone } = req.body ?? {};
+  if (!phone?.trim()) return res.status(400).json({ message: "phone wajib diisi." });
+  if (!(await isWatiConfigured())) {
+    return res.status(400).json({ message: "WATI belum dikonfigurasi." });
+  }
+  try {
+    const result = await validateWatiPhone(String(phone).trim());
+    return res.json(result);
+  } catch (err: any) {
+    logger.error({ err }, "[wati] validate-phone error");
+    return res.status(500).json({ valid: false, phone, error: err?.message ?? "Gagal validasi." });
   }
 });
 

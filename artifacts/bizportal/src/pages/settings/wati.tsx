@@ -86,6 +86,8 @@ export default function WatiSettingsPage() {
   const [expandedTpl, setExpandedTpl] = useState<string | null>(null);
   const [manualPhone, setManualPhone] = useState("");
   const [savingPhone, setSavingPhone] = useState(false);
+  const [validating, setValidating] = useState(false);
+  const [validationResult, setValidationResult] = useState<{ valid: boolean; name?: string; error?: string } | null>(null);
   const [tplPhone, setTplPhone] = useState("");
   const [tplName, setTplName] = useState("");
   const [tplParams, setTplParams] = useState<{ name: string; value: string }[]>([{ name: "", value: "" }]);
@@ -137,6 +139,34 @@ export default function WatiSettingsPage() {
     onError: (e: Error) => toast({ title: e.message, variant: "destructive" }),
   });
 
+  const validatePhone = async (phone: string) => {
+    const normalized = phone.replace(/\D/g, "").replace(/^0/, "62");
+    if (!normalized) return;
+    setValidating(true);
+    setValidationResult(null);
+    try {
+      const res = await apiFetch("/wati/validate-phone", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: normalized }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setValidationResult({ valid: j.valid, name: j.name, error: j.error });
+        if (j.valid) {
+          toast({ title: "Nomor valid di WATI", description: j.name ? `Nama kontak: ${j.name}` : `+${normalized} ditemukan di akun WATI` });
+        } else {
+          toast({ title: "Nomor tidak ditemukan", description: j.error ?? "Nomor belum terdaftar sebagai kontak WATI", variant: "destructive" });
+        }
+      } else {
+        setValidationResult({ valid: false, error: j.message ?? "Gagal validasi" });
+        toast({ title: "Gagal validasi", description: j.message ?? "Error", variant: "destructive" });
+      }
+    } finally {
+      setValidating(false);
+    }
+  };
+
   const saveManualPhone = async () => {
     const phone = manualPhone.replace(/\D/g, "").replace(/^0/, "62");
     if (!phone) return;
@@ -150,6 +180,7 @@ export default function WatiSettingsPage() {
       if (res.ok) {
         toast({ title: "Nomor berhasil disimpan", description: `+${phone}` });
         setManualPhone("");
+        setValidationResult(null);
         refetchStatus();
       } else {
         const j = await res.json().catch(() => ({}));
@@ -347,9 +378,18 @@ export default function WatiSettingsPage() {
                       <Input
                         placeholder="628111167596"
                         value={manualPhone}
-                        onChange={(e) => setManualPhone(e.target.value)}
+                        onChange={(e) => { setManualPhone(e.target.value); setValidationResult(null); }}
                         className="text-sm h-8 font-mono flex-1"
                       />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 px-3 text-xs border-blue-700/50 text-blue-400 hover:bg-blue-950/40"
+                        disabled={!manualPhone.trim() || validating || savingPhone}
+                        onClick={() => validatePhone(manualPhone)}
+                      >
+                        {validating ? <Loader2 size={12} className="animate-spin" /> : "Validasi"}
+                      </Button>
                       <Button
                         size="sm"
                         className="h-8 px-3 text-xs"
@@ -359,6 +399,23 @@ export default function WatiSettingsPage() {
                         {savingPhone ? <Loader2 size={12} className="animate-spin" /> : "Simpan"}
                       </Button>
                     </div>
+                    {validationResult !== null && (
+                      <div className={cn(
+                        "flex items-center gap-2 rounded px-2 py-1.5 text-xs",
+                        validationResult.valid
+                          ? "bg-emerald-950/40 border border-emerald-700/40 text-emerald-300"
+                          : "bg-red-950/40 border border-red-700/40 text-red-300"
+                      )}>
+                        {validationResult.valid
+                          ? <CheckCircle2 size={13} className="shrink-0" />
+                          : <XCircle size={13} className="shrink-0" />}
+                        <span>
+                          {validationResult.valid
+                            ? <>Nomor valid di WATI{validationResult.name ? <> — <strong>{validationResult.name}</strong></> : ""}</>
+                            : validationResult.error ?? "Nomor tidak ditemukan"}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -370,9 +427,18 @@ export default function WatiSettingsPage() {
                       <Input
                         placeholder="628111167596"
                         value={manualPhone}
-                        onChange={(e) => setManualPhone(e.target.value)}
+                        onChange={(e) => { setManualPhone(e.target.value); setValidationResult(null); }}
                         className="text-sm h-8 font-mono flex-1"
                       />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 px-3 text-xs border-blue-700/50 text-blue-400 hover:bg-blue-950/40"
+                        disabled={!manualPhone.trim() || validating || savingPhone}
+                        onClick={() => validatePhone(manualPhone)}
+                      >
+                        {validating ? <Loader2 size={12} className="animate-spin" /> : "Validasi"}
+                      </Button>
                       <Button
                         size="sm"
                         variant="outline"
@@ -383,6 +449,23 @@ export default function WatiSettingsPage() {
                         {savingPhone ? <Loader2 size={12} className="animate-spin" /> : "Simpan"}
                       </Button>
                     </div>
+                    {validationResult !== null && (
+                      <div className={cn(
+                        "flex items-center gap-2 rounded px-2 py-1.5 text-xs",
+                        validationResult.valid
+                          ? "bg-emerald-950/40 border border-emerald-700/40 text-emerald-300"
+                          : "bg-red-950/40 border border-red-700/40 text-red-300"
+                      )}>
+                        {validationResult.valid
+                          ? <CheckCircle2 size={13} className="shrink-0" />
+                          : <XCircle size={13} className="shrink-0" />}
+                        <span>
+                          {validationResult.valid
+                            ? <>Nomor valid di WATI{validationResult.name ? <> — <strong>{validationResult.name}</strong></> : ""}</>
+                            : validationResult.error ?? "Nomor tidak ditemukan"}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 )}
 
