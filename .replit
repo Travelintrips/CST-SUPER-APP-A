@@ -24,17 +24,14 @@ args = "Gateway"
 name = "Gateway"
 author = "agent"
 
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "fuser -k 5000/tcp 2>/dev/null; sleep 0.3; PORT=5000 node gateway.mjs"
+waitForPort = 5000
+
 [workflows.workflow.metadata]
 outputType = "webview"
 
-<<<<<<< HEAD
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "node artifacts/api-server/kill-port.mjs 5000; sleep 0.3; BIZPORTAL_PORT=3000 CUSTOMER_PORT=23434 PORT=5000 node gateway.mjs"
-waitForPort = 5000
-
-=======
->>>>>>> 37743b55c66f8a89b77df078e6cb920d6c05555a
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
 expertMode = true
@@ -59,7 +56,7 @@ CASHIER_TOKEN_SECRET = "239a1a73ea517bf5430a357fb7a39aa0deef38cecaf4d8135310a7cf
 PUBLIC_OBJECT_SEARCH_PATHS = "/replit-objstore-e357cc66-19c3-4d73-9ca9-3069d78355d1/public"
 PRIVATE_OBJECT_DIR = "/replit-objstore-e357cc66-19c3-4d73-9ca9-3069d78355d1/private"
 SUPABASE_STORAGE_BUCKET = "https://nzdweipzckfszczzqtuw.storage.supabase.co/storage/v1/s3"
-SUPABASE_URL = "https://nzdweipzckfszczzqtuw.supabase.co"
+SUPABASE_URL = "nzdweipzckfszczzqtuw"
 GOOGLE_CLIENT_ID = "751551151000-fqrgt8si0pgnchqkn3pfo6nmqienv38f.apps.googleusercontent.com"
 AI_INTEGRATIONS_OPENAI_BASE_URL = "http://localhost:1106/modelfarm/openai"
 DEFAULT_OBJECT_STORAGE_BUCKET_ID = "replit-objstore-e357cc66-19c3-4d73-9ca9-3069d78355d1"
@@ -70,17 +67,13 @@ VAPID_PUBLIC_KEY = "BEAKgZOdT9HxFJLxVNxgtY-Dh2XzGptrjQwQibP2obUjPlLkfk0WR1TyzqbJ
 VAPID_PRIVATE_KEY = "Cu-0cxYEgT24fD8lVirlkz0qpFHj_kJNcGIj347kIJ4"
 VAPID_EMAIL = "mailto:admin@cstlogistics.co.id"
 PORTAL_ADMIN_KEY = "admin123"
-SMTP_FROM = " info@cstlogistic.co.id"
+
 SUPABASE_DATABASE_URL = "postgresql://postgres.nzdweipzckfszczzqtuw:%24%23Admin12345%40%24@aws-1-ap-southeast-2.pooler.supabase.com:6543/postgres"
-SUPABASE_DATABASE_URL_DEV = "postgresql://postgres.nzdweipzckfszczzqtuw:%24%23Admin12345%40%24@aws-1-ap-southeast-2.pooler.supabase.com:6543/postgres"
+SUPABASE_DATABASE_URL_DEV = "postgresql://postgres.xssrfshdrtdfupgqwfdw:admcst0012026@aws-1-ap-southeast-2.pooler.supabase.com:6543/postgres"
 SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im56ZHdlaXB6Y2tmc3pjenpxdHV3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg0MDI4NDQsImV4cCI6MjA5Mzk3ODg0NH0.p9k3-qyRjPuXsHLizUrSRMyS-0yJAatUyjQU9NIIu1U"
 SUPABASE_ANON_KEY_DEV = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhzc3Jmc2hkcnRkZnVwZ3F3ZmR3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4OTY3MjgsImV4cCI6MjA5NDQ3MjcyOH0.czKzR9GjEL6UK8AhPAX6OYyF74fz1YtImYQSXiiG69U"
 VITE_SUPABASE_ANON_KEY_DEV = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhzc3Jmc2hkcnRkZnVwZ3F3ZmR3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4OTY3MjgsImV4cCI6MjA5NDQ3MjcyOH0.czKzR9GjEL6UK8AhPAX6OYyF74fz1YtImYQSXiiG69U"
-SUPABASE_SERVICE_ROLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im56ZHdlaXB6Y2tmc3pjenpxdHV3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3ODQwMjg0NCwiZXhwIjoyMDkzOTc4ODQ0fQ.W0uM_UzGfF8Zy4PFQKhz6dKpEVDHS6_k9FtqoM9iGms"
-SESSION_SECRET = "MXF8tVM+GYDQyrAOg0o79vPvEg7V7xTWd3C6pPOS/ee7T0gNLD2LO/PRk+97KR2x01VdMHK1Oc3VuoZoOR/naw=="
-WATI_API_TOKEN = "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1bmlxdWVfbmFtZSI6ImRpdmF0cmFuc3NvZXR0YUBnbWFpbC5jb20iLCJuYW1laWQiOiJkaXZhdHJhbnNzb2V0dGFAZ21haWwuY29tIiwiZW1haWwiOiJkaXZhdHJhbnNzb2V0dGFAZ21haWwuY29tIiwiYXV0aF90aW1lIjoiMDYvMDYvMjAyNiAxMDoyNzowOCIsInRlbmFudF9pZCI6IjEwMTc2NTAzIiwiZGJfbmFtZSI6Im10LXByb2QtVGVuYW50cyIsImh0dHA6Ly9zY2hlbWFzLm1pY3Jvc29mdC5jb20vd3MvMjAwOC8wNi9pZGVudGl0eS9jbGFpbXMvcm9sZSI6IkFETUlOSVNUUkFUT1IiLCJleHAiOjI1MzQwMjMwMDgwMCwiaXNzIjoiQ2xhcmVfQUkiLCJhdWQiOiJDbGFyZV9BSSJ9.kQ6FR4UjFDE0hs-ne0yPzN88Oz-c0eyh4XdLIVQh1ng"
-WATI_BASE_URL = "https://live-mt-server.wati.io/10176503"
-SUPABASE_SERVICE_ROLE_KEY_DEV = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhzc3Jmc2hkcnRkZnVwZ3F3ZmR3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3ODg5NjcyOCwiZXhwIjoyMDk0NDcyNzI4fQ.VFPcBxsVJkYwNo3ojy3uOHglqUA9zILhjw4_0JAhZYI"
+
 
 [userenv.development]
 ADMIN_EMAIL_DOMAINS = "example.com"
@@ -94,60 +87,35 @@ defaultBucketID = "replit-objstore-e357cc66-19c3-4d73-9ca9-3069d78355d1"
 
 [[ports]]
 localPort = 3000
-externalPort = 3003
+externalPort = 3000
 
 [[ports]]
 localPort = 3001
 externalPort = 3001
 
 [[ports]]
-<<<<<<< HEAD
 localPort = 3002
 externalPort = 3002
 
 [[ports]]
-localPort = 3003
-externalPort = 8008
-
-[[ports]]
 localPort = 4200
-externalPort = 4200
+externalPort = 3003
 
 [[ports]]
-=======
->>>>>>> 37743b55c66f8a89b77df078e6cb920d6c05555a
 localPort = 5000
 externalPort = 80
 
 [[ports]]
-<<<<<<< HEAD
-localPort = 5174
-externalPort = 3003
-
-[[ports]]
-localPort = 6000
-externalPort = 6000
-
-[[ports]]
-localPort = 6800
-externalPort = 6800
-=======
 localPort = 5173
 externalPort = 5173
->>>>>>> 37743b55c66f8a89b77df078e6cb920d6c05555a
+
+[[ports]]
+localPort = 5174
+externalPort = 8099
 
 [[ports]]
 localPort = 8080
 externalPort = 8080
-
-[[ports]]
-<<<<<<< HEAD
-localPort = 8082
-externalPort = 8000
-=======
-localPort = 8081
-externalPort = 8081
->>>>>>> 37743b55c66f8a89b77df078e6cb920d6c05555a
 
 [[ports]]
 localPort = 18442
@@ -159,12 +127,12 @@ externalPort = 3000
 
 [[ports]]
 localPort = 19368
-externalPort = 3002
+externalPort = 3001
 
 [[ports]]
 localPort = 21170
-externalPort = 5000
+externalPort = 6000
 
 [[ports]]
 localPort = 23434
-externalPort = 6000
+externalPort = 80
