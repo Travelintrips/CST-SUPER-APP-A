@@ -330,8 +330,8 @@ if (EXTRA_PORT !== PORT) {
   const extra = http.createServer(handleRequest);
   extra.on("upgrade", handleUpgrade);
   extra.on("error", (err) => {
-    if (err.code === "EADDRINUSE") {
-      console.log(`Gateway: EXTRA_PORT ${EXTRA_PORT} already in use — skipping mirror`);
+    if (err.code === "EADDRINUSE" || err.code === "EADDRNOTAVAIL") {
+      console.log(`Gateway: EXTRA_PORT ${EXTRA_PORT} unavailable (${err.code}) — skipping mirror`);
     } else {
       console.error("Gateway extra server error:", err.message);
     }
