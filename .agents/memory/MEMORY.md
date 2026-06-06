@@ -4,3 +4,4 @@
 - [Supabase DB connection](supabase-connection.md) — semua modul pakai satu shared db dari @workspace/db; dev=SUPABASE_DATABASE_URL_DEV, prod=SUPABASE_PG_URL.
 - [Accounting company scoping](accounting-company-scoping.md) — accounting_entry_lines has no company_id; filter via accounting_entries.company_id (ae), not ael.
 - [Drizzle sql null params](drizzle-sql-null-params.md) — bare null in sql`` template throws "could not determine data type of parameter $N"; cast it (e.g. ${x}::int).
+- [WA transport fallback](wa-transport-fallback.md) — WATI returns {ok:false} (no throw) & rejects WA group IDs as "Invalid Contact"; sendViaService must fall back to Fonnte.

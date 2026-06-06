@@ -37,8 +37,15 @@ export async function sendViaService(
 
   if (useWati) {
     logger.debug({ phone, context: opts?.context, refId: opts?.refId }, "[waTransport] routing ke WATI (session)");
-    await sendWatiSession(phone, message, opts);
-    return;
+    const result = await sendWatiSession(phone, message, opts);
+    if (result?.ok) return;
+    // WATI gagal (session window habis / target invalid / error) → fallback ke Fonnte
+    // supaya rantai notifikasi tidak putus diam-diam.
+    logger.warn(
+      { phone, context: opts?.context, refId: opts?.refId, watiError: result?.error },
+      "[waTransport] WATI gagal — fallback ke Fonnte",
+    );
+    return sendWhatsApp(phone, message, opts);
   }
 
   logger.debug({ phone, context: opts?.context, refId: opts?.refId }, "[waTransport] routing ke Fonnte");
