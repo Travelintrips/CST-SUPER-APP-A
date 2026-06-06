@@ -1060,7 +1060,7 @@ export default function VendorMiniFormPage() {
                 template={meta.productTemplate}
                 values={templateValues}
                 onChange={setTemplateValues}
-                readOnly={true}
+                readOnly={submitting}
               />
               <TemplateDocumentRenderer
                 documents={meta.productTemplate.requiredDocuments}
