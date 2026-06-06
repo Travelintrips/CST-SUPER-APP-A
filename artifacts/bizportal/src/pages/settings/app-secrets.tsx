@@ -266,16 +266,26 @@ function SecretRow({ entry, onRefresh }: { entry: SecretEntry; onRefresh: () => 
 export default function AppSecretsPage() {
   const [secrets, setSecrets] = useState<SecretEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const { toast } = useToast();
 
   async function loadSecrets() {
     setLoading(true);
+    setErrorMsg(null);
     try {
       const res = await fetch("/api/settings/secrets", { credentials: "include" });
-      if (!res.ok) throw new Error(await res.text());
-      setSecrets(await res.json() as SecretEntry[]);
+      if (!res.ok) {
+        const body = await res.text();
+        let msg = `HTTP ${res.status}`;
+        try { msg = JSON.parse(body).message ?? msg; } catch { msg = body || msg; }
+        throw new Error(msg);
+      }
+      const data = await res.json() as SecretEntry[];
+      setSecrets(data);
     } catch (err) {
-      toast({ title: "Gagal memuat secrets", description: String(err), variant: "destructive" });
+      const msg = err instanceof Error ? err.message : String(err);
+      setErrorMsg(msg);
+      toast({ title: "Gagal memuat secrets", description: msg, variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -314,6 +324,24 @@ export default function AppSecretsPage() {
             {[1, 2, 3].map((i) => (
               <div key={i} className="h-24 rounded-xl bg-muted animate-pulse" />
             ))}
+          </div>
+        ) : errorMsg ? (
+          <div className="rounded-xl border border-red-500/30 bg-red-500/5 px-4 py-4 flex items-start gap-3 text-sm text-red-600">
+            <Shield className="h-4 w-4 mt-0.5 shrink-0" />
+            <div className="flex-1 space-y-2">
+              <p className="font-medium">Gagal memuat konfigurasi</p>
+              <p className="text-red-500/80">{errorMsg}</p>
+              <Button size="sm" variant="outline" onClick={loadSecrets} className="gap-1.5 border-red-500/30 text-red-600 hover:bg-red-500/10">
+                <RotateCcw className="h-3.5 w-3.5" /> Coba Lagi
+              </Button>
+            </div>
+          </div>
+        ) : groups.length === 0 ? (
+          <div className="rounded-xl border border-muted px-4 py-6 text-center text-sm text-muted-foreground space-y-2">
+            <p>Tidak ada konfigurasi ditemukan.</p>
+            <Button size="sm" variant="outline" onClick={loadSecrets} className="gap-1.5">
+              <RotateCcw className="h-3.5 w-3.5" /> Refresh
+            </Button>
           </div>
         ) : (
           <div className="space-y-6">
