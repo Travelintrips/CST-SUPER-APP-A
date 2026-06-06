@@ -69,6 +69,7 @@ import {
   Brain,
   Trophy,
   KeyRound,
+  Store,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -268,6 +269,7 @@ export function AppShell({ children, noPadding }: AppShellProps) {
         { titleKey: "rfq", href: "/purchase/rfq", icon: FileText },
         { titleKey: "purchaseOrders", href: "/purchase/orders", icon: ShoppingBag },
         { titleKey: "vendors", href: "/purchase/vendors", icon: UserCircle },
+        { titleKey: "Vendor Catalog", href: "/purchase/vendor-catalog", icon: Store },
         { titleKey: "Approvals Pembelian", href: "/purchase/payment-requests", icon: ClipboardCheck },
         { titleKey: "Terima Barang (GRN)", href: "/purchase/gr", icon: PackageCheck },
         { titleKey: "Terima Barang Cepat", href: "/purchase/receive", icon: PackageOpen },

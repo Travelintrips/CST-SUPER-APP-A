@@ -496,6 +496,218 @@ router.delete("/suppliers/catalog/:itemId", async (req, res) => {
   return res.json({ message: "Deleted", id: itemId });
 });
 
+// ─── Vendor Catalog Admin (cross-vendor) ─────────────────────────────────────
+
+// GET /api/trading/suppliers/catalog/all
+// List semua catalog item lintas vendor — admin only
+router.get("/suppliers/catalog/all", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+
+  const { vendor, status, templateKind, category, search } = req.query as Record<string, string>;
+
+  const rows = await db
+    .select({
+      id: vendorCatalogItemsTable.id,
+      vendorId: vendorCatalogItemsTable.vendorId,
+      vendorName: suppliersTable.name,
+      templateKind: vendorCatalogItemsTable.templateKind,
+      categoryKey: vendorCatalogItemsTable.categoryKey,
+      serviceType: vendorCatalogItemsTable.serviceType,
+      name: vendorCatalogItemsTable.name,
+      description: vendorCatalogItemsTable.description,
+      kategori: vendorCatalogItemsTable.kategori,
+      subcategory: vendorCatalogItemsTable.subcategory,
+      specValues: vendorCatalogItemsTable.specValues,
+      priceBase: vendorCatalogItemsTable.priceBase,
+      markupPct: vendorCatalogItemsTable.markupPct,
+      priceSell: vendorCatalogItemsTable.priceSell,
+      currency: vendorCatalogItemsTable.currency,
+      unit: vendorCatalogItemsTable.unit,
+      moq: vendorCatalogItemsTable.moq,
+      stockStatus: vendorCatalogItemsTable.stockStatus,
+      stockQty: vendorCatalogItemsTable.stockQty,
+      leadTime: vendorCatalogItemsTable.leadTime,
+      location: vendorCatalogItemsTable.location,
+      origin: vendorCatalogItemsTable.origin,
+      status: vendorCatalogItemsTable.status,
+      isPublished: vendorCatalogItemsTable.isPublished,
+      isActive: vendorCatalogItemsTable.isActive,
+      publishedAt: vendorCatalogItemsTable.publishedAt,
+      sourceSubmissionId: vendorCatalogItemsTable.sourceSubmissionId,
+      createdAt: vendorCatalogItemsTable.createdAt,
+      updatedAt: vendorCatalogItemsTable.updatedAt,
+    })
+    .from(vendorCatalogItemsTable)
+    .innerJoin(suppliersTable, eq(vendorCatalogItemsTable.vendorId, suppliersTable.id))
+    .orderBy(vendorCatalogItemsTable.updatedAt);
+
+  let filtered = rows;
+
+  if (vendor) {
+    const vid = Number(vendor);
+    if (!Number.isNaN(vid)) filtered = filtered.filter(r => r.vendorId === vid);
+  }
+  if (status) filtered = filtered.filter(r => r.status === status);
+  if (templateKind) filtered = filtered.filter(r => r.templateKind === templateKind);
+  if (category) {
+    filtered = filtered.filter(r =>
+      r.categoryKey === category || r.serviceType === category || r.kategori === category
+    );
+  }
+  if (search) {
+    const q = search.toLowerCase();
+    filtered = filtered.filter(r =>
+      r.name.toLowerCase().includes(q) ||
+      (r.vendorName ?? "").toLowerCase().includes(q) ||
+      (r.kategori ?? "").toLowerCase().includes(q) ||
+      (r.categoryKey ?? "").toLowerCase().includes(q)
+    );
+  }
+
+  return res.json(filtered.map(r => ({
+    ...r,
+    priceBase: Number(r.priceBase ?? 0),
+    markupPct: Number(r.markupPct ?? 0),
+    priceSell: r.priceSell != null ? Number(r.priceSell) : null,
+    specSummary: r.specValues != null
+      ? Object.entries(r.specValues as Record<string, unknown>)
+          .slice(0, 3)
+          .map(([k, v]) => `${k}: ${v}`)
+          .join(", ")
+      : null,
+    createdAt: r.createdAt.toISOString(),
+    updatedAt: r.updatedAt.toISOString(),
+    publishedAt: r.publishedAt?.toISOString() ?? null,
+  })));
+});
+
+// GET /api/trading/suppliers/catalog/:itemId/detail
+// Full detail: templateSnapshot, specValues, documents, checklist — admin only
+router.get("/suppliers/catalog/:itemId/detail", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  const itemId = Number(req.params.itemId);
+  if (Number.isNaN(itemId)) return res.status(400).json({ message: "Invalid id" });
+
+  const [row] = await db
+    .select({
+      item: vendorCatalogItemsTable,
+      vendorName: suppliersTable.name,
+      vendorServiceType: suppliersTable.serviceType,
+    })
+    .from(vendorCatalogItemsTable)
+    .innerJoin(suppliersTable, eq(vendorCatalogItemsTable.vendorId, suppliersTable.id))
+    .where(eq(vendorCatalogItemsTable.id, itemId));
+
+  if (!row) return res.status(404).json({ message: "Item not found" });
+
+  const i = row.item;
+  return res.json({
+    id: i.id,
+    vendorId: i.vendorId,
+    vendorName: row.vendorName,
+    vendorServiceType: row.vendorServiceType,
+    templateKind: i.templateKind,
+    categoryKey: i.categoryKey,
+    serviceType: i.serviceType,
+    templateId: i.templateId,
+    templateVersion: i.templateVersion,
+    templateSnapshot: i.templateSnapshot,
+    specValues: i.specValues,
+    documents: i.documents,
+    name: i.name,
+    description: i.description,
+    kategori: i.kategori,
+    subcategory: i.subcategory,
+    priceBase: Number(i.priceBase ?? 0),
+    markupPct: Number(i.markupPct ?? 0),
+    priceSell: i.priceSell != null ? Number(i.priceSell) : null,
+    currency: i.currency,
+    unit: i.unit,
+    moq: i.moq,
+    stockStatus: i.stockStatus,
+    stockQty: i.stockQty,
+    leadTime: i.leadTime,
+    validityDate: i.validityDate?.toISOString() ?? null,
+    location: i.location,
+    origin: i.origin,
+    status: i.status,
+    isPublished: i.isPublished,
+    isActive: i.isActive,
+    isCommodityTag: i.isCommodityTag,
+    sourceSubmissionId: i.sourceSubmissionId,
+    publishedAt: i.publishedAt?.toISOString() ?? null,
+    createdAt: i.createdAt.toISOString(),
+    updatedAt: i.updatedAt.toISOString(),
+  });
+});
+
+// PATCH /api/trading/suppliers/catalog/:itemId/status
+// publish / unpublish / archive — admin only
+router.patch("/suppliers/catalog/:itemId/status", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  const itemId = Number(req.params.itemId);
+  if (Number.isNaN(itemId)) return res.status(400).json({ message: "Invalid id" });
+
+  const { status } = req.body as { status: string };
+  const allowed = ["draft", "pending_review", "published", "archived"];
+  if (!allowed.includes(status)) {
+    return res.status(400).json({ message: `status harus salah satu dari: ${allowed.join(", ")}` });
+  }
+
+  const patch: Record<string, unknown> = { status, updatedAt: new Date() };
+  if (status === "published") {
+    patch["isPublished"] = true;
+    patch["publishedAt"] = new Date();
+  } else {
+    patch["isPublished"] = false;
+  }
+
+  const [updated] = await db
+    .update(vendorCatalogItemsTable)
+    .set(patch)
+    .where(eq(vendorCatalogItemsTable.id, itemId))
+    .returning();
+
+  if (!updated) return res.status(404).json({ message: "Item not found" });
+  return res.json({ ...toItem(updated), priceSell: updated.priceSell != null ? Number(updated.priceSell) : null });
+});
+
+// PATCH /api/trading/suppliers/catalog/:itemId/fields
+// Edit priceSell, stockStatus, stockQty, leadTime — admin only
+router.patch("/suppliers/catalog/:itemId/fields", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  const itemId = Number(req.params.itemId);
+  if (Number.isNaN(itemId)) return res.status(400).json({ message: "Invalid id" });
+
+  const { priceSell, stockStatus, stockQty, leadTime, priceBase } = req.body as {
+    priceSell?: number | null;
+    stockStatus?: string;
+    stockQty?: number | null;
+    leadTime?: string;
+    priceBase?: number;
+  };
+
+  const patch: Record<string, unknown> = { updatedAt: new Date() };
+  if (priceSell !== undefined) patch["priceSell"] = priceSell != null ? String(priceSell) : null;
+  if (priceBase !== undefined) patch["priceBase"] = String(parseFloat(String(priceBase)) || 0);
+  if (stockStatus !== undefined) patch["stockStatus"] = stockStatus;
+  if (stockQty !== undefined) patch["stockQty"] = stockQty;
+  if (leadTime !== undefined) patch["leadTime"] = leadTime || null;
+
+  if (Object.keys(patch).length === 1) {
+    return res.status(400).json({ message: "Tidak ada field yang diupdate" });
+  }
+
+  const [updated] = await db
+    .update(vendorCatalogItemsTable)
+    .set(patch)
+    .where(eq(vendorCatalogItemsTable.id, itemId))
+    .returning();
+
+  if (!updated) return res.status(404).json({ message: "Item not found" });
+  return res.json({ ...toItem(updated), priceSell: updated.priceSell != null ? Number(updated.priceSell) : null });
+});
+
 // ─── Vendor Drivers ─────────────────────────────────────────────────────────
 
 // GET /api/trading/suppliers/:id/drivers

@@ -56,6 +56,7 @@ import { PaymentRequestsListPage, PaymentRequestEditorPage } from "@/pages/purch
 import { LandedCostsListPage, LandedCostEditorPage } from "@/pages/purchase/landed-costs";
 import VendorComparisonPage from "@/pages/purchase/vendor-comparison";
 import PurchaseReceivePage from "@/pages/purchase/receive";
+import VendorCatalogPage from "@/pages/purchase/vendor-catalog";
 // Reports
 import ReportsSalesPage from "@/pages/reports/sales";
 import ReportsPurchasePage from "@/pages/reports/purchase";
@@ -288,6 +289,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/purchase/landed-costs/:id" component={PR(LandedCostEditorPage)} />
       <Route path="/purchase/landed-costs" component={PR(LandedCostsListPage)} />
       <Route path="/purchase/receive" component={PR(PurchaseReceivePage)} />
+      <Route path="/purchase/vendor-catalog" component={PR(VendorCatalogPage)} />
       <Route path="/purchase" component={PR(PurchaseDashboardPage)} />
 
       {/* ── Reports ────────────────────────────────────────────────────── */}
