@@ -184,11 +184,6 @@ function mkMarketplaceOrderNumber(): string {
   return `MCT-${yy}${mm}${dd}-${rand}`;
 }
 
-function safeNum(v: unknown): number | null {
-  const n = Number(v);
-  return isNaN(n) ? null : n;
-}
-
 // Shared select shape for catalog item (no priceBase)
 async function getCatalogItemPublic(id: number) {
   const [row] = await db

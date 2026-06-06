@@ -65,7 +65,7 @@ function StockBadge({ status }: { status: string | null }) {
     "Indent":     { label: "Indent",       cls: "bg-amber-100 text-amber-700 border-amber-200" },
     "Pre-order":  { label: "Pre-order",    cls: "bg-sky-100 text-sky-700 border-sky-200" },
   };
-  const info = (status && MAP[status]) ?? { label: status ?? "—", cls: "bg-slate-100 text-slate-600 border-slate-200" };
+  const info = (status ? MAP[status] : null) ?? { label: status ?? "—", cls: "bg-slate-100 text-slate-600 border-slate-200" };
   return <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${info.cls}`}>{info.label}</span>;
 }
 
@@ -405,6 +405,7 @@ function FilterSidebar({
 
 // ── Main Page ──────────────────────────────────────────────────────────────────
 export default function MarketplacePage() {
+  const [, setLocation] = useLocation();
   const [activeTab, setActiveTab] = useState<"product" | "service">("product");
   const [activeCategory, setActiveCategory] = useState("all");
   const [activeFilters, setActiveFilters] = useState<ActiveFilters>({});
