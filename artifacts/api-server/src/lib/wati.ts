@@ -12,16 +12,17 @@
 import { logger } from "./logger.js";
 import { logNotification } from "./notificationLog.js";
 import { normalizePhone } from "./phoneUtils.js";
+import { getSetting } from "./appSecrets.js";
 
-function getWatiConfig(): { baseUrl: string; token: string } | null {
-  const baseUrl = process.env.WATI_BASE_URL?.trim();
-  const token   = process.env.WATI_API_TOKEN?.trim();
+async function getWatiConfig(): Promise<{ baseUrl: string; token: string } | null> {
+  const baseUrl = (await getSetting("wati_base_url", process.env.WATI_BASE_URL ?? "")).trim();
+  const token   = (await getSetting("wati_api_token", process.env.WATI_API_TOKEN ?? "")).trim();
   if (!baseUrl || !token) return null;
   return { baseUrl: baseUrl.replace(/\/$/, ""), token };
 }
 
-export function isWatiConfigured(): boolean {
-  return getWatiConfig() !== null;
+export async function isWatiConfigured(): Promise<boolean> {
+  return (await getWatiConfig()) !== null;
 }
 
 export interface WatiTemplateParam {
@@ -46,7 +47,7 @@ export async function sendWatiTemplate(
   params: WatiTemplateParam[],
   opts?: WatiSendOpts & { broadcastName?: string },
 ): Promise<void> {
-  const cfg = getWatiConfig();
+  const cfg = await getWatiConfig();
   if (!cfg) {
     logger.warn("[wati] WATI_BASE_URL atau WATI_API_TOKEN belum dikonfigurasi — skip");
     return;
@@ -127,7 +128,7 @@ export async function sendWatiSession(
   message: string,
   opts?: WatiSendOpts,
 ): Promise<void> {
-  const cfg = getWatiConfig();
+  const cfg = await getWatiConfig();
   if (!cfg) {
     logger.warn("[wati] WATI_BASE_URL atau WATI_API_TOKEN belum dikonfigurasi — skip");
     return;
@@ -194,7 +195,7 @@ export async function sendWatiSession(
  * Ambil daftar template yang terdaftar di WATI.
  */
 export async function listWatiTemplates(): Promise<any[]> {
-  const cfg = getWatiConfig();
+  const cfg = await getWatiConfig();
   if (!cfg) return [];
   try {
     const res = await fetch(`${cfg.baseUrl}/api/v1/getMessageTemplates`, {
@@ -212,7 +213,7 @@ export async function listWatiTemplates(): Promise<any[]> {
  * Test koneksi WATI — cek apakah credentials valid.
  */
 export async function testWatiConnection(): Promise<{ ok: boolean; error?: string; accountName?: string }> {
-  const cfg = getWatiConfig();
+  const cfg = await getWatiConfig();
   if (!cfg) return { ok: false, error: "WATI_BASE_URL atau WATI_API_TOKEN tidak dikonfigurasi" };
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 8000);

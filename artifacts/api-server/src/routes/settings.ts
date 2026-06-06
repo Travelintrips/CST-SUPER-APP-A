@@ -1073,7 +1073,11 @@ router.get("/secrets", async (req: Request, res: Response) => {
   try {
     const results = await Promise.all(
       SECRETS_CATALOG.map(async (def) => {
-        const envValue = process.env[def.envFallback]?.trim() ?? "";
+        const envValue = (
+          process.env[def.envFallback]?.trim() ||
+          def.envFallbackAlt?.map(k => process.env[k]?.trim()).find(v => !!v) ||
+          ""
+        );
         const dbValue = await (async () => {
           try {
             const [row] = await db
