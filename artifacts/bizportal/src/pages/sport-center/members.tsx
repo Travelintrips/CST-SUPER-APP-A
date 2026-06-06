@@ -21,6 +21,7 @@ type Member = {
   start_date: string | null; end_date: string | null;
   status: string; notes: string | null;
   total_price: string | null; payment_method: string | null; months: number | null;
+  duration: string | null;
 };
 
 const STATUS_COLOR: Record<string, string> = {
@@ -185,16 +186,16 @@ export default function SportCenterMembers() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border/40 bg-muted/20">
-                  {["No. Member","Nama","Tipe","Mulai","Selesai","Status","Aksi"].map((h) => (
+                  {["No. Member","Nama","Tipe","Mulai","Selesai","Durasi","Status","Aksi"].map((h) => (
                     <th key={h} className="text-left py-3 px-3 text-xs text-muted-foreground font-medium">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {isLoading ? (
-                  <tr><td colSpan={7} className="py-10 text-center text-muted-foreground">Memuat…</td></tr>
+                  <tr><td colSpan={8} className="py-10 text-center text-muted-foreground">Memuat…</td></tr>
                 ) : (data?.data ?? []).length === 0 ? (
-                  <tr><td colSpan={7} className="py-10 text-center text-muted-foreground">Belum ada member</td></tr>
+                  <tr><td colSpan={8} className="py-10 text-center text-muted-foreground">Belum ada member</td></tr>
                 ) : (data?.data ?? []).map((m) => (
                   <tr key={m.id} className="border-b border-border/20 hover:bg-muted/20">
                     <td className="py-2.5 px-3 font-mono text-xs text-muted-foreground">{m.member_number}</td>
@@ -209,6 +210,7 @@ export default function SportCenterMembers() {
                     </td>
                     <td className="py-2.5 px-3 text-muted-foreground">{m.start_date}</td>
                     <td className="py-2.5 px-3 text-muted-foreground">{m.end_date ?? "—"}</td>
+                    <td className="py-2.5 px-3 text-muted-foreground">{m.duration ?? "—"}</td>
                     <td className="py-2.5 px-3">
                       <Badge className={`text-xs border ${STATUS_COLOR[m.status] ?? "bg-gray-800/40 text-gray-400 border-gray-600"}`}>
                         {STATUS_LABEL[m.status] ?? m.status}
