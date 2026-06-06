@@ -40,6 +40,7 @@ watiRouter.get("/status", async (_req, res) => {
       baseUrl: process.env.WATI_BASE_URL?.replace(/^(https?:\/\/[^/]+).*/, "$1") ?? null,
       phone: account.phone ?? null,
       accountName: account.name ?? null,
+      phoneSource: account.source ?? null,
     },
     fonnte: { configured: fonnteConfigured, note: "digunakan sebagai fallback untuk grup WA admin" },
   });

@@ -34,7 +34,7 @@ function StatusBadge({ ok }: { ok: boolean }) {
 
 interface WatiStatus {
   provider: "wati" | "fonnte";
-  wati: { configured: boolean; connected?: boolean; error?: string | null; baseUrl?: string | null; phone?: string | null; accountName?: string | null };
+  wati: { configured: boolean; connected?: boolean; error?: string | null; baseUrl?: string | null; phone?: string | null; accountName?: string | null; phoneSource?: string | null };
   fonnte: { configured: boolean; note?: string };
 }
 
@@ -66,6 +66,8 @@ export default function WatiSettingsPage() {
   const [testPhone, setTestPhone] = useState("");
   const [testMessage, setTestMessage] = useState("Halo! Ini adalah pesan test dari BizPortal via WATI. 👋");
   const [expandedTpl, setExpandedTpl] = useState<string | null>(null);
+  const [manualPhone, setManualPhone] = useState("");
+  const [savingPhone, setSavingPhone] = useState(false);
 
   const [tplPhone, setTplPhone] = useState("");
   const [tplName, setTplName] = useState("");
@@ -104,6 +106,40 @@ export default function WatiSettingsPage() {
     onSuccess: () => toast({ title: "Template berhasil dikirim!", description: `Template: ${tplName}` }),
     onError: (e: Error) => toast({ title: e.message, variant: "destructive" }),
   });
+
+  const saveManualPhone = async () => {
+    const phone = manualPhone.replace(/\D/g, "").replace(/^0/, "62");
+    if (!phone) return;
+    setSavingPhone(true);
+    try {
+      const res = await apiFetch("/settings/secrets/wati_phone_number", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ value: phone }),
+      });
+      if (res.ok) {
+        toast({ title: "Nomor berhasil disimpan", description: `+${phone}` });
+        setManualPhone("");
+        refetchStatus();
+      } else {
+        const j = await res.json().catch(() => ({}));
+        toast({ title: "Gagal menyimpan", description: (j as any).message ?? "Error", variant: "destructive" });
+      }
+    } finally {
+      setSavingPhone(false);
+    }
+  };
+
+  const clearManualPhone = async () => {
+    setSavingPhone(true);
+    try {
+      await apiFetch("/settings/secrets/wati_phone_number", { method: "DELETE" });
+      toast({ title: "Nomor manual dihapus", description: "Sistem akan coba deteksi otomatis" });
+      refetchStatus();
+    } finally {
+      setSavingPhone(false);
+    }
+  };
 
   const templates = tplData?.templates ?? [];
   const watiOk = status?.wati?.connected === true;
@@ -174,12 +210,17 @@ export default function WatiSettingsPage() {
                     <div className="flex-1 min-w-0">
                       <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wide">Nomor WhatsApp Terhubung</p>
                       {status?.wati?.phone ? (
-                        <p className="text-sm font-bold text-emerald-300 font-mono tracking-wide mt-0.5">
-                          +{status.wati.phone.replace(/^\+/, "")}
-                        </p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <p className="text-sm font-bold text-emerald-300 font-mono tracking-wide">
+                            +{status.wati.phone.replace(/^\+/, "")}
+                          </p>
+                          {status.wati.phoneSource === "manual" && (
+                            <span className="text-[10px] bg-amber-900/40 border border-amber-700/50 text-amber-400 rounded px-1">manual</span>
+                          )}
+                        </div>
                       ) : (
                         <p className="text-xs text-amber-400 mt-0.5">
-                          Nomor tidak tersedia — cek dashboard WATI di{" "}
+                          Nomor tidak tersedia — isi manual di bawah atau cek{" "}
                           <a href="https://app.wati.io" target="_blank" rel="noreferrer" className="underline">
                             app.wati.io
                           </a>
@@ -189,9 +230,74 @@ export default function WatiSettingsPage() {
                         <p className="text-[11px] text-muted-foreground mt-0.5">{status.wati.accountName}</p>
                       )}
                     </div>
-                    <Badge variant="outline" className="text-xs border-emerald-600/50 text-emerald-400 shrink-0">
-                      Aktif
-                    </Badge>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {status?.wati?.phone && status.wati.phoneSource === "manual" && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-2 text-[10px] text-red-400 hover:text-red-300"
+                          onClick={clearManualPhone}
+                          disabled={savingPhone}
+                        >
+                          Hapus
+                        </Button>
+                      )}
+                      <Badge variant="outline" className="text-xs border-emerald-600/50 text-emerald-400">
+                        Aktif
+                      </Badge>
+                    </div>
+                  </div>
+                )}
+
+                {/* Input nomor manual jika belum ada nomor */}
+                {watiOk && !status?.wati?.phone && (
+                  <div className="rounded-lg border border-amber-700/40 bg-amber-950/20 p-3 space-y-2">
+                    <p className="text-xs text-amber-300 font-medium flex items-center gap-1.5">
+                      <Phone size={12} /> Isi Nomor WA WATI Secara Manual
+                    </p>
+                    <p className="text-[11px] text-muted-foreground">
+                      Nomor tidak terdeteksi otomatis dari API WATI. Masukkan nomor yang terdaftar di WATI (format: 628xxx).
+                    </p>
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="628111167596"
+                        value={manualPhone}
+                        onChange={(e) => setManualPhone(e.target.value)}
+                        className="text-sm h-8 font-mono flex-1"
+                      />
+                      <Button
+                        size="sm"
+                        className="h-8 px-3 text-xs"
+                        disabled={!manualPhone.trim() || savingPhone}
+                        onClick={saveManualPhone}
+                      >
+                        {savingPhone ? <Loader2 size={12} className="animate-spin" /> : "Simpan"}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Ganti nomor manual jika sudah ada */}
+                {watiOk && status?.wati?.phone && status.wati.phoneSource === "manual" && (
+                  <div className="rounded-lg border border-slate-700/40 bg-slate-900/20 p-3 space-y-2">
+                    <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wide">Ganti Nomor Manual</p>
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="628111167596"
+                        value={manualPhone}
+                        onChange={(e) => setManualPhone(e.target.value)}
+                        className="text-sm h-8 font-mono flex-1"
+                      />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 px-3 text-xs"
+                        disabled={!manualPhone.trim() || savingPhone}
+                        onClick={saveManualPhone}
+                      >
+                        {savingPhone ? <Loader2 size={12} className="animate-spin" /> : "Simpan"}
+                      </Button>
+                    </div>
                   </div>
                 )}
 
