@@ -639,14 +639,6 @@ export function CartDrawer() {
                       </span>
                       <span className="text-[10px] text-slate-500 italic">(opsional)</span>
                     </div>
-                    {/* Alamat Pengirim (otomatis) — hanya tampil jika bukan pickup */}
-                    {selectedShipping && selectedShipping !== "pickup" && (
-                      <div className="mb-3 rounded-lg border border-orange-200 bg-orange-50/80 px-3 py-2.5">
-                        <p className="text-[10px] font-bold text-orange-400 uppercase tracking-wide mb-1">Pengirim (Otomatis)</p>
-                        <p className="text-[11px] font-semibold text-orange-700 leading-snug">🏭 {companyPickup?.name ?? "CST Logistics"}</p>
-                        <p className="text-[11px] text-orange-600 mt-0.5 leading-snug">{companyPickup?.address ?? DEFAULT_PICKUP}</p>
-                      </div>
-                    )}
                     <div className="space-y-2">
                       {([
                         { id: "pickup" as const, name: "Ambil Sendiri",    Icon: Warehouse, desc: "Ambil langsung di gudang kami", activeColor: "border-green-400 bg-green-50",  iconColor: "text-green-600",  iconBg: "bg-green-100",  estimate: null },
