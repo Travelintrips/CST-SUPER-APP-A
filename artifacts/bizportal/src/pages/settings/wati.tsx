@@ -261,6 +261,16 @@ export default function WatiSettingsPage() {
   const templates = tplData?.templates ?? [];
   const watiOk = status?.wati?.connected === true;
 
+  function strVal(v: unknown): string {
+    if (v == null) return "—";
+    if (typeof v === "string") return v || "—";
+    if (typeof v === "object") {
+      const o = v as Record<string, unknown>;
+      return String(o.text ?? o.value ?? o.key ?? JSON.stringify(v));
+    }
+    return String(v);
+  }
+
   return (
     <AppShell>
       <div className="p-6 max-w-4xl mx-auto space-y-6">
@@ -904,7 +914,10 @@ export default function WatiSettingsPage() {
                   </TableHeader>
                   <TableBody>
                     {templates.map((tpl, i) => {
-                      const key = tpl.elementName ?? tpl.templateName ?? String(i);
+                      const key = strVal(tpl.elementName ?? tpl.templateName) !== "—"
+                        ? strVal(tpl.elementName ?? tpl.templateName)
+                        : String(i);
+                      const statusStr = strVal(tpl.status);
                       const isExpanded = expandedTpl === key;
                       return (
                         <>
@@ -916,30 +929,30 @@ export default function WatiSettingsPage() {
                             <TableCell className="text-xs font-mono">
                               <div className="flex items-center gap-1">
                                 {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                                {tpl.elementName ?? tpl.templateName ?? "-"}
+                                {strVal(tpl.elementName ?? tpl.templateName)}
                               </div>
                             </TableCell>
                             <TableCell>
                               <Badge
                                 className={cn(
                                   "text-[10px]",
-                                  tpl.status === "APPROVED"
+                                  statusStr === "APPROVED"
                                     ? "bg-emerald-600/20 text-emerald-400 border-emerald-600"
-                                    : tpl.status === "REJECTED"
+                                    : statusStr === "REJECTED"
                                     ? "bg-red-600/20 text-red-400 border-red-600"
                                     : "bg-amber-600/20 text-amber-400 border-amber-600"
                                 )}
                               >
-                                {tpl.status ?? "—"}
+                                {statusStr}
                               </Badge>
                             </TableCell>
-                            <TableCell className="text-xs text-muted-foreground">{tpl.category ?? "—"}</TableCell>
-                            <TableCell className="text-xs text-muted-foreground">{tpl.language ?? "—"}</TableCell>
+                            <TableCell className="text-xs text-muted-foreground">{strVal(tpl.category)}</TableCell>
+                            <TableCell className="text-xs text-muted-foreground">{strVal(tpl.language)}</TableCell>
                           </TableRow>
                           {isExpanded && tpl.body && (
                             <TableRow key={`${key}-body`} className="bg-muted/5">
                               <TableCell colSpan={4} className="text-xs text-muted-foreground py-2 px-4">
-                                <pre className="whitespace-pre-wrap font-sans text-[11px]">{tpl.body}</pre>
+                                <pre className="whitespace-pre-wrap font-sans text-[11px]">{strVal(tpl.body)}</pre>
                               </TableCell>
                             </TableRow>
                           )}
