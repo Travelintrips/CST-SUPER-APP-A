@@ -306,3 +306,75 @@ export async function getWatiAccountInfo(): Promise<{ phone?: string; name?: str
 
   return {};
 }
+
+/**
+ * Validasi apakah nomor WhatsApp terdaftar di akun WATI.
+ * Strategi:
+ *  1. Coba GET /api/v1/contact/{phone} — endpoint langsung per kontak
+ *  2. Fallback ke GET /api/v1/getContacts?name={phone} — cari di daftar kontak
+ *
+ * Return: { valid: boolean, phone: string, name?: string, source?: string, error?: string }
+ */
+export async function validateWatiPhone(
+  phone: string,
+): Promise<{ valid: boolean; phone: string; name?: string; source?: string; error?: string }> {
+  const cfg = await getWatiConfig();
+  if (!cfg) return { valid: false, phone, error: "WATI belum dikonfigurasi" };
+
+  const normalized = phone.replace(/\D/g, "").replace(/^0/, "62");
+  if (!normalized || normalized.length < 8) {
+    return { valid: false, phone: normalized, error: "Format nomor tidak valid" };
+  }
+
+  // 1. Coba endpoint kontak langsung
+  try {
+    const res = await fetch(`${cfg.baseUrl}/api/v1/contact/${normalized}`, {
+      headers: { Authorization: `Bearer ${cfg.token}` },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (res.ok) {
+      const body = await res.json() as Record<string, unknown>;
+      const name = String(body.name ?? body.fullName ?? body.firstName ?? "").trim() || undefined;
+      const waId = String(body.wAid ?? body.waId ?? body.whatsappId ?? body.id ?? "").trim();
+      if (waId || body.phone || body.whatsappNumber) {
+        return { valid: true, phone: normalized, name, source: "direct" };
+      }
+    }
+    if (res.status === 404) {
+      // Kontak tidak ditemukan di WATI — nomor belum ada sebagai kontak
+      return { valid: false, phone: normalized, error: "Nomor tidak ditemukan sebagai kontak di akun WATI ini" };
+    }
+  } catch { /* fallback */ }
+
+  // 2. Coba search contacts
+  try {
+    const res = await fetch(
+      `${cfg.baseUrl}/api/v1/getContacts?name=${encodeURIComponent(normalized)}&pageSize=5&pageNumber=1`,
+      {
+        headers: { Authorization: `Bearer ${cfg.token}` },
+        signal: AbortSignal.timeout(8000),
+      },
+    );
+    if (res.ok) {
+      const body = await res.json() as Record<string, unknown>;
+      const contacts = ((body.contact ?? body.contacts ?? []) as Record<string, unknown>[]);
+      const found = contacts.find((c) => {
+        const cPhone = String(c.wAid ?? c.phone ?? c.whatsappNumber ?? "").replace(/\D/g, "");
+        return cPhone === normalized || cPhone.endsWith(normalized.slice(-9));
+      });
+      if (found) {
+        const name = String(found.name ?? found.fullName ?? found.firstName ?? "").trim() || undefined;
+        return { valid: true, phone: normalized, name, source: "search" };
+      }
+      // API returned OK but no matching contact
+      return { valid: false, phone: normalized, error: "Nomor tidak ditemukan sebagai kontak di akun WATI ini" };
+    }
+    if (res.status === 401) {
+      return { valid: false, phone: normalized, error: "Token WATI tidak valid (401)" };
+    }
+  } catch (err) {
+    return { valid: false, phone: normalized, error: `Gagal validasi: ${String(err)}` };
+  }
+
+  return { valid: false, phone: normalized, error: "Tidak dapat memverifikasi nomor via WATI API" };
+}

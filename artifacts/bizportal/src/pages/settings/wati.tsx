@@ -4,6 +4,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -11,7 +12,8 @@ import { useToast } from "@/hooks/use-toast";
 import {
   ArrowLeft, CheckCircle2, XCircle, Loader2, Send, RefreshCw,
   Wifi, WifiOff, MessageCircle, FileText, ChevronDown, ChevronRight,
-  AlertTriangle, Info, Phone, Zap, Globe, Copy, CheckCheck,
+  AlertTriangle, Info, Phone, Zap, Globe, Copy, CheckCheck, Users,
+  Download,
 } from "lucide-react";
 import { Link } from "wouter";
 import { cn } from "@/lib/utils";
@@ -86,9 +88,19 @@ export default function WatiSettingsPage() {
   const [expandedTpl, setExpandedTpl] = useState<string | null>(null);
   const [manualPhone, setManualPhone] = useState("");
   const [savingPhone, setSavingPhone] = useState(false);
+  const [validating, setValidating] = useState(false);
+  const [validationResult, setValidationResult] = useState<{ valid: boolean; name?: string; error?: string } | null>(null);
   const [tplPhone, setTplPhone] = useState("");
   const [tplName, setTplName] = useState("");
   const [tplParams, setTplParams] = useState<{ name: string; value: string }[]>([{ name: "", value: "" }]);
+
+  // Bulk validate state
+  const [bulkInput, setBulkInput] = useState("");
+  const [bulkRunning, setBulkRunning] = useState(false);
+  const [bulkResults, setBulkResults] = useState<{
+    phone: string; valid: boolean; name?: string; error?: string;
+  }[] | null>(null);
+  const [bulkSummary, setBulkSummary] = useState<{ validCount: number; invalidCount: number } | null>(null);
 
   const webhookUrl = `${window.location.origin}/api/webhook/wati`;
 
@@ -137,6 +149,80 @@ export default function WatiSettingsPage() {
     onError: (e: Error) => toast({ title: e.message, variant: "destructive" }),
   });
 
+  const validatePhone = async (phone: string) => {
+    const normalized = phone.replace(/\D/g, "").replace(/^0/, "62");
+    if (!normalized) return;
+    setValidating(true);
+    setValidationResult(null);
+    try {
+      const res = await apiFetch("/wati/validate-phone", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: normalized }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setValidationResult({ valid: j.valid, name: j.name, error: j.error });
+        if (j.valid) {
+          toast({ title: "Nomor valid di WATI", description: j.name ? `Nama kontak: ${j.name}` : `+${normalized} ditemukan di akun WATI` });
+        } else {
+          toast({ title: "Nomor tidak ditemukan", description: j.error ?? "Nomor belum terdaftar sebagai kontak WATI", variant: "destructive" });
+        }
+      } else {
+        setValidationResult({ valid: false, error: j.message ?? "Gagal validasi" });
+        toast({ title: "Gagal validasi", description: j.message ?? "Error", variant: "destructive" });
+      }
+    } finally {
+      setValidating(false);
+    }
+  };
+
+  const validateBulk = async () => {
+    const phones = bulkInput
+      .split(/[\n,;]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (phones.length === 0) return;
+    if (phones.length > 100) {
+      toast({ title: "Maksimal 100 nomor", variant: "destructive" });
+      return;
+    }
+    setBulkRunning(true);
+    setBulkResults(null);
+    setBulkSummary(null);
+    try {
+      const res = await apiFetch("/wati/validate-phones-bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phones }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.message ?? "Gagal validasi bulk");
+      setBulkResults(j.results ?? []);
+      setBulkSummary({ validCount: j.validCount ?? 0, invalidCount: j.invalidCount ?? 0 });
+    } catch (err: any) {
+      toast({ title: "Gagal bulk validasi", description: err.message, variant: "destructive" });
+    } finally {
+      setBulkRunning(false);
+    }
+  };
+
+  const downloadBulkCsv = () => {
+    if (!bulkResults) return;
+    const rows = [["Nomor", "Status", "Nama Kontak", "Keterangan"]];
+    for (const r of bulkResults) {
+      rows.push([r.phone, r.valid ? "Valid" : "Tidak Valid", r.name ?? "", r.error ?? ""]);
+    }
+    const csv = rows.map((r) => r.map((c) => `"${c.replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `wati-bulk-validasi-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const saveManualPhone = async () => {
     const phone = manualPhone.replace(/\D/g, "").replace(/^0/, "62");
     if (!phone) return;
@@ -150,6 +236,7 @@ export default function WatiSettingsPage() {
       if (res.ok) {
         toast({ title: "Nomor berhasil disimpan", description: `+${phone}` });
         setManualPhone("");
+        setValidationResult(null);
         refetchStatus();
       } else {
         const j = await res.json().catch(() => ({}));
@@ -347,9 +434,18 @@ export default function WatiSettingsPage() {
                       <Input
                         placeholder="628111167596"
                         value={manualPhone}
-                        onChange={(e) => setManualPhone(e.target.value)}
+                        onChange={(e) => { setManualPhone(e.target.value); setValidationResult(null); }}
                         className="text-sm h-8 font-mono flex-1"
                       />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 px-3 text-xs border-blue-700/50 text-blue-400 hover:bg-blue-950/40"
+                        disabled={!manualPhone.trim() || validating || savingPhone}
+                        onClick={() => validatePhone(manualPhone)}
+                      >
+                        {validating ? <Loader2 size={12} className="animate-spin" /> : "Validasi"}
+                      </Button>
                       <Button
                         size="sm"
                         className="h-8 px-3 text-xs"
@@ -359,6 +455,23 @@ export default function WatiSettingsPage() {
                         {savingPhone ? <Loader2 size={12} className="animate-spin" /> : "Simpan"}
                       </Button>
                     </div>
+                    {validationResult !== null && (
+                      <div className={cn(
+                        "flex items-center gap-2 rounded px-2 py-1.5 text-xs",
+                        validationResult.valid
+                          ? "bg-emerald-950/40 border border-emerald-700/40 text-emerald-300"
+                          : "bg-red-950/40 border border-red-700/40 text-red-300"
+                      )}>
+                        {validationResult.valid
+                          ? <CheckCircle2 size={13} className="shrink-0" />
+                          : <XCircle size={13} className="shrink-0" />}
+                        <span>
+                          {validationResult.valid
+                            ? <>Nomor valid di WATI{validationResult.name ? <> — <strong>{validationResult.name}</strong></> : ""}</>
+                            : validationResult.error ?? "Nomor tidak ditemukan"}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -370,9 +483,18 @@ export default function WatiSettingsPage() {
                       <Input
                         placeholder="628111167596"
                         value={manualPhone}
-                        onChange={(e) => setManualPhone(e.target.value)}
+                        onChange={(e) => { setManualPhone(e.target.value); setValidationResult(null); }}
                         className="text-sm h-8 font-mono flex-1"
                       />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 px-3 text-xs border-blue-700/50 text-blue-400 hover:bg-blue-950/40"
+                        disabled={!manualPhone.trim() || validating || savingPhone}
+                        onClick={() => validatePhone(manualPhone)}
+                      >
+                        {validating ? <Loader2 size={12} className="animate-spin" /> : "Validasi"}
+                      </Button>
                       <Button
                         size="sm"
                         variant="outline"
@@ -383,6 +505,23 @@ export default function WatiSettingsPage() {
                         {savingPhone ? <Loader2 size={12} className="animate-spin" /> : "Simpan"}
                       </Button>
                     </div>
+                    {validationResult !== null && (
+                      <div className={cn(
+                        "flex items-center gap-2 rounded px-2 py-1.5 text-xs",
+                        validationResult.valid
+                          ? "bg-emerald-950/40 border border-emerald-700/40 text-emerald-300"
+                          : "bg-red-950/40 border border-red-700/40 text-red-300"
+                      )}>
+                        {validationResult.valid
+                          ? <CheckCircle2 size={13} className="shrink-0" />
+                          : <XCircle size={13} className="shrink-0" />}
+                        <span>
+                          {validationResult.valid
+                            ? <>Nomor valid di WATI{validationResult.name ? <> — <strong>{validationResult.name}</strong></> : ""}</>
+                            : validationResult.error ?? "Nomor tidak ditemukan"}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -632,6 +771,102 @@ export default function WatiSettingsPage() {
                 {tplMut.isPending ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
                 Kirim Template
               </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Bulk Validasi Nomor */}
+        {watiOk && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Users size={14} className="text-purple-400" />
+                Bulk Validasi Nomor
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Cek beberapa nomor WA sekaligus — apakah sudah terdaftar sebagai kontak di akun WATI.
+                Paste nomor (satu per baris, atau pisahkan dengan koma). Maks. 100 nomor.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Textarea
+                placeholder={"628111167596\n628222345678\n628333456789"}
+                value={bulkInput}
+                onChange={(e) => { setBulkInput(e.target.value); setBulkResults(null); setBulkSummary(null); }}
+                className="font-mono text-xs min-h-[96px] resize-y"
+                disabled={bulkRunning}
+              />
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  className="gap-1.5"
+                  disabled={!bulkInput.trim() || bulkRunning}
+                  onClick={validateBulk}
+                >
+                  {bulkRunning
+                    ? <><Loader2 size={13} className="animate-spin" /> Memvalidasi…</>
+                    : <><CheckCircle2 size={13} /> Validasi Semua</>}
+                </Button>
+                {bulkResults && bulkResults.length > 0 && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5 text-xs"
+                    onClick={downloadBulkCsv}
+                  >
+                    <Download size={12} /> Export CSV
+                  </Button>
+                )}
+                {bulkSummary && (
+                  <div className="flex items-center gap-2 ml-auto text-xs">
+                    <span className="text-emerald-400 font-medium">{bulkSummary.validCount} valid</span>
+                    <span className="text-muted-foreground">·</span>
+                    <span className="text-red-400 font-medium">{bulkSummary.invalidCount} tidak valid</span>
+                  </div>
+                )}
+              </div>
+
+              {bulkRunning && (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground animate-pulse">
+                  <Loader2 size={12} className="animate-spin" />
+                  Memvalidasi nomor satu per satu ke WATI API…
+                </div>
+              )}
+
+              {bulkResults && bulkResults.length > 0 && (
+                <div className="rounded-md border overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/20">
+                        <TableHead className="text-xs py-2">Nomor</TableHead>
+                        <TableHead className="text-xs py-2">Status</TableHead>
+                        <TableHead className="text-xs py-2">Nama Kontak</TableHead>
+                        <TableHead className="text-xs py-2">Keterangan</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {bulkResults.map((r, i) => (
+                        <TableRow key={i} className={r.valid ? "bg-emerald-950/10" : "bg-red-950/10"}>
+                          <TableCell className="text-xs font-mono py-1.5">+{r.phone}</TableCell>
+                          <TableCell className="py-1.5">
+                            {r.valid ? (
+                              <Badge className="text-[10px] gap-1 bg-emerald-600/20 text-emerald-400 border-emerald-600">
+                                <CheckCircle2 size={10} /> Valid
+                              </Badge>
+                            ) : (
+                              <Badge className="text-[10px] gap-1 bg-red-600/20 text-red-400 border-red-600">
+                                <XCircle size={10} /> Tidak Valid
+                              </Badge>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-xs py-1.5">{r.name ?? <span className="text-muted-foreground">—</span>}</TableCell>
+                          <TableCell className="text-xs py-1.5 text-muted-foreground">{r.error ?? ""}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
             </CardContent>
           </Card>
         )}
