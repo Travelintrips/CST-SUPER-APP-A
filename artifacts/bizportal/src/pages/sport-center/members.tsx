@@ -148,7 +148,7 @@ export default function SportCenterMembers() {
             <Button variant="outline" size="sm" className="gap-1" onClick={() => refetch()}>
               <RefreshCw className="h-4 w-4" />
             </Button>
-            <Button onClick={() => { setEditId(null); setShowDialog(true); }} size="sm" className="gap-1">
+            <Button onClick={() => { setEditTarget(null); setShowDialog(true); }} size="sm" className="gap-1">
               <Plus className="h-4 w-4" /> Tambah Member
             </Button>
           </div>
@@ -284,6 +284,17 @@ export default function SportCenterMembers() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* Pagination */}
+        {(data?.total ?? 0) > 50 && (
+          <div className="flex items-center justify-between text-sm text-muted-foreground">
+            <span>Halaman {page} dari {Math.ceil((data?.total ?? 0) / 50)}</span>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Sebelumnya</Button>
+              <Button variant="outline" size="sm" disabled={page * 50 >= (data?.total ?? 0)} onClick={() => setPage((p) => p + 1)}>Berikutnya</Button>
+            </div>
+          </div>
+        )}
 
         <AlertDialog open={deleteTarget !== null} onOpenChange={() => setDeleteTarget(null)}>
           <AlertDialogContent>
