@@ -22,7 +22,6 @@ type Member = {
   start_date: string | null; end_date: string | null;
   status: string; notes: string | null;
   total_price: string | null; payment_method: string | null; months: number | null;
-  duration: string | null;
 };
 
 type UpcomingMember = {
@@ -38,9 +37,14 @@ type ReminderLog = {
   created_at: string;
 };
 
+type ReminderDetail = {
+  memberId: number; name: string; phone: string;
+  reminderType: string; status: string; reason?: string;
+};
+
 type ReminderResult = {
   ok: boolean; sent: number; skipped: number; errors: number;
-  details: Array<{ memberId: number; name: string; phone: string; reminderType: string; status: string; reason?: string }>;
+  details: ReminderDetail[];
 };
 
 const STATUS_COLOR: Record<string, string> = {
@@ -165,16 +169,21 @@ export default function SportCenterMembers() {
     mutationFn: async (m: Member) => {
       await fetch(`/api/sport-center/members/${m.source_id}`, { method: "DELETE", credentials: "include" });
     },
-    onSuccess: () => { toast({ title: "Member dihapus" }); setDeleteTarget(null); qc.invalidateQueries({ queryKey: ["sport-center-members"] }); },
+    onSuccess: () => {
+      toast({ title: "Member dihapus" });
+      setDeleteTarget(null);
+      qc.invalidateQueries({ queryKey: ["sport-center-members"] });
+    },
   });
 
   const reminderMutation = useMutation({
     mutationFn: async (daysAhead?: number) => {
+      const body = daysAhead !== undefined ? { daysAhead } : {};
       const r = await fetch("/api/sport-center/member-reminders/run", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(daysAhead !== undefined ? { daysAhead } : {}),
+        body: JSON.stringify(body),
       });
       if (!r.ok) throw new Error((await r.json()).error ?? "Gagal");
       return r.json() as Promise<ReminderResult>;
@@ -183,13 +192,12 @@ export default function SportCenterMembers() {
       setReminderResult(result);
       refetchLogs();
       refetchUpcoming();
-      toast({
-        title: result.sent > 0
-          ? `✅ ${result.sent} reminder WA terkirim`
-          : result.skipped > 0
-            ? "ℹ️ Semua sudah dikirim hari ini"
-            : "ℹ️ Tidak ada member yang perlu diingatkan",
-      });
+      const msg = result.sent > 0
+        ? `${result.sent} reminder WA terkirim`
+        : result.skipped > 0
+          ? "Semua sudah dikirim hari ini"
+          : "Tidak ada member yang perlu diingatkan";
+      toast({ title: msg });
     },
     onError: (e: Error) => toast({ title: e.message, variant: "destructive" }),
   });
@@ -203,6 +211,8 @@ export default function SportCenterMembers() {
   return (
     <AppShell>
       <div className="p-6 space-y-4">
+
+        {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Button variant="ghost" size="icon" onClick={() => navigate("/sport-center/dashboard")} className="h-8 w-8 shrink-0">
@@ -229,13 +239,18 @@ export default function SportCenterMembers() {
           </div>
         </div>
 
+        {/* Tabs */}
         <Tabs defaultValue="daftar">
           <TabsList className="bg-muted/30">
-            <TabsTrigger value="daftar" className="gap-1.5"><Users className="h-3.5 w-3.5" /> Daftar Member</TabsTrigger>
-            <TabsTrigger value="reminder" className="gap-1.5"><MessageSquare className="h-3.5 w-3.5" /> Reminder WA</TabsTrigger>
+            <TabsTrigger value="daftar" className="gap-1.5">
+              <Users className="h-3.5 w-3.5" /> Daftar Member
+            </TabsTrigger>
+            <TabsTrigger value="reminder" className="gap-1.5">
+              <MessageSquare className="h-3.5 w-3.5" /> Reminder WA
+            </TabsTrigger>
           </TabsList>
 
-          {/* ── TAB DAFTAR MEMBER ─────────────────────────────────────────── */}
+          {/* ── DAFTAR MEMBER ───────────────────────────────────────────── */}
           <TabsContent value="daftar" className="space-y-4 mt-4">
             <div className="flex gap-2 flex-wrap">
               <Select value={memberType} onValueChange={(v) => { setMemberType(v); setPage(1); }}>
@@ -325,10 +340,10 @@ export default function SportCenterMembers() {
             )}
           </TabsContent>
 
-          {/* ── TAB REMINDER WA ───────────────────────────────────────────── */}
+          {/* ── REMINDER WA ─────────────────────────────────────────────── */}
           <TabsContent value="reminder" className="space-y-4 mt-4">
 
-            {/* Panel Kirim Reminder */}
+            {/* Kirim Reminder */}
             <Card className="border-border/60">
               <CardHeader className="pb-3">
                 <CardTitle className="text-base flex items-center gap-2">
@@ -339,9 +354,8 @@ export default function SportCenterMembers() {
               <CardContent className="space-y-4">
                 <p className="text-sm text-muted-foreground">
                   Kirim pesan WA otomatis ke member aktif yang masa keanggotaannya akan berakhir.
-                  Worker berjalan setiap 1 jam secara otomatis (default: 4 hari & 1 hari sebelum expired).
+                  Worker berjalan setiap 1 jam otomatis (default: 4 hari &amp; 1 hari sebelum expired).
                 </p>
-
                 <div className="flex flex-wrap gap-2">
                   <Button
                     size="sm"
@@ -355,18 +369,14 @@ export default function SportCenterMembers() {
                     Kirim Semua (4 hari + 1 hari)
                   </Button>
                   <Button
-                    variant="outline"
-                    size="sm"
-                    className="gap-1.5"
+                    variant="outline" size="sm" className="gap-1.5"
                     disabled={reminderMutation.isPending}
                     onClick={() => reminderMutation.mutate(4)}
                   >
                     <MessageSquare className="h-3.5 w-3.5" /> Kirim 4 Hari
                   </Button>
                   <Button
-                    variant="outline"
-                    size="sm"
-                    className="gap-1.5"
+                    variant="outline" size="sm" className="gap-1.5"
                     disabled={reminderMutation.isPending}
                     onClick={() => reminderMutation.mutate(1)}
                   >
@@ -374,8 +384,7 @@ export default function SportCenterMembers() {
                   </Button>
                 </div>
 
-                {/* Hasil terakhir */}
-                {reminderResult && (
+                {reminderResult !== null && (
                   <div className="rounded-lg border border-border/50 bg-muted/20 p-3 text-sm space-y-2">
                     <div className="flex gap-4 flex-wrap">
                       <span className="flex items-center gap-1 text-emerald-400">
@@ -399,49 +408,6 @@ export default function SportCenterMembers() {
                             {d.reason && <span className="text-red-400/80">— {d.reason}</span>}
                           </div>
                         ))}
-        <Card className="border-border/60">
-          <CardContent className="p-0">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border/40 bg-muted/20">
-                  {["No. Member","Nama","Tipe","Mulai","Selesai","Durasi","Status","Aksi"].map((h) => (
-                    <th key={h} className="text-left py-3 px-3 text-xs text-muted-foreground font-medium">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {isLoading ? (
-                  <tr><td colSpan={8} className="py-10 text-center text-muted-foreground">Memuat…</td></tr>
-                ) : (data?.data ?? []).length === 0 ? (
-                  <tr><td colSpan={8} className="py-10 text-center text-muted-foreground">Belum ada member</td></tr>
-                ) : (data?.data ?? []).map((m) => (
-                  <tr key={m.id} className="border-b border-border/20 hover:bg-muted/20">
-                    <td className="py-2.5 px-3 font-mono text-xs text-muted-foreground">{m.member_number}</td>
-                    <td className="py-2.5 px-3">
-                      <p className="font-medium text-foreground">{m.name}</p>
-                      <p className="text-xs text-muted-foreground">{m.phone}</p>
-                    </td>
-                    <td className="py-2.5 px-3">
-                      <Badge className="bg-blue-900/30 text-blue-300 border-blue-700 text-xs">
-                        {MEMBER_TYPE_LABEL[m.member_type] ?? m.member_type}
-                      </Badge>
-                    </td>
-                    <td className="py-2.5 px-3 text-muted-foreground">{m.start_date}</td>
-                    <td className="py-2.5 px-3 text-muted-foreground">{m.end_date ?? "—"}</td>
-                    <td className="py-2.5 px-3 text-muted-foreground">{m.duration ?? "—"}</td>
-                    <td className="py-2.5 px-3">
-                      <Badge className={`text-xs border ${STATUS_COLOR[m.status] ?? "bg-gray-800/40 text-gray-400 border-gray-600"}`}>
-                        {STATUS_LABEL[m.status] ?? m.status}
-                      </Badge>
-                    </td>
-                    <td className="py-2.5 px-3">
-                      <div className="flex gap-1">
-                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => openEdit(m)}>
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-red-400" onClick={() => setDeleteTarget(m)}>
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
                       </div>
                     )}
                   </div>
@@ -449,7 +415,7 @@ export default function SportCenterMembers() {
               </CardContent>
             </Card>
 
-            {/* Member yang Akan Expired */}
+            {/* Member Akan Expired */}
             <Card className="border-border/60">
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
@@ -486,9 +452,11 @@ export default function SportCenterMembers() {
                     {upcomingLoading ? (
                       <tr><td colSpan={6} className="py-8 text-center text-muted-foreground text-sm">Memuat…</td></tr>
                     ) : (upcomingData ?? []).length === 0 ? (
-                      <tr><td colSpan={6} className="py-8 text-center text-muted-foreground text-sm">
-                        Tidak ada member yang akan expired dalam {upcomingDays} hari ke depan
-                      </td></tr>
+                      <tr>
+                        <td colSpan={6} className="py-8 text-center text-muted-foreground text-sm">
+                          Tidak ada member yang akan expired dalam {upcomingDays} hari ke depan
+                        </td>
+                      </tr>
                     ) : (upcomingData ?? []).map((m) => (
                       <tr key={m.id} className="border-b border-border/20 hover:bg-muted/20">
                         <td className="py-2 px-3 font-mono text-xs text-muted-foreground">{m.member_number}</td>
@@ -504,19 +472,19 @@ export default function SportCenterMembers() {
                         <td className="py-2 px-3 text-muted-foreground text-xs">{m.end_date}</td>
                         <td className="py-2 px-3">
                           <Badge className={`text-xs border ${
-                            m.days_remaining <= 1 ? "bg-red-900/30 text-red-300 border-red-700"
-                            : m.days_remaining <= 4 ? "bg-orange-900/30 text-orange-300 border-orange-700"
-                            : "bg-yellow-900/30 text-yellow-300 border-yellow-700"
+                            m.days_remaining <= 1
+                              ? "bg-red-900/30 text-red-300 border-red-700"
+                              : m.days_remaining <= 4
+                                ? "bg-orange-900/30 text-orange-300 border-orange-700"
+                                : "bg-yellow-900/30 text-yellow-300 border-yellow-700"
                           }`}>
                             {m.days_remaining} hari
                           </Badge>
                         </td>
                         <td className="py-2 px-3 text-muted-foreground text-xs">
-                          {m.phone ? (
-                            <span className="font-mono">{m.phone}</span>
-                          ) : (
-                            <span className="text-red-400/70 italic">—</span>
-                          )}
+                          {m.phone
+                            ? <span className="font-mono">{m.phone}</span>
+                            : <span className="text-red-400/70 italic">—</span>}
                         </td>
                       </tr>
                     ))}
@@ -542,7 +510,7 @@ export default function SportCenterMembers() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-border/40 bg-muted/20">
-                      {["Waktu","Nama Member","No. HP","Tipe","Tanggal Kirim","Status"].map((h) => (
+                      {["Waktu","Nama Member","No. HP","Tipe","Tgl Kirim","Status"].map((h) => (
                         <th key={h} className="text-left py-2.5 px-3 text-xs text-muted-foreground font-medium">{h}</th>
                       ))}
                     </tr>
@@ -580,10 +548,11 @@ export default function SportCenterMembers() {
                 </table>
               </CardContent>
             </Card>
+
           </TabsContent>
         </Tabs>
 
-        {/* ── DIALOGS ────────────────────────────────────────────────────────── */}
+        {/* ── DIALOGS ──────────────────────────────────────────────────────── */}
         <Dialog open={showDialog} onOpenChange={setShowDialog}>
           <DialogContent className="max-w-md">
             <DialogHeader><DialogTitle>{editTarget ? "Edit Member" : "Tambah Member"}</DialogTitle></DialogHeader>
@@ -631,7 +600,10 @@ export default function SportCenterMembers() {
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setShowDialog(false)}>Batal</Button>
-              <Button disabled={!form.name || !form.start_date || saveMutation.isPending} onClick={() => saveMutation.mutate({ ...form, company_id: activeCompanyId })}>
+              <Button
+                disabled={!form.name || !form.start_date || saveMutation.isPending}
+                onClick={() => saveMutation.mutate({ ...form, company_id: activeCompanyId })}
+              >
                 {saveMutation.isPending ? <RefreshCw className="h-4 w-4 animate-spin" /> : "Simpan"}
               </Button>
             </DialogFooter>
@@ -652,6 +624,7 @@ export default function SportCenterMembers() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
       </div>
     </AppShell>
   );
