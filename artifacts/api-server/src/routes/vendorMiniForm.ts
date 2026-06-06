@@ -134,10 +134,8 @@ const PUBLIC_CACHE = "public, max-age=300, stale-while-revalidate=600";
 const USE_PRODUCT_TEMPLATE_ENGINE = process.env.USE_PRODUCT_TEMPLATE_ENGINE === "true";
 
 // ── Feature flag: Service Template Engine ─────────────────────────────────────
-// Set USE_SERVICE_TEMPLATE_ENGINE=true untuk mengaktifkan resolver berbasis
-// service_templates (DB + in-code). Bila false (default), SERVICE_SCHEMAS tetap
-// menjadi satu-satunya sumber. Flag OFF = zero behavior change.
-const USE_SERVICE_TEMPLATE_ENGINE = process.env.USE_SERVICE_TEMPLATE_ENGINE === "true";
+// Default ON. Set USE_SERVICE_TEMPLATE_ENGINE=false untuk fallback ke SERVICE_SCHEMAS saja.
+const USE_SERVICE_TEMPLATE_ENGINE = process.env.USE_SERVICE_TEMPLATE_ENGINE !== "false";
 
 /**
  * Resolve ProductTemplate dari product_templates DB menggunakan resolveTemplate().
