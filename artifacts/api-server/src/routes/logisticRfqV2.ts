@@ -1459,6 +1459,27 @@ logisticRfqV2Router.get("/rfq/:rfqId/comparison", async (req: Request, res: Resp
   const rfqId = parseInt(req.params.rfqId as string, 10);
   if (isNaN(rfqId)) return res.status(400).json({ message: "rfqId tidak valid" });
 
+  // Ensure vendor_performance table exists (may not have been migrated yet)
+  await db.execute(sql.raw(`
+    CREATE TABLE IF NOT EXISTS vendor_performance (
+      id SERIAL PRIMARY KEY,
+      vendor_id INTEGER NOT NULL REFERENCES suppliers(id) ON DELETE CASCADE,
+      total_orders INTEGER NOT NULL DEFAULT 0,
+      completed_orders INTEGER NOT NULL DEFAULT 0,
+      cancelled_orders INTEGER NOT NULL DEFAULT 0,
+      ontime_percentage NUMERIC(5,2) DEFAULT 0,
+      average_response_minutes NUMERIC(10,2) DEFAULT 0,
+      pod_completeness_score NUMERIC(5,2) DEFAULT 0,
+      eta_accuracy_score NUMERIC(5,2) DEFAULT 0,
+      customer_rating NUMERIC(3,2) DEFAULT 0,
+      order_success_rate NUMERIC(5,2) DEFAULT 0,
+      cancel_rate NUMERIC(5,2) DEFAULT 0,
+      total_complaints INTEGER NOT NULL DEFAULT 0,
+      recommendation_score NUMERIC(5,2) DEFAULT 0,
+      updated_at TIMESTAMP DEFAULT NOW() NOT NULL
+    )
+  `)).catch(() => {});
+
   // Use raw SQL to include freight_shipment_id added via migration
   const rfqRows = await db.execute(sql`
     SELECT *, freight_shipment_id FROM logistic_order_rfqs WHERE id = ${rfqId}
