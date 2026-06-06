@@ -1219,10 +1219,21 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
     }
 
     // Validasi server-side untuk field required
-    // Ketika link punya templateSnapshot, field product_name / unit_price / unit
-    // dihandle oleh template — skip dari validasi schema / service template
+    // Ketika link punya templateSnapshot, field yang ada di template
+    // dihandle oleh template engine — skip dari validasi schema / service template.
+    // Derive dari customFields dan requiredDocuments snapshot, bukan hardcode.
     const activePhase = (link.phase ?? "quotation") as "quotation" | "operational";
-    const tplManagedKeys = link.templateSnapshot ? ["product_name", "unit_price", "unit"] : [];
+    const tplManagedKeys: string[] = (() => {
+      if (!link.templateSnapshot) return [];
+      const snap = link.templateSnapshot as Record<string, unknown>;
+      const cfKeys = Array.isArray(snap.customFields)
+        ? (snap.customFields as Array<{ key?: string }>).map(f => f.key ?? "").filter(Boolean)
+        : [];
+      const docKeys = Array.isArray(snap.requiredDocuments)
+        ? (snap.requiredDocuments as Array<{ key?: string }>).map(d => `_doc_${d.key ?? ""}`).filter(k => k !== "_doc_")
+        : [];
+      return [...cfKeys, ...docKeys];
+    })();
 
     const schemaFallback = SERVICE_SCHEMAS[link.serviceType];
     if (schemaFallback) {

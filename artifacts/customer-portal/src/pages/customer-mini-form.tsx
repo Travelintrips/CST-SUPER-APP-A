@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams } from "wouter";
 import type { ProductTemplate, DynamicFormValues } from "@workspace/product-templates";
+import { validateTemplatePayload } from "@workspace/product-templates";
 import {
   TemplateFieldRenderer,
   TemplateDocumentRenderer,
@@ -175,6 +176,11 @@ export default function CustomerMiniFormPage() {
       .filter(f => f.required && !values[f.key]?.trim())
       .map(f => f.label);
     if (missing.length) { setSubmitError(`Field wajib belum diisi: ${missing.join(", ")}`); return; }
+
+    if (meta.productTemplate) {
+      const tplErrors = validateTemplatePayload(meta.productTemplate, templateValues);
+      if (tplErrors.length > 0) { setSubmitError(tplErrors[0]); return; }
+    }
 
     setSubmitting(true);
     setSubmitError(null);
