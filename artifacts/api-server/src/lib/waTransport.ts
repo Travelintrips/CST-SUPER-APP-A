@@ -37,7 +37,8 @@ export async function sendViaService(
 
   if (useWati) {
     logger.debug({ phone, context: opts?.context, refId: opts?.refId }, "[waTransport] routing ke WATI (session)");
-    return sendWatiSession(phone, message, opts);
+    await sendWatiSession(phone, message, opts);
+    return;
   }
 
   logger.debug({ phone, context: opts?.context, refId: opts?.refId }, "[waTransport] routing ke Fonnte");

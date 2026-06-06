@@ -63,11 +63,18 @@ watiRouter.post("/test-send", async (req: Request, res) => {
   }
 
   try {
-    await sendWatiSession(String(phone).trim(), String(message).trim(), {
+    const result = await sendWatiSession(String(phone).trim(), String(message).trim(), {
       context: "wati_test",
       refId: String(Date.now()),
     });
-    return res.json({ ok: true, message: "Pesan test berhasil dikirim via WATI." });
+    if (!result.ok) {
+      return res.status(400).json({
+        message: result.error ?? "WATI menolak pengiriman",
+        watiResponse: result.watiResponse,
+        hint: "Session message hanya berfungsi jika nomor tujuan pernah menghubungi WATI Business number dalam 24 jam terakhir. Gunakan Template Message untuk kirim kapan saja.",
+      });
+    }
+    return res.json({ ok: true, message: "Pesan berhasil dikirim via WATI.", watiResponse: result.watiResponse });
   } catch (err: any) {
     logger.error({ err }, "[wati] test-send error");
     return res.status(500).json({ message: err?.message ?? "Gagal kirim." });

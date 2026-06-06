@@ -129,11 +129,11 @@ export async function sendWatiSession(
   phone: string,
   message: string,
   opts?: WatiSendOpts,
-): Promise<void> {
+): Promise<{ ok: boolean; error?: string; watiResponse?: Record<string, unknown> }> {
   const cfg = await getWatiConfig();
   if (!cfg) {
     logger.warn("[wati] WATI_BASE_URL atau WATI_API_TOKEN belum dikonfigurasi — skip");
-    return;
+    return { ok: false, error: "WATI belum dikonfigurasi" };
   }
 
   const normalizedPhone = normalizePhone(phone);
@@ -149,9 +149,10 @@ export async function sendWatiSession(
       body: JSON.stringify({ messageText: message }),
     });
 
-    const resBody = await res.json() as Record<string, unknown>;
+    const resBody = await res.json().catch(() => ({})) as Record<string, unknown>;
 
     if (!res.ok) {
+      const errMsg = (resBody as any)?.message ?? (resBody as any)?.error ?? `HTTP ${res.status}`;
       logger.warn({ status: res.status, resBody, phone: normalizedPhone }, "[wati] sendSessionMessage non-OK");
       await logNotification({
         channel: "wa",
@@ -163,7 +164,7 @@ export async function sendWatiSession(
         refType: opts?.refType,
         refId: opts?.refId,
       });
-      return;
+      return { ok: false, error: errMsg, watiResponse: resBody };
     }
 
     const msgId = String((resBody as any)?.id ?? (resBody as any)?.messageId ?? "");
@@ -178,18 +179,21 @@ export async function sendWatiSession(
       refType: opts?.refType,
       refId: opts?.refId,
     });
+    return { ok: true, watiResponse: resBody };
   } catch (err) {
+    const errMsg = String(err);
     logger.error({ err, phone: normalizedPhone }, "[wati] sendSessionMessage error");
     await logNotification({
       channel: "wa",
       recipient: normalizedPhone,
       message,
       status: "failed",
-      errorMsg: String(err),
+      errorMsg: errMsg,
       context: opts?.context,
       refType: opts?.refType,
       refId: opts?.refId,
     });
+    return { ok: false, error: errMsg };
   }
 }
 
