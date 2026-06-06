@@ -60,7 +60,7 @@ router.get("/products", async (req: Request, res: Response) => {
   const companyId = resolveCompanyId(req);
   const search = req.query.search as string | undefined;
   const rows = await db.execute(sql`
-    SELECT id, name, sku, unit, price::float, cost_price::float, is_active, item_type, subcategory
+    SELECT id, name, sku, unit, price::float, cost_price::float, is_active, item_type, subcategory, currency_code
     FROM products
     WHERE company_id = ${companyId}
       ${search ? sql`AND (name ILIKE ${"%" + search + "%"} OR sku ILIKE ${"%" + search + "%"})` : sql``}
@@ -72,16 +72,16 @@ router.get("/products", async (req: Request, res: Response) => {
 
 router.post("/products", async (req: Request, res: Response) => {
   const companyId = resolveCompanyId(req);
-  const { name, sku, unit, price, costPrice, itemType, subcategory, isActive } = req.body as {
+  const { name, sku, unit, price, costPrice, itemType, subcategory, isActive, currencyCode } = req.body as {
     name: string; sku: string; unit?: string; price?: number; costPrice?: number;
-    itemType?: string; subcategory?: string; isActive?: boolean;
+    itemType?: string; subcategory?: string; isActive?: boolean; currencyCode?: string;
   };
   if (!name || !sku) { res.status(400).json({ message: "name dan sku wajib diisi" }); return; }
   const result = await db.execute(sql`
-    INSERT INTO products (company_id, name, sku, unit, price, cost_price, item_type, subcategory, is_active)
+    INSERT INTO products (company_id, name, sku, unit, price, cost_price, item_type, subcategory, is_active, currency_code)
     VALUES (${companyId}, ${name}, ${sku}, ${unit ?? "pcs"}, ${price ?? 0}, ${costPrice ?? 0},
-            ${itemType ?? "barang"}, ${subcategory ?? null}, ${isActive ?? true})
-    RETURNING id, name, sku, unit, price::float, cost_price::float, is_active, item_type, subcategory
+            ${itemType ?? "barang"}, ${subcategory ?? null}, ${isActive ?? true}, ${currencyCode ?? "IDR"})
+    RETURNING id, name, sku, unit, price::float, cost_price::float, is_active, item_type, subcategory, currency_code
   `);
   res.status(201).json(result.rows[0]);
 });
@@ -89,24 +89,25 @@ router.post("/products", async (req: Request, res: Response) => {
 router.put("/products/:id", async (req: Request, res: Response) => {
   const companyId = resolveCompanyId(req);
   const id = Number(String(req.params.id));
-  const { name, sku, unit, price, costPrice, itemType, subcategory, isActive } = req.body as {
+  const { name, sku, unit, price, costPrice, itemType, subcategory, isActive, currencyCode } = req.body as {
     name?: string; sku?: string; unit?: string; price?: number; costPrice?: number;
-    itemType?: string; subcategory?: string; isActive?: boolean;
+    itemType?: string; subcategory?: string; isActive?: boolean; currencyCode?: string;
   };
   const check = await db.execute(sql`SELECT id FROM products WHERE id = ${id} AND company_id = ${companyId}`);
   if (check.rows.length === 0) { res.status(404).json({ message: "Produk tidak ditemukan" }); return; }
   const result = await db.execute(sql`
     UPDATE products SET
-      name        = COALESCE(${name ?? null}, name),
-      sku         = COALESCE(${sku ?? null}, sku),
-      unit        = COALESCE(${unit ?? null}, unit),
-      price       = COALESCE(${price ?? null}, price),
-      cost_price  = COALESCE(${costPrice ?? null}, cost_price),
-      item_type   = COALESCE(${itemType ?? null}, item_type),
-      subcategory = COALESCE(${subcategory ?? null}, subcategory),
-      is_active   = COALESCE(${isActive ?? null}, is_active)
+      name          = COALESCE(${name ?? null}, name),
+      sku           = COALESCE(${sku ?? null}, sku),
+      unit          = COALESCE(${unit ?? null}, unit),
+      price         = COALESCE(${price ?? null}, price),
+      cost_price    = COALESCE(${costPrice ?? null}, cost_price),
+      item_type     = COALESCE(${itemType ?? null}, item_type),
+      subcategory   = COALESCE(${subcategory ?? null}, subcategory),
+      is_active     = COALESCE(${isActive ?? null}, is_active),
+      currency_code = COALESCE(${currencyCode ?? null}, currency_code)
     WHERE id = ${id} AND company_id = ${companyId}
-    RETURNING id, name, sku, unit, price::float, cost_price::float, is_active, item_type, subcategory
+    RETURNING id, name, sku, unit, price::float, cost_price::float, is_active, item_type, subcategory, currency_code
   `);
   res.json(result.rows[0]);
 });

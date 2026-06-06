@@ -39,6 +39,7 @@ export const productsTable = pgTable("products", {
   widthCm: numeric("width_cm", { precision: 10, scale: 2 }),
   heightCm: numeric("height_cm", { precision: 10, scale: 2 }),
   goodsType: text("goods_type"),
+  currencyCode: text("currency_code").notNull().default("IDR"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (t) => [
   index("products_company_idx").on(t.companyId),
