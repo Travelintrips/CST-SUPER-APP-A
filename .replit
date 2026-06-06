@@ -24,19 +24,13 @@ args = "Gateway"
 name = "Gateway"
 author = "agent"
 
-[workflows.workflow.metadata]
-outputType = "webview"
-
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = """
-node artifacts/api-server/kill-port.mjs 5000 8080 6800 6000 3002 2>/dev/null; sleep 0.3;
-  (cd artifacts/api-server && node build.mjs && PORT=8080 NODE_ENV=development node --enable-source-maps ./dist/index.mjs & node port-forwarder.mjs & wait) &
-  (cd artifacts/bizportal && PORT=6800 BASE_PATH=/bizportal/ pnpm exec vite --config vite.config.ts --host 0.0.0.0 --port 6800 2>&1) &
-  (cd artifacts/customer-portal && PORT=6000 BASE_PATH=/ pnpm exec vite --config vite.config.ts --host 0.0.0.0 --port 6000 2>&1) &
-  (cd artifacts/logistic-order && PORT=3002 pnpm exec vite --config vite.config.ts --host 0.0.0.0 --port 3002 2>&1) &
-  PORT=5000 node gateway.mjs"""
+args = "fuser -k 5000/tcp 2>/dev/null; sleep 0.3; PORT=5000 node gateway.mjs"
 waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "webview"
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
@@ -73,13 +67,12 @@ VAPID_PUBLIC_KEY = "BEAKgZOdT9HxFJLxVNxgtY-Dh2XzGptrjQwQibP2obUjPlLkfk0WR1TyzqbJ
 VAPID_PRIVATE_KEY = "Cu-0cxYEgT24fD8lVirlkz0qpFHj_kJNcGIj347kIJ4"
 VAPID_EMAIL = "mailto:admin@cstlogistics.co.id"
 PORTAL_ADMIN_KEY = "admin123"
-
+SMTP_FROM = " info@cstlogistic.co.id"
 SUPABASE_DATABASE_URL = "postgresql://postgres.nzdweipzckfszczzqtuw:%24%23Admin12345%40%24@aws-1-ap-southeast-2.pooler.supabase.com:6543/postgres"
-SUPABASE_DATABASE_URL_DEV = "postgresql://postgres.xssrfshdrtdfupgqwfdw:admcst0012026@aws-1-ap-southeast-2.pooler.supabase.com:6543/postgres"
+SUPABASE_DATABASE_URL_DEV = "postgresql://postgres.nzdweipzckfszczzqtuw:%24%23Admin12345%40%24@aws-1-ap-southeast-2.pooler.supabase.com:6543/postgres"
 SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im56ZHdlaXB6Y2tmc3pjenpxdHV3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg0MDI4NDQsImV4cCI6MjA5Mzk3ODg0NH0.p9k3-qyRjPuXsHLizUrSRMyS-0yJAatUyjQU9NIIu1U"
 SUPABASE_ANON_KEY_DEV = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhzc3Jmc2hkcnRkZnVwZ3F3ZmR3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4OTY3MjgsImV4cCI6MjA5NDQ3MjcyOH0.czKzR9GjEL6UK8AhPAX6OYyF74fz1YtImYQSXiiG69U"
 VITE_SUPABASE_ANON_KEY_DEV = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhzc3Jmc2hkcnRkZnVwZ3F3ZmR3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4OTY3MjgsImV4cCI6MjA5NDQ3MjcyOH0.czKzR9GjEL6UK8AhPAX6OYyF74fz1YtImYQSXiiG69U"
-
 
 [userenv.development]
 ADMIN_EMAIL_DOMAINS = "example.com"
@@ -97,15 +90,6 @@ externalPort = 3000
 
 [[ports]]
 localPort = 3001
-externalPort = 3001
-
-[[ports]]
-localPort = 3002
-externalPort = 3002
-
-[[ports]]
-localPort = 4200
-externalPort = 4200
 externalPort = 3003
 
 [[ports]]
@@ -113,14 +97,12 @@ localPort = 5000
 externalPort = 80
 
 [[ports]]
-localPort = 6000
+localPort = 5173
 externalPort = 5173
 
 [[ports]]
 localPort = 5174
-externalPort = 3003
-localPort = 6800
-externalPort = 5000
+externalPort = 6000
 
 [[ports]]
 localPort = 8080
@@ -132,11 +114,7 @@ externalPort = 8081
 
 [[ports]]
 localPort = 18442
-
-externalPort = 5173
-
 externalPort = 6800
-
 
 [[ports]]
 localPort = 18444
@@ -144,17 +122,6 @@ externalPort = 4200
 
 [[ports]]
 localPort = 19368
-
-externalPort = 4200
-
-[[ports]]
-localPort = 21170
-externalPort = 5000
-
-[[ports]]
-localPort = 23434
-externalPort = 3002
-
 externalPort = 3002
 
 [[ports]]
