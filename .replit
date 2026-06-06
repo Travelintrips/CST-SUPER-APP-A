@@ -29,8 +29,9 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "fuser -k 5000/tcp 2>/dev/null; sleep 0.3; API_PORT=8080 CUSTOMER_PORT=5174 BIZPORTAL_PORT=3000 PORT=5000 node gateway.mjs"
+args = "node gateway.mjs"
 waitForPort = 5000
+
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
@@ -69,10 +70,6 @@ VAPID_EMAIL = "mailto:admin@cstlogistics.co.id"
 PORTAL_ADMIN_KEY = "admin123"
 USE_PRODUCT_TEMPLATE_ENGINE = "true"
 USE_SERVICE_TEMPLATE_ENGINE = "true"
-SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im56ZHdlaXB6Y2tmc3pjenpxdHV3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg0MDI4NDQsImV4cCI6MjA5Mzk3ODg0NH0.p9k3-qyRjPuXsHLizUrSRMyS-0yJAatUyjQU9NIIu1U"
-SUPABASE_DATABASE_URL = "postgresql://postgres.nzdweipzckfszczzqtuw:%24%23Admin12345%40%24@aws-1-ap-southeast-2.pooler.supabase.com:6543/postgres"
-SUPABASE_DATABASE_URL_DEV = "postgresql://postgres.xssrfshdrtdfupgqwfdw:admcst0012026@aws-1-ap-southeast-2.pooler.supabase.com:6543/postgres"
-SUPABASE_SERVICE_ROLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im56ZHdlaXB6Y2tmc3pjenpxdHV3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3ODQwMjg0NCwiZXhwIjoyMDkzOTc4ODQ0fQ.W0uM_UzGfF8Zy4PFQKhz6dKpEVDHS6_k9FtqoM9iGms"
 
 [userenv.development]
 ADMIN_EMAIL_DOMAINS = "example.com"
@@ -86,11 +83,7 @@ defaultBucketID = "replit-objstore-e357cc66-19c3-4d73-9ca9-3069d78355d1"
 
 [[ports]]
 localPort = 3000
-externalPort = 5000
-
-[[ports]]
-localPort = 3001
-externalPort = 6000
+externalPort = 3000
 
 [[ports]]
 localPort = 3001
@@ -121,16 +114,7 @@ localPort = 8080
 externalPort = 8080
 
 [[ports]]
-localPort = 8081
-externalPort = 8081
-
-[[ports]]
 localPort = 18442
-externalPort = 3000
-
-[[ports]]
-localPort = 18444
-externalPort = 3002
 externalPort = 5173
 
 [[ports]]
@@ -140,15 +124,6 @@ externalPort = 3000
 [[ports]]
 localPort = 19368
 externalPort = 4200
-
-[[ports]]
-localPort = 21170
-externalPort = 3001
-
-[[ports]]
-localPort = 23434
-externalPort = 5173
-externalPort = 5000
 
 [[ports]]
 localPort = 23434
