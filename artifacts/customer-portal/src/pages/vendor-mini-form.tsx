@@ -452,7 +452,13 @@ export default function VendorMiniFormPage() {
 
     // Validate required fields — prefer serviceTemplate fields, fallback to schema
     if (meta?.serviceTemplate && !meta?.productTemplate) {
-      const missing = (meta.serviceTemplate.fields ?? [])
+      const phase = meta.phase ?? "quotation";
+      const visibleFields = (meta.serviceTemplate.fields ?? []).filter(f =>
+        phase === "operational"
+          ? (f.section === "operational" || f.section === "both")
+          : (f.section === "quotation" || f.section === "both" || !f.section)
+      );
+      const missing = visibleFields
         .filter(f => f.required && !f.isUpload && !values[f.key]?.trim())
         .map(f => f.label);
       if (missing.length) { setSubmitError(`Field wajib belum diisi: ${missing.join(", ")}`); return; }
