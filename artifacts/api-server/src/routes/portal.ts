@@ -1468,9 +1468,20 @@ async function nextPortalOrderNumber(): Promise<string> {
 
 // GET /api/portal/orders  — returns sales orders linked to the portal customer via email → customers table
 router.get("/orders", requirePortalAuth, async (req, res) => {
-  const portalCustId = (req as Request & { portalCustomerId: number }).portalCustomerId;
+  const portalReq = req as PortalAuthReq;
+  const portalCustId = portalReq.portalCustomerId;
   const [customer] = await db.select().from(portalCustomersTable).where(eq(portalCustomersTable.id, portalCustId));
   if (!customer) return res.status(401).json({ message: "Customer not found" });
+
+  // Admin sees all sales orders
+  if (customer.role === "admin") {
+    const orders = await db.select().from(salesDocumentsTable).orderBy(sql`${salesDocumentsTable.createdAt} DESC`);
+    return res.json(orders.map((o) => ({
+      id: o.id, docNumber: o.docNumber, status: o.status,
+      grandTotal: Number(o.grandTotal ?? 0), createdAt: o.createdAt.toISOString(),
+    })));
+  }
+
   const [crmCustomer] = await db.select().from(customersTable).where(eq(customersTable.email, customer.email));
   if (!crmCustomer) return res.json([]);
   const orders = await db
@@ -1490,14 +1501,17 @@ router.get("/orders", requirePortalAuth, async (req, res) => {
 
 // GET /api/portal/logistic-orders — returns logistic orders for the authenticated portal customer (by email)
 router.get("/logistic-orders", requirePortalAuth, async (req, res) => {
-  const portalCustId = (req as Request & { portalCustomerId: number }).portalCustomerId;
+  const portalReq = req as PortalAuthReq;
+  const portalCustId = portalReq.portalCustomerId;
   const [customer] = await db.select().from(portalCustomersTable).where(eq(portalCustomersTable.id, portalCustId));
   if (!customer) return res.status(401).json({ message: "Customer not found" });
-  const orders = await db
-    .select()
-    .from(logisticOrdersTable)
-    .where(eq(logisticOrdersTable.email, customer.email))
-    .orderBy(sql`${logisticOrdersTable.createdAt} DESC`);
+
+  const baseQuery = db.select().from(logisticOrdersTable);
+  // Admin sees all logistic orders; customers see only their own
+  const orders = customer.role === "admin"
+    ? await baseQuery.orderBy(sql`${logisticOrdersTable.createdAt} DESC`)
+    : await baseQuery.where(eq(logisticOrdersTable.email, customer.email)).orderBy(sql`${logisticOrdersTable.createdAt} DESC`);
+
   return res.json(
     orders.map((o) => ({
       id: o.id,
@@ -1508,6 +1522,8 @@ router.get("/logistic-orders", requirePortalAuth, async (req, res) => {
       shipmentType: o.shipmentType,
       origin: o.origin,
       destination: o.destination,
+      customerName: o.customerName,
+      email: o.email,
     }))
   );
 });
@@ -3050,6 +3066,35 @@ router.get("/me/dashboard-stats", requirePortalAuth, async (req, res) => {
         rfqSubmitted: Number(rfqSubmitted.rows[0]?.cnt ?? 0),
         fulfillmentPending: Number(fulfillmentPending.rows[0]?.cnt ?? 0),
         completedOrders: Number(completedOrders.rows[0]?.cnt ?? 0),
+      });
+    }
+
+    // ── Admin Stats (semua order, tanpa filter email) ──────────────────
+    if (role === "admin") {
+      const [totalOrdersRes, activeOrdersRes, completedOrdersRes, invoiceOutstandingRes, trackingRes, pendingRes, processingRes, shippedRes, deliveredRes, cancelledRes] = await Promise.all([
+        db.execute<{ cnt: string }>(sql`SELECT count(*)::text AS cnt FROM logistic_orders`),
+        db.execute<{ cnt: string }>(sql`SELECT count(*)::text AS cnt FROM logistic_orders WHERE status IN ('In Progress','in_transit','In Transit','New Order','processing','Order Received','Quote Received','Vendor Selected','Confirmed')`),
+        db.execute<{ cnt: string }>(sql`SELECT count(*)::text AS cnt FROM logistic_orders WHERE status IN ('Completed','delivered','Delivered')`),
+        db.execute<{ total: string; cnt: string }>(sql`SELECT COALESCE(SUM(grand_total::numeric), 0)::text AS total, count(*)::text AS cnt FROM sales_documents WHERE status NOT IN ('cancelled','draft') AND invoice_status = 'to_invoice'`),
+        db.execute<{ cnt: string }>(sql`SELECT count(*)::text AS cnt FROM logistic_orders WHERE status IN ('In Progress','in_transit','In Transit') AND EXISTS (SELECT 1 FROM driver_locations dl WHERE dl.order_id = logistic_orders.id)`),
+        db.execute<{ cnt: string }>(sql`SELECT count(*)::text AS cnt FROM logistic_orders WHERE status IN ('Order Received','Quote Received','New Order')`),
+        db.execute<{ cnt: string }>(sql`SELECT count(*)::text AS cnt FROM logistic_orders WHERE status IN ('Confirmed','Vendor Selected','processing','In Progress')`),
+        db.execute<{ cnt: string }>(sql`SELECT count(*)::text AS cnt FROM logistic_orders WHERE status IN ('in_transit','In Transit','Shipped')`),
+        db.execute<{ cnt: string }>(sql`SELECT count(*)::text AS cnt FROM logistic_orders WHERE status IN ('Completed','delivered','Delivered')`),
+        db.execute<{ cnt: string }>(sql`SELECT count(*)::text AS cnt FROM logistic_orders WHERE status IN ('Cancelled','cancelled')`),
+      ]);
+      return res.json({
+        totalOrders: Number(totalOrdersRes.rows[0]?.cnt ?? 0),
+        activeOrders: Number(activeOrdersRes.rows[0]?.cnt ?? 0),
+        completedOrders: Number(completedOrdersRes.rows[0]?.cnt ?? 0),
+        invoiceOutstandingCount: Number(invoiceOutstandingRes.rows[0]?.cnt ?? 0),
+        invoiceOutstandingAmount: Number(invoiceOutstandingRes.rows[0]?.total ?? 0),
+        trackingActive: Number(trackingRes.rows[0]?.cnt ?? 0),
+        pendingOrders: Number(pendingRes.rows[0]?.cnt ?? 0),
+        processingOrders: Number(processingRes.rows[0]?.cnt ?? 0),
+        shippedOrders: Number(shippedRes.rows[0]?.cnt ?? 0),
+        deliveredOrders: Number(deliveredRes.rows[0]?.cnt ?? 0),
+        cancelledOrders: Number(cancelledRes.rows[0]?.cnt ?? 0),
       });
     }
 
