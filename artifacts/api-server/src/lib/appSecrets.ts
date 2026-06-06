@@ -176,6 +176,22 @@ export const SECRETS_CATALOG: SecretDef[] = [
     sensitive: true,
     group: "Notifikasi",
   },
+  {
+    key: "wati_base_url",
+    label: "WATI Base URL",
+    description: "URL endpoint WATI WhatsApp Business API (contoh: https://live-server-XXXXX.wati.io)",
+    envFallback: "WATI_BASE_URL",
+    sensitive: false,
+    group: "WhatsApp",
+  },
+  {
+    key: "wati_api_token",
+    label: "WATI API Token",
+    description: "Bearer token untuk autentikasi WATI API",
+    envFallback: "WATI_API_TOKEN",
+    sensitive: true,
+    group: "WhatsApp",
+  },
 ];
 
 export function maskSecret(value: string): string {

@@ -33,7 +33,7 @@ export async function sendViaService(
     return;
   }
 
-  const useWati = !opts?.forceFonnte && isWatiConfigured();
+  const useWati = !opts?.forceFonnte && (await isWatiConfigured());
 
   if (useWati) {
     logger.debug({ phone, context: opts?.context, refId: opts?.refId }, "[waTransport] routing ke WATI (session)");

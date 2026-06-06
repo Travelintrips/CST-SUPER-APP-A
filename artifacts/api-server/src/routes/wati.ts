@@ -12,11 +12,12 @@ import { testWatiConnection, listWatiTemplates, sendWatiTemplate, sendWatiSessio
 import { logger } from "../lib/logger.js";
 
 export const watiRouter = Router();
+watiRouter.use((_req, _res, next) => next());
 watiRouter.use(requireAdmin);
 
 // ─── Status ────────────────────────────────────────────────────────────────────
 watiRouter.get("/status", async (_req, res) => {
-  const watiConfigured = isWatiConfigured();
+  const watiConfigured = await isWatiConfigured();
   const fonnteConfigured = !!(process.env.FONNTE_TOKEN);
 
   if (!watiConfigured) {
@@ -42,7 +43,7 @@ watiRouter.get("/status", async (_req, res) => {
 
 // ─── List templates ────────────────────────────────────────────────────────────
 watiRouter.get("/templates", async (_req, res) => {
-  if (!isWatiConfigured()) {
+  if (!(await isWatiConfigured())) {
     return res.status(400).json({ message: "WATI belum dikonfigurasi." });
   }
   const templates = await listWatiTemplates();
@@ -55,7 +56,7 @@ watiRouter.post("/test-send", async (req: Request, res) => {
   if (!phone?.trim()) return res.status(400).json({ message: "phone wajib diisi." });
   if (!message?.trim()) return res.status(400).json({ message: "message wajib diisi." });
 
-  if (!isWatiConfigured()) {
+  if (!(await isWatiConfigured())) {
     return res.status(400).json({ message: "WATI belum dikonfigurasi." });
   }
 
@@ -76,7 +77,7 @@ watiRouter.post("/send-template", async (req: Request, res) => {
   const { phone, templateName, params, broadcastName } = req.body ?? {};
   if (!phone?.trim()) return res.status(400).json({ message: "phone wajib diisi." });
   if (!templateName?.trim()) return res.status(400).json({ message: "templateName wajib diisi." });
-  if (!isWatiConfigured()) {
+  if (!(await isWatiConfigured())) {
     return res.status(400).json({ message: "WATI belum dikonfigurasi." });
   }
 
