@@ -1,0 +1,58 @@
+[plugin:vite:esbuild] Transform failed with 5 errors:
+/home/runner/workspace/artifacts/bizportal/src/pages/sport-center/members.tsx:446:21: ERROR: The character "}" is not valid inside a JSX element
+/home/runner/workspace/artifacts/bizportal/src/pages/sport-center/members.tsx:447:20: ERROR: Unexpected closing "div" tag does not match opening "td" tag
+/home/runner/workspace/artifacts/bizportal/src/pages/sport-center/members.tsx:448:17: ERROR: The character "}" is not valid inside a JSX element
+/home/runner/workspace/artifacts/bizportal/src/pages/sport-center/members.tsx:449:16: ERROR: Unexpected closing "CardContent" tag does not match opening "tr" tag
+/home/runner/workspace/artifacts/bizportal/src/pages/sport-center/members.tsx:450:19: ERROR: Unterminated regular expression
+/home/runner/workspace/artifacts/bizportal/src/pages/sport-center/members.tsx:446:21
+The character "}" is not valid inside a JSX element
+444 |                          </Button>
+445 |                        </div>
+446 |                      )}
+    |                       ^
+447 |                    </div>
+448 |                  )}
+
+Unexpected closing "div" tag does not match opening "td" tag
+445 |                        </div>
+446 |                      )}
+447 |                    </div>
+    |                      ^
+448 |                  )}
+449 |                </CardContent>
+
+The character "}" is not valid inside a JSX element
+446 |                      )}
+447 |                    </div>
+448 |                  )}
+    |                   ^
+449 |                </CardContent>
+450 |              </Card>
+
+Unexpected closing "CardContent" tag does not match opening "tr" tag
+447 |                    </div>
+448 |                  )}
+449 |                </CardContent>
+    |                  ^
+450 |              </Card>
+451 |  
+
+Unterminated regular expression
+448 |                  )}
+449 |                </CardContent>
+450 |              </Card>
+    |                     ^
+451 |  
+452 |              {/* Member yang Akan Expired */}
+    at failureErrorWithLog (/home/runner/workspace/node_modules/.pnpm/esbuild@0.27.3/node_modules/esbuild/lib/main.js:1467:15)
+    at /home/runner/workspace/node_modules/.pnpm/esbuild@0.27.3/node_modules/esbuild/lib/main.js:736:50
+    at responseCallbacks.<computed> (/home/runner/workspace/node_modules/.pnpm/esbuild@0.27.3/node_modules/esbuild/lib/main.js:603:9)
+    at handleIncomingPacket (/home/runner/workspace/node_modules/.pnpm/esbuild@0.27.3/node_modules/esbuild/lib/main.js:658:12)
+    at Socket.readFromStdout (/home/runner/workspace/node_modules/.pnpm/esbuild@0.27.3/node_modules/esbuild/lib/main.js:581:7)
+    at Socket.emit (node:events:524:28)
+    at addChunk (node:internal/streams/readable:561:12)
+    at readableAddChunkPushByteMode (node:internal/streams/readable:512:3)
+    at Readable.push (node:internal/streams/readable:392:5)
+    at Pipe.onStreamRead (node:internal/stream_base_commons:191:23)
+Click outside, press Esc key, or fix the code to dismiss.
+You can also disable this overlay by setting server.hmr.overlay to false in vite.config.ts.

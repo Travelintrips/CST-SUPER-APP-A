@@ -2841,4 +2841,83 @@ router.delete("/recurring-expenses/:id", async (req, res) => {
   }
 });
 
+// ── MEMBER REMINDER WA ────────────────────────────────────────────────────────
+
+/**
+ * POST /api/sport-center/member-reminders/run
+ * Trigger manual pengiriman reminder WA ke member yang akan expired.
+ */
+router.post("/member-reminders/run", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  try {
+    const { runMemberReminders } = await import("./memberReminderWorker.js");
+    const daysAhead = req.body?.daysAhead;
+    let reminders;
+    if (daysAhead !== undefined) {
+      const d = Number(daysAhead);
+      if (isNaN(d) || d < 1 || d > 90) {
+        return res.status(400).json({ error: "daysAhead harus antara 1–90" });
+      }
+      reminders = [{ daysAhead: d, reminderType: `${d}days`, label: `${d} hari lagi` }];
+    }
+    const result = await runMemberReminders(reminders);
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    console.error("[sport-center] POST /member-reminders/run error:", err);
+    res.status(500).json({ error: "Gagal menjalankan reminder" });
+  }
+});
+
+/**
+ * GET /api/sport-center/member-reminders/logs
+ * Ambil log reminder WA member terbaru.
+ */
+router.get("/member-reminders/logs", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  try {
+    const { getMemberReminderLogs } = await import("./memberReminderWorker.js");
+    const limit = req.query.limit ? Math.min(Number(req.query.limit), 200) : 50;
+    const logs = await getMemberReminderLogs(limit);
+    res.json(logs);
+  } catch (err) {
+    console.error("[sport-center] GET /member-reminders/logs error:", err);
+    res.status(500).json({ error: "Gagal memuat log" });
+  }
+});
+
+/**
+ * GET /api/sport-center/member-reminders/upcoming
+ * Daftar member yang akan menerima reminder dalam N hari ke depan.
+ */
+router.get("/member-reminders/upcoming", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  try {
+    const days = req.query.days ? Number(req.query.days) : 7;
+    const cId = req.query.companyId ? Number(req.query.companyId) : null;
+    const rows = await db.execute(sql`
+      SELECT
+        m.id,
+        m.name,
+        m.phone,
+        m.email,
+        m.member_number,
+        m.member_type,
+        m.end_date,
+        m.status,
+        (m.end_date::date - CURRENT_DATE) AS days_remaining
+      FROM sport_members m
+      WHERE m.status = 'active'
+        AND m.end_date IS NOT NULL
+        AND m.end_date::date >= CURRENT_DATE
+        AND m.end_date::date <= (CURRENT_DATE + ${days} * INTERVAL '1 day')::date
+        AND (${cId}::int IS NULL OR m.company_id = ${cId})
+      ORDER BY m.end_date ASC
+    `);
+    res.json(rows.rows);
+  } catch (err) {
+    console.error("[sport-center] GET /member-reminders/upcoming error:", err);
+    res.status(500).json({ error: "Gagal memuat data" });
+  }
+});
+
 export default router;

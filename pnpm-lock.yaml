@@ -816,6 +816,9 @@ importers:
       '@workspace/product-templates':
         specifier: workspace:*
         version: link:../../lib/product-templates
+      '@workspace/service-templates':
+        specifier: workspace:*
+        version: link:../../lib/service-templates
       class-variance-authority:
         specifier: 'catalog:'
         version: 0.7.1
