@@ -745,6 +745,29 @@ router.post("/bookings", async (req, res) => {
     const taxRate   = applyTax ? TAX_RATE : 0;
     const taxAmount = applyTax ? Math.round(resolvedTotal * TAX_RATE) / 100 : 0;
 
+    // Auto-upsert customer ke sport_customers (by name+phone per company)
+    let resolvedCustomerId: number | null = customer_id ?? null;
+    if (!resolvedCustomerId && customer_name) {
+      const cIdForCustomer = company_id ?? null;
+      const existingCust = await db.execute(sql`
+        SELECT id FROM sport_customers
+        WHERE (${cIdForCustomer}::int IS NULL OR company_id = ${cIdForCustomer})
+          AND LOWER(name) = LOWER(${customer_name})
+          AND (${customer_phone ?? null}::text IS NULL OR phone = ${customer_phone ?? null})
+        LIMIT 1
+      `);
+      if (existingCust.rows.length > 0) {
+        resolvedCustomerId = (existingCust.rows[0] as any).id as number;
+      } else {
+        const newCust = await db.execute(sql`
+          INSERT INTO sport_customers (company_id, name, phone, email)
+          VALUES (${cIdForCustomer}, ${customer_name}, ${customer_phone ?? null}, ${customerEmail ?? null})
+          RETURNING id
+        `);
+        resolvedCustomerId = (newCust.rows[0] as any).id as number;
+      }
+    }
+
     const bookingNumber = await nextBookingNumber(company_id);
     const r = await db.execute(sql`
       INSERT INTO sport_bookings
@@ -753,7 +776,7 @@ router.post("/bookings", async (req, res) => {
          tax_rate, tax_amount,
          promo_id, promo_code, notes, status, payment_status)
       VALUES
-        (${company_id ?? null}, ${bookingNumber}, ${customer_id ?? null}, ${customer_name}, ${customerEmail ?? null}, ${customer_phone ?? null},
+        (${company_id ?? null}, ${bookingNumber}, ${resolvedCustomerId}, ${customer_name}, ${customerEmail ?? null}, ${customer_phone ?? null},
          ${facility_id ?? null}, ${facility_name}, ${booking_date}, ${start_time}, ${end_time},
          ${duration_hours}, ${base_amount}, ${resolvedDiscount}, ${resolvedTotal},
          ${taxRate}, ${taxAmount},

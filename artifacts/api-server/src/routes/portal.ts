@@ -3121,11 +3121,7 @@ router.get("/me/dashboard-stats", requirePortalAuth, async (req, res) => {
         FROM sales_documents
         WHERE status NOT IN ('cancelled','draft')
           AND invoice_status = 'to_invoice'
-          AND (
-            SELECT id FROM portal_customers pc
-            WHERE LOWER(pc.email) = LOWER(sales_documents.customer_email)
-            LIMIT 1
-          ) = ${customerId}
+          AND LOWER(customer_name) = LOWER((SELECT name FROM portal_customers WHERE id = ${customerId} LIMIT 1))
       `),
       db.execute<{ cnt: string }>(sql`
         SELECT count(*)::text AS cnt FROM logistic_orders
