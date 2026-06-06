@@ -380,5 +380,101 @@ router.patch("/:id", async (req, res) => {
   return res.json(serializeExpense(row));
 });
 
+// ─── Helper: post journal untuk expense / penerimaan lain ────────────────────
+export async function postQuickExpenseJournal(expId: number) {
+  const result = await db.execute(sql.raw(`
+    SELECT e.*, ec.expense_account_id AS cat_expense_account_id
+    FROM expenses e
+    LEFT JOIN expense_categories ec ON ec.id = e.category_id
+    WHERE e.id = ${expId}
+  `));
+  const e = result.rows[0] as any;
+  if (!e) throw new Error("Expense tidak ditemukan");
+
+  const companyId: number | null = Number(e.company_id) || null;
+  const settings = await ensureAccountingSettings(companyId);
+  const txType: string = e.transaction_type ?? "expense";
+  const amountN = Number(e.total ?? 0);
+
+  // Resolve akun beban/pendapatan — dari expense itu sendiri, fallback ke kategori
+  const expenseAccountId: number | null =
+    Number(e.expense_account_id) || Number(e.cat_expense_account_id) || null;
+  if (!expenseAccountId)
+    throw new Error(
+      "Akun beban/pendapatan belum diset. Harap pilih akun COA di form expense atau kategori."
+    );
+
+  // Resolve akun sumber (kas/bank/hutang)
+  //   expense → credit ke sourceAccountId atau payableAccountId (hutang usaha)
+  //   income  → debit ke sourceAccountId (kas/bank penerimaan)
+  const sourceAccountId: number | null =
+    Number(e.source_account_id) || null;
+  const payableAccountId: number | null =
+    Number(e.payable_account_id) || null;
+  const counterAccountId: number | null =
+    sourceAccountId ??
+    payableAccountId ??
+    settings.defaultBankAccountId ??
+    settings.defaultCashAccountId ??
+    null;
+
+  if (!counterAccountId)
+    throw new Error(
+      "Akun kas/bank/hutang belum diset. Harap pilih akun sumber di form expense."
+    );
+
+  // Cari jurnal umum (general) sebagai wadah; fallback ke jurnal apapun
+  let journal = (
+    await db
+      .select()
+      .from(accountingJournalsTable)
+      .where(eq(accountingJournalsTable.type, "general" as any))
+      .limit(1)
+  )[0];
+  if (!journal)
+    journal = (await db.select().from(accountingJournalsTable).limit(1))[0];
+  if (!journal) throw new Error("Jurnal tidak ditemukan di database.");
+
+  const label = e.description ?? e.expense_number;
+  const counterLabel = sourceAccountId
+    ? "Kas/Bank"
+    : payableAccountId
+    ? "Hutang Usaha"
+    : "Kas/Bank";
+
+  const lines =
+    txType === "income"
+      ? [
+          // Penerimaan lain: Debit Kas/Bank → Credit Pendapatan
+          { accountId: counterAccountId, debit: amountN, credit: 0, description: `Penerimaan — ${label}` },
+          { accountId: expenseAccountId, debit: 0, credit: amountN, description: label },
+        ]
+      : [
+          // Expense biasa: Debit Beban → Credit Kas/Bank atau Hutang
+          { accountId: expenseAccountId, debit: amountN, credit: 0, description: label },
+          { accountId: counterAccountId, debit: 0, credit: amountN, description: counterLabel },
+        ];
+
+  const entry = await postEntry(
+    {
+      journalId: journal.id,
+      date: new Date(String(e.date)),
+      ref: e.expense_number,
+      description: `${e.expense_number} — ${label}`,
+      source: "manual",
+      companyId,
+      lines,
+    },
+    journal.code
+  );
+
+  await db.execute(
+    sql.raw(
+      `UPDATE expenses SET entry_id = ${entry.id}, status = 'active', updated_at = NOW() WHERE id = ${expId}`
+    )
+  );
+  return entry;
+}
+
 // ── Export router ──
 export default router;
