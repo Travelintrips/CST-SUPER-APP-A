@@ -1,14 +1,19 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
-// In dev mode (Vite dev server), prefer the _DEV credentials so the
-// development Supabase project is used instead of production.
+// Only use dev credentials when BOTH URL and anon key are available for dev.
+// Mixing dev URL with prod anon key causes auth failures (different JWT secrets).
 const isDev = import.meta.env.DEV;
+const devUrl = isDev ? (import.meta.env.VITE_SUPABASE_URL_DEV as string | undefined || undefined) : undefined;
+const devAnonKey = isDev ? (import.meta.env.VITE_SUPABASE_ANON_KEY_DEV as string | undefined || undefined) : undefined;
+const useDevCredentials = !!devUrl && !!devAnonKey;
 
-const rawUrl = (isDev ? (import.meta.env.VITE_SUPABASE_URL_DEV || undefined) : undefined)
-  ?? (import.meta.env.VITE_SUPABASE_URL as string | undefined);
+const rawUrl = useDevCredentials
+  ? devUrl
+  : (import.meta.env.VITE_SUPABASE_URL as string | undefined);
 
-const supabaseAnonKey = (isDev ? (import.meta.env.VITE_SUPABASE_ANON_KEY_DEV || undefined) : undefined)
-  ?? (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined);
+const supabaseAnonKey = useDevCredentials
+  ? devAnonKey
+  : (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined);
 
 function normalizeSupabaseUrl(url: string | undefined): string | null {
   if (!url) return null;
