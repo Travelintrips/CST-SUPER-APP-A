@@ -1,0 +1,69 @@
+Tolong audit menyeluruh semua alur Product Template dan Service Template di project ini.
+
+Fokus audit:
+1. Cari semua file, komponen, route, API endpoint, schema, validator, database table/collection, dan handler yang berhubungan dengan:
+   - product template
+   - service template
+   - product form
+   - service form
+   - order form
+   - quotation / penawaran
+   - field seperti product_name, unit_price, quantity, customer_name, customer_phone, shipping_address, service_name, service_price, dan field wajib lainnya
+
+2. Audit alur Product Template dari awal sampai akhir:
+   - tampilan form frontend
+   - nama field input
+   - state/form binding
+   - validasi frontend
+   - payload saat submit
+   - endpoint/backend yang menerima payload
+   - validasi backend
+   - penyimpanan database
+   - response sukses/error
+   - integrasi WhatsApp/WATI/Fonnte jika ada
+
+3. Audit alur Service Template dari awal sampai akhir:
+   - tampilan form frontend
+   - nama field input
+   - state/form binding
+   - validasi frontend
+   - payload saat submit
+   - endpoint/backend yang menerima payload
+   - validasi backend
+   - penyimpanan database
+   - response sukses/error
+   - integrasi WhatsApp/WATI/Fonnte jika ada
+
+4. Cari bug mismatch field, terutama kasus:
+   - backend meminta field wajib tetapi field tidak ada di frontend
+   - frontend memakai nama field berbeda dari backend
+   - field hidden tapi tetap diwajibkan
+   - dropdown/checkbox tidak mengirim value
+   - validasi memakai field lama seperti product_name/unit_price/quantity, padahal form memakai struktur baru
+   - pesan error “Field wajib belum diisi” muncul untuk field yang tidak terlihat di form
+
+5. Buat daftar hasil audit dalam format:
+   - Nama file
+   - Lokasi kode
+   - Masalah ditemukan
+   - Dampak bug
+   - Rekomendasi perbaikan
+
+6. Setelah audit, perbaiki bug yang aman diperbaiki:
+   - samakan nama field frontend dan backend
+   - pastikan semua field wajib benar-benar ada di form
+   - hapus validasi field wajib yang sudah tidak relevan
+   - pastikan payload submit sesuai schema backend
+   - pastikan error message menampilkan nama field yang mudah dimengerti user, bukan nama teknis seperti product_name
+
+7. Jangan mengubah fitur besar atau redesign UI tanpa perlu.
+8. Jangan menghapus integrasi WATI/Fonnte.
+9. Jangan menghapus data atau migration yang berisiko.
+10. Setelah perbaikan, jalankan test/build/lint jika tersedia.
+11. Berikan ringkasan:
+   - file yang diubah
+   - bug yang ditemukan
+   - bug yang diperbaiki
+   - hal yang masih perlu dicek manual
+
+Target utama: error form yang meminta field wajib seperti product_name, unit_price, quantity, dll padahal field tersebut tidak muncul atau tidak sesuai di form harus ditemukan dan diperbaiki.
