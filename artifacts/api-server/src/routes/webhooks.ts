@@ -898,5 +898,74 @@ router.post("/webhook/fonnte", async (req: Request, res: Response) => {
   }
 });
 
+// ── WATI Incoming Webhook ────────────────────────────────────────────────────
+// WATI mengirim pesan masuk ke endpoint ini. Konfigurasi di WATI dashboard → Webhook URL.
+// Format: POST /api/webhook/wati
+router.post("/webhook/wati", async (req: Request, res: Response) => {
+  // Selalu balas 200 dulu agar WATI tidak retry
+  res.sendStatus(200);
+
+  try {
+    const body = req.body as Record<string, unknown>;
+
+    // WATI webhook payload fields (bisa berbeda tergantung versi/paket)
+    const waId: string =
+      String(body.waId ?? body.whatsappId ?? body.from ?? body.sender ?? "").trim();
+    const text: string =
+      String(
+        (body.text as any)?.body ??
+        body.text ??
+        body.message ??
+        body.body ??
+        ""
+      ).trim();
+    const type: string = String(body.type ?? body.messageType ?? "text").toLowerCase();
+    const isGroup = Boolean(body.isGroup);
+    const messageId: string = String(body.id ?? body.messageId ?? "").trim();
+
+    logger.info({ waId, type, isGroup, messageId }, "[wati-webhook] incoming message");
+
+    if (!waId) {
+      logger.warn({ body }, "[wati-webhook] missing waId — skip");
+      return;
+    }
+
+    // Normalisasi nomor pengirim
+    const senderPhone = normalizePhone(waId);
+
+    // Ignore pesan dari grup
+    if (isGroup) {
+      logger.debug({ waId }, "[wati-webhook] group message — skip");
+      return;
+    }
+
+    // Hanya proses pesan teks
+    if (!text || (type !== "text" && type !== "interactive")) {
+      logger.debug({ waId, type }, "[wati-webhook] non-text — skip");
+      return;
+    }
+
+    // Teruskan ke AI intake jika aktif
+    const aiSettings = await getAiIntakeSettings();
+    if (aiSettings.enabled) {
+      const handled = await processWaForAiIntake(senderPhone, text, messageId);
+      if (handled) {
+        logger.info({ senderPhone }, "[wati-webhook] handled by AI intake");
+        return;
+      }
+    }
+
+    // Fallback: forward ke admin group via Fonnte
+    const adminWa = await getAdminWa();
+    if (adminWa) {
+      const forwardMsg = `[WATI Incoming]\n*Dari:* +${senderPhone}\n*Pesan:* ${text}`;
+      await sendWhatsApp(adminWa, forwardMsg, { forceFonnte: true } as any);
+      logger.info({ senderPhone }, "[wati-webhook] forwarded to admin group");
+    }
+  } catch (err) {
+    logger.error({ err }, "[wati-webhook] processing error");
+  }
+});
+
 export { doApproveOrder };
 export default router;

@@ -238,3 +238,71 @@ export async function testWatiConnection(): Promise<{ ok: boolean; error?: strin
     return { ok: false, error: String(err) };
   }
 }
+
+/**
+ * Ambil info akun WATI (nomor WhatsApp & nama).
+ * Strategi:
+ *  1. Cek setting manual wati_phone_number (paling prioritas).
+ *  2. Decode JWT token untuk ekstrak claims tanpa API call tambahan.
+ *  3. Fallback ke GET /api/v1/getBusinessProfile (endpoint resmi WATI).
+ *  4. Fallback ke GET /api/v1/me jika endpoint di atas tidak tersedia.
+ */
+export async function getWatiAccountInfo(): Promise<{ phone?: string; name?: string; source?: string }> {
+  const cfg = await getWatiConfig();
+  if (!cfg) return {};
+
+  // 1. Cek setting manual — paling prioritas
+  const manualPhone = (await getSetting("wati_phone_number", process.env.WATI_PHONE_NUMBER ?? "")).trim();
+  if (manualPhone) {
+    return { phone: manualPhone, source: "manual" };
+  }
+
+  // 2. Decode JWT claims
+  try {
+    const parts = cfg.token.split(".");
+    if (parts.length === 3) {
+      const pad = (s: string) => s + "=".repeat((4 - (s.length % 4)) % 4);
+      const payload = JSON.parse(Buffer.from(pad(parts[1]), "base64").toString("utf-8")) as Record<string, unknown>;
+      const phone =
+        (payload.phone ?? payload.wa_number ?? payload.waNumber ?? payload.phoneNumber ?? payload.number ?? payload.whatsapp_number) as string | undefined;
+      const name =
+        (payload.name ?? payload.displayName ?? payload.account_name ?? payload.clientName ?? payload.sub) as string | undefined;
+      if (phone) return { phone: String(phone), name: name ? String(name) : undefined, source: "jwt" };
+    }
+  } catch { /* malformed token */ }
+
+  // 3. Coba GET /api/v1/getBusinessProfile (endpoint resmi WATI untuk info nomor)
+  try {
+    const res = await fetch(`${cfg.baseUrl}/api/v1/getBusinessProfile`, {
+      headers: { Authorization: `Bearer ${cfg.token}` },
+      signal: AbortSignal.timeout(5000),
+    });
+    if (res.ok) {
+      const body = await res.json() as Record<string, unknown>;
+      // WATI business profile fields
+      const phone = String(
+        body.displayPhoneNumber ?? body.phoneNumber ?? body.phone ?? body.waNumber ?? body.whatsappNumber ?? ""
+      ).replace(/[^0-9]/g, "") || undefined;
+      const name = String(body.name ?? body.businessName ?? body.displayName ?? "").trim() || undefined;
+      if (phone) return { phone, name, source: "getBusinessProfile" };
+    }
+  } catch { /* ignore */ }
+
+  // 4. Fallback ke /api/v1/me
+  try {
+    const res = await fetch(`${cfg.baseUrl}/api/v1/me`, {
+      headers: { Authorization: `Bearer ${cfg.token}` },
+      signal: AbortSignal.timeout(5000),
+    });
+    if (res.ok) {
+      const body = await res.json() as Record<string, unknown>;
+      const phone = String(
+        body.phoneNumber ?? body.phone ?? body.waNumber ?? body.whatsappNumber ?? ""
+      ).replace(/[^0-9]/g, "") || undefined;
+      const name = String(body.name ?? body.displayName ?? body.businessName ?? "").trim() || undefined;
+      if (phone) return { phone, name, source: "me" };
+    }
+  } catch { /* ignore */ }
+
+  return {};
+}

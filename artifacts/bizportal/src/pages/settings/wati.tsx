@@ -1,4 +1,4 @@
-import { useState, Fragment } from "react";
+import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -6,13 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import {
   ArrowLeft, CheckCircle2, XCircle, Loader2, Send, RefreshCw,
   Wifi, WifiOff, MessageCircle, FileText, ChevronDown, ChevronRight,
-  AlertTriangle, Info,
+  AlertTriangle, Info, Phone, Zap, Globe, Copy, CheckCheck,
 } from "lucide-react";
 import { Link } from "wouter";
 import { cn } from "@/lib/utils";
@@ -34,7 +33,7 @@ function StatusBadge({ ok }: { ok: boolean }) {
 
 interface WatiStatus {
   provider: "wati" | "fonnte";
-  wati: { configured: boolean; connected?: boolean; error?: string | null; baseUrl?: string | null };
+  wati: { configured: boolean; connected?: boolean; error?: string | null; baseUrl?: string | null; phone?: string | null; accountName?: string | null; phoneSource?: string | null };
   fonnte: { configured: boolean; note?: string };
 }
 
@@ -46,6 +45,25 @@ interface WatiTemplate {
   category?: string;
   language?: string;
   body?: string;
+}
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = () => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+  return (
+    <button
+      onClick={copy}
+      className="ml-1 p-0.5 rounded hover:bg-muted/60 text-muted-foreground hover:text-foreground transition-colors"
+      title="Salin"
+    >
+      {copied ? <CheckCheck size={12} className="text-emerald-400" /> : <Copy size={12} />}
+    </button>
+  );
 }
 
 export default function WatiSettingsPage() {
@@ -66,10 +84,13 @@ export default function WatiSettingsPage() {
   const [testPhone, setTestPhone] = useState("");
   const [testMessage, setTestMessage] = useState("Halo! Ini adalah pesan test dari BizPortal via WATI. 👋");
   const [expandedTpl, setExpandedTpl] = useState<string | null>(null);
-
+  const [manualPhone, setManualPhone] = useState("");
+  const [savingPhone, setSavingPhone] = useState(false);
   const [tplPhone, setTplPhone] = useState("");
   const [tplName, setTplName] = useState("");
   const [tplParams, setTplParams] = useState<{ name: string; value: string }[]>([{ name: "", value: "" }]);
+
+  const webhookUrl = `${window.location.origin}/api/webhook/wati`;
 
   const testMut = useMutation({
     mutationFn: () =>
@@ -84,6 +105,17 @@ export default function WatiSettingsPage() {
       }),
     onSuccess: () => toast({ title: "Pesan test berhasil dikirim!", description: `Ke: ${testPhone}` }),
     onError: (e: Error) => toast({ title: e.message, variant: "destructive" }),
+  });
+
+  const selfPingMut = useMutation({
+    mutationFn: () =>
+      apiFetch("/wati/self-ping", { method: "POST" }).then(async (r) => {
+        const j = await r.json();
+        if (!r.ok) throw new Error((j.message ?? "Gagal") + (j.hint ? `\n${j.hint}` : ""));
+        return j;
+      }),
+    onSuccess: (d) => toast({ title: "Self-ping berhasil!", description: `Pesan dikirim ke +${d.sentTo}` }),
+    onError: (e: Error) => toast({ title: "Self-ping gagal", description: e.message, variant: "destructive" }),
   });
 
   const tplMut = useMutation({
@@ -104,6 +136,40 @@ export default function WatiSettingsPage() {
     onSuccess: () => toast({ title: "Template berhasil dikirim!", description: `Template: ${tplName}` }),
     onError: (e: Error) => toast({ title: e.message, variant: "destructive" }),
   });
+
+  const saveManualPhone = async () => {
+    const phone = manualPhone.replace(/\D/g, "").replace(/^0/, "62");
+    if (!phone) return;
+    setSavingPhone(true);
+    try {
+      const res = await apiFetch("/settings/secrets/wati_phone_number", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ value: phone }),
+      });
+      if (res.ok) {
+        toast({ title: "Nomor berhasil disimpan", description: `+${phone}` });
+        setManualPhone("");
+        refetchStatus();
+      } else {
+        const j = await res.json().catch(() => ({}));
+        toast({ title: "Gagal menyimpan", description: (j as any).message ?? "Error", variant: "destructive" });
+      }
+    } finally {
+      setSavingPhone(false);
+    }
+  };
+
+  const clearManualPhone = async () => {
+    setSavingPhone(true);
+    try {
+      await apiFetch("/settings/secrets/wati_phone_number", { method: "DELETE" });
+      toast({ title: "Nomor manual dihapus", description: "Sistem akan coba deteksi otomatis" });
+      refetchStatus();
+    } finally {
+      setSavingPhone(false);
+    }
+  };
 
   const templates = tplData?.templates ?? [];
   const watiOk = status?.wati?.connected === true;
@@ -129,14 +195,67 @@ export default function WatiSettingsPage() {
           </div>
         </div>
 
+        {/* Setup Guide jika belum dikonfigurasi */}
+        {!status?.wati?.configured && !statusLoading && (
+          <Card className="border-amber-700/40 bg-amber-950/10">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm flex items-center gap-2 text-amber-300">
+                <Info size={14} /> Cara Setup WATI
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="text-xs text-muted-foreground space-y-3">
+              <ol className="list-decimal list-inside space-y-2 text-amber-200/80">
+                <li>
+                  Login ke{" "}
+                  <a href="https://app.wati.io" target="_blank" rel="noreferrer" className="underline text-amber-400">
+                    app.wati.io
+                  </a>{" "}
+                  → API Docs / Developer Settings → copy <strong>API Access Token</strong> dan <strong>Base URL</strong>
+                </li>
+                <li>
+                  Buka <Link href="/settings/app-secrets" className="underline text-amber-400">Settings → App Secrets</Link> → isi:
+                  <ul className="list-disc list-inside ml-4 mt-1 space-y-1 text-amber-300/70">
+                    <li><code className="bg-amber-900/40 px-1 rounded">WATI Base URL</code> — contoh: <code>https://live-server-12345.wati.io</code></li>
+                    <li><code className="bg-amber-900/40 px-1 rounded">WATI API Token</code> — token Bearer dari dashboard</li>
+                  </ul>
+                </li>
+                <li>
+                  Kembali ke halaman ini → klik <strong>Refresh</strong>
+                </li>
+                <li>
+                  Di dashboard WATI → Settings → Webhook → masukkan URL webhook berikut:
+                  <div className="mt-1 flex items-center gap-1 bg-muted/20 border rounded px-2 py-1 font-mono text-[11px]">
+                    <span className="flex-1 truncate">{webhookUrl}</span>
+                    <CopyButton text={webhookUrl} />
+                  </div>
+                </li>
+              </ol>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Status Card */}
         <Card>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm">Status Koneksi</CardTitle>
-              <Button variant="ghost" size="sm" onClick={() => refetchStatus()} className="gap-1 text-xs">
-                <RefreshCw size={12} /> Refresh
-              </Button>
+              <div className="flex items-center gap-2">
+                {watiOk && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1 text-xs h-7 border-emerald-700/50 text-emerald-400 hover:bg-emerald-950/40"
+                    onClick={() => selfPingMut.mutate()}
+                    disabled={selfPingMut.isPending}
+                  >
+                    {selfPingMut.isPending ? <Loader2 size={11} className="animate-spin" /> : <Zap size={11} />}
+                    Self-Ping
+                  </Button>
+                )}
+                <Button variant="ghost" size="sm" onClick={() => refetchStatus()} className="gap-1 text-xs">
+                  <RefreshCw size={12} /> Refresh
+                </Button>
+              </div>
             </div>
           </CardHeader>
           <CardContent>
@@ -165,6 +284,108 @@ export default function WatiSettingsPage() {
                   {status?.wati?.configured && <StatusBadge ok={watiOk} />}
                 </div>
 
+                {/* Nomor WhatsApp terhubung */}
+                {watiOk && (
+                  <div className="rounded-lg border bg-emerald-950/20 border-emerald-800/40 p-3 flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-emerald-600/20 border border-emerald-600/40 flex items-center justify-center shrink-0">
+                      <Phone size={14} className="text-emerald-400" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wide">Nomor WhatsApp Terhubung</p>
+                      {status?.wati?.phone ? (
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <p className="text-sm font-bold text-emerald-300 font-mono tracking-wide">
+                            +{status.wati.phone.replace(/^\+/, "")}
+                          </p>
+                          {status.wati.phoneSource === "manual" ? (
+                            <span className="text-[10px] bg-amber-900/40 border border-amber-700/50 text-amber-400 rounded px-1">manual</span>
+                          ) : status.wati.phoneSource ? (
+                            <span className="text-[10px] bg-emerald-900/40 border border-emerald-700/50 text-emerald-400 rounded px-1">auto ({status.wati.phoneSource})</span>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-amber-400 mt-0.5">
+                          Nomor tidak tersedia — isi manual di bawah atau cek{" "}
+                          <a href="https://app.wati.io" target="_blank" rel="noreferrer" className="underline">
+                            app.wati.io
+                          </a>
+                        </p>
+                      )}
+                      {status?.wati?.accountName && (
+                        <p className="text-[11px] text-muted-foreground mt-0.5">{status.wati.accountName}</p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {status?.wati?.phone && status.wati.phoneSource === "manual" && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-2 text-[10px] text-red-400 hover:text-red-300"
+                          onClick={clearManualPhone}
+                          disabled={savingPhone}
+                        >
+                          Hapus
+                        </Button>
+                      )}
+                      <Badge variant="outline" className="text-xs border-emerald-600/50 text-emerald-400">
+                        Aktif
+                      </Badge>
+                    </div>
+                  </div>
+                )}
+
+                {/* Input nomor manual jika belum ada nomor */}
+                {watiOk && !status?.wati?.phone && (
+                  <div className="rounded-lg border border-amber-700/40 bg-amber-950/20 p-3 space-y-2">
+                    <p className="text-xs text-amber-300 font-medium flex items-center gap-1.5">
+                      <Phone size={12} /> Isi Nomor WA WATI Secara Manual
+                    </p>
+                    <p className="text-[11px] text-muted-foreground">
+                      Nomor tidak terdeteksi otomatis dari API WATI. Masukkan nomor yang terdaftar di WATI (format: 628xxx).
+                    </p>
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="628111167596"
+                        value={manualPhone}
+                        onChange={(e) => setManualPhone(e.target.value)}
+                        className="text-sm h-8 font-mono flex-1"
+                      />
+                      <Button
+                        size="sm"
+                        className="h-8 px-3 text-xs"
+                        disabled={!manualPhone.trim() || savingPhone}
+                        onClick={saveManualPhone}
+                      >
+                        {savingPhone ? <Loader2 size={12} className="animate-spin" /> : "Simpan"}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Ganti nomor manual jika sudah ada */}
+                {watiOk && status?.wati?.phone && status.wati.phoneSource === "manual" && (
+                  <div className="rounded-lg border border-slate-700/40 bg-slate-900/20 p-3 space-y-2">
+                    <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wide">Ganti Nomor Manual</p>
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="628111167596"
+                        value={manualPhone}
+                        onChange={(e) => setManualPhone(e.target.value)}
+                        className="text-sm h-8 font-mono flex-1"
+                      />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 px-3 text-xs"
+                        disabled={!manualPhone.trim() || savingPhone}
+                        onClick={saveManualPhone}
+                      >
+                        {savingPhone ? <Loader2 size={12} className="animate-spin" /> : "Simpan"}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
                 {/* Error */}
                 {status?.wati?.error && (
                   <div className="flex items-start gap-2 rounded-md border border-red-600/50 bg-red-900/20 px-3 py-2 text-sm text-red-300">
@@ -180,8 +401,9 @@ export default function WatiSettingsPage() {
                     <div>
                       <p className="font-medium">WATI belum dikonfigurasi</p>
                       <p className="text-xs mt-1 text-amber-400">
-                        Set environment variable <code className="bg-amber-900/40 px-1 rounded">WATI_API_TOKEN</code> dan{" "}
-                        <code className="bg-amber-900/40 px-1 rounded">WATI_BASE_URL</code> di Replit Secrets untuk mengaktifkan WATI.
+                        Isi <code className="bg-amber-900/40 px-1 rounded">WATI Base URL</code> dan{" "}
+                        <code className="bg-amber-900/40 px-1 rounded">WATI API Token</code> di{" "}
+                        <Link href="/settings/app-secrets" className="underline">App Secrets</Link>.
                         Saat ini menggunakan Fonnte.
                       </p>
                     </div>
@@ -227,6 +449,32 @@ export default function WatiSettingsPage() {
           </CardContent>
         </Card>
 
+        {/* Webhook URL Card */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Globe size={14} className="text-blue-400" />
+              Webhook URL (Terima Pesan Masuk)
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Daftarkan URL ini di dashboard WATI → Settings → Webhook agar pesan masuk diteruskan ke BizPortal.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex items-center gap-2 bg-muted/20 border rounded px-3 py-2 font-mono text-xs">
+              <span className="flex-1 break-all">{webhookUrl}</span>
+              <CopyButton text={webhookUrl} />
+            </div>
+            <div className="text-[11px] text-muted-foreground space-y-1">
+              <p>Pesan masuk via WATI akan:</p>
+              <ul className="list-disc list-inside ml-2 space-y-0.5">
+                <li>Diproses oleh <strong>AI Order Intake</strong> jika aktif</li>
+                <li>Diteruskan ke <strong>grup WA admin</strong> via Fonnte jika AI intake tidak aktif</li>
+              </ul>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Test Kirim (Session) */}
         {status?.wati?.configured && (
           <Card>
@@ -236,13 +484,13 @@ export default function WatiSettingsPage() {
                 Test Kirim Pesan (Session Message)
               </CardTitle>
               <CardDescription className="text-xs">
-                Kirim pesan bebas. Hanya berfungsi jika pelanggan sudah menghubungi dalam 24 jam terakhir.
+                Kirim pesan bebas. Hanya berfungsi jika nomor tujuan sudah menghubungi WATI dalam 24 jam terakhir.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Nomor WhatsApp</Label>
+                  <Label className="text-xs">Nomor WhatsApp Tujuan</Label>
                   <Input
                     placeholder="628xxxxxxxxxx"
                     value={testPhone}
@@ -259,15 +507,31 @@ export default function WatiSettingsPage() {
                   className="text-sm"
                 />
               </div>
-              <Button
-                size="sm"
-                disabled={!testPhone.trim() || !testMessage.trim() || testMut.isPending || !watiOk}
-                onClick={() => testMut.mutate()}
-                className="gap-1"
-              >
-                {testMut.isPending ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
-                Kirim Test
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  disabled={!testPhone.trim() || !testMessage.trim() || testMut.isPending || !watiOk}
+                  onClick={() => testMut.mutate()}
+                  className="gap-1"
+                >
+                  {testMut.isPending ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+                  Kirim Test
+                </Button>
+                {watiOk && status?.wati?.phone && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={selfPingMut.isPending}
+                    onClick={() => {
+                      setTestPhone(status.wati.phone ?? "");
+                      setTestMessage("[BizPortal Test] Pesan test ke nomor WATI sendiri 🔔");
+                    }}
+                    className="gap-1 text-xs"
+                  >
+                    <Zap size={12} /> Isi nomor WATI sendiri
+                  </Button>
+                )}
+              </div>
               {!watiOk && status?.wati?.configured && (
                 <p className="text-xs text-amber-400">Koneksi WATI belum aktif — periksa token dan base URL.</p>
               )}
@@ -309,7 +573,6 @@ export default function WatiSettingsPage() {
                 </div>
               </div>
 
-              {/* Params */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Label className="text-xs">Parameter Template</Label>
@@ -389,87 +652,71 @@ export default function WatiSettingsPage() {
             </CardHeader>
             <CardContent>
               {tplLoading ? (
-                <div className="flex items-center gap-2 text-muted-foreground text-sm py-4">
+                <div className="flex items-center gap-2 text-muted-foreground text-sm">
                   <Loader2 size={14} className="animate-spin" /> Memuat template...
                 </div>
               ) : templates.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-4 text-center">Tidak ada template ditemukan.</p>
+                <p className="text-sm text-muted-foreground">Tidak ada template ditemukan.</p>
               ) : (
-                <div className="rounded-md border overflow-hidden">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="text-xs">Nama Template</TableHead>
-                        <TableHead className="text-xs">Kategori</TableHead>
-                        <TableHead className="text-xs">Bahasa</TableHead>
-                        <TableHead className="text-xs">Status</TableHead>
-                        <TableHead className="text-xs w-10"></TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {templates.map((t, idx) => {
-                        const name = t.elementName ?? t.templateName ?? `template-${idx}`;
-                        const isExpanded = expandedTpl === name;
-                        const cat = typeof t.category === "object" ? JSON.stringify(t.category) : (t.category ?? "—");
-                        const lang = typeof t.language === "object" ? JSON.stringify(t.language) : (t.language ?? "—");
-                        const status = typeof t.status === "object" ? JSON.stringify(t.status) : (t.status ?? "—");
-                        const bodyText = typeof t.body === "object" ? JSON.stringify(t.body, null, 2) : (t.body ?? "");
-                        return (
-                          <Fragment key={name}>
-                            <TableRow className="cursor-pointer" onClick={() => setExpandedTpl(isExpanded ? null : name)}>
-                              <TableCell className="text-xs font-mono">{name}</TableCell>
-                              <TableCell className="text-xs">{cat}</TableCell>
-                              <TableCell className="text-xs">{lang}</TableCell>
-                              <TableCell className="text-xs">
-                                <Badge
-                                  variant="outline"
-                                  className={cn("text-xs", status === "APPROVED"
-                                    ? "border-emerald-600 text-emerald-400"
-                                    : status === "PENDING"
-                                    ? "border-amber-600 text-amber-400"
-                                    : "border-red-600 text-red-400"
-                                  )}
-                                >
-                                  {status}
-                                </Badge>
-                              </TableCell>
-                              <TableCell>
-                                {isExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="text-xs">Nama</TableHead>
+                      <TableHead className="text-xs">Status</TableHead>
+                      <TableHead className="text-xs">Kategori</TableHead>
+                      <TableHead className="text-xs">Bahasa</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {templates.map((tpl, i) => {
+                      const key = tpl.elementName ?? tpl.templateName ?? String(i);
+                      const isExpanded = expandedTpl === key;
+                      return (
+                        <>
+                          <TableRow
+                            key={key}
+                            className="cursor-pointer hover:bg-muted/10"
+                            onClick={() => setExpandedTpl(isExpanded ? null : key)}
+                          >
+                            <TableCell className="text-xs font-mono">
+                              <div className="flex items-center gap-1">
+                                {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                                {tpl.elementName ?? tpl.templateName ?? "-"}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <Badge
+                                className={cn(
+                                  "text-[10px]",
+                                  tpl.status === "APPROVED"
+                                    ? "bg-emerald-600/20 text-emerald-400 border-emerald-600"
+                                    : tpl.status === "REJECTED"
+                                    ? "bg-red-600/20 text-red-400 border-red-600"
+                                    : "bg-amber-600/20 text-amber-400 border-amber-600"
+                                )}
+                              >
+                                {tpl.status ?? "—"}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground">{tpl.category ?? "—"}</TableCell>
+                            <TableCell className="text-xs text-muted-foreground">{tpl.language ?? "—"}</TableCell>
+                          </TableRow>
+                          {isExpanded && tpl.body && (
+                            <TableRow key={`${key}-body`} className="bg-muted/5">
+                              <TableCell colSpan={4} className="text-xs text-muted-foreground py-2 px-4">
+                                <pre className="whitespace-pre-wrap font-sans text-[11px]">{tpl.body}</pre>
                               </TableCell>
                             </TableRow>
-                            {isExpanded && bodyText && (
-                              <TableRow>
-                                <TableCell colSpan={5} className="bg-muted/10">
-                                  <pre className="text-xs text-muted-foreground whitespace-pre-wrap font-mono p-2 rounded">
-                                    {bodyText}
-                                  </pre>
-                                </TableCell>
-                              </TableRow>
-                            )}
-                          </Fragment>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-                </div>
+                          )}
+                        </>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
               )}
             </CardContent>
           </Card>
         )}
-
-        {/* Catatan Teknis */}
-        <Card className="border-dashed">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs text-muted-foreground">Catatan Teknis</CardTitle>
-          </CardHeader>
-          <CardContent className="text-xs text-muted-foreground space-y-1.5">
-            <p>• <strong className="text-foreground">WATI</strong> digunakan untuk pesan ke nomor personal (individual WhatsApp Business).</p>
-            <p>• <strong className="text-foreground">Fonnte</strong> tetap digunakan untuk notifikasi ke <em>grup WA admin</em> (WATI tidak support grup).</p>
-            <p>• <strong className="text-foreground">Session message</strong> (pesan bebas) hanya bisa dikirim dalam 24 jam setelah pelanggan menghubungi.</p>
-            <p>• <strong className="text-foreground">Template message (HSM)</strong> bisa dikirim kapan saja — template harus sudah approved di dashboard WATI.</p>
-            <p>• Semua pengiriman tercatat di <Link href="/settings/wa-notification-logs" className="underline text-primary">WA Notification Logs</Link>.</p>
-          </CardContent>
-        </Card>
       </div>
     </AppShell>
   );

@@ -192,6 +192,14 @@ export const SECRETS_CATALOG: SecretDef[] = [
     sensitive: true,
     group: "WhatsApp",
   },
+  {
+    key: "wati_phone_number",
+    label: "Nomor WhatsApp WATI",
+    description: "Nomor WA yang terdaftar di WATI (format: 628xxx). Diisi manual jika tidak terdeteksi otomatis.",
+    envFallback: "WATI_PHONE_NUMBER",
+    sensitive: false,
+    group: "WhatsApp",
+  },
 ];
 
 export function maskSecret(value: string): string {

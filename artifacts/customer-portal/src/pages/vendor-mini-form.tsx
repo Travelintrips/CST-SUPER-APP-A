@@ -465,11 +465,18 @@ export default function VendorMiniFormPage() {
         .map(f => f.label);
       if (missing.length) { setSubmitError(`Field wajib belum diisi: ${missing.join(", ")}`); return; }
     } else if (meta?.schema) {
+      const phase = meta.phase ?? "quotation";
       // Ketika productTemplate ada, field product_name / unit_price / unit
       // dihandle oleh template — tidak perlu divalidasi dari schema umum
       const tplManagedKeys = meta?.productTemplate ? ["product_name", "unit_price", "unit"] : [];
       const missing = meta.schema.fields
-        .filter(f => f.required && !tplManagedKeys.includes(f.key) && !values[f.key]?.trim())
+        .filter(f =>
+          f.required &&
+          !f.isUpload &&
+          !tplManagedKeys.includes(f.key) &&
+          (!f.section || f.section === phase || f.section === "both") &&
+          !values[f.key]?.trim()
+        )
         .map(f => f.label);
       if (missing.length) { setSubmitError(`Field wajib belum diisi: ${missing.join(", ")}`); return; }
     }
