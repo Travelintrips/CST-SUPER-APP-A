@@ -21,6 +21,7 @@ import {
   Plane, Download, Upload, MapPin, Home,
   Package, Warehouse, Truck, FileCheck, Shield, FileText,
   Plus, Trash2, Edit2, Calculator, ShoppingCart, User, CheckCircle2,
+  CreditCard, Banknote, Building2, Receipt,
 } from "lucide-react";
 import { CityAutocompleteInput } from "@/components/ui/city-autocomplete";
 
@@ -100,10 +101,11 @@ const STEPS = [
   "Pilih Layanan",
   "Ringkasan",
   "Data Pemesan",
+  "Pembayaran",
   "Konfirmasi",
 ];
 
-type Step = 0 | 1 | 2 | 3 | 4;
+type Step = 0 | 1 | 2 | 3 | 4 | 5;
 
 interface CalcState {
   [key: string]: string;
@@ -614,7 +616,7 @@ export default function BookPage() {
   });
   const [estimation, setEstimation] = useState<{ estimated_price: number | null; disclaimer: string } | null>(null);
   const [estimating, setEstimating] = useState(false);
-  const [paymentType, setPaymentType] = useState<"transfer" | "gateway" | "">("");
+  const [paymentType, setPaymentType] = useState<"transfer" | "gateway" | "cod" | "invoice" | "">("");
   const [transferTerm, setTransferTerm] = useState<"full" | "termin" | "dp" | "">("");
   const [paymentTerm, setPaymentTerm] = useState<"net7" | "net14" | "net30" | "net60" | "">("");
   const [dpNext, setDpNext] = useState<"lunas-delivery" | "lunas-net30" | "lunas-net60" | "cicil" | "">("");
@@ -942,13 +944,14 @@ export default function BookPage() {
         etd: customerForm.etd || undefined,
         eta: customerForm.eta || undefined,
       }) as Record<string, unknown>),
-      paymentMethod: paymentType === "gateway"
-        ? "payment_gateway"
-        : paymentType === "transfer"
-        ? "transfer"
+      paymentMethod: paymentType === "gateway" ? "payment_gateway"
+        : paymentType === "transfer" ? "transfer"
+        : paymentType === "cod" ? "cod"
+        : paymentType === "invoice" ? "invoice"
         : null,
-      paymentType: paymentType === "gateway"
-        ? "payment_gateway"
+      paymentType: paymentType === "gateway" ? "payment_gateway"
+        : paymentType === "cod" ? "cod"
+        : paymentType === "invoice" ? (paymentTerm ? `invoice:${paymentTerm}` : "invoice")
         : paymentType === "transfer"
         ? transferTerm === "full"
           ? "transfer:full"
@@ -1818,8 +1821,226 @@ export default function BookPage() {
       );
     }
 
-    // ── Step 4: Konfirmasi & Review ──────────────────────────────────────
+    // ── Step 4: Pembayaran ───────────────────────────────────────────────
     if (step === 4) {
+      const hasProductOnly = cartItems.every(c => c.calculatorType === "product") && cartItems.length > 0;
+      const shippingEstimate = hasProductOnly && productShipping?.estimate ? productShipping.estimate : 0;
+      const totalWithShipping = grandTotal + shippingEstimate;
+
+      const PAYMENT_METHODS = [
+        {
+          id: "gateway" as const,
+          icon: <CreditCard className="w-5 h-5 text-emerald-600" />,
+          label: "Payment Gateway",
+          desc: "Bayar online sekarang",
+          badge: "Cepat & Aman",
+          badgeColor: "bg-emerald-100 text-emerald-700",
+        },
+        {
+          id: "transfer" as const,
+          icon: <Building2 className="w-5 h-5 text-blue-600" />,
+          label: "Transfer Bank",
+          desc: "Transfer ke rekening kami",
+          badge: null,
+          badgeColor: "",
+        },
+        {
+          id: "cod" as const,
+          icon: <Banknote className="w-5 h-5 text-orange-600" />,
+          label: "COD / Tunai",
+          desc: "Bayar saat pengiriman",
+          badge: null,
+          badgeColor: "",
+        },
+        {
+          id: "invoice" as const,
+          icon: <Receipt className="w-5 h-5 text-purple-600" />,
+          label: "Invoice / Net Terms",
+          desc: "Tagihan setelah selesai",
+          badge: null,
+          badgeColor: "",
+        },
+      ];
+
+      const TRANSFER_TERMS = [
+        { id: "full" as const, label: "Pembayaran Penuh", desc: "Bayar seluruh tagihan di muka" },
+        { id: "dp"   as const, label: "DP + Pelunasan",  desc: "Down payment, sisa dibayar kemudian" },
+        { id: "termin" as const, label: "Termin / Cicilan", desc: "Bayar dalam beberapa tahap" },
+      ];
+      const NET_TERMS = [
+        { id: "net7" as const, label: "Net 7 hari" },
+        { id: "net14" as const, label: "Net 14 hari" },
+        { id: "net30" as const, label: "Net 30 hari" },
+        { id: "net60" as const, label: "Net 60 hari" },
+      ];
+      const DP_TERMS = [
+        { id: "lunas-delivery" as const, label: "Lunas saat pengiriman" },
+        { id: "lunas-net30"   as const, label: "Lunas Net 30 hari" },
+        { id: "lunas-net60"   as const, label: "Lunas Net 60 hari" },
+        { id: "cicil"         as const, label: "Cicilan" },
+      ];
+
+      return (
+        <div className="space-y-5">
+          <div>
+            <h2 className="text-xl font-bold text-foreground mb-1">Metode Pembayaran</h2>
+            <p className="text-sm text-muted-foreground">Pilih cara pembayaran yang Anda inginkan</p>
+          </div>
+
+          {/* Method cards */}
+          <div className="grid grid-cols-2 gap-3">
+            {PAYMENT_METHODS.map(m => (
+              <button
+                key={m.id}
+                onClick={() => {
+                  setPaymentType(m.id);
+                  setTransferTerm("");
+                  setPaymentTerm("");
+                  setDpNext("");
+                }}
+                className={`rounded-xl border-2 p-4 flex flex-col gap-2.5 text-left transition-all ${
+                  paymentType === m.id
+                    ? "border-accent bg-accent/5 shadow-sm"
+                    : "border-border hover:border-accent/40 hover:bg-muted/30"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-1">
+                  <div className="w-10 h-10 rounded-xl bg-muted flex items-center justify-center shrink-0">
+                    {m.icon}
+                  </div>
+                  {paymentType === m.id && (
+                    <div className="w-4 h-4 rounded-full bg-accent flex items-center justify-center shrink-0 mt-0.5">
+                      <div className="w-2 h-2 rounded-full bg-accent-foreground" />
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <p className="text-sm font-bold text-foreground leading-tight">{m.label}</p>
+                    {m.badge && (
+                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${m.badgeColor}`}>
+                        {m.badge}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">{m.desc}</p>
+                </div>
+              </button>
+            ))}
+          </div>
+
+          {/* Transfer Bank sub-options */}
+          {paymentType === "transfer" && (
+            <div className="rounded-xl border border-blue-200 bg-blue-50/50 overflow-hidden">
+              <div className="px-4 py-2.5 bg-blue-100/60 border-b border-blue-200">
+                <p className="text-sm font-semibold text-blue-900">Pilih Skema Transfer</p>
+              </div>
+              <div className="p-4 space-y-2">
+                {TRANSFER_TERMS.map(t => (
+                  <button
+                    key={t.id}
+                    onClick={() => { setTransferTerm(t.id); setPaymentTerm(""); setDpNext(""); }}
+                    className={`w-full rounded-lg border px-4 py-3 flex items-center gap-3 text-left transition-all ${
+                      transferTerm === t.id ? "border-blue-400 bg-white shadow-sm" : "border-blue-200 hover:bg-white/80"
+                    }`}
+                  >
+                    <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                      transferTerm === t.id ? "border-blue-500" : "border-slate-400"
+                    }`}>
+                      {transferTerm === t.id && <div className="w-2 h-2 rounded-full bg-blue-500" />}
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">{t.label}</p>
+                      <p className="text-xs text-muted-foreground">{t.desc}</p>
+                    </div>
+                  </button>
+                ))}
+
+                {/* Termin sub-options */}
+                {transferTerm === "termin" && (
+                  <div className="ml-7 pt-1 grid grid-cols-2 gap-2">
+                    {NET_TERMS.map(t => (
+                      <button
+                        key={t.id}
+                        onClick={() => setPaymentTerm(t.id)}
+                        className={`rounded-lg border px-3 py-2 text-xs font-semibold transition-all ${
+                          paymentTerm === t.id
+                            ? "border-blue-500 bg-blue-500 text-white"
+                            : "border-blue-200 hover:bg-blue-100 text-foreground"
+                        }`}
+                      >{t.label}</button>
+                    ))}
+                  </div>
+                )}
+
+                {/* DP sub-options */}
+                {transferTerm === "dp" && (
+                  <div className="ml-7 pt-1 space-y-1.5">
+                    <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide">Jadwal Pelunasan:</p>
+                    {DP_TERMS.map(d => (
+                      <button
+                        key={d.id}
+                        onClick={() => setDpNext(d.id)}
+                        className={`w-full rounded-lg border px-3 py-2 text-xs font-medium text-left transition-all ${
+                          dpNext === d.id
+                            ? "border-blue-400 bg-white shadow-sm font-semibold text-blue-900"
+                            : "border-blue-200 hover:bg-white/80"
+                        }`}
+                      >{d.label}</button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* COD info */}
+          {paymentType === "cod" && (
+            <div className="rounded-xl border border-orange-200 bg-orange-50 p-4 space-y-2">
+              <div className="flex items-center gap-2">
+                <Banknote className="w-4 h-4 text-orange-600 shrink-0" />
+                <p className="font-semibold text-sm text-orange-900">Bayar Saat Pengiriman</p>
+              </div>
+              <p className="text-xs text-orange-700">
+                Siapkan pembayaran tunai atau transfer instan saat kurir tiba. Nominal final dikonfirmasi tim kami setelah pesanan diproses.
+              </p>
+            </div>
+          )}
+
+          {/* Invoice / Net Terms */}
+          {paymentType === "invoice" && (
+            <div className="rounded-xl border border-purple-200 bg-purple-50/50 overflow-hidden">
+              <div className="px-4 py-2.5 bg-purple-100/60 border-b border-purple-200">
+                <p className="text-sm font-semibold text-purple-900">Pilih Jangka Waktu Invoice</p>
+              </div>
+              <div className="p-4 grid grid-cols-2 gap-2">
+                {NET_TERMS.map(t => (
+                  <button
+                    key={t.id}
+                    onClick={() => setPaymentTerm(t.id)}
+                    className={`rounded-lg border px-3 py-2.5 text-sm font-semibold transition-all ${
+                      paymentTerm === t.id
+                        ? "border-purple-500 bg-purple-500 text-white"
+                        : "border-purple-200 hover:bg-purple-100 text-foreground"
+                    }`}
+                  >{t.label}</button>
+                ))}
+              </div>
+              <p className="px-4 pb-3 text-xs text-purple-700">Tagihan dikirim ke email setelah pekerjaan selesai. Tersedia untuk pelanggan dengan credit terms yang disetujui.</p>
+            </div>
+          )}
+
+          {/* Total summary */}
+          <div className="rounded-xl border border-border bg-muted/30 px-4 py-3 flex justify-between items-center">
+            <span className="font-semibold text-sm text-foreground">Total Estimasi</span>
+            <span className="font-bold text-accent text-base">{formatCurrency(totalWithShipping)}</span>
+          </div>
+        </div>
+      );
+    }
+
+    // ── Step 5: Konfirmasi & Review ──────────────────────────────────────
+    if (step === 5) {
       const hasProductOnly = cartItems.every(c => c.calculatorType === "product") && cartItems.length > 0;
 
       const SHIPPING_LABEL: Record<string, string> = {
@@ -2018,7 +2239,39 @@ export default function BookPage() {
             </div>
           </div>
 
-          {/* Section 4 — Total */}
+          {/* Section 4 — Metode Pembayaran (read-only summary) */}
+          {paymentType && (
+            <div className="rounded-xl border border-border overflow-hidden">
+              <div className="px-4 py-2.5 bg-muted/50 border-b border-border flex items-center gap-2">
+                <CreditCard className="w-4 h-4 text-muted-foreground" />
+                <span className="text-sm font-semibold">Metode Pembayaran</span>
+                <Button variant="ghost" size="sm" className="ml-auto h-7 text-xs gap-1 text-accent" onClick={() => setStep(4)}>
+                  <Edit2 className="w-3 h-3" /> Ubah
+                </Button>
+              </div>
+              <div className="p-4 space-y-1">
+                <p className="text-sm font-semibold text-foreground">
+                  {paymentType === "gateway" ? "💳 Payment Gateway"
+                    : paymentType === "transfer" ? "🏦 Transfer Bank"
+                    : paymentType === "cod" ? "💵 COD / Tunai"
+                    : paymentType === "invoice" ? "📄 Invoice / Net Terms"
+                    : paymentType}
+                </p>
+                {paymentType === "transfer" && transferTerm && (
+                  <p className="text-xs text-muted-foreground">
+                    {transferTerm === "full" ? "Pembayaran Penuh"
+                      : transferTerm === "dp" ? `DP + Pelunasan${dpNext ? ` (${dpNext.replace(/-/g," ")})` : ""}`
+                      : transferTerm === "termin" ? `Termin${paymentTerm ? ` ${paymentTerm}` : ""}` : ""}
+                  </p>
+                )}
+                {paymentType === "invoice" && paymentTerm && (
+                  <p className="text-xs text-muted-foreground">Jatuh tempo: {paymentTerm.replace("net","Net ").replace("7","7 hari").replace("14","14 hari").replace("30","30 hari").replace("60","60 hari")}</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Section 5 — Total */}
           <div className="rounded-xl border border-accent/30 bg-accent/5 px-4 py-4 space-y-2">
             {grandTotal > 0 && (
               <div className="flex justify-between text-sm">
@@ -2053,7 +2306,12 @@ export default function BookPage() {
     if (step === 1) return false;
     if (step === 2) return cartItems.length > 0;
     if (step === 3) return !!(customerForm.customerName && customerForm.email);
-    if (step === 4) return !!(customerForm.customerName && customerForm.email) && cartItems.length > 0;
+    if (step === 4) {
+      if (!paymentType) return false;
+      if (paymentType === "transfer") return !!transferTerm && (transferTerm !== "termin" || !!paymentTerm) && (transferTerm !== "dp" || !!dpNext);
+      return true;
+    }
+    if (step === 5) return !!(customerForm.customerName && customerForm.email) && cartItems.length > 0;
     return false;
   };
 
@@ -2136,10 +2394,11 @@ export default function BookPage() {
                 Lanjutkan <ChevronRight className="w-4 h-4 ml-1" />
               </Button>
             ) : step === 3 ? (
-              <Button
-                onClick={() => setStep(4)}
-                disabled={!canProceed()}
-              >
+              <Button onClick={() => setStep(4)} disabled={!canProceed()}>
+                Pilih Pembayaran <ChevronRight className="w-4 h-4 ml-1" />
+              </Button>
+            ) : step === 4 ? (
+              <Button onClick={() => setStep(5)} disabled={!canProceed()}>
                 Review Pesanan <ChevronRight className="w-4 h-4 ml-1" />
               </Button>
             ) : (
