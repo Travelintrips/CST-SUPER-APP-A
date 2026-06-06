@@ -1053,7 +1053,7 @@ router.get("/members", async (req, res) => {
           'sport_members' AS source_table,
           company_id, name, email, phone,
           member_type, member_number,
-          start_date, end_date, status, notes,
+          start_date::text, end_date::text, status, notes,
           NULL::numeric AS total_price,
           NULL::text AS payment_method,
           NULL::int AS months,
@@ -1067,10 +1067,10 @@ router.get("/members", async (req, res) => {
           'scm-' || id::text AS id,
           id AS source_id,
           'sport_center_memberships' AS source_table,
-          NULL AS company_id, name, email, phone,
+          NULL::int AS company_id, name, email, phone,
           'gym' AS member_type,
           'SCM-' || LPAD(id::text, 4, '0') AS member_number,
-          start_date, end_date, status, notes,
+          start_date::text, end_date::text, status, notes,
           total_price, payment_method, months,
           created_at
         FROM sport_center_memberships
