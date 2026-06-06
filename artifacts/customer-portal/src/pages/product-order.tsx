@@ -406,9 +406,12 @@ export default function ProductOrderPage() {
         heightCm: i.product.heightCm ?? null,
         goodsType: i.product.goodsType ?? null,
       }));
+      const isPickup = !selectedService && !address.trim();
       const result = await submitOrder({
         customerName: customerName.trim(), email: email.trim(), phone: phone.trim(),
-        shippingAddress: address.trim(), notes: notes.trim() || undefined,
+        shippingAddress: address.trim() || null,
+        shippingMethod: isPickup ? "pickup" : (selectedService ? selectedService.serviceId : "delivery"),
+        notes: notes.trim() || undefined,
         items, productCategory, templateId: template.category, templateVersion: template.version,
         customFieldValues: dynamicValues.customFieldValues, uploadedDocuments: dynamicValues.uploadedDocuments,
         checklistStatus: dynamicValues.checklistStatus, packagingNotes: dynamicValues.packagingNotes || undefined,
