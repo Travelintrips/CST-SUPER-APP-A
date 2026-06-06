@@ -256,14 +256,16 @@ export default function ProductTemplatesPage() {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
-  const { data: templates = [], isLoading } = useQuery({
+  const { data: templates, isLoading } = useQuery({
     queryKey: QUERY_KEY,
     queryFn: fetchTemplates,
   });
 
   // Sync local order with server data (only when server data changes, not on drag)
+  // NOTE: `templates` must NOT have an inline `= []` default in the destructuring above,
+  // because a fresh `[]` on every render would make this effect loop infinitely.
   useEffect(() => {
-    setLocalTemplates(templates);
+    if (templates !== undefined) setLocalTemplates(templates);
   }, [templates]);
 
   const createMut = useMutation({
@@ -306,7 +308,7 @@ export default function ProductTemplatesPage() {
     mutationFn: reorderTemplates,
     onError: (err) => {
       toast({ title: "Gagal menyimpan urutan", description: String(err), variant: "destructive" });
-      setLocalTemplates(templates);
+      setLocalTemplates(templates ?? []);
     },
   });
 
@@ -319,8 +321,8 @@ export default function ProductTemplatesPage() {
       )
     : localTemplates;
 
-  const totalFields = templates.reduce((s, t) => s + (t.customFields?.length ?? 0), 0);
-  const totalDocs = templates.reduce((s, t) => s + (t.requiredDocuments?.length ?? 0), 0);
+  const totalFields = (templates ?? []).reduce((s, t) => s + (t.customFields?.length ?? 0), 0);
+  const totalDocs = (templates ?? []).reduce((s, t) => s + (t.requiredDocuments?.length ?? 0), 0);
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -393,7 +395,7 @@ export default function ProductTemplatesPage() {
           </p>
           <div className="grid grid-cols-3 gap-3">
             {[
-              { label: "Komoditas", value: templates.length },
+              { label: "Komoditas", value: templates?.length ?? 0 },
               { label: "Custom Fields", value: totalFields },
               { label: "Dok Terkonfigurasi", value: totalDocs },
             ].map((stat) => (

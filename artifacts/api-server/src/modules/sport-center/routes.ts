@@ -1047,22 +1047,54 @@ router.get("/members", async (req, res) => {
 
     const [dataRes, countRes] = await Promise.all([
       db.execute(sql`
-        SELECT * FROM sport_members
+        SELECT
+          'sm-' || id::text AS id,
+          id AS source_id,
+          'sport_members' AS source_table,
+          company_id, name, email, phone,
+          member_type, member_number,
+          start_date, end_date, status, notes,
+          NULL::numeric AS total_price,
+          NULL::text AS payment_method,
+          NULL::int AS months,
+          created_at
+        FROM sport_members
         WHERE (${cId}::int IS NULL OR company_id = ${cId})
           AND (${memberType}::text IS NULL OR member_type = ${memberType})
+          AND (${status}::text IS NULL OR status = ${status})
+        UNION ALL
+        SELECT
+          'scm-' || id::text AS id,
+          id AS source_id,
+          'sport_center_memberships' AS source_table,
+          NULL AS company_id, name, email, phone,
+          'gym' AS member_type,
+          'SCM-' || LPAD(id::text, 4, '0') AS member_number,
+          start_date, end_date, status, notes,
+          total_price, payment_method, months,
+          created_at
+        FROM sport_center_memberships
+        WHERE (${memberType}::text IS NULL OR ${memberType} = 'gym' OR ${memberType} = 'all')
           AND (${status}::text IS NULL OR status = ${status})
         ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}
       `),
       db.execute(sql`
-        SELECT COUNT(*) AS cnt FROM sport_members
-        WHERE (${cId}::int IS NULL OR company_id = ${cId})
-          AND (${memberType}::text IS NULL OR member_type = ${memberType})
-          AND (${status}::text IS NULL OR status = ${status})
+        SELECT (
+          (SELECT COUNT(*) FROM sport_members
+           WHERE (${cId}::int IS NULL OR company_id = ${cId})
+             AND (${memberType}::text IS NULL OR member_type = ${memberType})
+             AND (${status}::text IS NULL OR status = ${status}))
+          +
+          (SELECT COUNT(*) FROM sport_center_memberships
+           WHERE (${memberType}::text IS NULL OR ${memberType} = 'gym' OR ${memberType} = 'all')
+             AND (${status}::text IS NULL OR status = ${status}))
+        ) AS cnt
       `),
     ]);
 
     res.json({ data: dataRes.rows, total: Number((countRes.rows[0] as any).cnt) });
-  } catch {
+  } catch (e) {
+    console.error("GET /members error:", e);
     res.status(500).json({ error: "Gagal" });
   }
 });

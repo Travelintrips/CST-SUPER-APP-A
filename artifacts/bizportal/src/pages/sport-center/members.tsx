@@ -15,19 +15,31 @@ import { useToast } from "@/hooks/use-toast";
 import { Plus, Pencil, Trash2, Users, RefreshCw, Activity, ArrowLeft } from "lucide-react";
 
 type Member = {
-  id: number; name: string; email: string; phone: string;
-  member_type: string; member_number: string; start_date: string;
-  end_date: string; status: string; notes: string;
+  id: string; source_id: number; source_table: string;
+  name: string; email: string | null; phone: string | null;
+  member_type: string; member_number: string;
+  start_date: string | null; end_date: string | null;
+  status: string; notes: string | null;
+  total_price: string | null; payment_method: string | null; months: number | null;
 };
 
 const STATUS_COLOR: Record<string, string> = {
-  active:    "bg-emerald-900/30 text-emerald-300 border-emerald-700",
-  expired:   "bg-red-900/30 text-red-300 border-red-700",
-  suspended: "bg-yellow-900/30 text-yellow-300 border-yellow-700",
-  inactive:  "bg-gray-800/40 text-gray-400 border-gray-600",
+  active:               "bg-emerald-900/30 text-emerald-300 border-emerald-700",
+  expired:              "bg-red-900/30 text-red-300 border-red-700",
+  suspended:            "bg-yellow-900/30 text-yellow-300 border-yellow-700",
+  inactive:             "bg-gray-800/40 text-gray-400 border-gray-600",
+  pending_payment:      "bg-orange-900/30 text-orange-300 border-orange-700",
+  waiting_confirmation: "bg-blue-900/30 text-blue-300 border-blue-700",
+  cancelled:            "bg-red-900/30 text-red-300 border-red-700",
 };
 const STATUS_LABEL: Record<string, string> = {
-  active: "Aktif", expired: "Expired", suspended: "Suspend", inactive: "Tidak Aktif",
+  active:               "Aktif",
+  expired:              "Expired",
+  suspended:            "Suspend",
+  inactive:             "Tidak Aktif",
+  pending_payment:      "Menunggu Bayar",
+  waiting_confirmation: "Menunggu Konfirmasi",
+  cancelled:            "Dibatalkan",
 };
 const MEMBER_TYPE_LABEL: Record<string, string> = {
   gym: "Gym", ap: "AP (Aqua Park)", court: "Lapangan", vip: "VIP",
@@ -46,8 +58,8 @@ export default function SportCenterMembers() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [page, setPage] = useState(1);
   const [showDialog, setShowDialog] = useState(false);
-  const [editId, setEditId] = useState<number | null>(null);
-  const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [editTarget, setEditTarget] = useState<Member | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Member | null>(null);
   const [form, setForm] = useState({ name: "", email: "", phone: "", member_type: "gym", start_date: "", end_date: "", notes: "" });
 
   const { data, isLoading, refetch } = useQuery<{ data: Member[]; total: number }>({
@@ -83,15 +95,17 @@ export default function SportCenterMembers() {
 
   const saveMutation = useMutation({
     mutationFn: async (body: Record<string, unknown>) => {
-      const url = editId ? `/api/sport-center/members/${editId}` : "/api/sport-center/members";
-      const method = editId ? "PATCH" : "POST";
+      const url = editTarget
+        ? `/api/sport-center/members/${editTarget.source_id}`
+        : "/api/sport-center/members";
+      const method = editTarget ? "PATCH" : "POST";
       const r = await fetch(url, { method, credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       if (!r.ok) throw new Error((await r.json()).error ?? "Gagal");
       return r.json();
     },
     onSuccess: () => {
-      toast({ title: editId ? "Member diperbarui" : "Member ditambahkan" });
-      setShowDialog(false); setEditId(null);
+      toast({ title: editTarget ? "Member diperbarui" : "Member ditambahkan" });
+      setShowDialog(false); setEditTarget(null);
       setForm({ name: "", email: "", phone: "", member_type: "gym", start_date: "", end_date: "", notes: "" });
       qc.invalidateQueries({ queryKey: ["sport-center-members"] });
     },
@@ -99,14 +113,14 @@ export default function SportCenterMembers() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: async (id: number) => {
-      await fetch(`/api/sport-center/members/${id}`, { method: "DELETE", credentials: "include" });
+    mutationFn: async (m: Member) => {
+      await fetch(`/api/sport-center/members/${m.source_id}`, { method: "DELETE", credentials: "include" });
     },
-    onSuccess: () => { toast({ title: "Member dihapus" }); setDeleteId(null); qc.invalidateQueries({ queryKey: ["sport-center-members"] }); },
+    onSuccess: () => { toast({ title: "Member dihapus" }); setDeleteTarget(null); qc.invalidateQueries({ queryKey: ["sport-center-members"] }); },
   });
 
   const openEdit = (m: Member) => {
-    setEditId(m.id);
+    setEditTarget(m);
     setForm({ name: m.name, email: m.email ?? "", phone: m.phone ?? "", member_type: m.member_type, start_date: m.start_date ?? "", end_date: m.end_date ?? "", notes: m.notes ?? "" });
     setShowDialog(true);
   };
@@ -134,30 +148,34 @@ export default function SportCenterMembers() {
             <Button variant="outline" size="sm" className="gap-1" onClick={() => refetch()}>
               <RefreshCw className="h-4 w-4" />
             </Button>
-            <Button onClick={() => { setEditId(null); setShowDialog(true); }} size="sm" className="gap-1">
+            <Button onClick={() => { setEditTarget(null); setShowDialog(true); }} size="sm" className="gap-1">
               <Plus className="h-4 w-4" /> Tambah Member
             </Button>
           </div>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <Select value={memberType} onValueChange={(v) => { setMemberType(v); setPage(1); }}>
             <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Semua Tipe</SelectItem>
               <SelectItem value="gym">Gym</SelectItem>
-              <SelectItem value="ap">AP</SelectItem>
+              <SelectItem value="ap">AP (Aqua Park)</SelectItem>
               <SelectItem value="court">Lapangan</SelectItem>
               <SelectItem value="vip">VIP</SelectItem>
+              <SelectItem value="swimming">Renang</SelectItem>
             </SelectContent>
           </Select>
           <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
-            <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Semua Status</SelectItem>
               <SelectItem value="active">Aktif</SelectItem>
-              <SelectItem value="expired">Kedaluwarsa</SelectItem>
-              <SelectItem value="suspended">Ditangguhkan</SelectItem>
+              <SelectItem value="pending_payment">Menunggu Bayar</SelectItem>
+              <SelectItem value="waiting_confirmation">Menunggu Konfirmasi</SelectItem>
+              <SelectItem value="expired">Expired</SelectItem>
+              <SelectItem value="suspended">Suspend</SelectItem>
+              <SelectItem value="inactive">Tidak Aktif</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -201,7 +219,7 @@ export default function SportCenterMembers() {
                         <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => openEdit(m)}>
                           <Pencil className="h-3.5 w-3.5" />
                         </Button>
-                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-red-400" onClick={() => setDeleteId(m.id)}>
+                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-red-400" onClick={() => setDeleteTarget(m)}>
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       </div>
@@ -215,7 +233,7 @@ export default function SportCenterMembers() {
 
         <Dialog open={showDialog} onOpenChange={setShowDialog}>
           <DialogContent className="max-w-md">
-            <DialogHeader><DialogTitle>{editId ? "Edit Member" : "Tambah Member"}</DialogTitle></DialogHeader>
+            <DialogHeader><DialogTitle>{editTarget ? "Edit Member" : "Tambah Member"}</DialogTitle></DialogHeader>
             <div className="grid gap-3 py-2">
               <div className="space-y-1">
                 <Label className="text-xs">Nama *</Label>
@@ -267,15 +285,28 @@ export default function SportCenterMembers() {
           </DialogContent>
         </Dialog>
 
-        <AlertDialog open={deleteId !== null} onOpenChange={() => setDeleteId(null)}>
+        {/* Pagination */}
+        {(data?.total ?? 0) > 50 && (
+          <div className="flex items-center justify-between text-sm text-muted-foreground">
+            <span>Halaman {page} dari {Math.ceil((data?.total ?? 0) / 50)}</span>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Sebelumnya</Button>
+              <Button variant="outline" size="sm" disabled={page * 50 >= (data?.total ?? 0)} onClick={() => setPage((p) => p + 1)}>Berikutnya</Button>
+            </div>
+          </div>
+        )}
+
+        <AlertDialog open={deleteTarget !== null} onOpenChange={() => setDeleteTarget(null)}>
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Hapus Member?</AlertDialogTitle>
-              <AlertDialogDescription>Tindakan ini tidak dapat dibatalkan.</AlertDialogDescription>
+              <AlertDialogDescription>
+                Hapus <strong>{deleteTarget?.name}</strong>? Tindakan ini tidak dapat dibatalkan.
+              </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Batal</AlertDialogCancel>
-              <AlertDialogAction onClick={() => deleteId && deleteMutation.mutate(deleteId)}>Hapus</AlertDialogAction>
+              <AlertDialogAction onClick={() => deleteTarget && deleteMutation.mutate(deleteTarget)}>Hapus</AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
