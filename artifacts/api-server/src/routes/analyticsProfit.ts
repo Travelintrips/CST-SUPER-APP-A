@@ -32,6 +32,8 @@ router.get("/orders", async (req, res) => {
       created_at: string; status: string; origin: string; destination: string;
       revenue: string; vendor_cost: string; truck_cost: string; tax: string;
       gross_margin: string; margin_pct: string;
+      opex_cost: string; purchase_cost: string;
+      net_margin: string; net_margin_pct: string;
       vendor_name: string | null;
     }>(sql`
       SELECT
@@ -57,6 +59,21 @@ router.get("/orders", async (req, res) => {
             / lo.grand_total::numeric * 100, 1)
           ELSE 0
         END                                                                       AS margin_pct,
+        COALESCE(opex_agg.opex_cost, 0)                                          AS opex_cost,
+        COALESCE(po_agg.purchase_cost, 0)                                        AS purchase_cost,
+        (lo.grand_total::numeric
+          - COALESCE(loq_agg.vendor_cost, 0)
+          - COALESCE(lo.truck_price::numeric, 0)
+          - COALESCE(opex_agg.opex_cost, 0))                                     AS net_margin,
+        CASE WHEN lo.grand_total::numeric > 0
+          THEN ROUND(
+            (lo.grand_total::numeric
+              - COALESCE(loq_agg.vendor_cost, 0)
+              - COALESCE(lo.truck_price::numeric, 0)
+              - COALESCE(opex_agg.opex_cost, 0))
+            / lo.grand_total::numeric * 100, 1)
+          ELSE 0
+        END                                                                       AS net_margin_pct,
         s.name                                                                    AS vendor_name
       FROM logistic_orders lo
       LEFT JOIN (
@@ -64,6 +81,16 @@ router.get("/orders", async (req, res) => {
         FROM logistic_order_quotes
         GROUP BY order_id
       ) loq_agg ON loq_agg.order_id = lo.id
+      LEFT JOIN (
+        SELECT logistic_order_id, SUM(total::numeric) AS opex_cost
+        FROM expenses WHERE status = 'active' AND logistic_order_id IS NOT NULL
+        GROUP BY logistic_order_id
+      ) opex_agg ON opex_agg.logistic_order_id = lo.id
+      LEFT JOIN (
+        SELECT logistic_order_id, SUM(grand_total::numeric) AS purchase_cost
+        FROM purchase_documents WHERE kind = 'order' AND logistic_order_id IS NOT NULL
+        GROUP BY logistic_order_id
+      ) po_agg ON po_agg.logistic_order_id = lo.id
       LEFT JOIN suppliers s ON s.id = lo.approved_vendor_id
       WHERE lo.status NOT IN ('Cancelled','cancelled')
         ${companyId !== null ? sql`AND lo.company_id = ${companyId}` : sql``}
@@ -97,9 +124,12 @@ router.get("/orders", async (req, res) => {
         truckCost: Number(r.truck_cost),
         tax: Number(r.tax),
         grossMargin: Number(r.gross_margin),
-        // legacy alias kept for backward compat
         margin: Number(r.gross_margin),
         marginPct: Number(r.margin_pct),
+        opexCost: Number(r.opex_cost),
+        purchaseCost: Number(r.purchase_cost),
+        netMargin: Number(r.net_margin),
+        netMarginPct: Number(r.net_margin_pct),
         vendorName: r.vendor_name ?? null,
       })),
       total: Number((countRes.rows[0] as { cnt: string } | undefined)?.cnt ?? 0),
@@ -159,6 +189,11 @@ router.get("/customers", async (req, res) => {
         SELECT order_id, MAX(vendor_price::numeric) AS vendor_cost
         FROM logistic_order_quotes GROUP BY order_id
       ) loq_agg ON loq_agg.order_id = lo.id
+      LEFT JOIN (
+        SELECT logistic_order_id, SUM(total::numeric) AS opex_cost
+        FROM expenses WHERE status = 'active' AND logistic_order_id IS NOT NULL
+        GROUP BY logistic_order_id
+      ) opex_agg ON opex_agg.logistic_order_id = lo.id
       WHERE lo.status NOT IN ('Cancelled','cancelled')
         ${companyId !== null ? sql`AND lo.company_id = ${companyId}` : sql``}
         ${dateFrom ? sql`AND lo.created_at >= ${dateFrom}` : sql``}
@@ -315,6 +350,11 @@ router.get("/commodities", async (req, res) => {
         SELECT order_id, MAX(vendor_price::numeric) AS vendor_cost
         FROM logistic_order_quotes GROUP BY order_id
       ) loq_agg ON loq_agg.order_id = lo.id
+      LEFT JOIN (
+        SELECT logistic_order_id, SUM(total::numeric) AS opex_cost
+        FROM expenses WHERE status = 'active' AND logistic_order_id IS NOT NULL
+        GROUP BY logistic_order_id
+      ) opex_agg ON opex_agg.logistic_order_id = lo.id
       WHERE lo.status NOT IN ('Cancelled','cancelled')
         ${companyId !== null ? sql`AND lo.company_id = ${companyId}` : sql``}
         ${dateFrom ? sql`AND lo.created_at >= ${dateFrom}` : sql``}
@@ -402,6 +442,11 @@ router.get("/routes", async (req, res) => {
         SELECT order_id, MAX(vendor_price::numeric) AS vendor_cost
         FROM logistic_order_quotes GROUP BY order_id
       ) loq_agg ON loq_agg.order_id = lo.id
+      LEFT JOIN (
+        SELECT logistic_order_id, SUM(total::numeric) AS opex_cost
+        FROM expenses WHERE status = 'active' AND logistic_order_id IS NOT NULL
+        GROUP BY logistic_order_id
+      ) opex_agg ON opex_agg.logistic_order_id = lo.id
       WHERE lo.status NOT IN ('Cancelled','cancelled')
         AND NULLIF(TRIM(lo.origin), '') IS NOT NULL
         AND NULLIF(TRIM(lo.destination), '') IS NOT NULL

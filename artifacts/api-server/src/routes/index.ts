@@ -110,6 +110,7 @@ import expenseTemplatesRouter from "./expenseTemplates.js";
 import expenseBudgetsRouter from "./expenseBudgets.js";
 import { watiRouter } from "./wati.js";
 import { escrowAdminRouter, escrowPublicRouter } from "./escrow.js";
+import orderCostsRouter from "./orderCosts.js";
 
 import type { Request, Response } from "express";
 
@@ -238,6 +239,7 @@ router.use("/logistic", orderExceptionsRouter);
 router.use("/exceptions", exceptionsRouter);
 router.use("/wa-notification-logs", waNotificationLogsRouter);
 router.use("/analytics/profitability", analyticsProfitRouter);
+router.use("/order-costs", orderCostsRouter);
 router.use("/system", systemRouter);
 router.use("/rbac", rbacRouter);
 router.use("/import-advisor", importAdvisorRouter);

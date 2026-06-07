@@ -50,6 +50,8 @@ interface OrderRow {
   createdAt: string; status: string; origin: string; destination: string;
   revenue: number; vendorCost: number; truckCost: number; tax: number;
   grossMargin: number; margin: number; marginPct: number;
+  opexCost: number; netMargin: number; netMarginPct: number;
+  purchaseCost: number;
   vendorName: string | null;
 }
 interface OrdersData { rows: OrderRow[]; total: number; limit: number; offset: number; }
@@ -290,6 +292,9 @@ export default function ProfitabilityAnalyticsPage() {
   const totalTax        = orderRows.reduce((s, r) => s + (r.tax ?? 0), 0);
   const totalGrossMargin = orderRows.reduce((s, r) => s + (r.grossMargin ?? r.margin), 0);
   const avgMarginPct    = totalRevenue > 0 ? (totalGrossMargin / totalRevenue) * 100 : 0;
+  const totalOpex       = orderRows.reduce((s, r) => s + (r.opexCost ?? 0), 0);
+  const totalNetMargin  = orderRows.reduce((s, r) => s + (r.netMargin ?? r.grossMargin ?? r.margin), 0);
+  const avgNetMarginPct = totalRevenue > 0 ? (totalNetMargin / totalRevenue) * 100 : 0;
 
   // filtered route rows for search
   const routeRows = (routesQuery.data?.items ?? []).filter(r =>
@@ -351,13 +356,15 @@ export default function ProfitabilityAnalyticsPage() {
           {/* ── TAB: Orders ── */}
           <TabsContent value="orders" className="mt-4 space-y-3">
             {orderRows.length > 0 && (
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-2">
                 {[
                   { label: "Revenue", value: idrCompact(totalRevenue), full: idr(totalRevenue), icon: <DollarSign className="h-3.5 w-3.5 text-emerald-600" />, color: "border-l-emerald-500", text: "text-emerald-700" },
                   { label: "Vendor Cost", value: idrCompact(totalVendor), full: idr(totalVendor), icon: <Truck className="h-3.5 w-3.5 text-slate-500" />, color: "border-l-slate-400", text: "text-slate-700" },
                   { label: "Truck Cost", value: idrCompact(totalTruck), full: idr(totalTruck), icon: <Truck className="h-3.5 w-3.5 text-orange-500" />, color: "border-l-orange-400", text: "text-orange-700" },
                   { label: "Tax", value: idrCompact(totalTax), full: idr(totalTax), icon: <Receipt className="h-3.5 w-3.5 text-violet-500" />, color: "border-l-violet-300", text: "text-violet-700" },
                   { label: "Gross Margin", value: idrCompact(totalGrossMargin), full: `${idr(totalGrossMargin)} · ${avgMarginPct.toFixed(1)}%`, icon: <TrendingUp className="h-3.5 w-3.5 text-blue-600" />, color: totalGrossMargin < 0 ? "border-l-red-500" : "border-l-blue-500", text: totalGrossMargin < 0 ? "text-red-600" : "text-blue-700" },
+                  { label: "OPEX", value: idrCompact(totalOpex), full: idr(totalOpex), icon: <Receipt className="h-3.5 w-3.5 text-orange-600" />, color: totalOpex > 0 ? "border-l-orange-500" : "border-l-slate-300", text: "text-orange-700" },
+                  { label: "Net Margin", value: idrCompact(totalNetMargin), full: `${idr(totalNetMargin)} · ${avgNetMarginPct.toFixed(1)}%`, icon: <Target className="h-3.5 w-3.5 text-indigo-600" />, color: totalNetMargin < 0 ? "border-l-red-500" : "border-l-indigo-500", text: totalNetMargin < 0 ? "text-red-600" : "text-indigo-700" },
                 ].map(card => (
                   <Card key={card.label} className={`border-l-4 ${card.color}`}>
                     <CardContent className="flex items-center gap-2 p-2.5">
@@ -398,15 +405,21 @@ export default function ProfitabilityAnalyticsPage() {
                         <th className={`${thCls} text-right`}>Tax</th>
                         <th className={`${thCls} text-right`}>Gross Margin</th>
                         <th className={`${thCls} text-right`}>Margin %</th>
+                        <th className={`${thCls} text-right`}>OPEX</th>
+                        <th className={`${thCls} text-right`}>Net Margin</th>
+                        <th className={`${thCls} text-right`}>Net %</th>
                       </tr>
                     </thead>
                     <tbody>
                       {ordersQuery.isLoading
-                        ? [...Array(8)].map((_, i) => <tr key={i}>{[...Array(12)].map((_, j) => <td key={j} className={tdCls}><Skeleton className="h-4 w-full" /></td>)}</tr>)
+                        ? [...Array(8)].map((_, i) => <tr key={i}>{[...Array(15)].map((_, j) => <td key={j} className={tdCls}><Skeleton className="h-4 w-full" /></td>)}</tr>)
                         : orderRows.length === 0
-                        ? <tr><td colSpan={12} className="text-center py-10 text-sm text-muted-foreground">Tidak ada data order</td></tr>
+                        ? <tr><td colSpan={15} className="text-center py-10 text-sm text-muted-foreground">Tidak ada data order</td></tr>
                         : orderRows.map(row => {
                           const gm = row.grossMargin ?? row.margin;
+                          const nm = row.netMargin ?? gm;
+                          const op = row.opexCost ?? 0;
+                          const nmpct = row.netMarginPct ?? row.marginPct;
                           return (
                             <tr key={row.id} className="hover:bg-slate-50 transition-colors">
                               <td className={tdCls}><Link href={`/logistics/orders/${row.id}`} className="font-mono text-xs text-blue-600 hover:underline">{row.orderNumber}</Link></td>
@@ -421,6 +434,9 @@ export default function ProfitabilityAnalyticsPage() {
                               <td className={`${tdCls} text-right`}>{(row.tax ?? 0) > 0 ? <span className="text-violet-600">{idrCompact(row.tax)}</span> : <span className="text-muted-foreground text-xs">—</span>}</td>
                               <td className={`${tdCls} text-right font-semibold ${gm < 0 ? "text-red-600" : "text-blue-700"}`}>{idrCompact(gm)}</td>
                               <td className={`${tdCls} text-right`}><MarginBadge pct={row.marginPct} /></td>
+                              <td className={`${tdCls} text-right`}>{op > 0 ? <span className="text-orange-600">{idrCompact(op)}</span> : <span className="text-muted-foreground text-xs">—</span>}</td>
+                              <td className={`${tdCls} text-right font-semibold ${nm < 0 ? "text-red-600" : "text-indigo-700"}`}>{idrCompact(nm)}</td>
+                              <td className={`${tdCls} text-right`}><MarginBadge pct={nmpct} /></td>
                             </tr>
                           );
                         })
@@ -436,6 +452,9 @@ export default function ProfitabilityAnalyticsPage() {
                           <td className="px-3 py-2 text-right text-sm text-violet-700">{idrCompact(totalTax)}</td>
                           <td className={`px-3 py-2 text-right text-sm font-bold ${totalGrossMargin < 0 ? "text-red-600" : "text-blue-700"}`}>{idrCompact(totalGrossMargin)}</td>
                           <td className="px-3 py-2 text-right"><MarginBadge pct={avgMarginPct} /></td>
+                          <td className="px-3 py-2 text-right text-sm text-orange-700">{totalOpex > 0 ? idrCompact(totalOpex) : "—"}</td>
+                          <td className={`px-3 py-2 text-right text-sm font-bold ${totalNetMargin < 0 ? "text-red-600" : "text-indigo-700"}`}>{idrCompact(totalNetMargin)}</td>
+                          <td className="px-3 py-2 text-right"><MarginBadge pct={avgNetMarginPct} /></td>
                         </tr>
                       </tfoot>
                     )}
