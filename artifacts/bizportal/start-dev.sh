@@ -1,4 +1,17 @@
 #!/bin/bash
+# When BIZPORTAL_PORT is set (main "BizPortal" workflow):
+#   - Proxy listens on BIZPORTAL_PORT (e.g. 6800) — Gateway routes here
+#   - Vite listens on a fixed internal port (18446) so it never conflicts
+#     with the artifact-managed workflow that Replit auto-assigns PORT=18442
+# When BIZPORTAL_PORT is NOT set (artifact workflow, Replit assigns PORT):
+#   - No proxy; Vite listens on PORT (e.g. 18442)
+if [ -n "$BIZPORTAL_PORT" ]; then
+  GW_PORT="${BIZPORTAL_PORT}"
+  VITE_PORT=18446
+else
+  GW_PORT="${PORT:-3000}"
+  VITE_PORT="${PORT:-3000}"
+fi
 # Replit assigns PORT (e.g. 18442) — Vite runs there for waitForPort check
 # Gateway expects BIZPORTAL_PORT (default 6800) — we proxy that → Vite port
 VITE_PORT=${PORT:-3000}
@@ -29,7 +42,7 @@ fi
 node "$(dirname "$0")/../api-server/kill-port.mjs" "${VITE_PORT}" "${GW_PORT}" 2>/dev/null || true
 sleep 0.3
 
-# If Replit gave us a different port than Gateway expects, run a proxy
+# Proxy GW_PORT → VITE_PORT when they differ
 if [ "$VITE_PORT" != "$GW_PORT" ]; then
   node -e "
 const http = require('http');

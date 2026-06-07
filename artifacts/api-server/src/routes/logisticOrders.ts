@@ -2042,6 +2042,72 @@ logisticOrdersRouter.post("/:id/delivery/:phase", async (req: Request, res: Resp
   return res.json({ ok: true, status: cfg.status, orderId: id, phase });
 });
 
+// POST /api/logistic/orders/export-gsheet — export semua order ke Google Sheets baru (admin only)
+logisticOrdersRouter.post("/export-gsheet", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  if (!(await requireRole(req, res, ["admin", "owner"]))) return;
+  const companyId = resolveCompanyId(req);
+  const { dateFrom, dateTo, status } = req.body as { dateFrom?: string; dateTo?: string; status?: string };
+
+  const { exportToNewSpreadsheet } = await import("../lib/googleSheets.js");
+
+  const conditions = [];
+  if (companyId) conditions.push(eq(logisticOrdersTable.companyId, companyId));
+  if (dateFrom) conditions.push(gte(logisticOrdersTable.createdAt, new Date(dateFrom)));
+  if (dateTo) {
+    const end = new Date(dateTo);
+    end.setHours(23, 59, 59, 999);
+    conditions.push(lte(logisticOrdersTable.createdAt, end));
+  }
+  if (status) conditions.push(eq(logisticOrdersTable.status, status as typeof logisticOrdersTable.$inferSelect["status"]));
+
+  const orders = await db
+    .select()
+    .from(logisticOrdersTable)
+    .where(conditions.length ? and(...conditions) : undefined)
+    .orderBy(desc(logisticOrdersTable.createdAt))
+    .limit(5000);
+
+  const orderRows: unknown[][] = [
+    ["No. Order", "Tanggal", "Perusahaan", "Nama Customer", "Email", "No. HP",
+     "Tipe Shipment", "Asal", "Tujuan", "Komoditi", "Berat (kg)", "Volume (CBM)",
+     "Jml Koli", "Pembayaran", "Subtotal", "Pajak", "Grand Total", "Status", "Sumber", "Catatan"],
+    ...orders.map((o) => [
+      o.orderNumber,
+      o.createdAt.toISOString().slice(0, 10),
+      o.companyName ?? "",
+      o.customerName,
+      o.email ?? "",
+      o.phone ?? "",
+      o.shipmentType ?? "",
+      o.origin ?? "",
+      o.destination ?? "",
+      o.commodity ?? "",
+      o.grossWeight ? parseFloat(o.grossWeight) : "",
+      o.volumeCbm ? parseFloat(o.volumeCbm) : "",
+      o.jumlahKoli ?? "",
+      o.paymentType ?? "",
+      parseFloat(o.subtotal),
+      parseFloat(o.tax),
+      parseFloat(o.grandTotal),
+      o.status,
+      (o as unknown as { source?: string }).source ?? "manual",
+      o.notes ?? "",
+    ]),
+  ];
+
+  const now = new Date();
+  const titleDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const filterLabel = status ? ` [${status}]` : "";
+  const title = `Logistic Orders${filterLabel} — ${titleDate}`;
+
+  const result = await exportToNewSpreadsheet(title, [
+    { name: "Orders", rows: orderRows },
+  ]);
+
+  return res.json({ ok: true, total: orders.length, ...result });
+});
+
 // PATCH /api/logistic/orders/:orderNumber/payment-proof — public, simpan URL bukti bayar
 // Guard: order harus dibuat dalam 24 jam terakhir agar tidak bisa di-spam ke order lama.
 logisticOrdersRouter.patch("/:orderNumber/payment-proof", async (req: Request, res: Response) => {

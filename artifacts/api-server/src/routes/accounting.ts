@@ -5,6 +5,7 @@ import {
   clearAndWriteSheet,
   readSheet,
   ensureSheets,
+  batchUpdateSheet,
 } from "../lib/googleSheets.js";
 import {
   db,
@@ -3086,6 +3087,54 @@ router.get("/holding/groups/:id/cashflow", async (req, res) => {
 
 // ─── GOOGLE SHEETS SYNC ───────────────────────────────────────────────────────
 
+// GET /accounting/rekon-schedule — baca konfigurasi jadwal rekonsiliasi otomatis
+router.get("/rekon-schedule", requireAdmin, async (req, res) => {
+  const companyId = resolveCompanyId(req);
+  const [settings] = await db
+    .select({ id: accountingSettingsTable.id, meta: accountingSettingsTable.meta })
+    .from(accountingSettingsTable)
+    .where(companyId ? eq(accountingSettingsTable.companyId, companyId) : isNull(accountingSettingsTable.companyId));
+  const meta = (settings?.meta ?? {}) as Record<string, unknown>;
+  return res.json({ config: meta.rekonSchedule ?? null });
+});
+
+// POST /accounting/rekon-schedule — simpan/update konfigurasi jadwal
+router.post("/rekon-schedule", requireAdmin, async (req, res) => {
+  const companyId = resolveCompanyId(req);
+  const {
+    enabled, spreadsheetId, sheetName, colKey, colStatus, startRow, hourWib,
+  } = req.body as {
+    enabled: boolean;
+    spreadsheetId: string;
+    sheetName?: string;
+    colKey?: number;
+    colStatus?: number;
+    startRow?: number;
+    hourWib?: number;
+  };
+
+  if (enabled && !spreadsheetId) {
+    return res.status(400).json({ message: "spreadsheetId wajib diisi saat aktif" });
+  }
+
+  const newConfig = { enabled, spreadsheetId, sheetName: sheetName ?? "Mutasi", colKey: colKey ?? 4, colStatus: colStatus ?? 5, startRow: startRow ?? 2, hourWib: hourWib ?? 2, companyId: companyId ?? null };
+
+  const [existing] = await db
+    .select({ id: accountingSettingsTable.id, meta: accountingSettingsTable.meta })
+    .from(accountingSettingsTable)
+    .where(companyId ? eq(accountingSettingsTable.companyId, companyId) : isNull(accountingSettingsTable.companyId));
+
+  const baseMeta = (existing?.meta ?? {}) as Record<string, unknown>;
+  const newMeta = { ...baseMeta, rekonSchedule: { ...((baseMeta.rekonSchedule as object) ?? {}), ...newConfig } };
+
+  if (existing) {
+    await db.update(accountingSettingsTable).set({ meta: newMeta }).where(eq(accountingSettingsTable.id, existing.id));
+  } else {
+    await db.insert(accountingSettingsTable).values({ companyId: companyId ?? null, meta: newMeta } as typeof accountingSettingsTable.$inferInsert);
+  }
+  return res.json({ ok: true, config: newMeta.rekonSchedule });
+});
+
 // GET /accounting/gsheet/config — ambil spreadsheetId yang tersimpan (dari env atau DB settings)
 router.get("/gsheet/config", async (req, res) => {
   const companyId = resolveCompanyId(req);
@@ -3686,6 +3735,153 @@ router.post("/journal-mapping/depreciation", requireAdmin, async (req, res) => {
     companyId, ref, description, assetName, depreciationAmount, date: new Date(date), accumAccountId,
   });
   return res.json({ ok: true, entryId: entry.id, entryNumber: entry.entryNumber });
+});
+
+// Helper: konversi index kolom (0-based) ke huruf kolom GSheet (A, B, ..., Z, AA, ...)
+function colToLetter(n: number): string {
+  let s = "";
+  let col = n;
+  while (col >= 0) {
+    s = String.fromCharCode((col % 26) + 65) + s;
+    col = Math.floor(col / 26) - 1;
+  }
+  return s;
+}
+
+// POST /accounting/rekonsiliasi-gsheet — cocokkan entry lines DB dengan mutasi di Google Sheets
+router.post("/rekonsiliasi-gsheet", requireAdmin, async (req, res) => {
+  const {
+    spreadsheetId,
+    sheetName = "Mutasi",
+    dateFrom,
+    dateTo,
+    companyId: companyIdRaw,
+    colKey = 4,      // default kolom E (0-indexed)
+    colStatus = 5,   // default kolom F (0-indexed)
+    startRow = 2,    // default mulai baris 2 (skip header)
+  } = req.body as {
+    spreadsheetId: string;
+    sheetName?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    companyId?: number | string;
+    colKey?: number;
+    colStatus?: number;
+    startRow?: number;
+  };
+
+  if (!spreadsheetId) {
+    return res.status(400).json({ message: "spreadsheetId wajib diisi" });
+  }
+
+  function generateKey(tanggal: Date | string, debit: number, kredit: number): string {
+    const d = new Date(tanggal);
+    const dateStr =
+      `${d.getFullYear()}` +
+      String(d.getMonth() + 1).padStart(2, "0") +
+      String(d.getDate()).padStart(2, "0");
+    const amount = kredit > 0 ? kredit : debit;
+    const type = kredit > 0 ? "IN" : "OUT";
+    return `${dateStr}_${amount}_${type}`;
+  }
+
+  const companyId = companyIdRaw ? Number(companyIdRaw) : null;
+  const conds = [eq(accountingEntriesTable.status, "posted")] as ReturnType<typeof eq>[];
+  if (companyId) conds.push(eq(accountingEntriesTable.companyId, companyId));
+  if (dateFrom) conds.push(gte(accountingEntriesTable.date, dateFrom));
+  if (dateTo) conds.push(lte(accountingEntriesTable.date, dateTo));
+
+  const [dbLines, allRows] = await Promise.all([
+    db
+      .select({
+        id: accountingEntryLinesTable.id,
+        debit: accountingEntryLinesTable.debit,
+        credit: accountingEntryLinesTable.credit,
+        description: accountingEntryLinesTable.description,
+        entryDate: accountingEntriesTable.date,
+        entryNumber: accountingEntriesTable.entryNumber,
+      })
+      .from(accountingEntryLinesTable)
+      .innerJoin(accountingEntriesTable, eq(accountingEntryLinesTable.entryId, accountingEntriesTable.id))
+      .where(and(...conds)),
+    readSheet(spreadsheetId, sheetName),
+  ]);
+
+  const dataRows = allRows.slice(startRow - 1);
+
+  // Hitung frekuensi key dari GSheet dan simpan baris pertama kemunculan
+  const keyFrequency: Record<string, number> = {};
+  const keyToFirstRow: Record<string, number> = {};
+  dataRows.forEach((row, idx) => {
+    const key = (row[colKey] ?? "").trim();
+    if (key) {
+      keyFrequency[key] = (keyFrequency[key] || 0) + 1;
+      if (keyToFirstRow[key] === undefined) keyToFirstRow[key] = idx + startRow;
+    }
+  });
+
+  const results: Array<{
+    id: number;
+    entryNumber: string;
+    entryDate: string;
+    debit: number;
+    credit: number;
+    description: string | null;
+    key: string;
+    status: string;
+    gsRow: number | null;
+  }> = [];
+  const updateRequests: Array<{ range: string; values: string[][] }> = [];
+
+  for (const line of dbLines) {
+    const debit = Number(line.debit ?? 0);
+    const credit = Number(line.credit ?? 0);
+    const key = generateKey(line.entryDate, debit, credit);
+    const count = keyFrequency[key] ?? 0;
+
+    let status: string;
+    if (count > 1) status = "⚠️ DUPLIKAT";
+    else if (count === 1) status = "✅ COCOK";
+    else status = "❌ TIDAK ADA";
+
+    const gsRow = keyToFirstRow[key] ?? null;
+    results.push({
+      id: line.id,
+      entryNumber: line.entryNumber ?? "",
+      entryDate: line.entryDate instanceof Date ? line.entryDate.toISOString() : String(line.entryDate),
+      debit,
+      credit,
+      description: line.description ?? null,
+      key,
+      status,
+      gsRow,
+    });
+
+    if (gsRow !== null) {
+      updateRequests.push({
+        range: `'${sheetName}'!${colToLetter(colStatus)}${gsRow}`,
+        values: [[status]],
+      });
+    }
+  }
+
+  await batchUpdateSheet(spreadsheetId, updateRequests);
+
+  const matched = results.filter((r) => r.status.startsWith("✅")).length;
+  const duplicate = results.filter((r) => r.status.startsWith("⚠️")).length;
+  const notFound = results.filter((r) => r.status.startsWith("❌")).length;
+
+  return res.json({
+    ok: true,
+    summary: {
+      total: results.length,
+      matched,
+      duplicate,
+      notFound,
+      updated: updateRequests.length,
+    },
+    results,
+  });
 });
 
 export default router;
