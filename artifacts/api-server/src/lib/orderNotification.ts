@@ -2210,13 +2210,13 @@ export async function sendProductOrderWaNotification(order: ProductOrderData): P
   ]);
 
   if (adminGroupWa) {
-    sendWhatsApp(adminGroupWa, renderTemplate(tplAdminGroup, vars)).catch((err: unknown) =>
+    sendWhatsApp(adminGroupWa, renderTemplate(tplAdminGroup, vars), { forceFonnte: true, context: "product_order_new", refType: "portal_product_order", refId: order.orderNumber }).catch((err: unknown) =>
       logger.error({ err }, "WA product_order_new (admin_group) failed"),
     );
   }
 
   if (order.phone) {
-    sendWhatsApp(order.phone, renderTemplate(tplCustomer, vars)).catch((err: unknown) =>
+    sendWhatsApp(order.phone, renderTemplate(tplCustomer, vars), { forceFonnte: true, context: "product_order_new", refType: "portal_product_order", refId: order.orderNumber }).catch((err: unknown) =>
       logger.error({ err }, "WA product_order_new (customer) failed"),
     );
   }
@@ -2264,7 +2264,7 @@ export async function sendProductOrderPickupWaNotification(order: {
   ].filter((l) => l !== null).join("\n");
 
   if (adminGroupWa) {
-    sendWhatsApp(adminGroupWa, msg).catch((err: unknown) =>
+    sendWhatsApp(adminGroupWa, msg, { forceFonnte: true, context: "product_order_pickup", refType: "portal_product_order", refId: order.orderNumber }).catch((err: unknown) =>
       logger.error({ err }, "WA product_order_pickup (admin_group) failed"),
     );
   }

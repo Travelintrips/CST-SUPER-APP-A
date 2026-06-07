@@ -1,6 +1,7 @@
 import { Resend } from "resend";
 import { logNotification } from "./notificationLog.js";
 import { getSmtpPass, getSmtpFrom } from "./appSecrets.js";
+import { getCachedOrEnvConfig } from "./appConfig.js";
 
 let _hasSmtpKey: boolean = !!(process.env.SMTP_PASS?.trim());
 

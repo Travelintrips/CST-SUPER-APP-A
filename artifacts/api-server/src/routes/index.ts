@@ -108,6 +108,7 @@ import expenseDashboardRouter from "./expenseDashboard.js";
 import expenseTemplatesRouter from "./expenseTemplates.js";
 import expenseBudgetsRouter from "./expenseBudgets.js";
 import { watiRouter } from "./wati.js";
+import { escrowAdminRouter, escrowPublicRouter } from "./escrow.js";
 
 import type { Request, Response } from "express";
 
@@ -249,6 +250,8 @@ router.use("/expense-dashboard", expenseDashboardRouter);
 router.use("/expense-templates", expenseTemplatesRouter);
 router.use("/expense-config", expenseBudgetsRouter);
 router.use("/wati", watiRouter);
+router.use("/sales/escrow", escrowPublicRouter);
+router.use("/sales/escrow", escrowAdminRouter);
 
 router.get("/alerts/stream", async (req: Request, res: Response) => {
   const ok = await requireAdmin(req, res);

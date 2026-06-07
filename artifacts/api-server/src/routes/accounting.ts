@@ -1278,7 +1278,7 @@ router.get("/dashboard-kpi", async (req, res) => {
   const companyId = resolveCompanyId(req);
 
   const companyFilter = companyId
-    ? sql`AND ael.company_id = ${companyId}`
+    ? sql`AND ae.company_id = ${companyId}`
     : sql``;
   const sdCompanyFilter = companyId
     ? sql`AND sd.company_id = ${companyId}`
@@ -2129,7 +2129,7 @@ router.get("/reports/profit-loss-monthly", async (req, res) => {
 
   const companyFilter = scope === "all" || !scope
     ? ""
-    : `AND ael.company_id = ${Number(scope)}`;
+    : `AND ae.company_id = ${Number(scope)}`;
 
   const result = await db.execute(sql.raw(`
     SELECT
@@ -2408,7 +2408,7 @@ router.get("/holding/summary", async (req, res) => {
     JOIN chart_of_accounts coa ON coa.id = ael.account_id
     JOIN accounting_entries ae ON ae.id = ael.entry_id
     WHERE ae.status::text = 'posted'
-      AND ael.company_id = ANY(${companyIdsArr})
+      AND ae.company_id = ANY(${companyIdsArr})
       ${dateFilter}
   `);
 
@@ -2469,7 +2469,7 @@ router.get("/holding/breakdown", async (req, res) => {
 
   const result = await db.execute(sql`
     SELECT
-      ael.company_id,
+      ae.company_id,
       COALESCE(SUM(CASE WHEN coa.type::text = 'revenue' THEN COALESCE(ael.credit, 0) - COALESCE(ael.debit, 0) ELSE 0 END), 0) AS revenue,
       COALESCE(SUM(CASE WHEN coa.type::text = 'expense' THEN COALESCE(ael.debit, 0) - COALESCE(ael.credit, 0) ELSE 0 END), 0) AS expense,
       COALESCE(SUM(
@@ -2489,9 +2489,9 @@ router.get("/holding/breakdown", async (req, res) => {
     JOIN chart_of_accounts coa ON coa.id = ael.account_id
     JOIN accounting_entries ae ON ae.id = ael.entry_id
     WHERE ae.status::text = 'posted'
-      AND ael.company_id = ANY(${companyIdsArr})
+      AND ae.company_id = ANY(${companyIdsArr})
       ${dateFilter}
-    GROUP BY ael.company_id
+    GROUP BY ae.company_id
   `);
 
   const byCompanyId = new Map(
@@ -2624,17 +2624,17 @@ router.get("/holding/pl-monthly", async (req, res) => {
   const result = await db.execute(sql`
     SELECT
       TO_CHAR(ae.entry_date, 'YYYY-MM') AS month,
-      ael.company_id,
+      ae.company_id,
       COALESCE(SUM(CASE WHEN coa.type::text = 'revenue' THEN COALESCE(ael.credit, 0) - COALESCE(ael.debit, 0) ELSE 0 END), 0) AS revenue,
       COALESCE(SUM(CASE WHEN coa.type::text = 'expense' THEN COALESCE(ael.debit, 0) - COALESCE(ael.credit, 0) ELSE 0 END), 0) AS expense
     FROM accounting_entry_lines ael
     JOIN chart_of_accounts coa ON coa.id = ael.account_id
     JOIN accounting_entries ae ON ae.id = ael.entry_id
     WHERE ae.status::text = 'posted'
-      AND ael.company_id = ANY(${companyIdsArr})
+      AND ae.company_id = ANY(${companyIdsArr})
       ${dateFilter}
-    GROUP BY month, ael.company_id
-    ORDER BY month, ael.company_id
+    GROUP BY month, ae.company_id
+    ORDER BY month, ae.company_id
   `);
 
   type Row = { month: string; company_id: number; revenue: string; expense: string };
@@ -2695,7 +2695,7 @@ router.get("/holding/cashflow-monthly", async (req, res) => {
   const result = await db.execute(sql`
     SELECT
       TO_CHAR(ae.entry_date, 'YYYY-MM') AS month,
-      ael.company_id,
+      ae.company_id,
       -- Arus Operasi: penerimaan dari pendapatan
       COALESCE(SUM(CASE WHEN coa.type::text = 'revenue'
         THEN COALESCE(ael.credit, 0) - COALESCE(ael.debit, 0) ELSE 0 END), 0) AS op_inflow,
@@ -2731,10 +2731,10 @@ router.get("/holding/cashflow-monthly", async (req, res) => {
     JOIN chart_of_accounts coa ON coa.id = ael.account_id
     JOIN accounting_entries ae ON ae.id = ael.entry_id
     WHERE ae.status::text = 'posted'
-      AND ael.company_id = ANY(${companyIdsArr})
+      AND ae.company_id = ANY(${companyIdsArr})
       ${dateFilter}
-    GROUP BY month, ael.company_id
-    ORDER BY month, ael.company_id
+    GROUP BY month, ae.company_id
+    ORDER BY month, ae.company_id
   `);
 
   type Row = {

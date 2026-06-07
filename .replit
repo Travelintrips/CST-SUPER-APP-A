@@ -20,6 +20,17 @@ author = "agent"
 task = "workflow.run"
 args = "Gateway"
 
+<<<<<<< HEAD
+=======
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Customer Portal"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Logistic Order"
+
+>>>>>>> 6934cb00ae68f08932913c69d408cde25aa6ed88
 [[workflows.workflow]]
 name = "Gateway"
 author = "agent"
@@ -32,6 +43,33 @@ waitForPort = 5000
 [workflows.workflow.metadata]
 outputType = "webview"
 
+<<<<<<< HEAD
+=======
+[[workflows.workflow]]
+name = "Customer Portal"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd artifacts/customer-portal && PORT=5173 bash start-dev.sh"
+waitForPort = 5173
+
+[[workflows.workflow]]
+name = "Logistic Order"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd artifacts/logistic-order && PORT=3002 pnpm exec vite --config vite.config.ts --host 0.0.0.0 --port 3002"
+waitForPort = 3002
+
+>>>>>>> 6934cb00ae68f08932913c69d408cde25aa6ed88
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
 expertMode = true
@@ -157,6 +195,10 @@ externalPort = 4200
 [[ports]]
 localPort = 21170
 externalPort = 5000
+
+[[ports]]
+localPort = 21171
+externalPort = 9000
 
 [[ports]]
 localPort = 23434
