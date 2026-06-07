@@ -3810,8 +3810,9 @@ router.post("/rekonsiliasi-gsheet", async (req, res) => {
       `${d.getFullYear()}` +
       String(d.getMonth() + 1).padStart(2, "0") +
       String(d.getDate()).padStart(2, "0");
-    const amount = kredit > 0 ? kredit : debit;
-    const type = kredit > 0 ? "IN" : "OUT";
+    // Debit ke akun bank = uang MASUK (IN), kredit = uang KELUAR (OUT)
+    const amount = debit > 0 ? debit : kredit;
+    const type = debit > 0 ? "IN" : "OUT";
     return `${dateStr}_${amount}_${type}`;
   }
 
