@@ -145,7 +145,7 @@ export default function PODScreen() {
     setLocalPhotos((prev) => prev.filter((u) => u !== uri));
   }
 
-  async function getGeoLocation(): Promise<{ lat: number; lng: number } | undefined> {
+  async function getGeoLocation(): Promise<{ lat: number; lng: number; deviceTimestamp: string } | undefined> {
     if (Platform.OS === 'web') return undefined;
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
@@ -153,7 +153,11 @@ export default function PODScreen() {
       const loc = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
       });
-      return { lat: loc.coords.latitude, lng: loc.coords.longitude };
+      return {
+        lat: loc.coords.latitude,
+        lng: loc.coords.longitude,
+        deviceTimestamp: new Date().toISOString(),
+      };
     } catch {
       return undefined;
     }

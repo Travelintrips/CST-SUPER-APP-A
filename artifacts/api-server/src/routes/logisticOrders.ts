@@ -684,6 +684,15 @@ logisticOrdersRouter.get(
           photoType: p.photoType,
           takenAt: p.takenAt.toISOString(),
         })),
+        truckPlate: driverJob.truckPlate ?? null,
+        driverNameOverride: driverJob.driverNameOverride ?? null,
+        podReceiverName: driverJob.podReceiverName ?? null,
+        podGeoLat: driverJob.podGeoLat ?? null,
+        podGeoLng: driverJob.podGeoLng ?? null,
+        podMapUrl: (driverJob as any).podMapUrl ?? null,
+        podStreetViewUrl: (driverJob as any).podStreetViewUrl ?? null,
+        podDeviceTimestamp: (driverJob as any).podDeviceTimestamp ? new Date((driverJob as any).podDeviceTimestamp).toISOString() : null,
+        podSubmittedAt: driverJob.podSubmittedAt?.toISOString() ?? null,
       };
     }
 

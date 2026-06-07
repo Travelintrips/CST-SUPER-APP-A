@@ -40,6 +40,15 @@ interface DriverJob {
   distance: string | null; assignedAt: string; completedAt: string | null;
   logs: DriverLog[];
   photos?: DriverPhoto[];
+  truckPlate?: string | null;
+  driverNameOverride?: string | null;
+  podReceiverName?: string | null;
+  podGeoLat?: string | null;
+  podGeoLng?: string | null;
+  podMapUrl?: string | null;
+  podStreetViewUrl?: string | null;
+  podDeviceTimestamp?: string | null;
+  podSubmittedAt?: string | null;
 }
 
 interface RfqQuote {
@@ -1410,6 +1419,80 @@ export default function TrackPage() {
               jobNumber={tracking.driverJob?.jobNumber}
               orderStatusRank={ORDER_STATUS_RANK[tracking.status] ?? 0}
             />
+
+            {/* ── Driver GPS POD — dari driver app ── */}
+            {tracking.driverJob?.podSubmittedAt && (
+              <div className="bg-card border border-teal-200 rounded-xl p-5">
+                <h3 className="font-semibold text-teal-800 text-sm mb-4 flex items-center gap-2">
+                  <FileText className="w-4 h-4" />
+                  Bukti Pengiriman (POD)
+                </h3>
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-y-2 text-sm">
+                    {tracking.driverJob.driverNameOverride && (
+                      <>
+                        <span className="text-muted-foreground">Driver</span>
+                        <span className="font-semibold text-foreground text-right">{tracking.driverJob.driverNameOverride}</span>
+                      </>
+                    )}
+                    {tracking.driverJob.truckPlate && (
+                      <>
+                        <span className="text-muted-foreground">Plat Nomor</span>
+                        <span className="font-semibold font-mono text-foreground text-right">{tracking.driverJob.truckPlate}</span>
+                      </>
+                    )}
+                    {tracking.driverJob.podReceiverName && (
+                      <>
+                        <span className="text-muted-foreground">Diterima oleh</span>
+                        <span className="font-semibold text-foreground text-right">{tracking.driverJob.podReceiverName}</span>
+                      </>
+                    )}
+                    {tracking.driverJob.podDeviceTimestamp && (
+                      <>
+                        <span className="text-muted-foreground">Waktu perangkat</span>
+                        <span className="font-medium text-right">
+                          {new Date(tracking.driverJob.podDeviceTimestamp).toLocaleString("id-ID", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                      </>
+                    )}
+                    {tracking.driverJob.podGeoLat && tracking.driverJob.podGeoLng && (
+                      <>
+                        <span className="text-muted-foreground">Koordinat GPS</span>
+                        <span className="font-mono text-xs text-right">
+                          {Number(tracking.driverJob.podGeoLat).toFixed(6)}, {Number(tracking.driverJob.podGeoLng).toFixed(6)}
+                        </span>
+                      </>
+                    )}
+                    <>
+                      <span className="text-muted-foreground">Waktu submit</span>
+                      <span className="font-medium text-right">
+                        {new Date(tracking.driverJob.podSubmittedAt).toLocaleString("id-ID", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                    </>
+                  </div>
+                  {(tracking.driverJob.podMapUrl || tracking.driverJob.podStreetViewUrl) && (
+                    <div className="flex gap-2 pt-1">
+                      {tracking.driverJob.podMapUrl && (
+                        <a href={tracking.driverJob.podMapUrl} target="_blank" rel="noopener noreferrer" className="flex-1">
+                          <button className="w-full flex items-center justify-center gap-2 rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-xs font-medium text-teal-700 hover:bg-teal-100 transition-colors">
+                            <MapPin className="w-3.5 h-3.5" />
+                            Lihat di Maps
+                          </button>
+                        </a>
+                      )}
+                      {tracking.driverJob.podStreetViewUrl && (
+                        <a href={tracking.driverJob.podStreetViewUrl} target="_blank" rel="noopener noreferrer" className="flex-1">
+                          <button className="w-full flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-medium text-blue-700 hover:bg-blue-100 transition-colors">
+                            <Navigation className="w-3.5 h-3.5" />
+                            Street View
+                          </button>
+                        </a>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* ── Bukti Pengiriman (POD) — tampil jika ada submission ── */}
             {(tracking.podSubmissions ?? []).length > 0 && (
