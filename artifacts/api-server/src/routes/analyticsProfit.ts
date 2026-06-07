@@ -271,4 +271,111 @@ router.get("/vendors", async (req, res) => {
   }
 });
 
+// ── Per Route ─────────────────────────────────────────────────────────────
+// GET /api/analytics/profitability/routes?companyId=&dateFrom=&dateTo=&limit=50&offset=0
+//
+// GROUP BY origin, destination
+// Formula: Gross Margin = Revenue - Vendor Cost - Truck Cost
+router.get("/routes", async (req, res) => {
+  const dateFrom = req.query.dateFrom ? new Date(String(req.query.dateFrom)) : null;
+  const dateTo   = req.query.dateTo   ? new Date(String(req.query.dateTo))   : null;
+  const companyId = req.query.companyId && req.query.companyId !== "all"
+    ? Number(req.query.companyId) : null;
+  const limit  = Math.min(Number(req.query.limit  ?? 100), 500);
+  const offset = Number(req.query.offset ?? 0);
+
+  try {
+    const rows = await db.execute<{
+      origin: string; destination: string;
+      order_count: string; revenue: string;
+      vendor_cost: string; truck_cost: string; tax: string;
+      gross_margin: string; margin_pct: string;
+    }>(sql`
+      SELECT
+        COALESCE(NULLIF(TRIM(lo.origin), ''), '(tidak diisi)')          AS origin,
+        COALESCE(NULLIF(TRIM(lo.destination), ''), '(tidak diisi)')     AS destination,
+        COUNT(lo.id)::text                                              AS order_count,
+        SUM(lo.grand_total::numeric)::text                              AS revenue,
+        SUM(COALESCE(loq_agg.vendor_cost, 0))::text                    AS vendor_cost,
+        SUM(COALESCE(lo.truck_price::numeric, 0))::text                AS truck_cost,
+        SUM(COALESCE(lo.tax::numeric, 0))::text                        AS tax,
+        SUM(
+          lo.grand_total::numeric
+          - COALESCE(loq_agg.vendor_cost, 0)
+          - COALESCE(lo.truck_price::numeric, 0)
+        )::text                                                         AS gross_margin,
+        ROUND(
+          CASE WHEN SUM(lo.grand_total::numeric) > 0
+            THEN SUM(
+              lo.grand_total::numeric
+              - COALESCE(loq_agg.vendor_cost, 0)
+              - COALESCE(lo.truck_price::numeric, 0)
+            ) / SUM(lo.grand_total::numeric) * 100
+            ELSE 0
+          END, 1
+        )::text                                                         AS margin_pct
+      FROM logistic_orders lo
+      LEFT JOIN (
+        SELECT order_id, MAX(vendor_price::numeric) AS vendor_cost
+        FROM logistic_order_quotes GROUP BY order_id
+      ) loq_agg ON loq_agg.order_id = lo.id
+      WHERE lo.status NOT IN ('Cancelled','cancelled')
+        AND NULLIF(TRIM(lo.origin), '') IS NOT NULL
+        AND NULLIF(TRIM(lo.destination), '') IS NOT NULL
+        ${companyId !== null ? sql`AND lo.company_id = ${companyId}` : sql``}
+        ${dateFrom ? sql`AND lo.created_at >= ${dateFrom}` : sql``}
+        ${dateTo   ? sql`AND lo.created_at <= ${dateTo}`   : sql``}
+      GROUP BY
+        COALESCE(NULLIF(TRIM(lo.origin), ''), '(tidak diisi)'),
+        COALESCE(NULLIF(TRIM(lo.destination), ''), '(tidak diisi)')
+      ORDER BY SUM(lo.grand_total::numeric) DESC NULLS LAST
+      LIMIT ${limit} OFFSET ${offset}
+    `);
+
+    const countRes = await db.execute<{ cnt: string }>(sql`
+      SELECT COUNT(DISTINCT (TRIM(lo.origin), TRIM(lo.destination)))::text AS cnt
+      FROM logistic_orders lo
+      WHERE lo.status NOT IN ('Cancelled','cancelled')
+        AND NULLIF(TRIM(lo.origin), '') IS NOT NULL
+        AND NULLIF(TRIM(lo.destination), '') IS NOT NULL
+        ${companyId !== null ? sql`AND lo.company_id = ${companyId}` : sql``}
+        ${dateFrom ? sql`AND lo.created_at >= ${dateFrom}` : sql``}
+        ${dateTo   ? sql`AND lo.created_at <= ${dateTo}`   : sql``}
+    `);
+
+    const items = rows.rows.map(r => ({
+      origin:      r.origin,
+      destination: r.destination,
+      route:       `${r.origin} → ${r.destination}`,
+      orderCount:  Number(r.order_count),
+      revenue:     Number(r.revenue),
+      vendorCost:  Number(r.vendor_cost),
+      truckCost:   Number(r.truck_cost),
+      tax:         Number(r.tax),
+      grossMargin: Number(r.gross_margin),
+      marginPct:   Number(r.margin_pct),
+    }));
+
+    const totalRevenue    = items.reduce((s, r) => s + r.revenue,    0);
+    const totalVendorCost = items.reduce((s, r) => s + r.vendorCost, 0);
+    const totalTruckCost  = items.reduce((s, r) => s + r.truckCost,  0);
+    const totalTax        = items.reduce((s, r) => s + r.tax,        0);
+    const totalGrossMargin = items.reduce((s, r) => s + r.grossMargin, 0);
+    const totalOrders     = items.reduce((s, r) => s + r.orderCount, 0);
+    const avgMarginPct    = totalRevenue > 0
+      ? Math.round(totalGrossMargin / totalRevenue * 1000) / 10 : 0;
+
+    return res.json({
+      items,
+      total: Number((countRes.rows[0] as { cnt: string } | undefined)?.cnt ?? 0),
+      limit,
+      offset,
+      summary: { totalRevenue, totalVendorCost, totalTruckCost, totalTax, totalGrossMargin, totalOrders, avgMarginPct },
+    });
+  } catch (e) {
+    console.error("[analytics/routes]", e);
+    return res.status(500).json({ error: "Gagal memuat data rute" });
+  }
+});
+
 export default router;

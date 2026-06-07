@@ -12,7 +12,7 @@ import {
   TrendingUp, Search, RefreshCw,
   ShoppingCart, Users, Truck, DollarSign, AlertTriangle,
   ChevronLeft, ChevronRight, Target, BarChart2, Clock,
-  Receipt,
+  Receipt, MapPin,
 } from "lucide-react";
 import { Link } from "wouter";
 import { ArrowLeft } from "lucide-react";
@@ -21,9 +21,11 @@ const idr = (n: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
 
 const idrCompact = (n: number) => {
-  if (Math.abs(n) >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(1)}M`;
-  if (Math.abs(n) >= 1_000_000) return `${(n / 1_000_000).toFixed(0)}Jt`;
-  if (Math.abs(n) >= 1_000) return `${(n / 1_000).toFixed(0)}rb`;
+  const abs = Math.abs(n);
+  const sign = n < 0 ? "-" : "";
+  if (abs >= 1_000_000_000) return `${sign}${(abs / 1_000_000_000).toFixed(1)}M`;
+  if (abs >= 1_000_000) return `${sign}${(abs / 1_000_000).toFixed(0)}Jt`;
+  if (abs >= 1_000) return `${sign}${(abs / 1_000).toFixed(0)}rb`;
   return String(n);
 };
 
@@ -65,6 +67,20 @@ interface VendorRow {
   ontimePct: number; recommendationScore: number; avgResponseMin: number;
 }
 
+interface RouteRow {
+  origin: string; destination: string; route: string;
+  orderCount: number; revenue: number;
+  vendorCost: number; truckCost: number; tax: number;
+  grossMargin: number; marginPct: number;
+}
+interface RoutesData {
+  items: RouteRow[]; total: number; limit: number; offset: number;
+  summary: {
+    totalRevenue: number; totalVendorCost: number; totalTruckCost: number;
+    totalTax: number; totalGrossMargin: number; totalOrders: number; avgMarginPct: number;
+  };
+}
+
 // ─── Filter bar ──────────────────────────────────────────────────────────────
 function FilterBar({
   search, onSearch, dateFrom, dateTo, onDateFrom, onDateTo,
@@ -98,23 +114,43 @@ function FilterBar({
   );
 }
 
-// ─── Margin Breakdown Tooltip ─────────────────────────────────────────────────
-function MarginBreakdown({ row }: { row: OrderRow }) {
-  const grossMargin = row.grossMargin ?? row.margin;
+// ─── Horizontal bar chart (pure CSS, no Recharts) ────────────────────────────
+function RouteBarChart({ rows, metric, label }: {
+  rows: RouteRow[];
+  metric: "revenue" | "grossMargin" | "marginPct";
+  label: string;
+}) {
+  const top = rows.slice(0, 10);
+  const max = Math.max(...top.map(r => Math.abs(r[metric])), 1);
   return (
-    <div className="text-xs space-y-0.5 min-w-[180px]">
-      <div className="flex justify-between gap-4"><span className="text-muted-foreground">Revenue</span><span className="font-medium text-emerald-700">{idrCompact(row.revenue)}</span></div>
-      <div className="flex justify-between gap-4"><span className="text-muted-foreground">Vendor Cost</span><span className="text-red-500">−{idrCompact(row.vendorCost)}</span></div>
-      {row.truckCost > 0 && (
-        <div className="flex justify-between gap-4"><span className="text-muted-foreground">Truck Cost</span><span className="text-orange-500">−{idrCompact(row.truckCost)}</span></div>
-      )}
-      {row.tax > 0 && (
-        <div className="flex justify-between gap-4"><span className="text-muted-foreground">Tax</span><span className="text-slate-500">{idrCompact(row.tax)}</span></div>
-      )}
-      <div className="flex justify-between gap-4 border-t pt-0.5 mt-0.5">
-        <span className="font-semibold">Gross Margin</span>
-        <span className={`font-bold ${grossMargin < 0 ? "text-red-600" : "text-blue-700"}`}>{idrCompact(grossMargin)}</span>
-      </div>
+    <div className="space-y-1.5">
+      <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">{label}</div>
+      {top.map((r, i) => {
+        const val = r[metric];
+        const w = Math.min(Math.abs(val) / max * 100, 100);
+        const isNeg = val < 0;
+        return (
+          <div key={r.route} className="flex items-center gap-2 group">
+            <div className="w-4 text-[10px] font-bold text-muted-foreground text-right shrink-0">{i + 1}</div>
+            <div className="text-xs text-slate-700 truncate w-40 shrink-0" title={r.route}>
+              <span className="font-medium">{r.origin}</span>
+              <span className="text-muted-foreground mx-1">→</span>
+              <span className="font-medium">{r.destination}</span>
+            </div>
+            <div className="flex-1 flex items-center gap-1.5 min-w-0">
+              <div className="flex-1 bg-slate-100 rounded-full h-2 overflow-hidden">
+                <div
+                  className={`h-2 rounded-full transition-all ${isNeg ? "bg-red-400" : metric === "marginPct" ? "bg-blue-400" : metric === "grossMargin" ? "bg-indigo-500" : "bg-emerald-500"}`}
+                  style={{ width: `${w}%` }}
+                />
+              </div>
+              <span className={`text-[11px] font-semibold w-16 text-right shrink-0 ${isNeg ? "text-red-600" : "text-slate-800"}`}>
+                {metric === "marginPct" ? `${val.toFixed(1)}%` : idrCompact(val)}
+              </span>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -124,13 +160,16 @@ export default function ProfitabilityAnalyticsPage() {
   const { companyId: activeCompanyId } = useCompany();
   const companyParam = activeCompanyId ? `companyId=${activeCompanyId}` : "companyId=all";
 
-  const [tab, setTab] = useState<"orders" | "customers" | "vendors">("orders");
+  const [tab, setTab] = useState<"orders" | "customers" | "vendors" | "routes">("orders");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(0);
+  const [routePage, setRoutePage] = useState(0);
+  const [routeSearch, setRouteSearch] = useState("");
   const PAGE_SIZE = 50;
+  const ROUTE_PAGE_SIZE = 50;
 
   const handleSearch = useCallback((v: string) => {
     setSearch(v);
@@ -179,25 +218,41 @@ export default function ProfitabilityAnalyticsPage() {
     enabled: tab === "vendors",
   });
 
+  const routesQuery = useQuery<RoutesData>({
+    queryKey: ["profit-routes", companyParam, dateFrom, dateTo, routePage],
+    queryFn: async () => {
+      const params = [companyParam, dateParams, `limit=${ROUTE_PAGE_SIZE}`, `offset=${routePage * ROUTE_PAGE_SIZE}`].filter(Boolean).join("&");
+      const r = await fetch(`/api/analytics/profitability/routes?${params}`, { credentials: "include" });
+      if (!r.ok) throw new Error("Gagal memuat data rute");
+      return r.json() as Promise<RoutesData>;
+    },
+    enabled: tab === "routes",
+  });
+
   const handleRefresh = () => {
     if (tab === "orders") void ordersQuery.refetch();
     if (tab === "customers") void customersQuery.refetch();
     if (tab === "vendors") void vendorsQuery.refetch();
+    if (tab === "routes") void routesQuery.refetch();
   };
 
-  const isFetching = ordersQuery.isFetching || customersQuery.isFetching || vendorsQuery.isFetching;
+  const isFetching = ordersQuery.isFetching || customersQuery.isFetching || vendorsQuery.isFetching || routesQuery.isFetching;
 
   const thCls = "text-xs font-semibold text-muted-foreground uppercase tracking-wide px-3 py-2 text-left border-b bg-slate-50/80 whitespace-nowrap";
   const tdCls = "px-3 py-2.5 text-sm border-b border-slate-100 align-middle";
 
-  // ── Aggregates for summary bar (current page) ──
   const orderRows = ordersQuery.data?.rows ?? [];
-  const totalRevenue   = orderRows.reduce((s, r) => s + r.revenue, 0);
-  const totalVendor    = orderRows.reduce((s, r) => s + r.vendorCost, 0);
-  const totalTruck     = orderRows.reduce((s, r) => s + (r.truckCost ?? 0), 0);
-  const totalTax       = orderRows.reduce((s, r) => s + (r.tax ?? 0), 0);
+  const totalRevenue    = orderRows.reduce((s, r) => s + r.revenue, 0);
+  const totalVendor     = orderRows.reduce((s, r) => s + r.vendorCost, 0);
+  const totalTruck      = orderRows.reduce((s, r) => s + (r.truckCost ?? 0), 0);
+  const totalTax        = orderRows.reduce((s, r) => s + (r.tax ?? 0), 0);
   const totalGrossMargin = orderRows.reduce((s, r) => s + (r.grossMargin ?? r.margin), 0);
-  const avgMarginPct   = totalRevenue > 0 ? (totalGrossMargin / totalRevenue) * 100 : 0;
+  const avgMarginPct    = totalRevenue > 0 ? (totalGrossMargin / totalRevenue) * 100 : 0;
+
+  // filtered route rows for search
+  const routeRows = (routesQuery.data?.items ?? []).filter(r =>
+    !routeSearch || r.route.toLowerCase().includes(routeSearch.toLowerCase())
+  );
 
   return (
     <AppShell>
@@ -211,9 +266,9 @@ export default function ProfitabilityAnalyticsPage() {
               <h1 className="text-2xl font-bold tracking-tight">Profitability Analytics</h1>
             </div>
             <p className="text-sm text-muted-foreground mt-1">
-              Analisis profitabilitas per order, per customer, dan per vendor
+              Analisis profitabilitas per order, customer, vendor, dan rute
               <span className="ml-2 text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium">
-                Formula: Revenue − Vendor Cost − Truck Cost = Gross Margin
+                Revenue − Vendor Cost − Truck Cost = Gross Margin
               </span>
             </p>
           </div>
@@ -223,7 +278,7 @@ export default function ProfitabilityAnalyticsPage() {
           </Button>
         </div>
 
-        <Tabs value={tab} onValueChange={v => { setTab(v as typeof tab); setPage(0); }}>
+        <Tabs value={tab} onValueChange={v => { setTab(v as typeof tab); setPage(0); setRoutePage(0); }}>
           <div className="flex flex-col sm:flex-row sm:items-center gap-3">
             <TabsList className="w-full sm:w-auto">
               <TabsTrigger value="orders" className="gap-1.5">
@@ -231,6 +286,9 @@ export default function ProfitabilityAnalyticsPage() {
               </TabsTrigger>
               <TabsTrigger value="customers" className="gap-1.5">
                 <Users className="h-3.5 w-3.5" /> Per Customer
+              </TabsTrigger>
+              <TabsTrigger value="routes" className="gap-1.5">
+                <MapPin className="h-3.5 w-3.5" /> Per Rute
               </TabsTrigger>
               <TabsTrigger value="vendors" className="gap-1.5">
                 <Truck className="h-3.5 w-3.5" /> Per Vendor
@@ -240,58 +298,21 @@ export default function ProfitabilityAnalyticsPage() {
               search={tab === "orders" ? search : undefined}
               onSearch={tab === "orders" ? handleSearch : undefined}
               dateFrom={dateFrom} dateTo={dateTo}
-              onDateFrom={v => { setDateFrom(v); setPage(0); }}
-              onDateTo={v => { setDateTo(v); setPage(0); }}
+              onDateFrom={v => { setDateFrom(v); setPage(0); setRoutePage(0); }}
+              onDateTo={v => { setDateTo(v); setPage(0); setRoutePage(0); }}
             />
           </div>
 
           {/* ── TAB: Orders ── */}
           <TabsContent value="orders" className="mt-4 space-y-3">
-
-            {/* Summary bar — 5 metric cards */}
             {orderRows.length > 0 && (
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
                 {[
-                  {
-                    label: "Revenue",
-                    value: idrCompact(totalRevenue),
-                    full: idr(totalRevenue),
-                    icon: <DollarSign className="h-3.5 w-3.5 text-emerald-600" />,
-                    color: "border-l-emerald-500",
-                    text: "text-emerald-700",
-                  },
-                  {
-                    label: "Vendor Cost",
-                    value: idrCompact(totalVendor),
-                    full: idr(totalVendor),
-                    icon: <Truck className="h-3.5 w-3.5 text-slate-500" />,
-                    color: "border-l-slate-400",
-                    text: "text-slate-700",
-                  },
-                  {
-                    label: "Truck Cost",
-                    value: idrCompact(totalTruck),
-                    full: idr(totalTruck),
-                    icon: <Truck className="h-3.5 w-3.5 text-orange-500" />,
-                    color: "border-l-orange-400",
-                    text: "text-orange-700",
-                  },
-                  {
-                    label: "Tax",
-                    value: idrCompact(totalTax),
-                    full: idr(totalTax),
-                    icon: <Receipt className="h-3.5 w-3.5 text-violet-500" />,
-                    color: "border-l-violet-300",
-                    text: "text-violet-700",
-                  },
-                  {
-                    label: "Gross Margin",
-                    value: idrCompact(totalGrossMargin),
-                    full: `${idr(totalGrossMargin)} · ${avgMarginPct.toFixed(1)}%`,
-                    icon: <TrendingUp className="h-3.5 w-3.5 text-blue-600" />,
-                    color: totalGrossMargin < 0 ? "border-l-red-500" : "border-l-blue-500",
-                    text: totalGrossMargin < 0 ? "text-red-600" : "text-blue-700",
-                  },
+                  { label: "Revenue", value: idrCompact(totalRevenue), full: idr(totalRevenue), icon: <DollarSign className="h-3.5 w-3.5 text-emerald-600" />, color: "border-l-emerald-500", text: "text-emerald-700" },
+                  { label: "Vendor Cost", value: idrCompact(totalVendor), full: idr(totalVendor), icon: <Truck className="h-3.5 w-3.5 text-slate-500" />, color: "border-l-slate-400", text: "text-slate-700" },
+                  { label: "Truck Cost", value: idrCompact(totalTruck), full: idr(totalTruck), icon: <Truck className="h-3.5 w-3.5 text-orange-500" />, color: "border-l-orange-400", text: "text-orange-700" },
+                  { label: "Tax", value: idrCompact(totalTax), full: idr(totalTax), icon: <Receipt className="h-3.5 w-3.5 text-violet-500" />, color: "border-l-violet-300", text: "text-violet-700" },
+                  { label: "Gross Margin", value: idrCompact(totalGrossMargin), full: `${idr(totalGrossMargin)} · ${avgMarginPct.toFixed(1)}%`, icon: <TrendingUp className="h-3.5 w-3.5 text-blue-600" />, color: totalGrossMargin < 0 ? "border-l-red-500" : "border-l-blue-500", text: totalGrossMargin < 0 ? "text-red-600" : "text-blue-700" },
                 ].map(card => (
                   <Card key={card.label} className={`border-l-4 ${card.color}`}>
                     <CardContent className="flex items-center gap-2 p-2.5">
@@ -312,9 +333,7 @@ export default function ProfitabilityAnalyticsPage() {
                 <CardTitle className="text-sm font-semibold flex items-center gap-2">
                   <ShoppingCart className="h-4 w-4 text-blue-500" />
                   Revenue · Vendor Cost · Truck Cost · Tax · Gross Margin per Order
-                  {ordersQuery.data && (
-                    <Badge variant="secondary" className="text-[10px]">{ordersQuery.data.total} order</Badge>
-                  )}
+                  {ordersQuery.data && <Badge variant="secondary" className="text-[10px]">{ordersQuery.data.total} order</Badge>}
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-0">
@@ -338,107 +357,51 @@ export default function ProfitabilityAnalyticsPage() {
                     </thead>
                     <tbody>
                       {ordersQuery.isLoading
-                        ? [...Array(8)].map((_, i) => (
-                          <tr key={i}>
-                            {[...Array(12)].map((_, j) => (
-                              <td key={j} className={tdCls}><Skeleton className="h-4 w-full" /></td>
-                            ))}
-                          </tr>
-                        ))
+                        ? [...Array(8)].map((_, i) => <tr key={i}>{[...Array(12)].map((_, j) => <td key={j} className={tdCls}><Skeleton className="h-4 w-full" /></td>)}</tr>)
                         : orderRows.length === 0
-                        ? (
-                          <tr>
-                            <td colSpan={12} className="text-center py-10 text-sm text-muted-foreground">
-                              Tidak ada data order
-                            </td>
-                          </tr>
-                        )
+                        ? <tr><td colSpan={12} className="text-center py-10 text-sm text-muted-foreground">Tidak ada data order</td></tr>
                         : orderRows.map(row => {
                           const gm = row.grossMargin ?? row.margin;
                           return (
                             <tr key={row.id} className="hover:bg-slate-50 transition-colors">
-                              <td className={tdCls}>
-                                <Link href={`/logistics/orders/${row.id}`} className="font-mono text-xs text-blue-600 hover:underline">
-                                  {row.orderNumber}
-                                </Link>
-                              </td>
-                              <td className={tdCls}>
-                                <span className="font-medium">{row.customerName || "—"}</span>
-                              </td>
-                              <td className={tdCls}>
-                                {row.origin && row.destination
-                                  ? <span className="text-xs text-muted-foreground">{row.origin} → {row.destination}</span>
-                                  : <span className="text-muted-foreground">—</span>}
-                              </td>
-                              <td className={tdCls}>
-                                <span className="text-xs">{row.vendorName ?? <span className="text-muted-foreground italic">Belum ada</span>}</span>
-                              </td>
-                              <td className={tdCls}>
-                                <span className="text-xs text-muted-foreground">
-                                  {new Date(row.createdAt).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "2-digit" })}
-                                </span>
-                              </td>
-                              <td className={tdCls}>
-                                <Badge variant="outline" className="text-[10px] whitespace-nowrap">{row.status}</Badge>
-                              </td>
+                              <td className={tdCls}><Link href={`/logistics/orders/${row.id}`} className="font-mono text-xs text-blue-600 hover:underline">{row.orderNumber}</Link></td>
+                              <td className={tdCls}><span className="font-medium">{row.customerName || "—"}</span></td>
+                              <td className={tdCls}>{row.origin && row.destination ? <span className="text-xs text-muted-foreground">{row.origin} → {row.destination}</span> : <span className="text-muted-foreground">—</span>}</td>
+                              <td className={tdCls}><span className="text-xs">{row.vendorName ?? <span className="text-muted-foreground italic">Belum ada</span>}</span></td>
+                              <td className={tdCls}><span className="text-xs text-muted-foreground">{new Date(row.createdAt).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "2-digit" })}</span></td>
+                              <td className={tdCls}><Badge variant="outline" className="text-[10px] whitespace-nowrap">{row.status}</Badge></td>
                               <td className={`${tdCls} text-right font-medium text-emerald-700`}>{idrCompact(row.revenue)}</td>
                               <td className={`${tdCls} text-right text-slate-600`}>{idrCompact(row.vendorCost)}</td>
-                              <td className={`${tdCls} text-right`}>
-                                {(row.truckCost ?? 0) > 0
-                                  ? <span className="text-orange-600">{idrCompact(row.truckCost)}</span>
-                                  : <span className="text-muted-foreground text-xs">—</span>}
-                              </td>
-                              <td className={`${tdCls} text-right`}>
-                                {(row.tax ?? 0) > 0
-                                  ? <span className="text-violet-600">{idrCompact(row.tax)}</span>
-                                  : <span className="text-muted-foreground text-xs">—</span>}
-                              </td>
-                              <td className={`${tdCls} text-right font-semibold ${gm < 0 ? "text-red-600" : "text-blue-700"}`}>
-                                {idrCompact(gm)}
-                              </td>
-                              <td className={`${tdCls} text-right`}>
-                                <MarginBadge pct={row.marginPct} />
-                              </td>
+                              <td className={`${tdCls} text-right`}>{(row.truckCost ?? 0) > 0 ? <span className="text-orange-600">{idrCompact(row.truckCost)}</span> : <span className="text-muted-foreground text-xs">—</span>}</td>
+                              <td className={`${tdCls} text-right`}>{(row.tax ?? 0) > 0 ? <span className="text-violet-600">{idrCompact(row.tax)}</span> : <span className="text-muted-foreground text-xs">—</span>}</td>
+                              <td className={`${tdCls} text-right font-semibold ${gm < 0 ? "text-red-600" : "text-blue-700"}`}>{idrCompact(gm)}</td>
+                              <td className={`${tdCls} text-right`}><MarginBadge pct={row.marginPct} /></td>
                             </tr>
                           );
                         })
                       }
                     </tbody>
-                    {/* Subtotal footer row */}
                     {orderRows.length > 0 && (
                       <tfoot>
                         <tr className="bg-slate-50 font-semibold border-t-2 border-slate-200">
-                          <td colSpan={6} className="px-3 py-2 text-xs text-muted-foreground">
-                            Subtotal halaman ini ({orderRows.length} order)
-                          </td>
+                          <td colSpan={6} className="px-3 py-2 text-xs text-muted-foreground">Subtotal halaman ini ({orderRows.length} order)</td>
                           <td className="px-3 py-2 text-right text-sm text-emerald-700">{idrCompact(totalRevenue)}</td>
                           <td className="px-3 py-2 text-right text-sm text-slate-700">{idrCompact(totalVendor)}</td>
                           <td className="px-3 py-2 text-right text-sm text-orange-700">{idrCompact(totalTruck)}</td>
                           <td className="px-3 py-2 text-right text-sm text-violet-700">{idrCompact(totalTax)}</td>
-                          <td className={`px-3 py-2 text-right text-sm font-bold ${totalGrossMargin < 0 ? "text-red-600" : "text-blue-700"}`}>
-                            {idrCompact(totalGrossMargin)}
-                          </td>
-                          <td className="px-3 py-2 text-right">
-                            <MarginBadge pct={avgMarginPct} />
-                          </td>
+                          <td className={`px-3 py-2 text-right text-sm font-bold ${totalGrossMargin < 0 ? "text-red-600" : "text-blue-700"}`}>{idrCompact(totalGrossMargin)}</td>
+                          <td className="px-3 py-2 text-right"><MarginBadge pct={avgMarginPct} /></td>
                         </tr>
                       </tfoot>
                     )}
                   </table>
                 </div>
-                {/* Pagination */}
                 {ordersQuery.data && ordersQuery.data.total > PAGE_SIZE && (
                   <div className="flex items-center justify-between px-4 py-2 border-t bg-slate-50/50">
-                    <span className="text-xs text-muted-foreground">
-                      {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, ordersQuery.data.total)} dari {ordersQuery.data.total}
-                    </span>
+                    <span className="text-xs text-muted-foreground">{page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, ordersQuery.data.total)} dari {ordersQuery.data.total}</span>
                     <div className="flex gap-1">
-                      <Button variant="outline" size="sm" className="h-7 w-7 p-0" disabled={page === 0} onClick={() => setPage(p => p - 1)}>
-                        <ChevronLeft className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button variant="outline" size="sm" className="h-7 w-7 p-0" disabled={(page + 1) * PAGE_SIZE >= ordersQuery.data.total} onClick={() => setPage(p => p + 1)}>
-                        <ChevronRight className="h-3.5 w-3.5" />
-                      </Button>
+                      <Button variant="outline" size="sm" className="h-7 w-7 p-0" disabled={page === 0} onClick={() => setPage(p => p - 1)}><ChevronLeft className="h-3.5 w-3.5" /></Button>
+                      <Button variant="outline" size="sm" className="h-7 w-7 p-0" disabled={(page + 1) * PAGE_SIZE >= ordersQuery.data.total} onClick={() => setPage(p => p + 1)}><ChevronRight className="h-3.5 w-3.5" /></Button>
                     </div>
                   </div>
                 )}
@@ -448,45 +411,14 @@ export default function ProfitabilityAnalyticsPage() {
 
           {/* ── TAB: Customers ── */}
           <TabsContent value="customers" className="mt-4 space-y-3">
-            {/* Customer summary */}
             {(customersQuery.data ?? []).length > 0 && (
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
                 {[
-                  {
-                    label: "Total Revenue",
-                    value: idr(customersQuery.data!.reduce((s, r) => s + r.revenue, 0)),
-                    icon: <DollarSign className="h-3.5 w-3.5 text-emerald-600" />,
-                    color: "border-l-emerald-500",
-                    text: "text-emerald-700",
-                  },
-                  {
-                    label: "Total Vendor Cost",
-                    value: idr(customersQuery.data!.reduce((s, r) => s + (r.vendorCost ?? 0), 0)),
-                    icon: <Truck className="h-3.5 w-3.5 text-slate-500" />,
-                    color: "border-l-slate-400",
-                    text: "text-slate-700",
-                  },
-                  {
-                    label: "Total Truck Cost",
-                    value: idr(customersQuery.data!.reduce((s, r) => s + (r.truckCost ?? 0), 0)),
-                    icon: <Truck className="h-3.5 w-3.5 text-orange-500" />,
-                    color: "border-l-orange-400",
-                    text: "text-orange-700",
-                  },
-                  {
-                    label: "Total Outstanding",
-                    value: idr(customersQuery.data!.reduce((s, r) => s + r.outstanding, 0)),
-                    icon: <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />,
-                    color: "border-l-amber-400",
-                    text: "text-amber-700",
-                  },
-                  {
-                    label: "Total Gross Margin",
-                    value: idr(customersQuery.data!.reduce((s, r) => s + r.profit, 0)),
-                    icon: <TrendingUp className="h-3.5 w-3.5 text-blue-600" />,
-                    color: "border-l-blue-500",
-                    text: "text-blue-700",
-                  },
+                  { label: "Total Revenue", value: idr(customersQuery.data!.reduce((s, r) => s + r.revenue, 0)), icon: <DollarSign className="h-3.5 w-3.5 text-emerald-600" />, color: "border-l-emerald-500", text: "text-emerald-700" },
+                  { label: "Total Vendor Cost", value: idr(customersQuery.data!.reduce((s, r) => s + (r.vendorCost ?? 0), 0)), icon: <Truck className="h-3.5 w-3.5 text-slate-500" />, color: "border-l-slate-400", text: "text-slate-700" },
+                  { label: "Total Truck Cost", value: idr(customersQuery.data!.reduce((s, r) => s + (r.truckCost ?? 0), 0)), icon: <Truck className="h-3.5 w-3.5 text-orange-500" />, color: "border-l-orange-400", text: "text-orange-700" },
+                  { label: "Total Outstanding", value: idr(customersQuery.data!.reduce((s, r) => s + r.outstanding, 0)), icon: <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />, color: "border-l-amber-400", text: "text-amber-700" },
+                  { label: "Total Gross Margin", value: idr(customersQuery.data!.reduce((s, r) => s + r.profit, 0)), icon: <TrendingUp className="h-3.5 w-3.5 text-blue-600" />, color: "border-l-blue-500", text: "text-blue-700" },
                 ].map(card => (
                   <Card key={card.label} className={`border-l-4 ${card.color}`}>
                     <CardContent className="flex items-center gap-2 p-2.5">
@@ -506,9 +438,7 @@ export default function ProfitabilityAnalyticsPage() {
                 <CardTitle className="text-sm font-semibold flex items-center gap-2">
                   <Users className="h-4 w-4 text-violet-500" />
                   Revenue · Cost Breakdown · Gross Margin per Customer
-                  {customersQuery.data && (
-                    <Badge variant="secondary" className="text-[10px]">{customersQuery.data.length} customer</Badge>
-                  )}
+                  {customersQuery.data && <Badge variant="secondary" className="text-[10px]">{customersQuery.data.length} customer</Badge>}
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-0">
@@ -530,49 +460,21 @@ export default function ProfitabilityAnalyticsPage() {
                     </thead>
                     <tbody>
                       {customersQuery.isLoading
-                        ? [...Array(8)].map((_, i) => (
-                          <tr key={i}>
-                            {[...Array(10)].map((_, j) => (
-                              <td key={j} className={tdCls}><Skeleton className="h-4 w-full" /></td>
-                            ))}
-                          </tr>
-                        ))
+                        ? [...Array(8)].map((_, i) => <tr key={i}>{[...Array(10)].map((_, j) => <td key={j} className={tdCls}><Skeleton className="h-4 w-full" /></td>)}</tr>)
                         : (customersQuery.data ?? []).length === 0
-                        ? (
-                          <tr><td colSpan={10} className="text-center py-10 text-sm text-muted-foreground">Tidak ada data customer</td></tr>
-                        )
+                        ? <tr><td colSpan={10} className="text-center py-10 text-sm text-muted-foreground">Tidak ada data customer</td></tr>
                         : (customersQuery.data ?? []).map((row, i) => (
                           <tr key={row.customerName} className="hover:bg-slate-50 transition-colors">
                             <td className={`${tdCls} text-xs font-bold text-muted-foreground w-8`}>{i + 1}</td>
-                            <td className={tdCls}>
-                              <span className="font-medium">{row.customerName}</span>
-                            </td>
-                            <td className={`${tdCls} text-right`}>
-                              <Badge variant="secondary" className="text-[10px]">{row.orderCount}</Badge>
-                            </td>
+                            <td className={tdCls}><span className="font-medium">{row.customerName}</span></td>
+                            <td className={`${tdCls} text-right`}><Badge variant="secondary" className="text-[10px]">{row.orderCount}</Badge></td>
                             <td className={`${tdCls} text-right font-semibold text-emerald-700`}>{idrCompact(row.revenue)}</td>
                             <td className={`${tdCls} text-right text-slate-600`}>{idrCompact(row.vendorCost ?? 0)}</td>
-                            <td className={`${tdCls} text-right`}>
-                              {(row.truckCost ?? 0) > 0
-                                ? <span className="text-orange-600">{idrCompact(row.truckCost)}</span>
-                                : <span className="text-muted-foreground text-xs">—</span>}
-                            </td>
-                            <td className={`${tdCls} text-right`}>
-                              {(row.tax ?? 0) > 0
-                                ? <span className="text-violet-600">{idrCompact(row.tax)}</span>
-                                : <span className="text-muted-foreground text-xs">—</span>}
-                            </td>
-                            <td className={`${tdCls} text-right`}>
-                              {row.outstanding > 0
-                                ? <span className="text-amber-600 font-medium flex items-center justify-end gap-1"><AlertTriangle className="h-3 w-3" />{idrCompact(row.outstanding)}</span>
-                                : <span className="text-emerald-600 text-xs">Lunas</span>}
-                            </td>
-                            <td className={`${tdCls} text-right font-semibold ${row.profit < 0 ? "text-red-600" : "text-blue-700"}`}>
-                              {idrCompact(row.profit)}
-                            </td>
-                            <td className={`${tdCls} text-right`}>
-                              <MarginBadge pct={row.profitabilityPct} />
-                            </td>
+                            <td className={`${tdCls} text-right`}>{(row.truckCost ?? 0) > 0 ? <span className="text-orange-600">{idrCompact(row.truckCost)}</span> : <span className="text-muted-foreground text-xs">—</span>}</td>
+                            <td className={`${tdCls} text-right`}>{(row.tax ?? 0) > 0 ? <span className="text-violet-600">{idrCompact(row.tax)}</span> : <span className="text-muted-foreground text-xs">—</span>}</td>
+                            <td className={`${tdCls} text-right`}>{row.outstanding > 0 ? <span className="text-amber-600 font-medium flex items-center justify-end gap-1"><AlertTriangle className="h-3 w-3" />{idrCompact(row.outstanding)}</span> : <span className="text-emerald-600 text-xs">Lunas</span>}</td>
+                            <td className={`${tdCls} text-right font-semibold ${row.profit < 0 ? "text-red-600" : "text-blue-700"}`}>{idrCompact(row.profit)}</td>
+                            <td className={`${tdCls} text-right`}><MarginBadge pct={row.profitabilityPct} /></td>
                           </tr>
                         ))
                       }
@@ -583,40 +485,184 @@ export default function ProfitabilityAnalyticsPage() {
             </Card>
           </TabsContent>
 
+          {/* ── TAB: Per Rute ── */}
+          <TabsContent value="routes" className="mt-4 space-y-3">
+            {/* Summary cards */}
+            {routesQuery.data && (
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+                {[
+                  { label: "Total Rute", value: String(routesQuery.data.total), icon: <MapPin className="h-3.5 w-3.5 text-indigo-500" />, color: "border-l-indigo-400", text: "text-indigo-700" },
+                  { label: "Total Order", value: String(routesQuery.data.summary.totalOrders), icon: <ShoppingCart className="h-3.5 w-3.5 text-blue-500" />, color: "border-l-blue-400", text: "text-blue-700" },
+                  { label: "Revenue", value: idrCompact(routesQuery.data.summary.totalRevenue), icon: <DollarSign className="h-3.5 w-3.5 text-emerald-600" />, color: "border-l-emerald-500", text: "text-emerald-700" },
+                  { label: "Vendor Cost", value: idrCompact(routesQuery.data.summary.totalVendorCost), icon: <Truck className="h-3.5 w-3.5 text-slate-500" />, color: "border-l-slate-400", text: "text-slate-700" },
+                  { label: "Truck Cost", value: idrCompact(routesQuery.data.summary.totalTruckCost), icon: <Truck className="h-3.5 w-3.5 text-orange-500" />, color: "border-l-orange-400", text: "text-orange-700" },
+                  {
+                    label: "Gross Margin",
+                    value: `${idrCompact(routesQuery.data.summary.totalGrossMargin)} · ${routesQuery.data.summary.avgMarginPct.toFixed(1)}%`,
+                    icon: <TrendingUp className="h-3.5 w-3.5 text-blue-600" />,
+                    color: routesQuery.data.summary.totalGrossMargin < 0 ? "border-l-red-500" : "border-l-blue-500",
+                    text: routesQuery.data.summary.totalGrossMargin < 0 ? "text-red-600" : "text-blue-700",
+                  },
+                ].map(card => (
+                  <Card key={card.label} className={`border-l-4 ${card.color}`}>
+                    <CardContent className="flex items-center gap-2 p-2.5">
+                      {card.icon}
+                      <div className="min-w-0">
+                        <div className="text-[10px] text-muted-foreground leading-none mb-0.5">{card.label}</div>
+                        <div className={`font-semibold text-xs leading-none ${card.text} truncate`}>{card.value}</div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+
+            {/* Charts — Top 10 routes by Revenue, Gross Margin, Margin % */}
+            {(routesQuery.data?.items.length ?? 0) >= 2 && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <Card>
+                  <CardContent className="p-4">
+                    <RouteBarChart rows={routesQuery.data!.items} metric="revenue" label="Top 10 Rute by Revenue" />
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-4">
+                    <RouteBarChart rows={routesQuery.data!.items} metric="grossMargin" label="Top 10 Rute by Gross Margin" />
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-4">
+                    <RouteBarChart
+                      rows={[...routesQuery.data!.items].sort((a, b) => b.marginPct - a.marginPct)}
+                      metric="marginPct"
+                      label="Top 10 Rute by Margin %"
+                    />
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+
+            {/* Route table */}
+            <Card>
+              <CardHeader className="py-3 px-4 border-b">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                    <MapPin className="h-4 w-4 text-indigo-500" />
+                    Profitabilitas per Rute
+                    {routesQuery.data && <Badge variant="secondary" className="text-[10px]">{routesQuery.data.total} rute</Badge>}
+                  </CardTitle>
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
+                    <Input
+                      className="pl-8 h-8 text-sm w-48"
+                      placeholder="Filter rute…"
+                      value={routeSearch}
+                      onChange={e => setRouteSearch(e.target.value)}
+                    />
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr>
+                        <th className={thCls}>#</th>
+                        <th className={thCls}>Origin</th>
+                        <th className={thCls}>Destination</th>
+                        <th className={`${thCls} text-right`}>Order</th>
+                        <th className={`${thCls} text-right`}>Revenue</th>
+                        <th className={`${thCls} text-right`}>Vendor Cost</th>
+                        <th className={`${thCls} text-right`}>Truck Cost</th>
+                        <th className={`${thCls} text-right`}>Tax</th>
+                        <th className={`${thCls} text-right`}>Gross Margin</th>
+                        <th className={`${thCls} text-right`}>Margin %</th>
+                        <th className={thCls}>Bar</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {routesQuery.isLoading
+                        ? [...Array(8)].map((_, i) => <tr key={i}>{[...Array(11)].map((_, j) => <td key={j} className={tdCls}><Skeleton className="h-4 w-full" /></td>)}</tr>)
+                        : routeRows.length === 0
+                        ? <tr><td colSpan={11} className="text-center py-10 text-sm text-muted-foreground">Tidak ada data rute{routeSearch ? ` untuk "${routeSearch}"` : ""}</td></tr>
+                        : routeRows.map((row, i) => {
+                          const maxRev = routeRows[0]?.revenue ?? 1;
+                          const barW = Math.min(row.revenue / maxRev * 100, 100);
+                          return (
+                            <tr key={row.route} className="hover:bg-slate-50 transition-colors">
+                              <td className={`${tdCls} text-xs font-bold text-muted-foreground w-8`}>{routePage * ROUTE_PAGE_SIZE + i + 1}</td>
+                              <td className={tdCls}>
+                                <span className="font-medium text-slate-800">{row.origin}</span>
+                              </td>
+                              <td className={tdCls}>
+                                <span className="font-medium text-slate-800">{row.destination}</span>
+                              </td>
+                              <td className={`${tdCls} text-right`}>
+                                <Badge variant="secondary" className="text-[10px]">{row.orderCount}</Badge>
+                              </td>
+                              <td className={`${tdCls} text-right font-semibold text-emerald-700`}>{idrCompact(row.revenue)}</td>
+                              <td className={`${tdCls} text-right text-slate-600`}>{idrCompact(row.vendorCost)}</td>
+                              <td className={`${tdCls} text-right`}>
+                                {row.truckCost > 0 ? <span className="text-orange-600">{idrCompact(row.truckCost)}</span> : <span className="text-muted-foreground text-xs">—</span>}
+                              </td>
+                              <td className={`${tdCls} text-right`}>
+                                {row.tax > 0 ? <span className="text-violet-600">{idrCompact(row.tax)}</span> : <span className="text-muted-foreground text-xs">—</span>}
+                              </td>
+                              <td className={`${tdCls} text-right font-semibold ${row.grossMargin < 0 ? "text-red-600" : "text-blue-700"}`}>{idrCompact(row.grossMargin)}</td>
+                              <td className={`${tdCls} text-right`}><MarginBadge pct={row.marginPct} /></td>
+                              <td className={`${tdCls} w-24`}>
+                                <div className="flex items-center gap-1">
+                                  <div className="flex-1 bg-slate-100 rounded-full h-1.5">
+                                    <div className="h-1.5 rounded-full bg-emerald-400 transition-all" style={{ width: `${barW}%` }} />
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      }
+                    </tbody>
+                    {routeRows.length > 0 && routesQuery.data && (
+                      <tfoot>
+                        <tr className="bg-slate-50 font-semibold border-t-2 border-slate-200">
+                          <td colSpan={3} className="px-3 py-2 text-xs text-muted-foreground">Total semua rute</td>
+                          <td className="px-3 py-2 text-right text-sm text-blue-700">{routesQuery.data.summary.totalOrders}</td>
+                          <td className="px-3 py-2 text-right text-sm text-emerald-700">{idrCompact(routesQuery.data.summary.totalRevenue)}</td>
+                          <td className="px-3 py-2 text-right text-sm text-slate-700">{idrCompact(routesQuery.data.summary.totalVendorCost)}</td>
+                          <td className="px-3 py-2 text-right text-sm text-orange-700">{idrCompact(routesQuery.data.summary.totalTruckCost)}</td>
+                          <td className="px-3 py-2 text-right text-sm text-violet-700">{idrCompact(routesQuery.data.summary.totalTax)}</td>
+                          <td className={`px-3 py-2 text-right text-sm font-bold ${routesQuery.data.summary.totalGrossMargin < 0 ? "text-red-600" : "text-blue-700"}`}>
+                            {idrCompact(routesQuery.data.summary.totalGrossMargin)}
+                          </td>
+                          <td className="px-3 py-2 text-right"><MarginBadge pct={routesQuery.data.summary.avgMarginPct} /></td>
+                          <td />
+                        </tr>
+                      </tfoot>
+                    )}
+                  </table>
+                </div>
+                {routesQuery.data && routesQuery.data.total > ROUTE_PAGE_SIZE && !routeSearch && (
+                  <div className="flex items-center justify-between px-4 py-2 border-t bg-slate-50/50">
+                    <span className="text-xs text-muted-foreground">{routePage * ROUTE_PAGE_SIZE + 1}–{Math.min((routePage + 1) * ROUTE_PAGE_SIZE, routesQuery.data.total)} dari {routesQuery.data.total} rute</span>
+                    <div className="flex gap-1">
+                      <Button variant="outline" size="sm" className="h-7 w-7 p-0" disabled={routePage === 0} onClick={() => setRoutePage(p => p - 1)}><ChevronLeft className="h-3.5 w-3.5" /></Button>
+                      <Button variant="outline" size="sm" className="h-7 w-7 p-0" disabled={(routePage + 1) * ROUTE_PAGE_SIZE >= routesQuery.data.total} onClick={() => setRoutePage(p => p + 1)}><ChevronRight className="h-3.5 w-3.5" /></Button>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
           {/* ── TAB: Vendors ── */}
           <TabsContent value="vendors" className="mt-4 space-y-3">
-            {/* Vendor summary */}
             {(vendorsQuery.data ?? []).length > 0 && (
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {[
-                  {
-                    label: "Total Vendor",
-                    value: String(vendorsQuery.data!.length),
-                    icon: <Truck className="h-3.5 w-3.5 text-indigo-500" />,
-                    color: "border-l-indigo-400",
-                    text: "text-indigo-700",
-                  },
-                  {
-                    label: "Total Spend",
-                    value: idr(vendorsQuery.data!.reduce((s, r) => s + r.totalSpend, 0)),
-                    icon: <DollarSign className="h-3.5 w-3.5 text-slate-500" />,
-                    color: "border-l-slate-400",
-                    text: "text-slate-700",
-                  },
-                  {
-                    label: "Avg Win Rate",
-                    value: pct(vendorsQuery.data!.reduce((s, r) => s + r.winRate, 0) / (vendorsQuery.data!.length || 1)),
-                    icon: <Target className="h-3.5 w-3.5 text-emerald-500" />,
-                    color: "border-l-emerald-400",
-                    text: "text-emerald-700",
-                  },
-                  {
-                    label: "Avg On-Time",
-                    value: pct(vendorsQuery.data!.reduce((s, r) => s + r.ontimePct, 0) / (vendorsQuery.data!.length || 1)),
-                    icon: <Clock className="h-3.5 w-3.5 text-blue-500" />,
-                    color: "border-l-blue-400",
-                    text: "text-blue-700",
-                  },
+                  { label: "Total Vendor", value: String(vendorsQuery.data!.length), icon: <Truck className="h-3.5 w-3.5 text-indigo-500" />, color: "border-l-indigo-400", text: "text-indigo-700" },
+                  { label: "Total Spend", value: idr(vendorsQuery.data!.reduce((s, r) => s + r.totalSpend, 0)), icon: <DollarSign className="h-3.5 w-3.5 text-slate-500" />, color: "border-l-slate-400", text: "text-slate-700" },
+                  { label: "Avg Win Rate", value: pct(vendorsQuery.data!.reduce((s, r) => s + r.winRate, 0) / (vendorsQuery.data!.length || 1)), icon: <Target className="h-3.5 w-3.5 text-emerald-500" />, color: "border-l-emerald-400", text: "text-emerald-700" },
+                  { label: "Avg On-Time", value: pct(vendorsQuery.data!.reduce((s, r) => s + r.ontimePct, 0) / (vendorsQuery.data!.length || 1)), icon: <Clock className="h-3.5 w-3.5 text-blue-500" />, color: "border-l-blue-400", text: "text-blue-700" },
                 ].map(card => (
                   <Card key={card.label} className={`border-l-4 ${card.color}`}>
                     <CardContent className="flex items-center gap-2 p-2.5">
@@ -636,9 +682,7 @@ export default function ProfitabilityAnalyticsPage() {
                 <CardTitle className="text-sm font-semibold flex items-center gap-2">
                   <Truck className="h-4 w-4 text-indigo-500" />
                   Spend · Win Rate · Performance per Vendor
-                  {vendorsQuery.data && (
-                    <Badge variant="secondary" className="text-[10px]">{vendorsQuery.data.length} vendor</Badge>
-                  )}
+                  {vendorsQuery.data && <Badge variant="secondary" className="text-[10px]">{vendorsQuery.data.length} vendor</Badge>}
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-0">
@@ -659,55 +703,30 @@ export default function ProfitabilityAnalyticsPage() {
                     </thead>
                     <tbody>
                       {vendorsQuery.isLoading
-                        ? [...Array(8)].map((_, i) => (
-                          <tr key={i}>
-                            {[...Array(9)].map((_, j) => (
-                              <td key={j} className={tdCls}><Skeleton className="h-4 w-full" /></td>
-                            ))}
-                          </tr>
-                        ))
+                        ? [...Array(8)].map((_, i) => <tr key={i}>{[...Array(9)].map((_, j) => <td key={j} className={tdCls}><Skeleton className="h-4 w-full" /></td>)}</tr>)
                         : (vendorsQuery.data ?? []).length === 0
-                        ? (
-                          <tr><td colSpan={9} className="text-center py-10 text-sm text-muted-foreground">Tidak ada data vendor</td></tr>
-                        )
+                        ? <tr><td colSpan={9} className="text-center py-10 text-sm text-muted-foreground">Tidak ada data vendor</td></tr>
                         : (vendorsQuery.data ?? []).map((row, i) => (
                           <tr key={row.vendorId} className="hover:bg-slate-50 transition-colors">
                             <td className={`${tdCls} text-xs font-bold text-muted-foreground w-8`}>{i + 1}</td>
-                            <td className={tdCls}>
-                              <Link href={`/purchase/vendors/${row.vendorId}`} className="font-medium text-blue-700 hover:underline">
-                                {row.vendorName}
-                              </Link>
-                            </td>
-                            <td className={`${tdCls} text-right`}>
-                              <Badge variant="secondary" className="text-[10px]">{row.orderCount}</Badge>
-                            </td>
+                            <td className={tdCls}><Link href={`/purchase/vendors/${row.vendorId}`} className="font-medium text-blue-700 hover:underline">{row.vendorName}</Link></td>
+                            <td className={`${tdCls} text-right`}><Badge variant="secondary" className="text-[10px]">{row.orderCount}</Badge></td>
                             <td className={`${tdCls} text-right font-semibold text-slate-700`}>{idrCompact(row.totalSpend)}</td>
+                            <td className={`${tdCls} text-right`}><WinRateBadge rate={row.winRate} /></td>
+                            <td className={`${tdCls} text-right text-xs text-muted-foreground`}>{row.totalWins}/{row.totalInvites}</td>
                             <td className={`${tdCls} text-right`}>
-                              <WinRateBadge rate={row.winRate} />
-                            </td>
-                            <td className={`${tdCls} text-right text-xs text-muted-foreground`}>
-                              {row.totalWins}/{row.totalInvites}
-                            </td>
-                            <td className={`${tdCls} text-right`}>
-                              <span className={`text-xs font-medium ${row.ontimePct >= 80 ? "text-emerald-700" : row.ontimePct >= 50 ? "text-amber-600" : "text-red-600"}`}>
-                                {pct(row.ontimePct)}
-                              </span>
+                              <span className={`text-xs font-medium ${row.ontimePct >= 80 ? "text-emerald-700" : row.ontimePct >= 50 ? "text-amber-600" : "text-red-600"}`}>{pct(row.ontimePct)}</span>
                             </td>
                             <td className={`${tdCls} text-right`}>
                               <span className="flex items-center justify-end gap-1 text-xs text-muted-foreground">
                                 <Clock className="h-3 w-3" />
-                                {row.avgResponseMin < 60
-                                  ? `${row.avgResponseMin.toFixed(0)}m`
-                                  : `${(row.avgResponseMin / 60).toFixed(1)}j`}
+                                {row.avgResponseMin < 60 ? `${row.avgResponseMin.toFixed(0)}m` : `${(row.avgResponseMin / 60).toFixed(1)}j`}
                               </span>
                             </td>
                             <td className={`${tdCls} text-right`}>
                               <div className="flex items-center justify-end gap-1.5">
                                 <div className="h-1.5 w-16 rounded-full bg-slate-100">
-                                  <div
-                                    className={`h-1.5 rounded-full ${row.recommendationScore >= 80 ? "bg-emerald-500" : row.recommendationScore >= 60 ? "bg-blue-400" : "bg-amber-400"}`}
-                                    style={{ width: `${row.recommendationScore}%` }}
-                                  />
+                                  <div className={`h-1.5 rounded-full ${row.recommendationScore >= 80 ? "bg-emerald-500" : row.recommendationScore >= 60 ? "bg-blue-400" : "bg-amber-400"}`} style={{ width: `${row.recommendationScore}%` }} />
                                 </div>
                                 <span className="text-xs font-semibold w-6 text-right">{row.recommendationScore.toFixed(0)}</span>
                               </div>
