@@ -3606,6 +3606,238 @@ export async function sendInvoiceReminderWa(
   });
 }
 
+// ── Product-First Flow WA Helpers ─────────────────────────────────────────────
+// Semua fungsi di bawah menggunakan context+refId yang unik per vendor/event
+// agar notification_logs dapat melakukan dedup dengan benar.
+
+/**
+ * WA ke vendor produk saat Product RFQ dikirim.
+ * refId: "{orderId}-{vendorId}" — unik per vendor agar dedup tidak antar-vendor.
+ */
+export async function sendProductRfqVendorWa(params: {
+  vendorPhone: string;
+  vendorId: number | string;
+  orderId: number | string;
+  orderNumber: string;
+  rfqNumber: string;
+  commodity: string | null;
+  origin?: string | null;
+  destination?: string | null;
+  formUrl: string;
+  notes?: string | null;
+}): Promise<void> {
+  const msg = [
+    `📦 *Permintaan Penawaran Produk*`,
+    `━━━━━━━━━━━━━━━━`,
+    `No RFQ   : *${params.rfqNumber}*`,
+    `No Order : *${params.orderNumber}*`,
+    `Produk   : ${params.commodity ?? "-"}`,
+    `Rute     : ${params.origin ?? "-"} → ${params.destination ?? "-"}`,
+    ``,
+    `Silakan berikan penawaran harga produk, ketersediaan stok, dan tanggal siap melalui link berikut:`,
+    `🔗 ${params.formUrl}`,
+    params.notes ? `\n*Catatan:* ${params.notes}` : null,
+    ``,
+    `Terima kasih atas kerja sama Anda.`,
+    `_${nowWIB()}_`,
+  ].filter((l) => l !== null).join("\n");
+
+  sendWhatsApp(params.vendorPhone.trim(), msg, {
+    context: "product-rfq-blast",
+    refType: "logistic_order",
+    refId: `${params.orderId}-${params.vendorId}`,
+  }).catch(() => {});
+}
+
+/**
+ * WA ke customer setelah menyetujui harga produk (transisi → Shipment Selection Pending).
+ * context="product-approved-customer-wa", refId=orderId
+ */
+export async function sendShipmentSelectionCustomerWa(params: {
+  customerPhone: string;
+  customerName: string;
+  orderId: number | string;
+  orderNumber: string;
+  selectionUrl?: string | null;
+}): Promise<void> {
+  const urlPart = params.selectionUrl
+    ? `\n\nSilakan pilih mode pengiriman:\n🔗 ${params.selectionUrl}`
+    : "\n\nTim kami akan segera menghubungi Anda untuk memilih layanan pengiriman. 🚚";
+  const msg = `✅ *Produk Disetujui*\n\nHalo ${params.customerName}, Anda telah menyetujui penawaran produk untuk order *${params.orderNumber}*.${urlPart}`;
+
+  sendWhatsApp(params.customerPhone.trim(), msg, {
+    context: "product-approved-customer-wa",
+    refType: "portal_product_order",
+    refId: String(params.orderId),
+  }).catch(() => {});
+}
+
+/**
+ * WA ke admin group saat customer memilih mode pengiriman (non-pickup_self).
+ * context="shipment-mode-selected-admin", refId=orderId
+ */
+export async function sendShipmentModeSelectedAdminWa(params: {
+  orderId: number | string;
+  orderNumber: string;
+  customerName: string;
+  shipmentMode: string;
+  adminGroupWa?: string | null;
+}): Promise<void> {
+  const target = params.adminGroupWa ?? (await getAdminGroupWa());
+  if (!target) return;
+
+  const modeLabel: Record<string, string> = {
+    trucking: "Trucking (darat)",
+    air_freight: "Kargo Udara",
+    sea_freight: "Kargo Laut",
+    door_to_door: "Door-to-Door",
+    courier: "Kurir",
+    air_cargo: "Kargo Udara",
+  };
+
+  const msg = [
+    `🚚 *Customer Pilih Mode Pengiriman*`,
+    `━━━━━━━━━━━━━━━━`,
+    `No Order : *${params.orderNumber}*`,
+    `Customer : ${params.customerName}`,
+    `Mode     : *${modeLabel[params.shipmentMode] ?? params.shipmentMode}*`,
+    ``,
+    `Silakan proses RFQ pengiriman ke vendor yang sesuai.`,
+    `_${nowWIB()}_`,
+  ].join("\n");
+
+  sendWhatsApp(target, msg, {
+    context: "shipment-mode-selected-admin",
+    refType: "portal_product_order",
+    refId: String(params.orderId),
+  }).catch(() => {});
+}
+
+/**
+ * WA ke vendor shipper saat Shipment RFQ dikirim.
+ * refId: "{orderId}-{vendorId}" — unik per vendor.
+ */
+export async function sendShipmentRfqVendorWa(params: {
+  vendorPhone: string;
+  vendorId: number | string;
+  orderId: number | string;
+  orderNumber: string;
+  rfqNumber: string;
+  commodity: string | null;
+  pickupLocation?: string | null;
+  destination?: string | null;
+  readyDate?: string | null;
+  formUrl: string;
+  notes?: string | null;
+}): Promise<void> {
+  const msg = [
+    `🚚 *Permintaan Penawaran Pengiriman*`,
+    `━━━━━━━━━━━━━━━━`,
+    `No RFQ   : *${params.rfqNumber}*`,
+    `No Order : *${params.orderNumber}*`,
+    `Muatan   : ${params.commodity ?? "-"}`,
+    `Pickup   : ${params.pickupLocation ?? "-"}`,
+    `Tujuan   : ${params.destination ?? "-"}`,
+    `Tgl Siap : ${params.readyDate ?? "-"}`,
+    ``,
+    `Silakan berikan penawaran biaya pengiriman melalui link berikut:`,
+    `🔗 ${params.formUrl}`,
+    params.notes ? `\n*Catatan:* ${params.notes}` : null,
+    ``,
+    `Terima kasih.`,
+    `_${nowWIB()}_`,
+  ].filter((l) => l !== null).join("\n");
+
+  sendWhatsApp(params.vendorPhone.trim(), msg, {
+    context: "shipment-rfq-blast",
+    refType: "logistic_order",
+    refId: `${params.orderId}-${params.vendorId}`,
+  }).catch(() => {});
+}
+
+/**
+ * WA ke customer saat produk/order siap diambil (Ready for Pickup).
+ * context="ready-for-pickup-customer", refId=orderId
+ */
+export async function sendReadyForPickupCustomerWa(params: {
+  customerPhone: string;
+  customerName: string;
+  orderId: number | string;
+  orderNumber: string;
+  pickupLocation?: string | null;
+  readyDate?: string | null;
+}): Promise<void> {
+  const loc = params.pickupLocation ? `\n📍 Lokasi: ${params.pickupLocation}` : "";
+  const rd = params.readyDate ? `\n📅 Jadwal: ${params.readyDate}` : "";
+  const msg = `📦 *Produk Siap Diambil*\n\nHalo ${params.customerName}, pesanan Anda *${params.orderNumber}* sudah siap untuk diambil.${loc}${rd}\n\nHarap bawa bukti pemesanan. Terima kasih! 🙏`;
+
+  sendWhatsApp(params.customerPhone.trim(), msg, {
+    context: "ready-for-pickup-customer",
+    refType: "portal_product_order",
+    refId: String(params.orderId),
+  }).catch(() => {});
+}
+
+/**
+ * WA ke customer dan admin group saat shipment vendor dikonfirmasi.
+ * context: "shipment-vendor-confirmed-admin" / "shipment-vendor-confirmed-customer"
+ */
+export async function sendShipmentVendorConfirmedWa(params: {
+  orderId: number | string;
+  orderNumber: string;
+  customerName: string;
+  customerPhone?: string | null;
+  vendorName: string;
+  shipmentMode?: string | null;
+  eta?: string | null;
+  adminGroupWa?: string | null;
+}): Promise<void> {
+  const target = params.adminGroupWa ?? (await getAdminGroupWa());
+
+  const modeLabel: Record<string, string> = {
+    trucking: "Trucking (darat)",
+    air_freight: "Kargo Udara",
+    sea_freight: "Kargo Laut",
+    door_to_door: "Door-to-Door",
+    courier: "Kurir",
+    air_cargo: "Kargo Udara",
+  };
+  const modeStr = params.shipmentMode
+    ? ` (${modeLabel[params.shipmentMode] ?? params.shipmentMode})`
+    : "";
+  const etaStr = params.eta ? `\nETA      : ${params.eta}` : "";
+
+  if (target) {
+    const adminMsg = [
+      `🤝 *Vendor Pengiriman Dikonfirmasi*`,
+      `━━━━━━━━━━━━━━━━`,
+      `No Order : *${params.orderNumber}*`,
+      `Customer : ${params.customerName}`,
+      `Vendor   : *${params.vendorName}*`,
+      `Mode     : ${modeStr || "-"}`,
+      params.eta ? `ETA      : ${params.eta}` : null,
+      ``,
+      `_${nowWIB()}_`,
+    ].filter((l) => l !== null).join("\n");
+
+    sendWhatsApp(target, adminMsg, {
+      context: "shipment-vendor-confirmed-admin",
+      refType: "portal_product_order",
+      refId: String(params.orderId),
+    }).catch(() => {});
+  }
+
+  if (params.customerPhone) {
+    const customerMsg = `🚚 *Vendor Pengiriman Dikonfirmasi*\n\nHalo ${params.customerName}, vendor pengiriman untuk order *${params.orderNumber}* telah dikonfirmasi: *${params.vendorName}*${modeStr}.${etaStr}\n\nBarang Anda akan segera diproses. Terima kasih! 🙏`;
+
+    sendWhatsApp(params.customerPhone.trim(), customerMsg, {
+      context: "shipment-vendor-confirmed-customer",
+      refType: "portal_product_order",
+      refId: String(params.orderId),
+    }).catch(() => {});
+  }
+}
+
 // ── runWaTemplateMigration ─────────────────────────────────────────────────────
 // Creates the whatsapp_template_configs table if missing, seeds default templates,
 // and upgrades stale rows that are missing required markers.

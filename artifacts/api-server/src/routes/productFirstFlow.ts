@@ -35,6 +35,13 @@ import {
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStatusService.js";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
+import {
+  sendProductRfqVendorWa,
+  sendShipmentSelectionCustomerWa,
+  sendShipmentModeSelectedAdminWa,
+  sendShipmentRfqVendorWa,
+  sendReadyForPickupCustomerWa,
+} from "../lib/orderNotification.js";
 import { getPreferredDomain } from "../lib/domain.js";
 import { logger } from "../lib/logger.js";
 
@@ -208,25 +215,20 @@ productFirstFlowRouter.post("/:id/product-rfq", requireClerkUser, async (req: Re
 
     vmfLinks.push({ vendorId: vendor.id, token: linkToken, formUrl });
 
-    // WA ke vendor produk
+    // WA ke vendor produk (refId per-vendor agar tidak dedup antar vendor)
     if (vendor.phone) {
-      const msg =
-        `📦 *Permintaan Penawaran Produk*\n` +
-        `━━━━━━━━━━━━━━━━\n` +
-        `No RFQ   : *${rfqNumber}*\n` +
-        `No Order : *${String(order.orderNumber ?? "")}*\n` +
-        `Produk   : ${String(order.commodity ?? "-")}\n` +
-        `Rute     : ${String(order.origin ?? "-")} → ${String(order.destination ?? "-")}\n\n` +
-        `Silakan berikan penawaran harga produk, ketersediaan stok, dan tanggal siap melalui link berikut:\n` +
-        `🔗 ${formUrl}\n\n` +
-        (notes ? `*Catatan:* ${notes}\n\n` : "") +
-        `Terima kasih atas kerja sama Anda.`;
-
-      sendWhatsApp(vendor.phone.trim(), msg, {
-        context: "product-rfq-blast",
-        refType: "logistic_order",
-        refId: String(orderId),
-      }).catch(() => {});
+      sendProductRfqVendorWa({
+        vendorPhone: vendor.phone,
+        vendorId: vendor.id,
+        orderId,
+        orderNumber: String(order.orderNumber ?? ""),
+        rfqNumber,
+        commodity: String(order.commodity ?? null),
+        origin: String(order.origin ?? null),
+        destination: String(order.destination ?? null),
+        formUrl,
+        notes: notes ?? null,
+      });
     }
   }
 
@@ -407,7 +409,9 @@ productFirstFlowRouter.post("/:token/customer-product-approve", async (req: Requ
   const rows = await db.execute(sql`
     SELECT id, order_number AS "orderNumber", status, order_type AS "orderType",
            customer_product_approved_at AS "customerProductApprovedAt",
-           product_vendor_id AS "productVendorId"
+           product_vendor_id AS "productVendorId",
+           phone, customer_name AS "customerName",
+           customer_product_approval_token AS "customerProductApprovalToken"
     FROM logistic_orders
     WHERE customer_product_approval_token = ${token}
     LIMIT 1
@@ -437,6 +441,21 @@ productFirstFlowRouter.post("/:token/customer-product-approve", async (req: Requ
 
     if (!tr.ok) {
       return res.status(422).json({ error: `Gagal transisi status: ${tr.error}` });
+    }
+
+    // WA ke customer — notifikasi produk disetujui + link pilih pengiriman
+    const customerPhone = String(order.phone ?? "").trim();
+    const approvalTokenStr = String(order.customerProductApprovalToken ?? "");
+    if (customerPhone && approvalTokenStr) {
+      const domain = getPreferredDomain() || "cstlogistic.co.id";
+      const selectionUrl = `https://${domain}/shipment-selection/${approvalTokenStr}`;
+      sendShipmentSelectionCustomerWa({
+        customerPhone,
+        customerName: String(order.customerName ?? ""),
+        orderId: order.id as number,
+        orderNumber: String(order.orderNumber ?? ""),
+        selectionUrl,
+      });
     }
 
     return res.json({
@@ -513,8 +532,29 @@ productFirstFlowRouter.post("/:id/select-shipment-mode", requireClerkUser, async
       });
     }
 
+    // WA ke customer — produk siap diambil
+    const customerPhone = String(guard.order.phone ?? "").trim();
+    if (customerPhone) {
+      sendReadyForPickupCustomerWa({
+        customerPhone,
+        customerName: String(guard.order.customerName ?? ""),
+        orderId,
+        orderNumber: String(guard.order.orderNumber ?? ""),
+        pickupLocation: guard.order.productPickupLocation as string | null,
+        readyDate: guard.order.productReadyDate as string | null,
+      });
+    }
+
     return res.json({ shipmentMode: mode, status: tr.toStatus, readyForPickup: true });
   }
+
+  // WA ke admin — customer memilih mode pengiriman non-pickup
+  sendShipmentModeSelectedAdminWa({
+    orderId,
+    orderNumber: String(guard.order.orderNumber ?? ""),
+    customerName: String(guard.order.customerName ?? ""),
+    shipmentMode: mode,
+  });
 
   return res.json({
     shipmentMode: mode,
@@ -630,26 +670,21 @@ productFirstFlowRouter.post("/:id/shipment-rfq", requireClerkUser, async (req: R
 
     vmfLinks.push({ vendorId: vendor.id, token: linkToken, formUrl });
 
+    // WA ke vendor shipper (refId per-vendor agar tidak dedup antar vendor)
     if (vendor.phone) {
-      const msg =
-        `🚚 *Permintaan Penawaran Pengiriman*\n` +
-        `━━━━━━━━━━━━━━━━\n` +
-        `No RFQ   : *${rfqNumber}*\n` +
-        `No Order : *${String(order.orderNumber ?? "")}*\n` +
-        `Muatan   : ${String(order.commodity ?? "-")}\n` +
-        `Pickup   : ${String(order.productPickupLocation ?? "-")}\n` +
-        `Tujuan   : ${String(order.destination ?? "-")}\n` +
-        `Tgl Siap : ${String(order.productReadyDate ?? "-")}\n\n` +
-        `Silakan berikan penawaran biaya pengiriman melalui link berikut:\n` +
-        `🔗 ${formUrl}\n\n` +
-        (notes ? `*Catatan:* ${notes}\n\n` : "") +
-        `Terima kasih.`;
-
-      sendWhatsApp(vendor.phone.trim(), msg, {
-        context: "shipment-rfq-blast",
-        refType: "logistic_order",
-        refId: String(orderId),
-      }).catch(() => {});
+      sendShipmentRfqVendorWa({
+        vendorPhone: vendor.phone,
+        vendorId: vendor.id,
+        orderId,
+        orderNumber: String(order.orderNumber ?? ""),
+        rfqNumber,
+        commodity: String(order.commodity ?? null),
+        pickupLocation: order.productPickupLocation as string | null,
+        destination: String(order.destination ?? null),
+        readyDate: order.productReadyDate as string | null,
+        formUrl,
+        notes: notes ?? null,
+      });
     }
   }
 

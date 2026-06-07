@@ -16,7 +16,17 @@ import { eq, ilike, and, or, sql } from "drizzle-orm";
 import { resolveTemplate, resolveAllTemplates, validateTemplatePayload, CATEGORY_LABELS } from "@workspace/product-templates";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { getPreferredDomain } from "../lib/domain";
-import { sendProductOrderWaNotification, sendProductOrderStatusUpdateWa, sendProductVendorResponseAdminWa, sendInvoiceIssuedNotification, sendProductOrderPickupWaNotification } from "../lib/orderNotification";
+import {
+  sendProductOrderWaNotification,
+  sendProductOrderStatusUpdateWa,
+  sendProductVendorResponseAdminWa,
+  sendInvoiceIssuedNotification,
+  sendProductOrderPickupWaNotification,
+  sendShipmentSelectionCustomerWa,
+  sendShipmentModeSelectedAdminWa,
+  sendReadyForPickupCustomerWa,
+  sendShipmentVendorConfirmedWa,
+} from "../lib/orderNotification";
 import { sendMail, isSmtpConfigured } from "../lib/mailer";
 import { logger } from "../lib/logger";
 import { saveAndBroadcast } from "../lib/notificationStore";
@@ -1431,11 +1441,28 @@ portalProductOrdersRouter.post("/orders/:token/customer-product-approve", async 
   });
 
   if (row.phone) {
-    const { sendViaService } = await import("../lib/waTransport.js");
-    const msg = action === "approve"
-      ? `✅ *Produk Disetujui*\n\nHalo ${row.customer_name}, Anda telah menyetujui penawaran produk untuk order *${row.order_number}*.\n\nTim kami akan segera menghubungi Anda untuk memilih layanan pengiriman. 🚚`
-      : `ℹ️ *Produk Ditolak*\n\nHalo ${row.customer_name}, Anda menolak penawaran produk untuk order *${row.order_number}*.\n\nTim kami akan segera meninjau ulang dan menghubungi Anda.`;
-    sendViaService(String(row.phone), msg).catch(() => undefined);
+    if (action === "approve") {
+      // WA ke customer dengan link pilih pengiriman
+      const domain = getPreferredDomain();
+      const selectionUrl = domain && row.product_approve_token
+        ? `https://${domain}/shipment-selection/${row.product_approve_token}`
+        : null;
+      sendShipmentSelectionCustomerWa({
+        customerPhone: String(row.phone),
+        customerName: row.customer_name,
+        orderId: row.id,
+        orderNumber: row.order_number,
+        selectionUrl,
+      });
+    } else {
+      const { sendViaService } = await import("../lib/waTransport.js");
+      const rejectMsg = `ℹ️ *Produk Ditolak*\n\nHalo ${row.customer_name}, Anda menolak penawaran produk untuk order *${row.order_number}*.\n\nTim kami akan segera meninjau ulang dan menghubungi Anda.`;
+      sendViaService(String(row.phone), rejectMsg, {
+        context: "product-reject-customer",
+        refType: "portal_product_order",
+        refId: String(row.id),
+      }).catch(() => undefined);
+    }
   }
 
   logger.info({ orderId: row.id, action, newStatus }, "customer-product-approve");
@@ -1522,11 +1549,32 @@ portalProductOrdersRouter.post("/orders/:token/select-shipment-mode", async (req
   });
 
   if (row.phone) {
-    const { sendViaService } = await import("../lib/waTransport.js");
-    const msg = shipmentMode === "pickup_self"
-      ? `📦 *Pesanan Siap Diambil*\n\nHalo ${row.customer_name}, pesanan *${row.order_number}* siap untuk diambil di gudang kami.\n\nTim kami akan segera menghubungi Anda dengan detail lokasi pengambilan.`
-      : `🚚 *Pengiriman dalam Proses*\n\nHalo ${row.customer_name}, pilihan pengiriman Anda untuk order *${row.order_number}* sudah kami terima.\n\nTim kami akan mengirimkan penawaran pengiriman segera via WhatsApp ini.`;
-    sendViaService(String(row.phone), msg).catch(() => undefined);
+    if (shipmentMode === "pickup_self") {
+      // WA ke customer — produk siap diambil
+      sendReadyForPickupCustomerWa({
+        customerPhone: String(row.phone),
+        customerName: row.customer_name,
+        orderId: row.id,
+        orderNumber: row.order_number,
+      });
+    } else {
+      // WA ke customer — konfirmasi pilihan pengiriman
+      const { sendViaService } = await import("../lib/waTransport.js");
+      const shipMsg = `🚚 *Pengiriman dalam Proses*\n\nHalo ${row.customer_name}, pilihan pengiriman Anda untuk order *${row.order_number}* sudah kami terima.\n\nTim kami akan mengirimkan penawaran pengiriman segera via WhatsApp ini.`;
+      sendViaService(String(row.phone), shipMsg, {
+        context: "shipment-mode-confirm-customer",
+        refType: "portal_product_order",
+        refId: String(row.id),
+      }).catch(() => undefined);
+
+      // WA ke admin group — customer pilih mode pengiriman
+      sendShipmentModeSelectedAdminWa({
+        orderId: row.id,
+        orderNumber: row.order_number,
+        customerName: row.customer_name,
+        shipmentMode,
+      });
+    }
   }
 
   logger.info({ orderId: row.id, shipmentMode, newStatus }, "select-shipment-mode");
@@ -1551,7 +1599,13 @@ portalProductOrdersRouter.post("/admin/orders/:id/blast-product-rfq", async (req
   const domain = getPreferredDomain();
   const adminUrl = domain ? `https://${domain}/bizportal/logistics/portal-orders` : undefined;
   const msg = `📤 *Product RFQ Dikirim*\n\nOrder: *${order.orderNumber}*\nCustomer: ${order.customerName}\n\nAdmin perlu mencari vendor untuk barang ini dan memasukkan penawaran produk.${adminUrl ? `\n\n🔗 ${adminUrl}` : ""}`;
-  if (adminGroupWa) sendViaService(adminGroupWa, msg).catch(() => undefined);
+  if (adminGroupWa) {
+    sendViaService(adminGroupWa, msg, {
+      context: "product-rfq-blast-admin",
+      refType: "portal_product_order",
+      refId: String(id),
+    }).catch(() => undefined);
+  }
 
   broadcastToAdmins("order_status_update", { orderNumber: order.orderNumber, status: "Product RFQ Sent", source: "admin_blast" });
   return res.json({ success: true, status: "Product RFQ Sent" });
@@ -1624,7 +1678,11 @@ portalProductOrdersRouter.post("/admin/orders/:id/send-product-approval", async 
 
   if (row.phone) {
     const { sendViaService } = await import("../lib/waTransport.js");
-    sendViaService(String(row.phone), msg).catch(() => undefined);
+    sendViaService(String(row.phone), msg, {
+      context: "product-approval-send",
+      refType: "portal_product_order",
+      refId: String(id),
+    }).catch(() => undefined);
   }
 
   broadcastToAdmins("order_status_update", { orderNumber: row.order_number, status: "Customer Product Approval", source: "admin_approval" });
@@ -1666,7 +1724,13 @@ portalProductOrdersRouter.post("/admin/orders/:id/blast-shipment-rfq", async (re
     door_to_door: "Door-to-Door", courier: "Kurir",
   };
   const msg = `🚢 *Shipment RFQ Dikirim*\n\nOrder: *${row.order_number}*\nCustomer: ${row.customer_name}\nVendor Produk: ${row.vendor_name_selected}\nMode: ${modeLabel[row.shipment_mode] ?? row.shipment_mode}\nPickup: ${row.pickup_location}\nSiap: ${row.ready_date}\n\nAdmin perlu mencari vendor pengiriman.${adminUrl ? `\n\n🔗 ${adminUrl}` : ""}`;
-  if (adminGroupWa) sendViaService(adminGroupWa, msg).catch(() => undefined);
+  if (adminGroupWa) {
+    sendViaService(adminGroupWa, msg, {
+      context: "shipment-rfq-blast-admin",
+      refType: "portal_product_order",
+      refId: String(id),
+    }).catch(() => undefined);
+  }
 
   broadcastToAdmins("order_status_update", { orderNumber: row.order_number, status: "Shipment RFQ Sent", source: "admin_shipment_rfq" });
   return res.json({ success: true, status: "Shipment RFQ Sent" });
@@ -1685,8 +1749,61 @@ portalProductOrdersRouter.post("/admin/orders/:id/mark-ready-pickup", async (req
     UPDATE portal_product_orders SET status = 'Ready for Pickup', updated_at = NOW() WHERE id = ${id}
   `);
 
+  // WA ke customer — produk siap diambil
+  const pickupPhone = (order as any).phone ?? null;
+  const pickupLoc = (order as any).pickupLocation ?? null;
+  const pickupReady = (order as any).readyDate ?? null;
+  if (pickupPhone) {
+    sendReadyForPickupCustomerWa({
+      customerPhone: String(pickupPhone),
+      customerName: order.customerName,
+      orderId: id,
+      orderNumber: order.orderNumber,
+      pickupLocation: pickupLoc,
+      readyDate: pickupReady,
+    });
+  }
+
   broadcastToAdmins("order_status_update", { orderNumber: order.orderNumber, status: "Ready for Pickup", source: "admin_mark_pickup" });
   return res.json({ success: true, status: "Ready for Pickup" });
+});
+
+// ── Admin action: Mark Shipment Vendor Confirmed ─────────────────────────────
+portalProductOrdersRouter.post("/admin/orders/:id/mark-shipment-vendor-confirmed", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const id = parseInt(String(req.params.id), 10);
+  if (isNaN(id)) return res.status(400).json({ error: "ID tidak valid" });
+
+  const { vendorName, shipmentMode, eta } = req.body as {
+    vendorName?: string;
+    shipmentMode?: string;
+    eta?: string;
+  };
+
+  const result = await db.execute(sql`
+    SELECT id, order_number, customer_name, phone, shipment_mode
+    FROM portal_product_orders WHERE id = ${id} LIMIT 1
+  `);
+  const row = result.rows[0] as any;
+  if (!row) return res.status(404).json({ error: "Order tidak ditemukan" });
+
+  await db.execute(sql`
+    UPDATE portal_product_orders SET status = 'Vendor Confirmed', updated_at = NOW() WHERE id = ${id}
+  `);
+
+  // WA ke customer dan admin group
+  sendShipmentVendorConfirmedWa({
+    orderId: id,
+    orderNumber: row.order_number,
+    customerName: row.customer_name,
+    customerPhone: row.phone ?? null,
+    vendorName: vendorName?.trim() || "Vendor Pengiriman",
+    shipmentMode: shipmentMode ?? row.shipment_mode ?? null,
+    eta: eta?.trim() ?? null,
+  });
+
+  broadcastToAdmins("order_status_update", { orderNumber: row.order_number, status: "Vendor Confirmed", source: "admin_vendor_confirmed" });
+  return res.json({ success: true, status: "Vendor Confirmed" });
 });
 
 // ── Admin action: Send Pickup Instruction WA ────────────────────────────────
