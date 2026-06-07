@@ -69,6 +69,7 @@ import { runSportCenterMigration, runSportCenterAccountCorrection } from "./modu
 import { startRecurringExpenseWorker } from "./modules/sport-center/recurringExpenseWorker.js";
 import { startMemberReminderWorker } from "./modules/sport-center/memberReminderWorker.js";
 import { startExpenseReminderWorker } from "./lib/expenseReminderWorker.js";
+import { startRekonsiliasiWorker } from "./lib/rekonsiliasiWorker.js";
 import { runCostCenterMigration } from "./lib/costCenterMigration.js";
 import { runDriverPodMigration, runDriverAssignmentMigration } from "./routes/driver.js";
 import { runProductVolumeCbmMigration } from "./routes/ecommerce.js";
@@ -521,6 +522,7 @@ async function startServer() {
   startRecurringExpenseWorker();
   startMemberReminderWorker();
   startExpenseReminderWorker();
+  startRekonsiliasiWorker();
   startDbBackupScheduler();
   startWaRetryWorker();
 

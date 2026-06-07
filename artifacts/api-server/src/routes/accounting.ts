@@ -3087,6 +3087,54 @@ router.get("/holding/groups/:id/cashflow", async (req, res) => {
 
 // ─── GOOGLE SHEETS SYNC ───────────────────────────────────────────────────────
 
+// GET /accounting/rekon-schedule — baca konfigurasi jadwal rekonsiliasi otomatis
+router.get("/rekon-schedule", requireAdmin, async (req, res) => {
+  const companyId = resolveCompanyId(req);
+  const [settings] = await db
+    .select({ id: accountingSettingsTable.id, meta: accountingSettingsTable.meta })
+    .from(accountingSettingsTable)
+    .where(companyId ? eq(accountingSettingsTable.companyId, companyId) : isNull(accountingSettingsTable.companyId));
+  const meta = (settings?.meta ?? {}) as Record<string, unknown>;
+  return res.json({ config: meta.rekonSchedule ?? null });
+});
+
+// POST /accounting/rekon-schedule — simpan/update konfigurasi jadwal
+router.post("/rekon-schedule", requireAdmin, async (req, res) => {
+  const companyId = resolveCompanyId(req);
+  const {
+    enabled, spreadsheetId, sheetName, colKey, colStatus, startRow, hourWib,
+  } = req.body as {
+    enabled: boolean;
+    spreadsheetId: string;
+    sheetName?: string;
+    colKey?: number;
+    colStatus?: number;
+    startRow?: number;
+    hourWib?: number;
+  };
+
+  if (enabled && !spreadsheetId) {
+    return res.status(400).json({ message: "spreadsheetId wajib diisi saat aktif" });
+  }
+
+  const newConfig = { enabled, spreadsheetId, sheetName: sheetName ?? "Mutasi", colKey: colKey ?? 4, colStatus: colStatus ?? 5, startRow: startRow ?? 2, hourWib: hourWib ?? 2, companyId: companyId ?? null };
+
+  const [existing] = await db
+    .select({ id: accountingSettingsTable.id, meta: accountingSettingsTable.meta })
+    .from(accountingSettingsTable)
+    .where(companyId ? eq(accountingSettingsTable.companyId, companyId) : isNull(accountingSettingsTable.companyId));
+
+  const baseMeta = (existing?.meta ?? {}) as Record<string, unknown>;
+  const newMeta = { ...baseMeta, rekonSchedule: { ...((baseMeta.rekonSchedule as object) ?? {}), ...newConfig } };
+
+  if (existing) {
+    await db.update(accountingSettingsTable).set({ meta: newMeta }).where(eq(accountingSettingsTable.id, existing.id));
+  } else {
+    await db.insert(accountingSettingsTable).values({ companyId: companyId ?? null, meta: newMeta } as typeof accountingSettingsTable.$inferInsert);
+  }
+  return res.json({ ok: true, config: newMeta.rekonSchedule });
+});
+
 // GET /accounting/gsheet/config — ambil spreadsheetId yang tersimpan (dari env atau DB settings)
 router.get("/gsheet/config", async (req, res) => {
   const companyId = resolveCompanyId(req);
