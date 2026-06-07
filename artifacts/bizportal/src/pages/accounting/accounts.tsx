@@ -30,7 +30,7 @@ import {
 } from "@workspace/api-client-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCompany } from "@/contexts/CompanyContext";
-import { Pencil, Plus, Trash2, Landmark, Search, ChevronRight, ChevronDown, ChevronsUpDown, Check, GitMerge, Clock } from "lucide-react";
+import { Pencil, Plus, Trash2, Landmark, Search, ChevronRight, ChevronDown, ChevronsUpDown, Check, GitMerge, Clock, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { Link } from "wouter";
 
 const TYPE_LABELS: Record<string, string> = {
@@ -98,6 +98,15 @@ interface RekonInfo {
   lastManualRekonAt: string | null;
 }
 
+const OVERDUE_DAYS = 7;
+const WARN_DAYS = 3;
+
+function daysSince(dateStr: string | null): number | null {
+  if (!dateStr) return null;
+  const diff = Date.now() - new Date(dateStr).getTime();
+  return Math.floor(diff / (1000 * 60 * 60 * 24));
+}
+
 function RekonStatusCard() {
   const [info, setInfo] = useState<RekonInfo | null>(null);
   useEffect(() => {
@@ -107,36 +116,83 @@ function RekonStatusCard() {
       .catch(() => {});
   }, []);
 
-  const manualDate = info?.lastManualRekonAt
-    ? new Date(info.lastManualRekonAt).toLocaleString("id-ID", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })
-    : null;
-  const autoDate = info?.config?.lastRunDate ?? null;
-  const autoEnabled = info?.config?.enabled ?? false;
-
   if (!info) return null;
 
+  const autoEnabled = info?.config?.enabled ?? false;
+
+  // Pilih tanggal rekonsiliasi terakhir (manual atau otomatis, mana yang lebih baru)
+  const manualTs = info.lastManualRekonAt ? new Date(info.lastManualRekonAt).getTime() : 0;
+  const autoTs = info.config?.lastRunDate ? new Date(info.config.lastRunDate).getTime() : 0;
+  const latestTs = Math.max(manualTs, autoTs);
+  const latestDate = latestTs > 0 ? new Date(latestTs) : null;
+  const latestSource = latestTs === 0 ? null : latestTs === manualTs ? "manual" : "otomatis";
+
+  const manualDays = daysSince(info.lastManualRekonAt);
+  const autoDays = daysSince(info.config?.lastRunDate ?? null);
+  const latestDays = latestDate ? Math.floor((Date.now() - latestTs) / (1000 * 60 * 60 * 24)) : null;
+
+  const isOverdue = latestDays === null || latestDays >= OVERDUE_DAYS;
+  const isWarn = !isOverdue && latestDays >= WARN_DAYS;
+  const isOk = !isOverdue && !isWarn;
+
+  const fmtDate = (ts: number) => new Date(ts).toLocaleString("id-ID", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  const fmtSimple = (s: string) => new Date(s).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
+
+  const cardClass = isOverdue
+    ? "border-red-200 bg-red-50/60"
+    : isWarn
+    ? "border-amber-200 bg-amber-50/60"
+    : "border-green-200 bg-green-50/40";
+
+  const iconEl = isOverdue
+    ? <AlertTriangle className="h-4 w-4 text-red-500 shrink-0" />
+    : isWarn
+    ? <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
+    : <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />;
+
+  const titleColor = isOverdue ? "text-red-800" : isWarn ? "text-amber-800" : "text-green-800";
+  const descColor = isOverdue ? "text-red-600" : isWarn ? "text-amber-600" : "text-green-700";
+
+  const alertMsg = isOverdue && latestDate === null
+    ? "Belum pernah direkonsiliasi! Segera lakukan rekonsiliasi bank."
+    : isOverdue
+    ? `Rekonsiliasi terakhir ${latestDays} hari yang lalu — sudah melewati batas ${OVERDUE_DAYS} hari.`
+    : isWarn
+    ? `Rekonsiliasi terakhir ${latestDays} hari yang lalu — segera lakukan sebelum ${OVERDUE_DAYS} hari.`
+    : `Rekonsiliasi terkini — terakhir ${latestDays === 0 ? "hari ini" : `${latestDays} hari lalu`} (${latestSource}).`;
+
   return (
-    <Card className="border-blue-100 bg-blue-50/40">
-      <CardContent className="p-3 flex flex-wrap items-center gap-x-6 gap-y-1">
-        <div className="flex items-center gap-1.5 text-sm text-blue-800">
-          <GitMerge className="h-4 w-4 text-blue-600 shrink-0" />
-          <span className="font-medium">Rekonsiliasi Bank</span>
+    <Card className={cardClass}>
+      <CardContent className="p-3 space-y-2">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+          <div className={`flex items-center gap-1.5 text-sm font-semibold ${titleColor}`}>
+            {iconEl}
+            <span>Rekonsiliasi Bank</span>
+          </div>
+          <span className={`text-xs ${descColor}`}>{alertMsg}</span>
+          <Link href="/accounting/reconciliation" className={`ml-auto text-xs font-medium hover:underline ${isOverdue ? "text-red-700" : isWarn ? "text-amber-700" : "text-green-700"}`}>
+            {isOverdue ? "⚡ Rekonsiliasi Sekarang →" : "Buka Rekonsiliasi →"}
+          </Link>
         </div>
-        <div className="flex items-center gap-1 text-sm text-slate-600">
-          <Clock className="h-3.5 w-3.5 text-slate-400" />
-          <span>Manual terakhir:</span>
-          <span className="font-semibold text-slate-800">{manualDate ?? "—"}</span>
+        <div className="flex flex-wrap gap-x-5 gap-y-0.5 text-xs text-slate-500">
+          <span className="flex items-center gap-1">
+            <Clock className="h-3 w-3" />
+            Manual terakhir:{" "}
+            <span className="font-medium text-slate-700">
+              {manualTs > 0 ? `${fmtDate(manualTs)}${manualDays !== null ? ` (${manualDays === 0 ? "hari ini" : `${manualDays}h lalu`})` : ""}` : "—"}
+            </span>
+          </span>
+          <span className="flex items-center gap-1">
+            <Clock className="h-3 w-3" />
+            Otomatis terakhir:{" "}
+            <span className="font-medium text-slate-700">
+              {info.config?.lastRunDate ? `${fmtSimple(info.config.lastRunDate)}${autoDays !== null ? ` (${autoDays === 0 ? "hari ini" : `${autoDays}h lalu`})` : ""}` : "—"}
+            </span>
+            {autoEnabled
+              ? <span className="bg-green-100 text-green-700 px-1 py-0 rounded border border-green-200">Aktif</span>
+              : <span className="bg-slate-100 text-slate-500 px-1 py-0 rounded border border-slate-200">Nonaktif</span>}
+          </span>
         </div>
-        <div className="flex items-center gap-1 text-sm text-slate-600">
-          <Clock className="h-3.5 w-3.5 text-slate-400" />
-          <span>Otomatis terakhir:</span>
-          <span className="font-semibold text-slate-800">{autoDate ?? "—"}</span>
-          {autoEnabled && <span className="ml-1 text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded border border-green-200">Aktif</span>}
-          {!autoEnabled && <span className="ml-1 text-xs bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded border border-slate-200">Nonaktif</span>}
-        </div>
-        <Link href="/accounting/reconciliation" className="ml-auto text-xs text-blue-600 hover:underline font-medium">
-          Buka Rekonsiliasi →
-        </Link>
       </CardContent>
     </Card>
   );
