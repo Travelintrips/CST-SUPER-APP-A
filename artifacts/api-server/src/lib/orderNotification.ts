@@ -1,7 +1,7 @@
 import { db, suppliersTable, vendorCatalogItemsTable, waTemplateConfigsTable, logisticOrderRfqsTable, vendorMiniFormLinksTable } from "@workspace/db";
 import { eq, and, ilike, sql, desc } from "drizzle-orm";
 import { sendViaService as sendWhatsApp, sendMediaViaService } from "./waTransport.js";
-import { getAdminGroupWa, getAdminWa } from "./adminWa";
+import { getAdminGroupWa, getAdminWa, getAdminPhones } from "./adminWa";
 import { getPreferredDomain } from "./domain";
 import { sendMail, isSmtpConfigured } from "./mailer";
 import { logger } from "./logger";
@@ -2202,16 +2202,23 @@ export async function sendProductOrderWaNotification(order: ProductOrderData): P
     timestamp: nowWIB(),
   };
 
-  // product_order_new → hanya kirim ke Admin Group (bukan Admin Pribadi)
-  const [tplAdminGroup, tplCustomer, adminGroupWa] = await Promise.all([
+  // product_order_new → kirim ke Admin Group dan nomor admin pribadi
+  const [tplAdminGroup, tplCustomer, adminGroupWa, adminPhones] = await Promise.all([
     getWaTemplateConfig("admin_group", "product_order_new", DEFAULT_TPL.product_order.admin_group),
     getWaTemplateConfig("customer", "product_order_new", DEFAULT_TPL.product_order.customer),
     getAdminGroupWa(),
+    getAdminPhones(),
   ]);
 
   if (adminGroupWa) {
     sendWhatsApp(adminGroupWa, renderTemplate(tplAdminGroup, vars), { forceFonnte: true, context: "product_order_new", refType: "portal_product_order", refId: order.orderNumber }).catch((err: unknown) =>
       logger.error({ err }, "WA product_order_new (admin_group) failed"),
+    );
+  }
+
+  for (const phone of adminPhones) {
+    sendWhatsApp(phone, renderTemplate(tplAdminGroup, vars), { forceFonnte: true, context: "product_order_new_admin", refType: "portal_product_order", refId: `${order.orderNumber}:${phone}` }).catch((err: unknown) =>
+      logger.error({ err, phone }, "WA product_order_new (admin pribadi) failed"),
     );
   }
 
@@ -2240,7 +2247,7 @@ export async function sendProductOrderPickupWaNotification(order: {
     })
     .join("\n");
 
-  const adminGroupWa = await getAdminGroupWa();
+  const [adminGroupWa, adminPhones] = await Promise.all([getAdminGroupWa(), getAdminPhones()]);
   const msg = [
     "🏭 *[AMBIL SENDIRI] PESANAN PRODUK BARU*",
     "━━━━━━━━━━━━━━━━━━",
@@ -2266,6 +2273,12 @@ export async function sendProductOrderPickupWaNotification(order: {
   if (adminGroupWa) {
     sendWhatsApp(adminGroupWa, msg, { forceFonnte: true, context: "product_order_pickup", refType: "portal_product_order", refId: order.orderNumber }).catch((err: unknown) =>
       logger.error({ err }, "WA product_order_pickup (admin_group) failed"),
+    );
+  }
+
+  for (const phone of adminPhones) {
+    sendWhatsApp(phone, msg, { forceFonnte: true, context: "product_order_pickup_admin", refType: "portal_product_order", refId: `${order.orderNumber}:${phone}` }).catch((err: unknown) =>
+      logger.error({ err, phone }, "WA product_order_pickup (admin pribadi) failed"),
     );
   }
 }
