@@ -1,30 +1,34 @@
 #!/bin/bash
 cd "$(dirname "$0")"
 
+API_PORT=${API_PORT:-8080}
+FORWARDER_PORT=${FORWARDER_PORT:-18444}
+
 # Kill stale processes on both ports (uses /proc/net, works without fuser/ss/lsof)
-node kill-port.mjs 18444 8080
+node kill-port.mjs "$FORWARDER_PORT" "$API_PORT"
 sleep 0.5
 
 # Build
 node build.mjs
 
 # Start main server in background
-PORT=8080 NODE_ENV=development node --enable-source-maps ./dist/index.mjs &
+PORT=$API_PORT NODE_ENV=development node --enable-source-maps ./dist/index.mjs &
 SERVER_PID=$!
 
-# Wait for port 8080 to be open, then start port-forwarder on 18444
+# Wait for API_PORT to be open, then start port-forwarder on FORWARDER_PORT
 node -e "
 const net = require('net');
-function waitForPort(port, cb, retries) {
+const port = $API_PORT;
+function waitForPort(cb, retries) {
   retries = retries || 0;
   if (retries > 50) { cb(); return; }
   const s = net.connect(port, '127.0.0.1');
   s.on('connect', () => { s.destroy(); cb(); });
-  s.on('error', () => setTimeout(() => waitForPort(port, cb, retries + 1), 100));
+  s.on('error', () => setTimeout(() => waitForPort(cb, retries + 1), 100));
 }
-waitForPort(8080, () => process.exit(0));
+waitForPort(() => process.exit(0));
 "
-node port-forwarder.mjs &
+FORWARDER_PORT=$FORWARDER_PORT node port-forwarder.mjs &
 FORWARDER_PID=$!
 
 # Trap signals to clean up child processes
