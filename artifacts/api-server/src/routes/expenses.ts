@@ -147,6 +147,49 @@ router.post("/categories", async (req, res) => {
   return res.status(201).json(serializeCategory(row));
 });
 
+// Seed preset kategori rutin (idempotent by code)
+const PRESET_ROUTINE_CATEGORIES = [
+  { code: "ENTERTAINMENT", name: "Entertainment" },
+  { code: "MAKAN_MINUM", name: "Makan & Minum" },
+  { code: "SEWA_KANTOR", name: "Sewa Kantor" },
+  { code: "UTILITAS", name: "Utilitas" },
+  { code: "PERALATAN", name: "Peralatan & ATK" },
+  { code: "LAIN_LAIN", name: "Lain-lain" },
+];
+
+router.post("/seed-categories", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+
+  const existing = await db.execute(sql.raw(`SELECT code FROM expense_categories`));
+  const existingCodes = new Set(
+    (existing.rows as any[]).map((r) => String(r.code ?? "").toUpperCase()),
+  );
+
+  const toCreate = PRESET_ROUTINE_CATEGORIES.filter(
+    (c) => !existingCodes.has(c.code),
+  );
+
+  let seeded = 0;
+  for (const cat of toCreate) {
+    const [created] = await db
+      .insert(expenseCategoriesTable)
+      .values({
+        name: cat.name,
+        code: cat.code,
+        isActive: true,
+      } as any)
+      .returning();
+    await db.execute(
+      sql.raw(
+        `UPDATE expense_categories SET category_type = 'expense' WHERE id = ${(created as any).id}`,
+      ),
+    );
+    seeded += 1;
+  }
+
+  return res.json({ seeded, total: PRESET_ROUTINE_CATEGORIES.length });
+});
+
 router.patch("/categories/:id", async (req, res) => {
   if (!(await requireAdmin(req, res))) return;
   const id = Number(req.params.id);
