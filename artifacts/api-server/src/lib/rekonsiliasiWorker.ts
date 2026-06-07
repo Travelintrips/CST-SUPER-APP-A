@@ -97,7 +97,7 @@ async function saveLastRunDate(settingId: number, existing: Record<string, unkno
 
 // ─── Jalankan rekonsiliasi untuk satu config ──────────────────────────────────
 
-async function runRekonsiliasi(settingId: number, cfg: RekonScheduleConfig): Promise<string> {
+async function runRekonsiliasi(settingId: number, cfg: RekonScheduleConfig): Promise<[string, string?]> {
   const today = todayWib();
 
   // Filter: kemarin saja (data hari ini mungkin belum lengkap)
@@ -178,7 +178,12 @@ async function runRekonsiliasi(settingId: number, cfg: RekonScheduleConfig): Pro
   await saveLastRunDate(settingId, meta, today);
 
   const total = dbLines.length;
-  return (
+  const idr = (n: number) => new Intl.NumberFormat("id-ID").format(n);
+  const fmtDate = (s: Date | string) => {
+    const d = new Date(s); return `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()}`;
+  };
+
+  const msg1 =
     `📊 *Rekonsiliasi Otomatis Selesai*\n\n` +
     `📅 Tanggal: ${today}\n` +
     `📋 Sheet: ${cfg.sheetName}\n\n` +
@@ -186,20 +191,46 @@ async function runRekonsiliasi(settingId: number, cfg: RekonScheduleConfig): Pro
     `⚠️ Duplikat: ${duplicate}\n` +
     `❌ Tidak Ada: ${notFound}\n` +
     `📝 Total Entry DB: ${total}\n` +
-    `🔄 Baris GSheet diperbarui: ${updateRequests.length}\n\n` +
-    `Buka BizPortal → Accounting → Rekonsiliasi Bank → tab Google Sheets untuk detail.`
-  );
+    `🔄 Baris GSheet diperbarui: ${updateRequests.length}`;
+
+  // Pesan 2: detail entri tidak ditemukan di bank
+  const tidakAda = dbLines.filter((_, i) => {
+    const line = dbLines[i];
+    const debit = Number(line.debit ?? 0);
+    const credit = Number(line.credit ?? 0);
+    const key = generateKey(line.entryDate, debit, credit);
+    return (keyFrequency[key] ?? 0) === 0;
+  });
+
+  let msg2: string | undefined;
+  if (tidakAda.length > 0) {
+    const MAX_ROWS = 30;
+    const lines = tidakAda.slice(0, MAX_ROWS).map((r) => {
+      const debit = Number(r.debit ?? 0);
+      const credit = Number(r.credit ?? 0);
+      const nominal = debit > 0 ? `D: ${idr(debit)}` : `K: ${idr(credit)}`;
+      return `❌ *${r.entryNumber}* | ${fmtDate(r.entryDate)} | ${nominal}`;
+    });
+    const truncNote = tidakAda.length > MAX_ROWS ? `\n_...dan ${tidakAda.length - MAX_ROWS} baris lainnya_` : "";
+    msg2 =
+      `⚠️ *Entri Tidak Ditemukan di Bank (${tidakAda.length} baris)*\n` +
+      `_Entri berikut ada di BizPortal tapi tidak cocok di Google Sheet — mohon periksa:_\n\n` +
+      lines.join("\n") + truncNote;
+  }
+
+  return [msg1, msg2];
 }
 
 // ─── Kirim WA notifikasi ──────────────────────────────────────────────────────
 
-async function notifyWa(message: string) {
+async function notifyWa(message: string, message2?: string) {
   try {
     const { getAdminGroupWa } = await import("./adminWa.js");
     const { sendWhatsApp } = await import("./fonnte.js");
     const group = await getAdminGroupWa();
     if (!group) return;
     await sendWhatsApp(group, message, { context: "rekon_gsheet_auto" });
+    if (message2) await sendWhatsApp(group, message2, { context: "rekon_gsheet_auto_detail" });
   } catch { /* non-fatal */ }
 }
 
@@ -225,8 +256,8 @@ async function checkAndRun() {
     logger.info({ settingId, spreadsheetId: config.spreadsheetId }, "rekonsiliasiWorker: menjalankan rekonsiliasi otomatis");
 
     try {
-      const summary = await runRekonsiliasi(settingId, config);
-      await notifyWa(summary);
+      const [msg1, msg2] = await runRekonsiliasi(settingId, config);
+      await notifyWa(msg1, msg2);
       logger.info({ settingId }, "rekonsiliasiWorker: selesai, WA terkirim");
     } catch (err) {
       logger.warn({ err, settingId }, "rekonsiliasiWorker: error saat rekonsiliasi");
