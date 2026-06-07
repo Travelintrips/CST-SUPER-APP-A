@@ -301,6 +301,7 @@ router.get("/suppliers/:id/catalog", async (req, res) => {
       kategori: vendorCatalogItemsTable.kategori,
       subcategory: vendorCatalogItemsTable.subcategory,
       priceBase: vendorCatalogItemsTable.priceBase,
+      priceSellOverride: vendorCatalogItemsTable.priceSell,
       isActive: vendorCatalogItemsTable.isActive,
       isCommodityTag: vendorCatalogItemsTable.isCommodityTag,
       sortOrder: vendorCatalogItemsTable.sortOrder,
@@ -313,7 +314,10 @@ router.get("/suppliers/:id/catalog", async (req, res) => {
     .orderBy(vendorCatalogItemsTable.sortOrder, vendorCatalogItemsTable.createdAt);
   return res.json(rows.map((row) => {
     const priceBase = Number(row.priceBase ?? 0);
-    const priceSell = row.masterPrice != null ? Number(row.masterPrice) : null;
+    const priceSellOverride = row.priceSellOverride != null ? Number(row.priceSellOverride) : null;
+    const masterPrice = row.masterPrice != null ? Number(row.masterPrice) : null;
+    // Override menang atas Master Item. Master Item jadi fallback.
+    const priceSell = priceSellOverride ?? masterPrice;
     const profit = priceSell != null ? priceSell - priceBase : null;
     return {
       id: row.id,
@@ -331,6 +335,7 @@ router.get("/suppliers/:id/catalog", async (req, res) => {
       sortOrder: row.sortOrder,
       createdAt: row.createdAt.toISOString(),
       priceSell,
+      priceSellOverride,
       profit,
     };
   }));
@@ -466,6 +471,12 @@ router.put("/suppliers/catalog/:itemId", async (req, res) => {
     patch["priceBase"] = String(parseFloat(String(req.body.priceBase)) || 0);
   }
 
+  // Override Harga Jual — null = hapus override (kembali ke Master Item / belum linked)
+  if (req.body.priceSellOverride !== undefined) {
+    const raw = req.body.priceSellOverride;
+    patch["priceSell"] = raw != null && raw !== "" ? String(parseFloat(String(raw)) || 0) : null;
+  }
+
   // Status & urutan — selalu boleh diedit
   if (isActive !== undefined) patch["isActive"] = Boolean(isActive);
   if (isCommodityTag !== undefined) patch["isCommodityTag"] = Boolean(isCommodityTag);
@@ -480,7 +491,7 @@ router.put("/suppliers/catalog/:itemId", async (req, res) => {
     .where(eq(vendorCatalogItemsTable.id, itemId))
     .returning();
   if (!updated) return res.status(404).json({ message: "Item not found" });
-  return res.json(toItem(updated));
+  return res.json({ ...toItem(updated), priceSellOverride: updated.priceSell != null ? Number(updated.priceSell) : null });
 });
 
 // DELETE /api/trading/suppliers/catalog/:itemId

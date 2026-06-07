@@ -95,6 +95,7 @@ type CatalogForm = {
   kategori: string;
   subcategory: string;
   priceBase: string;
+  priceSellOverride: string;
   isActive: boolean;
   isCommodityTag: boolean;
   sortOrder: string;
@@ -109,6 +110,7 @@ const emptyCatalogForm = (): CatalogForm => ({
   kategori: "",
   subcategory: "",
   priceBase: "0",
+  priceSellOverride: "",
   isActive: true,
   isCommodityTag: false,
   sortOrder: "0",
@@ -302,6 +304,7 @@ export default function VendorDetailPage() {
       kategori: (item as any).kategori ?? "",
       subcategory: (item as any).subcategory ?? "",
       priceBase: String(Number(item.priceBase ?? 0)),
+      priceSellOverride: (item as any).priceSellOverride != null ? String((item as any).priceSellOverride) : "",
       isActive: item.isActive,
       isCommodityTag: (item as any).isCommodityTag ?? false,
       sortOrder: String(item.sortOrder),
@@ -322,6 +325,7 @@ export default function VendorDetailPage() {
     }
     const body: Record<string, unknown> = {
       priceBase: parseFloat(itemForm.priceBase) || 0,
+      priceSellOverride: itemForm.priceSellOverride.trim() !== "" ? parseFloat(itemForm.priceSellOverride) || 0 : null,
       isActive: itemForm.isActive,
       isCommodityTag: itemForm.isCommodityTag,
       sortOrder: parseInt(itemForm.sortOrder) || 0,
@@ -767,9 +771,16 @@ export default function VendorDetailPage() {
                           {priceBase > 0 ? fmt(priceBase) : <span className="text-muted-foreground/50">—</span>}
                         </TableCell>
                         <TableCell className="text-right font-mono text-sm font-semibold text-primary">
-                          {priceSell != null
-                            ? fmt(priceSell)
-                            : <span className="text-xs text-amber-500 font-normal">Belum linked</span>}
+                          {priceSell != null ? (
+                            <span className="flex flex-col items-end gap-0.5">
+                              <span>{fmt(priceSell)}</span>
+                              {(item as any).priceSellOverride != null && (
+                                <span className="text-[10px] font-normal bg-blue-100 text-blue-700 rounded px-1 py-0">Override</span>
+                              )}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-amber-500 font-normal">Belum linked</span>
+                          )}
                         </TableCell>
                         <TableCell className="text-right font-mono text-sm font-semibold">
                           {profit != null
@@ -1051,7 +1062,28 @@ export default function VendorDetailPage() {
                 placeholder="Harga yang vendor charge ke kita"
               />
               <p className="text-xs text-muted-foreground">
-                Harga beli / biaya vendor. Dipakai untuk RFQ blast. Profit = Harga Jual (master) − Harga Dasar.
+                Harga beli / biaya vendor. Dipakai untuk RFQ blast.
+              </p>
+            </div>
+
+            {/* ── Override Harga Jual ── */}
+            <div className="grid gap-1.5">
+              <Label>Override Harga Jual (Rp) <span className="text-muted-foreground font-normal">— opsional</span></Label>
+              <Input
+                type="number"
+                min="0"
+                step="1000"
+                value={itemForm.priceSellOverride}
+                onChange={(e) => setI("priceSellOverride", e.target.value)}
+                placeholder="Kosongkan = pakai harga Master Item"
+              />
+              <p className="text-xs text-muted-foreground">
+                Jika diisi, harga ini menang atas harga Master Item. Kosongkan untuk kembali ke Master Item.
+                {itemForm.priceSellOverride.trim() !== "" && itemForm.priceBase.trim() !== "" && (
+                  <span className="ml-1 text-primary font-medium">
+                    Profit: {fmt((parseFloat(itemForm.priceSellOverride) || 0) - (parseFloat(itemForm.priceBase) || 0))}
+                  </span>
+                )}
               </p>
             </div>
 
