@@ -1,11 +1,2 @@
-- [Gateway port alignment](gateway-ports.md) — artifact workflows pakai port dinamis; Gateway harus set BIZPORTAL_PORT=3000 CUSTOMER_PORT=23434 secara eksplisit.
-- [External Shipment Sales Audit Fixes](ext-shipment-audit-fixes.md) — 4 gap diperbaiki: FREIGHT_TO_LOGISTIC_MAP, webhook pre-state guard, sendVendorNotSelectedWa, WA template migration.
-- [API Server build externals](api-server-build.md) — "compression" harus ada di external array build.mjs & dev.mjs agar esbuild tidak gagal.
-- [NixOS kill-port](nixos-killport.md) — fuser tidak tersedia; pakai kill-port.mjs via /proc/net/tcp.
-- [Supabase DB connection](supabase-connection.md) — semua modul pakai satu shared db dari @workspace/db; dev=SUPABASE_DATABASE_URL_DEV, prod=SUPABASE_PG_URL.
-- [Accounting company scoping](accounting-company-scoping.md) — accounting_entry_lines has no company_id; filter via accounting_entries.company_id (ae), not ael.
-- [Drizzle sql null params](drizzle-sql-null-params.md) — bare null in sql`` template throws "could not determine data type of parameter $N"; cast it (e.g. ${x}::int).
-- [WA transport: Fonnte-only](wa-transport-fallback.md) — all WA notifications go through Fonnte; WATI removed from notif path (it silently dropped msgs & rejected WA group IDs).
-- [IDR number input parsing](idr-number-input-parsing.md) — type=number + dot thousand-separator silently drops price saves; use text+inputMode numeric, strip non-digits.
-- [requireAdmin middleware pattern](requireAdmin-middleware-pattern.md) — requireAdmin tidak memanggil next(); harus dipanggil inline `if (!(await requireAdmin(req, res))) return;` bukan sebagai Express middleware param.
-- [Stale esbuild dist](stale-esbuild-dist.md) — api-server runs prebuilt dist; stale build serves missing routes as HTML 404/hangs → ".json() Unexpected token <" in UI; rebuild+restart fixes.
+- [Logistic order lifecycle flow](logistic-order-e2e-flow.md) — non-obvious transition gaps: customer approval moves RFQ not order; driver steps are matrix-gated; invoice/payment auto-triggers.
+- [Sandbox background processes](sandbox-bg-processes.md) — bg servers die between bash calls; run server+test in one wrapper .sh; avoid raw-newline multi-line bash.
