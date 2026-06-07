@@ -1970,6 +1970,74 @@ router.get("/reports/trial-balance", async (req, res) => {
   });
 });
 
+/** GET /accounting/dashboard/monthly-cash — saldo kas/bank per bulan 12 bulan terakhir */
+router.get("/dashboard/monthly-cash", async (req, res) => {
+  const scope = resolveCompanyScope(req);
+
+  // 1. Ambil semua akun kas/bank (asset, nama mengandung kas/bank/cash)
+  const allAccounts = await db.select().from(chartOfAccountsTable);
+  const cashAccountIds = allAccounts
+    .filter((a) => {
+      const scopeOk = scope === "all" || a.companyId === scope || a.companyId === null;
+      return scopeOk && a.type === "asset" && /kas|bank|cash/i.test(a.name);
+    })
+    .map((a) => a.id);
+
+  if (cashAccountIds.length === 0) return res.json({ months: [] });
+
+  // 2. Semua entry lines untuk akun tersebut (posted), join dengan entry untuk tanggal
+  const raw = await db
+    .select({
+      date: accountingEntriesTable.date,
+      debit: accountingEntryLinesTable.debit,
+      credit: accountingEntryLinesTable.credit,
+    })
+    .from(accountingEntryLinesTable)
+    .innerJoin(accountingEntriesTable, eq(accountingEntryLinesTable.entryId, accountingEntriesTable.id))
+    .where(
+      and(
+        inArray(accountingEntryLinesTable.accountId, cashAccountIds),
+        eq(accountingEntriesTable.status, "posted"),
+      ),
+    );
+
+  // 3. Agregasi per bulan
+  const monthMap = new Map<string, { debit: number; credit: number }>();
+  for (const r of raw) {
+    const d = r.date instanceof Date ? r.date : new Date(r.date as string);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    const cur = monthMap.get(key) ?? { debit: 0, credit: 0 };
+    cur.debit += Number(r.debit);
+    cur.credit += Number(r.credit);
+    monthMap.set(key, cur);
+  }
+
+  // 4. Buat array 12 bulan terakhir dengan saldo kumulatif
+  const now = new Date();
+  const months: { month: string; label: string; saldo: number }[] = [];
+  // Hitung opening balance sebelum 12 bulan lalu
+  const cutoff = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+  const cutoffKey = `${cutoff.getFullYear()}-${String(cutoff.getMonth() + 1).padStart(2, "0")}`;
+  let opening = 0;
+  for (const [k, v] of monthMap.entries()) {
+    if (k < cutoffKey) opening += v.debit - v.credit;
+  }
+  let running = opening;
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    const mv = monthMap.get(key) ?? { debit: 0, credit: 0 };
+    running += mv.debit - mv.credit;
+    months.push({
+      month: key,
+      label: d.toLocaleString("id-ID", { month: "short", year: "2-digit" }),
+      saldo: Math.round(running * 100) / 100,
+    });
+  }
+
+  return res.json({ months, accountCount: cashAccountIds.length });
+});
+
 router.get("/reports/general-ledger", async (req, res) => {
   const scope = resolveCompanyScope(req);
   const range = parseDateRange(req);

@@ -5,11 +5,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 import {
-  Landmark, BookOpen, FileText, Wallet, GitMerge, FileSpreadsheet,
+  Landmark, FileText, Wallet, GitMerge, FileSpreadsheet,
   TrendingUp, AlertTriangle, CheckCircle2, Clock, ArrowRight,
   RefreshCw, Sheet, ArrowLeftRight, Receipt, BarChart2,
 } from "lucide-react";
 import { useCompany } from "@/contexts/CompanyContext";
+import {
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+} from "recharts";
 
 const idr = (n: number) =>
   new Intl.NumberFormat("id-ID", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n);
@@ -26,6 +29,7 @@ interface RekonInfo {
 interface GSheetConfig { spreadsheetId: string | null }
 interface TrialRow { accountId: number; code: string; name: string; type: string; debit: number; credit: number; balance: number }
 interface EntryRow { id: number; status: string }
+interface MonthPoint { month: string; label: string; saldo: number }
 
 async function apiFetch<T>(url: string): Promise<T> {
   const r = await fetch(url, { credentials: "include" });
@@ -79,6 +83,16 @@ function QuickLink({ href, icon: Icon, label, desc }: { href: string; icon: Reac
   );
 }
 
+function CashTooltip({ active, payload, label }: { active?: boolean; payload?: { value: number }[]; label?: string }) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="bg-white border border-slate-200 rounded-lg shadow-lg p-3 text-sm">
+      <p className="font-semibold text-slate-700 mb-1">{label}</p>
+      <p className="text-green-700 font-bold">Rp {idr(payload[0].value)}</p>
+    </div>
+  );
+}
+
 export default function AccountingDashboardPage() {
   const { activeCompanyId } = useCompany();
   const companyId = activeCompanyId ?? 1;
@@ -87,6 +101,7 @@ export default function AccountingDashboardPage() {
   const [gsheet, setGsheet] = useState<GSheetConfig | null>(null);
   const [trialRows, setTrialRows] = useState<TrialRow[]>([]);
   const [entries, setEntries] = useState<EntryRow[]>([]);
+  const [monthlyData, setMonthlyData] = useState<MonthPoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshed, setRefreshed] = useState(0);
 
@@ -97,16 +112,17 @@ export default function AccountingDashboardPage() {
       apiFetch<GSheetConfig>("/api/accounting/gsheet/config").catch(() => null),
       apiFetch<{ rows: TrialRow[] }>(`/api/accounting/reports/trial-balance?company=${companyId}`).catch(() => null),
       apiFetch<EntryRow[]>(`/api/accounting/entries?company=${companyId}`).catch(() => []),
-    ]).then(([r, g, tb, e]) => {
+      apiFetch<{ months: MonthPoint[] }>(`/api/accounting/dashboard/monthly-cash?company=${companyId}`).catch(() => null),
+    ]).then(([r, g, tb, e, mc]) => {
       if (r) setRekon(r);
       if (g) setGsheet(g);
       if (tb) setTrialRows(tb.rows ?? []);
       if (e) setEntries(e as EntryRow[]);
+      if (mc) setMonthlyData(mc.months ?? []);
       setLoading(false);
     });
   }, [companyId, refreshed]);
 
-  // Rekon status
   const manualTs = rekon?.lastManualRekonAt ? new Date(rekon.lastManualRekonAt).getTime() : 0;
   const autoTs = rekon?.config?.lastRunDate ? new Date(rekon.config.lastRunDate).getTime() : 0;
   const latestTs = Math.max(manualTs, autoTs);
@@ -115,18 +131,23 @@ export default function AccountingDashboardPage() {
   const rekonWarn = !rekonOverdue && latestDays >= 3;
   const rekonOk = !rekonOverdue && !rekonWarn;
 
-  // Kas/Bank accounts — asset type dengan nama mengandung kata bank/kas/cash
   const bankAccounts = trialRows.filter(
     (r) => r.type === "asset" && /kas|bank|cash/i.test(r.name)
   );
   const totalKasBank = bankAccounts.reduce((s, r) => s + r.balance, 0);
 
-  // Entri status
   const draftEntries = entries.filter((e) => e.status === "draft");
   const postedEntries = entries.filter((e) => e.status === "posted");
 
   const fmtDaysAgo = (days: number | null) =>
     days === null ? "Belum pernah" : days === 0 ? "Hari ini" : `${days} hari lalu`;
+
+  const chartMin = monthlyData.length
+    ? Math.min(...monthlyData.map((d) => d.saldo)) * 0.95
+    : 0;
+  const chartMax = monthlyData.length
+    ? Math.max(...monthlyData.map((d) => d.saldo)) * 1.05
+    : 0;
 
   return (
     <AppShell>
@@ -168,8 +189,13 @@ export default function AccountingDashboardPage() {
               </div>
             </div>
             <div className="flex gap-4 text-xs text-slate-500 ml-2">
-              <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> Manual: <strong className="text-slate-700">{fmtDaysAgo(daysSince(rekon?.lastManualRekonAt ?? null))}</strong></span>
-              <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> Otomatis: <strong className="text-slate-700">{fmtDaysAgo(daysSince(rekon?.config?.lastRunDate ?? null))}</strong>
+              <span className="flex items-center gap-1">
+                <Clock className="h-3 w-3" /> Manual:{" "}
+                <strong className="text-slate-700">{fmtDaysAgo(daysSince(rekon?.lastManualRekonAt ?? null))}</strong>
+              </span>
+              <span className="flex items-center gap-1">
+                <Clock className="h-3 w-3" /> Otomatis:{" "}
+                <strong className="text-slate-700">{fmtDaysAgo(daysSince(rekon?.config?.lastRunDate ?? null))}</strong>
                 <Badge variant="outline" className={`text-xs py-0 h-4 ${rekon?.config?.enabled ? "border-green-300 text-green-700" : "border-slate-300 text-slate-500"}`}>
                   {rekon?.config?.enabled ? "Aktif" : "Nonaktif"}
                 </Badge>
@@ -219,12 +245,71 @@ export default function AccountingDashboardPage() {
           />
         </div>
 
+        {/* Trend Chart */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <TrendingUp className="h-4 w-4 text-blue-600" />
+              Tren Saldo Kas & Bank — 12 Bulan Terakhir
+              {loading && <span className="text-xs text-muted-foreground font-normal ml-1">Memuat...</span>}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0 pb-4">
+            {monthlyData.length === 0 && !loading ? (
+              <div className="flex items-center justify-center h-40 text-sm text-muted-foreground">
+                Tidak ada data kas/bank terposting
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height={200}>
+                <AreaChart data={monthlyData} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="cashGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#22c55e" stopOpacity={0.18} />
+                      <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                  <XAxis
+                    dataKey="label"
+                    tick={{ fontSize: 11, fill: "#64748b" }}
+                    tickLine={false}
+                    axisLine={false}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 10, fill: "#94a3b8" }}
+                    tickLine={false}
+                    axisLine={false}
+                    tickFormatter={(v) => {
+                      if (Math.abs(v) >= 1_000_000_000) return `${(v / 1_000_000_000).toFixed(1)}M`;
+                      if (Math.abs(v) >= 1_000_000) return `${(v / 1_000_000).toFixed(0)}jt`;
+                      if (Math.abs(v) >= 1_000) return `${(v / 1_000).toFixed(0)}rb`;
+                      return String(v);
+                    }}
+                    domain={[chartMin, chartMax]}
+                    width={56}
+                  />
+                  <Tooltip content={<CashTooltip />} />
+                  <Area
+                    type="monotone"
+                    dataKey="saldo"
+                    stroke="#22c55e"
+                    strokeWidth={2}
+                    fill="url(#cashGrad)"
+                    dot={{ r: 3, fill: "#22c55e", strokeWidth: 0 }}
+                    activeDot={{ r: 5, fill: "#16a34a" }}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Saldo Kas & Bank */}
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <Wallet className="h-4 w-4 text-green-600" /> Saldo Kas & Bank
+                <Wallet className="h-4 w-4 text-green-600" /> Saldo Kas & Bank Saat Ini
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
@@ -263,7 +348,7 @@ export default function AccountingDashboardPage() {
             </CardHeader>
             <CardContent className="p-2 space-y-0.5">
               <QuickLink href="/accounting/entries" icon={FileText} label="Jurnal Entry" desc="Buat atau lihat entri jurnal" />
-              <QuickLink href="/accounting/entries?status=draft" icon={AlertTriangle} label={`${draftEntries.length} Entri Draft`} desc="Entri yang belum diposting" />
+              <QuickLink href="/accounting/entries" icon={AlertTriangle} label={`${draftEntries.length} Entri Draft`} desc="Entri yang belum diposting" />
               <QuickLink href="/accounting/reconciliation" icon={GitMerge} label="Rekonsiliasi Bank" desc="Cocokkan mutasi bank vs BizPortal" />
               <QuickLink href="/accounting/gsheet" icon={FileSpreadsheet} label="Google Sheets Sync" desc="Push/Pull data akuntansi" />
               <QuickLink href="/accounting/reports/trial-balance" icon={BarChart2} label="Neraca Percobaan" desc="Trial balance semua akun" />
