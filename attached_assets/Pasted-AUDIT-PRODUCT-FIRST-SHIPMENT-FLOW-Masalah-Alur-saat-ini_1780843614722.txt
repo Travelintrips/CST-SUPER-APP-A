@@ -1,0 +1,86 @@
+AUDIT PRODUCT-FIRST SHIPMENT FLOW.
+
+Masalah:
+Alur saat ini terlalu cepat menggabungkan product order dan shipment.
+Saya ingin alur baru:
+
+Customer pesan produk dulu.
+Vendor produk konfirmasi stok, harga, qty, tanggal ready, dan lokasi pickup.
+Setelah produk confirmed, baru customer pilih shipment.
+Setelah customer pilih shipment, baru RFQ dikirim ke shipper/trucking/freight vendor.
+
+Jangan ubah code dulu.
+Audit dan buat design refactor.
+
+Target alur baru:
+
+1. Customer pilih produk.
+2. Customer submit product order.
+3. Admin review product order.
+4. RFQ dikirim ke vendor produk.
+5. Vendor produk submit:
+   - harga produk
+   - stok tersedia
+   - qty tersedia
+   - tanggal ready
+   - lokasi pickup/gudang
+   - dokumen produk
+6. Admin compare vendor produk.
+7. Admin pilih product vendor.
+8. Customer approve harga produk.
+9. Status berubah menjadi Shipment Selection Pending.
+10. Customer pilih shipment:
+   - Pickup sendiri
+   - Trucking
+   - Air Freight
+   - Sea Freight
+   - Door to Door
+11. Jika Pickup sendiri:
+   - tidak perlu RFQ shipper
+   - lanjut ke Product Ready / Ready for Pickup
+12. Jika memilih shipment:
+   - sistem membuat shipment RFQ baru
+   - RFQ dikirim ke shipper/trucking/freight vendor
+13. Shipper submit harga shipment.
+14. Admin/customer approve shipment cost.
+15. Shipment vendor confirmed.
+16. Order masuk In Progress.
+17. Pickup.
+18. In Transit.
+19. Arrived.
+20. Delivered.
+21. POD Uploaded.
+22. Invoice Issued.
+23. Payment Received.
+24. Completed.
+
+Audit area berikut:
+
+A. Customer Portal product order form
+B. BizPortal order review
+C. logistic_orders fields
+D. product RFQ flow
+E. shipment/service RFQ flow
+F. vendorMiniForm
+G. customer approval flow
+H. logisticOrderStatusService
+I. customer tracking stepper
+J. WA notification
+K. invoice/payment linkage
+
+Output wajib:
+
+1. Current flow yang berjalan sekarang
+2. Flow baru yang disarankan
+3. Titik yang sekarang terlalu cepat forward ke shipper
+4. Field DB yang sudah mendukung
+5. Field DB yang belum ada
+6. Endpoint yang perlu dipisah
+7. Status baru yang diperlukan
+8. Risiko breaking change
+9. Rencana implementasi Fase 2
+10. File yang kemungkinan terdampak
+
+Jangan edit code.
+Jangan ubah database.
+Jangan ubah service layer.
