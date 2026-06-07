@@ -3915,15 +3915,8 @@ router.post("/rekonsiliasi-gsheet", async (req, res) => {
       const fmtDate = (s: string) => new Date(s).toLocaleDateString("id-ID", { day: "2-digit", month: "2-digit", year: "numeric" });
       const statusIcon = (st: string) => st.startsWith("✅") ? "✅" : st.startsWith("⚠️") ? "⚠️" : "❌";
 
-      const MAX_ROWS = 30;
-      const detailLines = results.slice(0, MAX_ROWS).map((r) => {
-        const nominal = r.debit > 0 ? `D: ${idr(r.debit)}` : `K: ${idr(r.credit)}`;
-        const desc = (r.description ?? "").slice(0, 30);
-        return `${statusIcon(r.status)} *${r.entryNumber}* | ${fmtDate(r.entryDate)} | ${nominal} | ${desc}`;
-      });
-      const truncatedNote = results.length > MAX_ROWS ? `\n_...dan ${results.length - MAX_ROWS} baris lainnya_` : "";
-
-      const msg =
+      // Pesan 1: Ringkasan
+      const msg1 =
         `📊 *Rekonsiliasi Bank Selesai*\n\n` +
         `📅 Tanggal: ${todayStr}\n` +
         `📋 Sheet: ${sheetName}\n` +
@@ -3932,11 +3925,26 @@ router.post("/rekonsiliasi-gsheet", async (req, res) => {
         `⚠️ Duplikat: ${duplicate}\n` +
         `❌ Tidak Ada: ${notFound}\n` +
         `📝 Total Entry DB: ${results.length}\n` +
-        `🔄 Baris GSheet diperbarui: ${updateRequests.length}\n\n` +
-        `📋 *Detail Hasil:*\n` +
-        detailLines.join("\n") +
-        truncatedNote;
-      await sendWhatsApp(group, msg, { context: "rekon_gsheet_manual" });
+        `🔄 Baris GSheet diperbarui: ${updateRequests.length}`;
+      await sendWhatsApp(group, msg1, { context: "rekon_gsheet_manual" });
+
+      // Pesan 2: Detail entri yang TIDAK ADA di bank (perlu tindak lanjut)
+      const tidakAda = results.filter((r) => r.status.startsWith("❌"));
+      if (tidakAda.length > 0) {
+        const MAX_ROWS = 30;
+        const detailLines = tidakAda.slice(0, MAX_ROWS).map((r) => {
+          const nominal = r.debit > 0 ? `D: ${idr(r.debit)}` : `K: ${idr(r.credit)}`;
+          const desc = (r.description ?? "").slice(0, 35);
+          return `❌ *${r.entryNumber}* | ${fmtDate(r.entryDate)} | ${nominal}\n    ${desc}`;
+        });
+        const truncatedNote = tidakAda.length > MAX_ROWS ? `\n_...dan ${tidakAda.length - MAX_ROWS} baris lainnya_` : "";
+        const msg2 =
+          `⚠️ *Entri Tidak Ditemukan di Bank (${tidakAda.length} baris)*\n` +
+          `_Entri berikut ada di BizPortal tapi tidak cocok di Google Sheet — mohon periksa:_\n\n` +
+          detailLines.join("\n") +
+          truncatedNote;
+        await sendWhatsApp(group, msg2, { context: "rekon_gsheet_manual_detail" });
+      }
     } catch { /* non-fatal */ }
   })();
 
