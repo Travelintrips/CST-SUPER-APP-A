@@ -8,7 +8,7 @@ import {
   Package, Truck, Clock, CheckCircle2, XCircle, DollarSign,
   RefreshCw, TrendingUp, TrendingDown, Star, Users,
   BarChart2, Activity, ArrowUpRight, ArrowDownRight,
-  FileQuestion, ClipboardCheck, Navigation,
+  FileQuestion, ClipboardCheck, Navigation, Dumbbell, ShoppingCart,
 } from "lucide-react";
 import { useCompany } from "@/contexts/CompanyContext";
 import {
@@ -47,6 +47,14 @@ async function fetchEnterprise(companyId?: number) {
   return r.json();
 }
 
+async function fetchCrossModule(companyId?: number) {
+  const params = new URLSearchParams();
+  if (companyId) params.set("companyId", String(companyId));
+  const r = await fetch(`/api/dashboard/cross-module?${params}`);
+  if (!r.ok) return null;
+  return r.json();
+}
+
 interface EnterpriseData {
   totalOrders: number;
   pendingRfq: number;
@@ -63,6 +71,24 @@ interface EnterpriseData {
   topCustomers: { name: string; orders: number; revenue: number }[];
 }
 
+interface CrossModuleData {
+  sportCenter: {
+    bookingsThisMonth: number;
+    bookingsLastMonth: number;
+    revenueThisMonth: number;
+    revenueLastMonth: number;
+    growthPct: number;
+    topFacilities: { name: string; bookings: number; revenue: number }[];
+  };
+  sales: {
+    countThisMonth: number;
+    countLastMonth: number;
+    revenueThisMonth: number;
+    revenueLastMonth: number;
+    growthPct: number;
+  };
+}
+
 function GrowthBadge({ pct }: { pct: number }) {
   if (pct > 0) return (
     <span className="flex items-center gap-0.5 text-emerald-600 text-xs font-medium">
@@ -77,6 +103,70 @@ function GrowthBadge({ pct }: { pct: number }) {
   return <span className="text-xs text-muted-foreground">±0%</span>;
 }
 
+function ModuleRevenueCard({
+  icon: Icon,
+  title,
+  color,
+  revenueThis,
+  revenueLast,
+  growthPct,
+  countThis,
+  countLabel,
+  isLoading,
+  children,
+}: {
+  icon: typeof Dumbbell;
+  title: string;
+  color: string;
+  revenueThis: number;
+  revenueLast: number;
+  growthPct: number;
+  countThis: number;
+  countLabel: string;
+  isLoading: boolean;
+  children?: React.ReactNode;
+}) {
+  return (
+    <Card className={`border-l-4 ${color}`}>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <Icon className="h-4 w-4" />
+          {title}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {isLoading ? (
+          <div className="space-y-2">
+            <div className="h-7 w-28 bg-muted animate-pulse rounded" />
+            <div className="h-4 w-20 bg-muted animate-pulse rounded" />
+          </div>
+        ) : (
+          <>
+            <div>
+              <div className="text-2xl font-bold">{idrCompact(revenueThis)}</div>
+              <div className="flex items-center gap-2 mt-0.5">
+                <span className="text-xs text-muted-foreground">Bulan ini</span>
+                <GrowthBadge pct={growthPct} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="rounded-lg bg-muted/50 p-2">
+                <div className="text-muted-foreground">{countLabel}</div>
+                <div className="font-semibold text-sm">{countThis}</div>
+              </div>
+              <div className="rounded-lg bg-muted/50 p-2">
+                <div className="text-muted-foreground">Bulan lalu</div>
+                <div className="font-semibold text-sm">{idrCompact(revenueLast)}</div>
+              </div>
+            </div>
+            {children}
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function EnterpriseDashboardPage() {
   const { activeCompany } = useCompany();
   const companyId = activeCompany?.id;
@@ -85,6 +175,13 @@ export default function EnterpriseDashboardPage() {
   const { data, isLoading, refetch, dataUpdatedAt } = useQuery<EnterpriseData | null>({
     queryKey: ["enterprise-dashboard", companyId, refetchCount],
     queryFn: () => fetchEnterprise(companyId),
+    refetchInterval: 120_000,
+    staleTime: 60_000,
+  });
+
+  const { data: crossData, isLoading: crossLoading } = useQuery<CrossModuleData | null>({
+    queryKey: ["cross-module-dashboard", companyId, refetchCount],
+    queryFn: () => fetchCrossModule(companyId),
     refetchInterval: 120_000,
     staleTime: 60_000,
   });
@@ -158,6 +255,16 @@ export default function EnterpriseDashboardPage() {
     value: s.count,
   }));
 
+  const sc = crossData?.sportCenter;
+  const sales = crossData?.sales;
+
+  // Combined revenue for the summary bar
+  const totalRevThis = (data?.revenueThisMonth ?? 0) + (sc?.revenueThisMonth ?? 0) + (sales?.revenueThisMonth ?? 0);
+  const totalRevLast = (data?.revenueLastMonth ?? 0) + (sc?.revenueLastMonth ?? 0) + (sales?.revenueLastMonth ?? 0);
+  const totalGrowth = totalRevLast > 0
+    ? ((totalRevThis - totalRevLast) / totalRevLast) * 100
+    : totalRevThis > 0 ? 100 : 0;
+
   return (
     <AppShell>
       <div className="p-4 md:p-6 space-y-6">
@@ -170,7 +277,7 @@ export default function EnterpriseDashboardPage() {
               Enterprise Dashboard
             </h1>
             <p className="text-muted-foreground text-sm mt-0.5">
-              Ringkasan operasional logistics & revenue
+              Ringkasan operasional seluruh divisi & revenue
               {lastUpdated && (
                 <span className="ml-2 text-xs text-muted-foreground/60">• Update {lastUpdated}</span>
               )}
@@ -182,27 +289,79 @@ export default function EnterpriseDashboardPage() {
           </Button>
         </div>
 
-        {/* KPI Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3">
-          {kpis.map((k) => (
-            <Card key={k.label} className={`border-l-4 ${k.color}`}>
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs text-muted-foreground leading-tight">{k.label}</span>
-                  {k.icon}
-                </div>
-                {isLoading ? (
-                  <div className="h-7 w-16 bg-muted animate-pulse rounded" />
-                ) : (
-                  <div className="text-2xl font-bold">{k.value}</div>
-                )}
-                <div className="text-xs text-muted-foreground mt-0.5">{k.sub}</div>
-              </CardContent>
-            </Card>
-          ))}
+        {/* ── LOGISTIK KPI Cards ─────────────────────────────────────── */}
+        <div>
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1.5">
+            <Truck className="h-3.5 w-3.5" /> Logistik
+          </p>
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+            {kpis.map((k) => (
+              <Card key={k.label} className={`border-l-4 ${k.color}`}>
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs text-muted-foreground leading-tight">{k.label}</span>
+                    {k.icon}
+                  </div>
+                  {isLoading ? (
+                    <div className="h-7 w-16 bg-muted animate-pulse rounded" />
+                  ) : (
+                    <div className="text-2xl font-bold">{k.value}</div>
+                  )}
+                  <div className="text-xs text-muted-foreground mt-0.5">{k.sub}</div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
         </div>
 
-        {/* Charts Row */}
+        {/* ── MODUL LAIN: Sport Centre + Sales ───────────────────────── */}
+        <div>
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1.5">
+            <Activity className="h-3.5 w-3.5" /> Modul Lain (Bulan Ini)
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+            {/* Sport Centre */}
+            <ModuleRevenueCard
+              icon={Dumbbell}
+              title="Sport Centre"
+              color="border-l-violet-500"
+              revenueThis={sc?.revenueThisMonth ?? 0}
+              revenueLast={sc?.revenueLastMonth ?? 0}
+              growthPct={sc?.growthPct ?? 0}
+              countThis={sc?.bookingsThisMonth ?? 0}
+              countLabel="Booking bulan ini"
+              isLoading={crossLoading}
+            >
+              {(sc?.topFacilities ?? []).length > 0 && (
+                <div className="space-y-1 pt-1 border-t border-muted/50">
+                  <p className="text-xs text-muted-foreground font-medium">Top Fasilitas</p>
+                  {(sc?.topFacilities ?? []).map((f) => (
+                    <div key={f.name} className="flex items-center justify-between text-xs">
+                      <span className="truncate max-w-[60%] text-muted-foreground">{f.name}</span>
+                      <span className="font-medium">{f.bookings}× · {idrCompact(f.revenue)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </ModuleRevenueCard>
+
+            {/* Sales / Penjualan */}
+            <ModuleRevenueCard
+              icon={ShoppingCart}
+              title="Penjualan (Sales)"
+              color="border-l-sky-500"
+              revenueThis={sales?.revenueThisMonth ?? 0}
+              revenueLast={sales?.revenueLastMonth ?? 0}
+              growthPct={sales?.growthPct ?? 0}
+              countThis={sales?.countThisMonth ?? 0}
+              countLabel="Dokumen bulan ini"
+              isLoading={crossLoading}
+            />
+          </div>
+        </div>
+
+        {/* ── CHARTS ROW ─────────────────────────────────────────────── */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
           {/* Revenue + Orders Trend */}
@@ -210,9 +369,9 @@ export default function EnterpriseDashboardPage() {
             <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center gap-2">
                 <TrendingUp className="h-4 w-4 text-primary" />
-                Tren Revenue 30 Hari
+                Tren Revenue Logistik 30 Hari
               </CardTitle>
-              <CardDescription>Revenue dan jumlah order per hari</CardDescription>
+              <CardDescription>Revenue dan jumlah order logistik per hari</CardDescription>
             </CardHeader>
             <CardContent>
               {isLoading ? (
@@ -275,7 +434,7 @@ export default function EnterpriseDashboardPage() {
             <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center gap-2">
                 <Activity className="h-4 w-4 text-primary" />
-                Status Order
+                Status Order Logistik
               </CardTitle>
               <CardDescription>Distribusi status saat ini</CardDescription>
             </CardHeader>
@@ -317,7 +476,7 @@ export default function EnterpriseDashboardPage() {
           </Card>
         </div>
 
-        {/* Tables Row */}
+        {/* ── TABLES ROW ─────────────────────────────────────────────── */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
           {/* Top Vendors */}
@@ -375,7 +534,7 @@ export default function EnterpriseDashboardPage() {
             <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center gap-2">
                 <Users className="h-4 w-4 text-indigo-500" />
-                Top Customer (90 Hari)
+                Top Customer Logistik (90 Hari)
               </CardTitle>
               <CardDescription>Customer dengan order terbanyak</CardDescription>
             </CardHeader>
@@ -410,44 +569,43 @@ export default function EnterpriseDashboardPage() {
           </Card>
         </div>
 
-        {/* Revenue Comparison */}
-        <Card>
-          <CardContent className="p-4">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-center">
+        {/* ── TOTAL REVENUE SEMUA DIVISI ─────────────────────────────── */}
+        <Card className="border-primary/20 bg-primary/5">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <DollarSign className="h-4 w-4 text-primary" />
+              Total Revenue Semua Divisi — Bulan Ini
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-4 pt-0">
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 text-center">
               <div>
-                <p className="text-xs text-muted-foreground mb-1">Revenue Bulan Ini</p>
+                <p className="text-xs text-muted-foreground mb-1">Logistik</p>
+                <p className="text-xl font-bold text-blue-600">
+                  {isLoading ? "—" : idrCompact(data?.revenueThisMonth ?? 0)}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground mb-1">Sport Centre</p>
+                <p className="text-xl font-bold text-violet-600">
+                  {crossLoading ? "—" : idrCompact(sc?.revenueThisMonth ?? 0)}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground mb-1">Penjualan</p>
+                <p className="text-xl font-bold text-sky-600">
+                  {crossLoading ? "—" : idrCompact(sales?.revenueThisMonth ?? 0)}
+                </p>
+              </div>
+              <div className="border-l border-primary/20 pl-4">
+                <p className="text-xs text-muted-foreground mb-1">Total Gabungan</p>
                 <p className="text-2xl font-bold text-primary">
-                  {isLoading ? "—" : idr(data?.revenueThisMonth)}
+                  {isLoading || crossLoading ? "—" : idrCompact(totalRevThis)}
                 </p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground mb-1">Revenue Bulan Lalu</p>
-                <p className="text-2xl font-bold text-muted-foreground">
-                  {isLoading ? "—" : idr(data?.revenueLastMonth)}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground mb-1">Pertumbuhan</p>
-                <div className="flex items-center justify-center">
-                  {!isLoading && data && (
-                    <div className="flex items-center gap-1">
-                      {(data.revenueGrowthPct ?? 0) > 0 ? (
-                        <TrendingUp className="h-5 w-5 text-emerald-500" />
-                      ) : (data.revenueGrowthPct ?? 0) < 0 ? (
-                        <TrendingDown className="h-5 w-5 text-red-500" />
-                      ) : (
-                        <Activity className="h-5 w-5 text-muted-foreground" />
-                      )}
-                      <span className={`text-2xl font-bold ${
-                        (data.revenueGrowthPct ?? 0) > 0 ? "text-emerald-600" :
-                        (data.revenueGrowthPct ?? 0) < 0 ? "text-red-500" :
-                        "text-muted-foreground"
-                      }`}>
-                        {(data.revenueGrowthPct ?? 0) > 0 ? "+" : ""}{data.revenueGrowthPct ?? 0}%
-                      </span>
-                    </div>
+                <div className="flex items-center justify-center mt-0.5">
+                  {!isLoading && !crossLoading && (
+                    <GrowthBadge pct={Number(totalGrowth.toFixed(1))} />
                   )}
-                  {isLoading && <div className="h-7 w-20 bg-muted animate-pulse rounded" />}
                 </div>
               </div>
             </div>

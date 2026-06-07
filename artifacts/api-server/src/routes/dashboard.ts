@@ -1048,4 +1048,142 @@ router.get("/operational", async (req, res) => {
   }
 });
 
+// GET /api/dashboard/cross-module?companyId=N|all
+// Returns Sport Centre + Sales summary for the current & previous month
+router.get("/cross-module", async (req, res) => {
+  const { isConsolidated, companyId } = parseCompanyParam(req);
+  const cf = (!isConsolidated && companyId !== null)
+    ? sql` AND company_id = ${companyId}`
+    : sql``;
+
+  const now = new Date();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const endOfLastMonth = startOfMonth;
+
+  try {
+    const [
+      scBookingsThisRes,
+      scBookingsLastRes,
+      scRevenueThisRes,
+      scRevenueLastRes,
+      scTopFacilityRes,
+      salesCountThisRes,
+      salesCountLastRes,
+      salesRevenueThisRes,
+      salesRevenueLastRes,
+    ] = await Promise.all([
+      // Sport Centre – bookings count this month
+      db.execute<{ cnt: string }>(sql`
+        SELECT count(*)::text AS cnt FROM sport_bookings
+        WHERE status NOT IN ('cancelled','Cancelled')
+          AND created_at >= ${startOfMonth} ${cf}
+      `),
+      // Sport Centre – bookings count last month
+      db.execute<{ cnt: string }>(sql`
+        SELECT count(*)::text AS cnt FROM sport_bookings
+        WHERE status NOT IN ('cancelled','Cancelled')
+          AND created_at >= ${startOfLastMonth}
+          AND created_at < ${endOfLastMonth} ${cf}
+      `),
+      // Sport Centre – revenue this month (from sport_payments)
+      db.execute<{ total: string }>(sql`
+        SELECT COALESCE(SUM(sp.amount::numeric), 0)::text AS total
+        FROM sport_payments sp
+        JOIN sport_bookings sb ON sb.id = sp.booking_id
+        WHERE sp.status IN ('paid','confirmed','Paid','Confirmed')
+          AND sp.created_at >= ${startOfMonth}
+      `),
+      // Sport Centre – revenue last month
+      db.execute<{ total: string }>(sql`
+        SELECT COALESCE(SUM(sp.amount::numeric), 0)::text AS total
+        FROM sport_payments sp
+        JOIN sport_bookings sb ON sb.id = sp.booking_id
+        WHERE sp.status IN ('paid','confirmed','Paid','Confirmed')
+          AND sp.created_at >= ${startOfLastMonth}
+          AND sp.created_at < ${endOfLastMonth}
+      `),
+      // Sport Centre – top facilities this month
+      db.execute<{ name: string; cnt: string; revenue: string }>(sql`
+        SELECT sf.name, count(sb.id)::text AS cnt,
+               COALESCE(SUM(sp.amount::numeric), 0)::text AS revenue
+        FROM sport_bookings sb
+        LEFT JOIN sport_facilities sf ON sf.id = sb.facility_id
+        LEFT JOIN sport_payments sp ON sp.booking_id = sb.id
+          AND sp.status IN ('paid','confirmed','Paid','Confirmed')
+        WHERE sb.status NOT IN ('cancelled','Cancelled')
+          AND sb.created_at >= ${startOfMonth}
+        GROUP BY sf.name
+        ORDER BY cnt::int DESC
+        LIMIT 5
+      `),
+      // Sales – confirmed docs count this month
+      db.execute<{ cnt: string }>(sql`
+        SELECT count(*)::text AS cnt FROM sales_documents
+        WHERE status NOT IN ('draft','cancelled')
+          AND created_at >= ${startOfMonth} ${cf}
+      `),
+      // Sales – confirmed docs count last month
+      db.execute<{ cnt: string }>(sql`
+        SELECT count(*)::text AS cnt FROM sales_documents
+        WHERE status NOT IN ('draft','cancelled')
+          AND created_at >= ${startOfLastMonth}
+          AND created_at < ${endOfLastMonth} ${cf}
+      `),
+      // Sales – revenue this month
+      db.execute<{ total: string }>(sql`
+        SELECT COALESCE(SUM(grand_total::numeric), 0)::text AS total
+        FROM sales_documents
+        WHERE status NOT IN ('draft','cancelled')
+          AND created_at >= ${startOfMonth} ${cf}
+      `),
+      // Sales – revenue last month
+      db.execute<{ total: string }>(sql`
+        SELECT COALESCE(SUM(grand_total::numeric), 0)::text AS total
+        FROM sales_documents
+        WHERE status NOT IN ('draft','cancelled')
+          AND created_at >= ${startOfLastMonth}
+          AND created_at < ${endOfLastMonth} ${cf}
+      `),
+    ]);
+
+    const scRevThis = Number(scRevenueThisRes.rows[0]?.total ?? 0);
+    const scRevLast = Number(scRevenueLastRes.rows[0]?.total ?? 0);
+    const scGrowth = scRevLast > 0
+      ? ((scRevThis - scRevLast) / scRevLast) * 100
+      : scRevThis > 0 ? 100 : 0;
+
+    const salesRevThis = Number(salesRevenueThisRes.rows[0]?.total ?? 0);
+    const salesRevLast = Number(salesRevenueLastRes.rows[0]?.total ?? 0);
+    const salesGrowth = salesRevLast > 0
+      ? ((salesRevThis - salesRevLast) / salesRevLast) * 100
+      : salesRevThis > 0 ? 100 : 0;
+
+    return res.json({
+      sportCenter: {
+        bookingsThisMonth: Number(scBookingsThisRes.rows[0]?.cnt ?? 0),
+        bookingsLastMonth: Number(scBookingsLastRes.rows[0]?.cnt ?? 0),
+        revenueThisMonth: scRevThis,
+        revenueLastMonth: scRevLast,
+        growthPct: Number(scGrowth.toFixed(1)),
+        topFacilities: scTopFacilityRes.rows.map((r) => ({
+          name: r.name ?? "—",
+          bookings: Number(r.cnt),
+          revenue: Number(r.revenue),
+        })),
+      },
+      sales: {
+        countThisMonth: Number(salesCountThisRes.rows[0]?.cnt ?? 0),
+        countLastMonth: Number(salesCountLastRes.rows[0]?.cnt ?? 0),
+        revenueThisMonth: salesRevThis,
+        revenueLastMonth: salesRevLast,
+        growthPct: Number(salesGrowth.toFixed(1)),
+      },
+    });
+  } catch (e) {
+    console.error("cross-module dashboard error", e);
+    return res.status(500).json({ error: "Gagal memuat cross-module dashboard" });
+  }
+});
+
 export default router;
