@@ -7,3 +7,4 @@
 - [WA transport: Fonnte-only](wa-transport-fallback.md) — all WA notifications go through Fonnte; WATI removed from notif path (it silently dropped msgs & rejected WA group IDs).
 - [IDR number input parsing](idr-number-input-parsing.md) — type=number + dot thousand-separator silently drops price saves; use text+inputMode numeric, strip non-digits.
 - [requireAdmin middleware pattern](requireAdmin-middleware-pattern.md) — requireAdmin tidak memanggil next(); harus dipanggil inline `if (!(await requireAdmin(req, res))) return;` bukan sebagai Express middleware param.
+- [Stale esbuild dist](stale-esbuild-dist.md) — api-server runs prebuilt dist; stale build serves missing routes as HTML 404/hangs → ".json() Unexpected token <" in UI; rebuild+restart fixes.
