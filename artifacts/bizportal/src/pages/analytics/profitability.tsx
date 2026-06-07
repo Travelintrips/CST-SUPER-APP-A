@@ -12,7 +12,7 @@ import {
   TrendingUp, Search, RefreshCw,
   ShoppingCart, Users, Truck, DollarSign, AlertTriangle,
   ChevronLeft, ChevronRight, Target, BarChart2, Clock,
-  Receipt, MapPin,
+  Receipt, MapPin, Package,
 } from "lucide-react";
 import { Link } from "wouter";
 import { ArrowLeft } from "lucide-react";
@@ -81,6 +81,33 @@ interface RoutesData {
   };
 }
 
+interface CommodityRow {
+  commodity: string; orderCount: number;
+  revenue: number; vendorCost: number; truckCost: number; tax: number;
+  grossMargin: number; marginPct: number;
+}
+interface CommoditiesData {
+  items: CommodityRow[]; total: number;
+  summary: {
+    totalRevenue: number; totalVendorCost: number; totalTruckCost: number;
+    totalTax: number; totalGrossMargin: number; totalOrders: number; avgMarginPct: number;
+  };
+}
+
+// commodity → emoji
+const COMMODITY_ICON: Record<string, string> = {
+  coffee: "☕", coal: "⚫", "palm oil": "🌴", steel: "⚙️", fish: "🐟",
+  "batu bara": "⚫", "minyak kelapa sawit": "🌴", "baja": "⚙️", "ikan": "🐟", "kopi": "☕",
+  electronics: "📱", textile: "🧵", chemical: "⚗️", food: "🍱", cement: "🏗️",
+};
+function getCommodityIcon(name: string): string {
+  const key = name.toLowerCase();
+  for (const [k, v] of Object.entries(COMMODITY_ICON)) {
+    if (key.includes(k)) return v;
+  }
+  return "📦";
+}
+
 // ─── Filter bar ──────────────────────────────────────────────────────────────
 function FilterBar({
   search, onSearch, dateFrom, dateTo, onDateFrom, onDateTo,
@@ -114,11 +141,12 @@ function FilterBar({
   );
 }
 
-// ─── Horizontal bar chart (pure CSS, no Recharts) ────────────────────────────
-function RouteBarChart({ rows, metric, label }: {
-  rows: RouteRow[];
-  metric: "revenue" | "grossMargin" | "marginPct";
-  label: string;
+// ─── Generic horizontal bar chart (pure CSS) ─────────────────────────────────
+type BarMetric = "revenue" | "grossMargin" | "marginPct";
+interface BarRow { name: string; revenue: number; grossMargin: number; marginPct: number; }
+
+function ProfitBarChart({ rows, metric, label }: {
+  rows: BarRow[]; metric: BarMetric; label: string;
 }) {
   const top = rows.slice(0, 10);
   const max = Math.max(...top.map(r => Math.abs(r[metric])), 1);
@@ -130,13 +158,9 @@ function RouteBarChart({ rows, metric, label }: {
         const w = Math.min(Math.abs(val) / max * 100, 100);
         const isNeg = val < 0;
         return (
-          <div key={r.route} className="flex items-center gap-2 group">
+          <div key={r.name} className="flex items-center gap-2">
             <div className="w-4 text-[10px] font-bold text-muted-foreground text-right shrink-0">{i + 1}</div>
-            <div className="text-xs text-slate-700 truncate w-40 shrink-0" title={r.route}>
-              <span className="font-medium">{r.origin}</span>
-              <span className="text-muted-foreground mx-1">→</span>
-              <span className="font-medium">{r.destination}</span>
-            </div>
+            <div className="text-xs text-slate-700 truncate w-40 shrink-0 font-medium" title={r.name}>{r.name}</div>
             <div className="flex-1 flex items-center gap-1.5 min-w-0">
               <div className="flex-1 bg-slate-100 rounded-full h-2 overflow-hidden">
                 <div
@@ -155,12 +179,18 @@ function RouteBarChart({ rows, metric, label }: {
   );
 }
 
+// helpers to cast typed rows → BarRow
+const toBarRows = (rows: RouteRow[]): BarRow[] =>
+  rows.map(r => ({ name: r.route, revenue: r.revenue, grossMargin: r.grossMargin, marginPct: r.marginPct }));
+const commodityToBarRows = (rows: CommodityRow[]): BarRow[] =>
+  rows.map(r => ({ name: r.commodity, revenue: r.revenue, grossMargin: r.grossMargin, marginPct: r.marginPct }));
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function ProfitabilityAnalyticsPage() {
   const { companyId: activeCompanyId } = useCompany();
   const companyParam = activeCompanyId ? `companyId=${activeCompanyId}` : "companyId=all";
 
-  const [tab, setTab] = useState<"orders" | "customers" | "vendors" | "routes">("orders");
+  const [tab, setTab] = useState<"orders" | "customers" | "vendors" | "routes" | "commodities">("orders");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [dateFrom, setDateFrom] = useState("");
@@ -229,14 +259,26 @@ export default function ProfitabilityAnalyticsPage() {
     enabled: tab === "routes",
   });
 
+  const commoditiesQuery = useQuery<CommoditiesData>({
+    queryKey: ["profit-commodities", companyParam, dateFrom, dateTo],
+    queryFn: async () => {
+      const params = [companyParam, dateParams].filter(Boolean).join("&");
+      const r = await fetch(`/api/analytics/profitability/commodities?${params}`, { credentials: "include" });
+      if (!r.ok) throw new Error("Gagal memuat data komoditi");
+      return r.json() as Promise<CommoditiesData>;
+    },
+    enabled: tab === "commodities",
+  });
+
   const handleRefresh = () => {
-    if (tab === "orders") void ordersQuery.refetch();
-    if (tab === "customers") void customersQuery.refetch();
-    if (tab === "vendors") void vendorsQuery.refetch();
-    if (tab === "routes") void routesQuery.refetch();
+    if (tab === "orders")      void ordersQuery.refetch();
+    if (tab === "customers")   void customersQuery.refetch();
+    if (tab === "vendors")     void vendorsQuery.refetch();
+    if (tab === "routes")      void routesQuery.refetch();
+    if (tab === "commodities") void commoditiesQuery.refetch();
   };
 
-  const isFetching = ordersQuery.isFetching || customersQuery.isFetching || vendorsQuery.isFetching || routesQuery.isFetching;
+  const isFetching = ordersQuery.isFetching || customersQuery.isFetching || vendorsQuery.isFetching || routesQuery.isFetching || commoditiesQuery.isFetching;
 
   const thCls = "text-xs font-semibold text-muted-foreground uppercase tracking-wide px-3 py-2 text-left border-b bg-slate-50/80 whitespace-nowrap";
   const tdCls = "px-3 py-2.5 text-sm border-b border-slate-100 align-middle";
@@ -289,6 +331,9 @@ export default function ProfitabilityAnalyticsPage() {
               </TabsTrigger>
               <TabsTrigger value="routes" className="gap-1.5">
                 <MapPin className="h-3.5 w-3.5" /> Per Rute
+              </TabsTrigger>
+              <TabsTrigger value="commodities" className="gap-1.5">
+                <Package className="h-3.5 w-3.5" /> Per Komoditi
               </TabsTrigger>
               <TabsTrigger value="vendors" className="gap-1.5">
                 <Truck className="h-3.5 w-3.5" /> Per Vendor
@@ -522,18 +567,18 @@ export default function ProfitabilityAnalyticsPage() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <Card>
                   <CardContent className="p-4">
-                    <RouteBarChart rows={routesQuery.data!.items} metric="revenue" label="Top 10 Rute by Revenue" />
+                    <ProfitBarChart rows={toBarRows(routesQuery.data!.items)} metric="revenue" label="Top 10 Rute by Revenue" />
                   </CardContent>
                 </Card>
                 <Card>
                   <CardContent className="p-4">
-                    <RouteBarChart rows={routesQuery.data!.items} metric="grossMargin" label="Top 10 Rute by Gross Margin" />
+                    <ProfitBarChart rows={toBarRows(routesQuery.data!.items)} metric="grossMargin" label="Top 10 Rute by Gross Margin" />
                   </CardContent>
                 </Card>
                 <Card>
                   <CardContent className="p-4">
-                    <RouteBarChart
-                      rows={[...routesQuery.data!.items].sort((a, b) => b.marginPct - a.marginPct)}
+                    <ProfitBarChart
+                      rows={toBarRows([...routesQuery.data!.items].sort((a, b) => b.marginPct - a.marginPct))}
                       metric="marginPct"
                       label="Top 10 Rute by Margin %"
                     />
@@ -652,6 +697,199 @@ export default function ProfitabilityAnalyticsPage() {
                 )}
               </CardContent>
             </Card>
+          </TabsContent>
+
+          {/* ── TAB: Per Komoditi ── */}
+          <TabsContent value="commodities" className="mt-4 space-y-3">
+            {/* Summary cards */}
+            {commoditiesQuery.data && (
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+                {[
+                  { label: "Total Komoditi", value: String(commoditiesQuery.data.total), icon: <Package className="h-3.5 w-3.5 text-indigo-500" />, color: "border-l-indigo-400", text: "text-indigo-700" },
+                  { label: "Total Order", value: String(commoditiesQuery.data.summary.totalOrders), icon: <ShoppingCart className="h-3.5 w-3.5 text-blue-500" />, color: "border-l-blue-400", text: "text-blue-700" },
+                  { label: "Revenue", value: idrCompact(commoditiesQuery.data.summary.totalRevenue), icon: <DollarSign className="h-3.5 w-3.5 text-emerald-600" />, color: "border-l-emerald-500", text: "text-emerald-700" },
+                  { label: "Vendor Cost", value: idrCompact(commoditiesQuery.data.summary.totalVendorCost), icon: <Truck className="h-3.5 w-3.5 text-slate-500" />, color: "border-l-slate-400", text: "text-slate-700" },
+                  { label: "Truck Cost", value: idrCompact(commoditiesQuery.data.summary.totalTruckCost), icon: <Truck className="h-3.5 w-3.5 text-orange-500" />, color: "border-l-orange-400", text: "text-orange-700" },
+                  {
+                    label: "Gross Margin",
+                    value: `${idrCompact(commoditiesQuery.data.summary.totalGrossMargin)} · ${commoditiesQuery.data.summary.avgMarginPct.toFixed(1)}%`,
+                    icon: <TrendingUp className="h-3.5 w-3.5 text-blue-600" />,
+                    color: commoditiesQuery.data.summary.totalGrossMargin < 0 ? "border-l-red-500" : "border-l-blue-500",
+                    text: commoditiesQuery.data.summary.totalGrossMargin < 0 ? "text-red-600" : "text-blue-700",
+                  },
+                ].map(card => (
+                  <Card key={card.label} className={`border-l-4 ${card.color}`}>
+                    <CardContent className="flex items-center gap-2 p-2.5">
+                      {card.icon}
+                      <div className="min-w-0">
+                        <div className="text-[10px] text-muted-foreground leading-none mb-0.5">{card.label}</div>
+                        <div className={`font-semibold text-xs leading-none ${card.text} truncate`}>{card.value}</div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+
+            {/* Charts — 3 panels */}
+            {(commoditiesQuery.data?.items.length ?? 0) >= 2 && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <Card>
+                  <CardContent className="p-4">
+                    <ProfitBarChart rows={commodityToBarRows(commoditiesQuery.data!.items)} metric="revenue" label="Revenue per Komoditi" />
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-4">
+                    <ProfitBarChart rows={commodityToBarRows(commoditiesQuery.data!.items)} metric="grossMargin" label="Gross Margin per Komoditi" />
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-4">
+                    <ProfitBarChart
+                      rows={commodityToBarRows([...commoditiesQuery.data!.items].sort((a, b) => b.marginPct - a.marginPct))}
+                      metric="marginPct"
+                      label="Margin % per Komoditi"
+                    />
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+
+            {/* Commodity table */}
+            <Card>
+              <CardHeader className="py-3 px-4 border-b">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  <Package className="h-4 w-4 text-indigo-500" />
+                  Profitabilitas per Komoditi
+                  {commoditiesQuery.data && <Badge variant="secondary" className="text-[10px]">{commoditiesQuery.data.total} komoditi</Badge>}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr>
+                        <th className={thCls}>#</th>
+                        <th className={thCls}>Komoditi</th>
+                        <th className={`${thCls} text-right`}>Order</th>
+                        <th className={`${thCls} text-right`}>Revenue</th>
+                        <th className={`${thCls} text-right`}>Vendor Cost</th>
+                        <th className={`${thCls} text-right`}>Truck Cost</th>
+                        <th className={`${thCls} text-right`}>Tax</th>
+                        <th className={`${thCls} text-right`}>Gross Margin</th>
+                        <th className={`${thCls} text-right`}>Margin %</th>
+                        <th className={thCls}>Bar Revenue</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {commoditiesQuery.isLoading
+                        ? [...Array(6)].map((_, i) => <tr key={i}>{[...Array(10)].map((_, j) => <td key={j} className={tdCls}><Skeleton className="h-4 w-full" /></td>)}</tr>)
+                        : (commoditiesQuery.data?.items ?? []).length === 0
+                        ? <tr><td colSpan={10} className="text-center py-10 text-sm text-muted-foreground">Tidak ada data komoditi</td></tr>
+                        : (commoditiesQuery.data?.items ?? []).map((row, i) => {
+                          const maxRev = commoditiesQuery.data!.items[0]?.revenue ?? 1;
+                          const barW = Math.min(row.revenue / maxRev * 100, 100);
+                          const barMarginW = Math.min(Math.max(row.marginPct, 0) / 60 * 100, 100);
+                          return (
+                            <tr key={row.commodity} className="hover:bg-slate-50 transition-colors">
+                              <td className={`${tdCls} text-xs font-bold text-muted-foreground w-8`}>{i + 1}</td>
+                              <td className={tdCls}>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-lg leading-none">{getCommodityIcon(row.commodity)}</span>
+                                  <div>
+                                    <div className="font-semibold text-slate-800">{row.commodity}</div>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className={`${tdCls} text-right`}>
+                                <Badge variant="secondary" className="text-[10px]">{row.orderCount}</Badge>
+                              </td>
+                              <td className={`${tdCls} text-right font-semibold text-emerald-700`}>{idrCompact(row.revenue)}</td>
+                              <td className={`${tdCls} text-right text-slate-600`}>{idrCompact(row.vendorCost)}</td>
+                              <td className={`${tdCls} text-right`}>
+                                {row.truckCost > 0 ? <span className="text-orange-600">{idrCompact(row.truckCost)}</span> : <span className="text-muted-foreground text-xs">—</span>}
+                              </td>
+                              <td className={`${tdCls} text-right`}>
+                                {row.tax > 0 ? <span className="text-violet-600">{idrCompact(row.tax)}</span> : <span className="text-muted-foreground text-xs">—</span>}
+                              </td>
+                              <td className={`${tdCls} text-right font-semibold ${row.grossMargin < 0 ? "text-red-600" : "text-blue-700"}`}>{idrCompact(row.grossMargin)}</td>
+                              <td className={`${tdCls} text-right`}><MarginBadge pct={row.marginPct} /></td>
+                              <td className={`${tdCls} w-32`}>
+                                <div className="space-y-0.5">
+                                  <div className="flex items-center gap-1">
+                                    <div className="flex-1 bg-slate-100 rounded-full h-1.5">
+                                      <div className="h-1.5 rounded-full bg-emerald-400" style={{ width: `${barW}%` }} />
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-1">
+                                    <div className="flex-1 bg-slate-100 rounded-full h-1.5">
+                                      <div className={`h-1.5 rounded-full ${row.marginPct >= 25 ? "bg-blue-500" : row.marginPct >= 10 ? "bg-amber-400" : "bg-red-400"}`} style={{ width: `${barMarginW}%` }} />
+                                    </div>
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      }
+                    </tbody>
+                    {(commoditiesQuery.data?.items.length ?? 0) > 0 && commoditiesQuery.data && (
+                      <tfoot>
+                        <tr className="bg-slate-50 font-semibold border-t-2 border-slate-200">
+                          <td colSpan={2} className="px-3 py-2 text-xs text-muted-foreground">Total semua komoditi</td>
+                          <td className="px-3 py-2 text-right text-sm text-blue-700">{commoditiesQuery.data.summary.totalOrders}</td>
+                          <td className="px-3 py-2 text-right text-sm text-emerald-700">{idrCompact(commoditiesQuery.data.summary.totalRevenue)}</td>
+                          <td className="px-3 py-2 text-right text-sm text-slate-700">{idrCompact(commoditiesQuery.data.summary.totalVendorCost)}</td>
+                          <td className="px-3 py-2 text-right text-sm text-orange-700">{idrCompact(commoditiesQuery.data.summary.totalTruckCost)}</td>
+                          <td className="px-3 py-2 text-right text-sm text-violet-700">{idrCompact(commoditiesQuery.data.summary.totalTax)}</td>
+                          <td className={`px-3 py-2 text-right text-sm font-bold ${commoditiesQuery.data.summary.totalGrossMargin < 0 ? "text-red-600" : "text-blue-700"}`}>
+                            {idrCompact(commoditiesQuery.data.summary.totalGrossMargin)}
+                          </td>
+                          <td className="px-3 py-2 text-right"><MarginBadge pct={commoditiesQuery.data.summary.avgMarginPct} /></td>
+                          <td />
+                        </tr>
+                      </tfoot>
+                    )}
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Commodity "hero" cards — top 3 by margin */}
+            {(commoditiesQuery.data?.items.length ?? 0) > 0 && (
+              <div className="space-y-1.5">
+                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-1">Top 3 Komoditi by Gross Margin</div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {[...( commoditiesQuery.data?.items ?? [])]
+                    .sort((a, b) => b.grossMargin - a.grossMargin)
+                    .slice(0, 3)
+                    .map((row, i) => (
+                      <Card key={row.commodity} className={`border-l-4 ${i === 0 ? "border-l-yellow-400" : i === 1 ? "border-l-slate-400" : "border-l-amber-600"}`}>
+                        <CardContent className="p-3 flex items-start gap-3">
+                          <div className="text-3xl leading-none mt-0.5">{getCommodityIcon(row.commodity)}</div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5 mb-1">
+                              <span className="text-[10px] font-bold text-muted-foreground">#{i + 1}</span>
+                              <span className="font-semibold text-sm truncate">{row.commodity}</span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-xs">
+                              <span className="text-muted-foreground">Revenue</span>
+                              <span className="font-medium text-emerald-700 text-right">{idrCompact(row.revenue)}</span>
+                              <span className="text-muted-foreground">Gross Margin</span>
+                              <span className={`font-bold text-right ${row.grossMargin < 0 ? "text-red-600" : "text-blue-700"}`}>{idrCompact(row.grossMargin)}</span>
+                              <span className="text-muted-foreground">Margin %</span>
+                              <span className="text-right"><MarginBadge pct={row.marginPct} /></span>
+                              <span className="text-muted-foreground">Order</span>
+                              <span className="text-right"><Badge variant="secondary" className="text-[10px]">{row.orderCount}</Badge></span>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                </div>
+              </div>
+            )}
           </TabsContent>
 
           {/* ── TAB: Vendors ── */}
