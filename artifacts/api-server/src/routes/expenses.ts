@@ -40,6 +40,21 @@ router.use(async (req, res, next) => {
   next();
 });
 
+// ── GET /api/expenses/payment-accounts ──
+// Mengembalikan akun Kas & Bank dari COA (kode 1-1xxx) untuk dropdown Sumber Dana
+router.get("/payment-accounts", async (req: Request, res) => {
+  const companyId = resolveCompanyId(req);
+  const rows = await db.execute(sql.raw(`
+    SELECT id, code, name
+    FROM chart_of_accounts
+    WHERE code LIKE '1-1%'
+      AND is_active = TRUE
+      AND (company_id = ${companyId ?? "NULL"} OR company_id IS NULL)
+    ORDER BY code ASC
+  `));
+  return res.json(rows.rows);
+});
+
 // ── Helpers ──
 function serializeCategory(c: any) {
   return {
