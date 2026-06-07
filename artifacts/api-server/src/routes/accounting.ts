@@ -3088,7 +3088,8 @@ router.get("/holding/groups/:id/cashflow", async (req, res) => {
 // ─── GOOGLE SHEETS SYNC ───────────────────────────────────────────────────────
 
 // GET /accounting/rekon-schedule — baca konfigurasi jadwal rekonsiliasi otomatis
-router.get("/rekon-schedule", requireAdmin, async (req, res) => {
+router.get("/rekon-schedule", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
   const companyId = resolveCompanyId(req);
   const [settings] = await db
     .select({ id: accountingSettingsTable.id, meta: accountingSettingsTable.meta })
@@ -3099,7 +3100,8 @@ router.get("/rekon-schedule", requireAdmin, async (req, res) => {
 });
 
 // POST /accounting/rekon-schedule — simpan/update konfigurasi jadwal
-router.post("/rekon-schedule", requireAdmin, async (req, res) => {
+router.post("/rekon-schedule", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
   const companyId = resolveCompanyId(req);
   const {
     enabled, spreadsheetId, sheetName, colKey, colStatus, startRow, hourWib,
@@ -3643,13 +3645,15 @@ router.get("/tax-stream", (req, res) => {
 
 // ── Journal Mapping Routes ────────────────────────────────────────────────────
 
-router.get("/journal-mapping/summary", requireAdmin, async (req, res) => {
+router.get("/journal-mapping/summary", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
   const companyId = resolveCompanyId(req) ?? 1;
   const summary = await getJournalMappingSummary(companyId);
   return res.json(summary);
 });
 
-router.post("/journal-mapping/kasbon", requireAdmin, async (req, res) => {
+router.post("/journal-mapping/kasbon", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
   const companyId = resolveCompanyId(req) ?? 1;
   const { ref, description, amount, date, paymentMethod, repayment } = req.body as {
     ref: string; description?: string; amount: number; date: string;
@@ -3662,7 +3666,8 @@ router.post("/journal-mapping/kasbon", requireAdmin, async (req, res) => {
   return res.json({ ok: true, entryId: entry.id, entryNumber: entry.entryNumber });
 });
 
-router.post("/journal-mapping/talangan", requireAdmin, async (req, res) => {
+router.post("/journal-mapping/talangan", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
   const companyId = resolveCompanyId(req) ?? 1;
   const { ref, description, amount, date, paymentMethod, repayment } = req.body as {
     ref: string; description?: string; amount: number; date: string;
@@ -3675,7 +3680,8 @@ router.post("/journal-mapping/talangan", requireAdmin, async (req, res) => {
   return res.json({ ok: true, entryId: entry.id, entryNumber: entry.entryNumber });
 });
 
-router.post("/journal-mapping/loan-disbursement", requireAdmin, async (req, res) => {
+router.post("/journal-mapping/loan-disbursement", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
   const companyId = resolveCompanyId(req) ?? 1;
   const { ref, description, principalAmount, adminFee, date, loanType, isLongTerm } = req.body as {
     ref: string; description?: string; principalAmount: number; adminFee?: number;
@@ -3689,7 +3695,8 @@ router.post("/journal-mapping/loan-disbursement", requireAdmin, async (req, res)
   return res.json({ ok: true, entryId: entry.id, entryNumber: entry.entryNumber });
 });
 
-router.post("/journal-mapping/loan-repayment", requireAdmin, async (req, res) => {
+router.post("/journal-mapping/loan-repayment", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
   const companyId = resolveCompanyId(req) ?? 1;
   const { ref, description, principalAmount, interestAmount, date, loanType, isLongTerm } = req.body as {
     ref: string; description?: string; principalAmount: number; interestAmount: number;
@@ -3705,7 +3712,8 @@ router.post("/journal-mapping/loan-repayment", requireAdmin, async (req, res) =>
   return res.json({ ok: true, entryId: entry.id, entryNumber: entry.entryNumber });
 });
 
-router.post("/journal-mapping/asset-purchase", requireAdmin, async (req, res) => {
+router.post("/journal-mapping/asset-purchase", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
   const companyId = resolveCompanyId(req) ?? 1;
   const { ref, description, assetName, purchasePrice, date, paymentMethod, assetAccountId } = req.body as {
     ref: string; description?: string; assetName: string; purchasePrice: number;
@@ -3721,7 +3729,8 @@ router.post("/journal-mapping/asset-purchase", requireAdmin, async (req, res) =>
   return res.json({ ok: true, entryId: entry.id, entryNumber: entry.entryNumber });
 });
 
-router.post("/journal-mapping/depreciation", requireAdmin, async (req, res) => {
+router.post("/journal-mapping/depreciation", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
   const companyId = resolveCompanyId(req) ?? 1;
   const { ref, description, assetName, depreciationAmount, date, accumAccountId } = req.body as {
     ref: string; description?: string; assetName: string; depreciationAmount: number;
@@ -3749,7 +3758,8 @@ function colToLetter(n: number): string {
 }
 
 // POST /accounting/rekonsiliasi-gsheet — cocokkan entry lines DB dengan mutasi di Google Sheets
-router.post("/rekonsiliasi-gsheet", requireAdmin, async (req, res) => {
+router.post("/rekonsiliasi-gsheet", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
   const {
     spreadsheetId,
     sheetName = "Mutasi",
