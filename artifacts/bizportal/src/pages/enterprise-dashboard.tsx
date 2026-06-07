@@ -42,7 +42,7 @@ const PIE_PALETTE = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#6366f1", "#8b
 async function fetchEnterprise(companyId?: number) {
   const params = new URLSearchParams();
   if (companyId) params.set("companyId", String(companyId));
-  const r = await fetch(`/api/dashboard/enterprise?${params}`);
+  const r = await fetch(`/api/dashboard/enterprise?${params}`, { credentials: "include" });
   if (!r.ok) return null;
   return r.json();
 }

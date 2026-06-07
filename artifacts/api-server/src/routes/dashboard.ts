@@ -421,7 +421,7 @@ router.get("/response-time-stats", async (req, res) => {
 // GET /api/dashboard/analytics?period=30d&companyId=N
 router.get("/analytics", async (req, res) => {
   const period = String(req.query.period ?? "30d");
-  const { companyId } = parseCompanyParam(req.query.companyId);
+  const { companyId } = parseCompanyParam(req);
 
   const intervalMap: Record<string, string> = {
     "7d": "7 days", "30d": "30 days", "90d": "90 days", "1y": "1 year",
@@ -527,7 +527,7 @@ router.get("/analytics", async (req, res) => {
 // ── CEO / Director Dashboard ──────────────────────────────────────────────
 // GET /api/dashboard/ceo?companyId=N|all
 router.get("/ceo", async (req, res) => {
-  const { isConsolidated, companyId } = parseCompanyParam(req.query.companyId);
+  const { isConsolidated, companyId } = parseCompanyParam(req);
   const cf = (!isConsolidated && companyId !== null) ? sql` AND company_id = ${companyId}` : sql``;
   const cfSd = (!isConsolidated && companyId !== null) ? sql` AND (sd.company_id = ${companyId} OR sd.company_id IS NULL)` : sql``;
 
@@ -787,7 +787,7 @@ router.get("/ceo", async (req, res) => {
 // ── Enterprise Admin Dashboard ─────────────────────────────────────────────
 // GET /api/dashboard/enterprise?companyId=N|all
 router.get("/enterprise", async (req, res) => {
-  const { isConsolidated, companyId } = parseCompanyParam(req.query.companyId);
+  const { isConsolidated, companyId } = parseCompanyParam(req);
   const cf = (!isConsolidated && companyId !== null)
     ? sql` AND company_id = ${companyId}`
     : sql``;
@@ -938,7 +938,7 @@ router.get("/enterprise", async (req, res) => {
 // ── GET /api/dashboard/operational ──────────────────────────────────────────
 // Real-time operational snapshot untuk tim operasional.
 router.get("/operational", async (req, res) => {
-  const { isConsolidated, companyId } = parseCompanyParam(req.query.companyId);
+  const { isConsolidated, companyId } = parseCompanyParam(req);
   const cf = (!isConsolidated && companyId !== null)
     ? sql` AND company_id = ${companyId}`
     : sql``;
