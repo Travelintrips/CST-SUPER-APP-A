@@ -204,18 +204,32 @@ async function runRekonsiliasi(settingId: number, cfg: RekonScheduleConfig): Pro
 
   let msg2: string | undefined;
   if (tidakAda.length > 0) {
-    const MAX_ROWS = 30;
-    const lines = tidakAda.slice(0, MAX_ROWS).map((r) => {
-      const debit = Number(r.debit ?? 0);
-      const credit = Number(r.credit ?? 0);
-      const nominal = debit > 0 ? `D: ${idr(debit)}` : `K: ${idr(credit)}`;
-      return `❌ *${r.entryNumber}* | ${fmtDate(r.entryDate)} | ${nominal}`;
-    });
-    const truncNote = tidakAda.length > MAX_ROWS ? `\n_...dan ${tidakAda.length - MAX_ROWS} baris lainnya_` : "";
+    const MAX_TOTAL = 30;
+    const byDate: Record<string, typeof tidakAda> = {};
+    for (const r of tidakAda) {
+      const dk = fmtDate(r.entryDate);
+      if (!byDate[dk]) byDate[dk] = [];
+      byDate[dk].push(r);
+    }
+    let count = 0;
+    const groupLines: string[] = [];
+    for (const [tgl, rows] of Object.entries(byDate)) {
+      if (count >= MAX_TOTAL) break;
+      groupLines.push(`📅 *${tgl}*`);
+      for (const r of rows) {
+        if (count >= MAX_TOTAL) { groupLines.push(`_...dan lebih banyak lagi_`); break; }
+        const debit = Number(r.debit ?? 0);
+        const credit = Number(r.credit ?? 0);
+        const nominal = debit > 0 ? `D: ${idr(debit)}` : `K: ${idr(credit)}`;
+        groupLines.push(`  ❌ *${r.entryNumber}* | ${nominal}`);
+        count++;
+      }
+    }
+    const truncNote = tidakAda.length > MAX_TOTAL ? `\n_...dan ${tidakAda.length - MAX_TOTAL} baris lainnya_` : "";
     msg2 =
       `⚠️ *Entri Tidak Ditemukan di Bank (${tidakAda.length} baris)*\n` +
       `_Entri berikut ada di BizPortal tapi tidak cocok di Google Sheet — mohon periksa:_\n\n` +
-      lines.join("\n") + truncNote;
+      groupLines.join("\n") + truncNote;
   }
 
   return [msg1, msg2];

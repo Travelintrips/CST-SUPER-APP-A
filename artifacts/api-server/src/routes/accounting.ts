@@ -3928,21 +3928,34 @@ router.post("/rekonsiliasi-gsheet", async (req, res) => {
         `🔄 Baris GSheet diperbarui: ${updateRequests.length}`;
       await sendWhatsApp(group, msg1, { context: "rekon_gsheet_manual" });
 
-      // Pesan 2: Detail entri yang TIDAK ADA di bank (perlu tindak lanjut)
+      // Pesan 2: Detail entri yang TIDAK ADA, dikelompokkan per tanggal
       const tidakAda = results.filter((r) => r.status.startsWith("❌"));
       if (tidakAda.length > 0) {
-        const MAX_ROWS = 30;
-        const detailLines = tidakAda.slice(0, MAX_ROWS).map((r) => {
-          const nominal = r.debit > 0 ? `D: ${idr(r.debit)}` : `K: ${idr(r.credit)}`;
-          const desc = (r.description ?? "").slice(0, 35);
-          return `❌ *${r.entryNumber}* | ${fmtDate(r.entryDate)} | ${nominal}\n    ${desc}`;
-        });
-        const truncatedNote = tidakAda.length > MAX_ROWS ? `\n_...dan ${tidakAda.length - MAX_ROWS} baris lainnya_` : "";
+        const MAX_TOTAL = 30;
+        const byDate: Record<string, typeof tidakAda> = {};
+        for (const r of tidakAda) {
+          const dk = fmtDate(r.entryDate);
+          if (!byDate[dk]) byDate[dk] = [];
+          byDate[dk].push(r);
+        }
+        let count = 0;
+        const groupLines: string[] = [];
+        for (const [tgl, rows] of Object.entries(byDate)) {
+          if (count >= MAX_TOTAL) break;
+          groupLines.push(`📅 *${tgl}*`);
+          for (const r of rows) {
+            if (count >= MAX_TOTAL) { groupLines.push(`_...dan lebih banyak lagi_`); break; }
+            const nominal = r.debit > 0 ? `D: ${idr(r.debit)}` : `K: ${idr(r.credit)}`;
+            const desc = (r.description ?? "").slice(0, 35);
+            groupLines.push(`  ❌ *${r.entryNumber}* | ${nominal} | ${desc}`);
+            count++;
+          }
+        }
+        const truncatedNote = tidakAda.length > MAX_TOTAL ? `\n_...dan ${tidakAda.length - MAX_TOTAL} baris lainnya_` : "";
         const msg2 =
           `⚠️ *Entri Tidak Ditemukan di Bank (${tidakAda.length} baris)*\n` +
           `_Entri berikut ada di BizPortal tapi tidak cocok di Google Sheet — mohon periksa:_\n\n` +
-          detailLines.join("\n") +
-          truncatedNote;
+          groupLines.join("\n") + truncatedNote;
         await sendWhatsApp(group, msg2, { context: "rekon_gsheet_manual_detail" });
       }
     } catch { /* non-fatal */ }
