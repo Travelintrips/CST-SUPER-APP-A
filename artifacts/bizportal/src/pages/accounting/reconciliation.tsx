@@ -374,6 +374,14 @@ function GSheetTab() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<RekonResponse | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [saEmail, setSaEmail] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/accounting/gsheet/sa-email", { credentials: "include" })
+      .then((r) => r.json())
+      .then((j) => { if (j.email) setSaEmail(j.email as string); })
+      .catch(() => {});
+  }, []);
 
   async function handleRun() {
     if (!spreadsheetId.trim()) { setError("Spreadsheet ID wajib diisi"); return; }
@@ -424,6 +432,12 @@ function GSheetTab() {
               <p className="font-semibold">Format Google Sheet yang diharapkan:</p>
               <p>Kolom A=Tanggal, B=Debit, C=Kredit, D=Keterangan, <strong>E=Unique Key</strong> (hasil formula GS), <strong>F=Status</strong> (akan diisi otomatis)</p>
               <p>Unique Key format: <code className="bg-blue-100 px-1 rounded text-xs">yyyymmdd_jumlah_IN/OUT</code> — contoh: <code className="bg-blue-100 px-1 rounded text-xs">20241025_500000_IN</code></p>
+              {saEmail && (
+                <p className="mt-2 pt-2 border-t border-blue-200">
+                  <strong>Sebelum mulai:</strong> Share spreadsheet ke email Service Account berikut sebagai <strong>Editor</strong>:{" "}
+                  <code className="bg-blue-100 px-1.5 py-0.5 rounded text-xs font-mono select-all">{saEmail}</code>
+                </p>
+              )}
             </div>
           </div>
         </CardContent>

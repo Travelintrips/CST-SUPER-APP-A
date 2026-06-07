@@ -6,6 +6,7 @@ import {
   readSheet,
   ensureSheets,
   batchUpdateSheet,
+  getServiceAccountEmail,
 } from "../lib/googleSheets.js";
 import {
   db,
@@ -3137,6 +3138,12 @@ router.post("/rekon-schedule", async (req, res) => {
   return res.json({ ok: true, config: newMeta.rekonSchedule });
 });
 
+// GET /accounting/gsheet/sa-email — kembalikan email Service Account (untuk panduan share spreadsheet)
+router.get("/gsheet/sa-email", (req, res) => {
+  const email = getServiceAccountEmail();
+  return res.json({ email });
+});
+
 // GET /accounting/gsheet/config — ambil spreadsheetId yang tersimpan (dari env atau DB settings)
 router.get("/gsheet/config", async (req, res) => {
   const companyId = resolveCompanyId(req);
@@ -3331,8 +3338,11 @@ router.post("/gsheet/push", async (req, res) => {
   });
   } catch (e: unknown) {
     const raw = (e as Error).message ?? String(e);
+    const saEmail = getServiceAccountEmail();
     const msg = raw.includes("has not been used") || raw.includes("is disabled")
       ? `Google Sheets API belum diaktifkan di project GCP ini. Aktifkan di: https://console.developers.google.com/apis/api/sheets.googleapis.com/overview — kemudian coba lagi.`
+      : raw.includes("does not have permission") || raw.includes("caller does not have permission")
+      ? `Service Account tidak punya akses ke spreadsheet ini.${saEmail ? ` Share spreadsheet ke: ${saEmail} (Editor)` : ""}`
       : raw;
     return res.status(500).json({ message: msg });
   }
@@ -3905,8 +3915,11 @@ router.post("/rekonsiliasi-gsheet", async (req, res) => {
 
   } catch (e: unknown) {
     const raw = (e as Error).message ?? String(e);
+    const saEmail = getServiceAccountEmail();
     const msg = raw.includes("has not been used") || raw.includes("is disabled")
-      ? `Google Sheets API belum diaktifkan di project GCP ini. Aktifkan di: https://console.developers.google.com/apis/api/sheets.googleapis.com/overview — kemudian coba lagi. Juga aktifkan Google Drive API: https://console.developers.google.com/apis/api/drive.googleapis.com/overview`
+      ? `Google Sheets API belum diaktifkan di project GCP ini. Aktifkan di: https://console.developers.google.com/apis/api/sheets.googleapis.com/overview — kemudian coba lagi.`
+      : raw.includes("does not have permission") || raw.includes("caller does not have permission")
+      ? `Service Account tidak punya akses ke spreadsheet ini.${saEmail ? ` Share spreadsheet ke: ${saEmail} (Editor)` : ""}`
       : raw;
     return res.status(500).json({ message: msg });
   }

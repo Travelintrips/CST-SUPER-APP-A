@@ -3,19 +3,32 @@
 
 import { google, type sheets_v4 } from "googleapis";
 
-function getAuth() {
+interface ServiceAccountCreds {
+  client_email: string;
+  private_key: string;
+  project_id?: string;
+}
+
+function parseCreds(): ServiceAccountCreds {
   const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
   if (!raw) throw new Error("GOOGLE_SERVICE_ACCOUNT_JSON belum dikonfigurasi di Secrets.");
-  let creds: {
-    client_email: string;
-    private_key: string;
-    project_id?: string;
-  };
   try {
-    creds = JSON.parse(raw);
+    return JSON.parse(raw) as ServiceAccountCreds;
   } catch {
     throw new Error("GOOGLE_SERVICE_ACCOUNT_JSON bukan JSON yang valid.");
   }
+}
+
+export function getServiceAccountEmail(): string | null {
+  try {
+    return parseCreds().client_email ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function getAuth() {
+  const creds = parseCreds();
   return new google.auth.GoogleAuth({
     credentials: creds,
     scopes: [
