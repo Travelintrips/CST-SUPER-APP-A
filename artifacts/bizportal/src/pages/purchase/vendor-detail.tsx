@@ -234,6 +234,9 @@ export default function VendorDetailPage() {
   const [masterItemSearch, setMasterItemSearch] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkResetting, setBulkResetting] = useState(false);
+  const [inlineEditId, setInlineEditId] = useState<number | null>(null);
+  const [inlineEditValue, setInlineEditValue] = useState("");
+  const [inlineSaving, setInlineSaving] = useState(false);
 
   const [linkOpen, setLinkOpen] = useState(false);
   const [linkingItem, setLinkingItem] = useState<VendorCatalogItem | null>(null);
@@ -433,6 +436,22 @@ export default function VendorDetailPage() {
       toast({ title: t.common.error, description: String(e), variant: "destructive" });
     } finally {
       setBulkResetting(false);
+    }
+  };
+
+  const saveInlineEdit = async (itemId: number) => {
+    const val = parseFloat(inlineEditValue.replace(/[^0-9.]/g, ""));
+    if (isNaN(val) || val < 0) { setInlineEditId(null); return; }
+    setInlineSaving(true);
+    try {
+      await updateItem.mutateAsync({ itemId, data: { priceSellOverride: val } as any });
+      await qc.invalidateQueries({ queryKey: getListVendorCatalogQueryKey(vendorId) });
+      toast({ title: "Override harga jual disimpan" });
+    } catch (e) {
+      toast({ title: t.common.error, description: String(e), variant: "destructive" });
+    } finally {
+      setInlineSaving(false);
+      setInlineEditId(null);
     }
   };
 
@@ -880,16 +899,45 @@ export default function VendorDetailPage() {
                         <TableCell className="text-right font-mono text-sm text-muted-foreground">
                           {priceBase > 0 ? fmt(priceBase) : <span className="text-muted-foreground/50">—</span>}
                         </TableCell>
-                        <TableCell className="text-right font-mono text-sm font-semibold text-primary">
-                          {priceSell != null ? (
-                            <span className="flex flex-col items-end gap-0.5">
-                              <span>{fmt(priceSell)}</span>
-                              {(item as any).priceSellOverride != null && (
-                                <span className="text-[10px] font-normal bg-blue-100 text-blue-700 rounded px-1 py-0">Override</span>
+                        <TableCell className="text-right font-mono text-sm font-semibold text-primary p-1">
+                          {inlineEditId === item.id ? (
+                            <div className="flex items-center justify-end gap-1">
+                              <input
+                                autoFocus
+                                type="number"
+                                min={0}
+                                className="w-28 text-right border rounded px-1.5 py-0.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-primary"
+                                value={inlineEditValue}
+                                onChange={(e) => setInlineEditValue(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") saveInlineEdit(item.id);
+                                  if (e.key === "Escape") setInlineEditId(null);
+                                }}
+                                onBlur={() => saveInlineEdit(item.id)}
+                                disabled={inlineSaving}
+                              />
+                            </div>
+                          ) : (
+                            <span
+                              className="flex flex-col items-end gap-0.5 cursor-pointer group"
+                              title="Klik untuk set override harga jual"
+                              onClick={() => {
+                                setInlineEditId(item.id);
+                                const cur = (item as any).priceSellOverride ?? priceSell ?? 0;
+                                setInlineEditValue(String(cur));
+                              }}
+                            >
+                              {priceSell != null ? (
+                                <>
+                                  <span className="group-hover:underline group-hover:text-blue-600 transition-colors">{fmt(priceSell)}</span>
+                                  {(item as any).priceSellOverride != null && (
+                                    <span className="text-[10px] font-normal bg-blue-100 text-blue-700 rounded px-1 py-0">Override</span>
+                                  )}
+                                </>
+                              ) : (
+                                <span className="text-xs text-amber-500 font-normal group-hover:text-blue-600">+ Set harga</span>
                               )}
                             </span>
-                          ) : (
-                            <span className="text-xs text-amber-500 font-normal">Belum linked</span>
                           )}
                         </TableCell>
                         <TableCell className="text-right font-mono text-sm font-semibold">
