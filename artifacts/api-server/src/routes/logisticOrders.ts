@@ -711,6 +711,14 @@ logisticOrdersRouter.get(
     const STEP_LABEL_MAP: Record<string, string> = {
       ORDER_RECEIVED:    "Order Diterima",
       ADMIN_REVIEW:      "Ditinjau Admin",
+      // ── Phase 2A: product-first status labels ─────────────────────────────
+      PRODUCT_RFQ_SENT:           "RFQ Produk Terkirim",
+      PRODUCT_QUOTE_RECEIVED:     "Penawaran Produk Masuk",
+      PRODUCT_VENDOR_SELECTED:    "Vendor Produk Dipilih",
+      CUSTOMER_PRODUCT_APPROVAL:  "Menunggu Persetujuan Produk",
+      SHIPMENT_SELECTION_PENDING: "Menunggu Pilihan Pengiriman",
+      READY_FOR_PICKUP:           "Siap Dijemput",
+      // ─────────────────────────────────────────────────────────────────────
       RFQ_SENT:          "RFQ ke Vendor",
       QUOTE_RECEIVED:    "Penawaran Masuk",
       CUSTOMER_APPROVAL: "Menunggu Persetujuan",

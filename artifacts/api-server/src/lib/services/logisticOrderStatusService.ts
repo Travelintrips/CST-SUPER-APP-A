@@ -24,6 +24,10 @@ import { logger } from "../logger.js";
 
 /** Status yang memicu notifikasi WA ke customer (In Progress sudah ditangani di confirm_fulfillment) */
 const CUSTOMER_NOTIFY_STATUS_SET = new Set([
+  // ── Phase 2A: product-first statuses yang perlu dikabari customer ──────────
+  "Shipment Selection Pending", // customer perlu pilih mode pengiriman
+  "Ready for Pickup",           // produk siap dijemput
+  // ──────────────────────────────────────────────────────────────────────────
   "Vendor Confirmed",
   "Pickup", "In Transit", "Arrived", "Delivered", "POD Uploaded",
   "Invoice Issued", "Payment Received",

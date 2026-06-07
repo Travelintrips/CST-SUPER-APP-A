@@ -489,6 +489,24 @@ logisticRfqV2Router.post("/rfq/create-from-order/:orderId", async (req: Request,
   const [order] = await db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
   if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
 
+  // ── C2 Guard: product_first wajib selesai product phase sebelum shipment RFQ ─
+  if ((order as any).orderType === "product_first") {
+    const o = order as any;
+    const missing: string[] = [];
+    if (!o.productVendorId)           missing.push("product_vendor_id (vendor produk belum dipilih)");
+    if (!o.customerProductApprovedAt) missing.push("customer_product_approved_at (customer belum approve produk)");
+    if (!o.productReadyDate)          missing.push("product_ready_date (tanggal siap produk belum diisi)");
+    if (!o.productPickupLocation)     missing.push("product_pickup_location (lokasi pickup belum diisi)");
+    if (!o.shipmentMode)              missing.push("shipment_mode (mode pengiriman belum dipilih)");
+    if (missing.length > 0) {
+      return res.status(422).json({
+        message: "Product phase belum selesai. Shipment RFQ hanya bisa dibuat setelah vendor produk confirmed, customer approve produk, ready date, pickup location, dan shipment mode tersedia.",
+        missingFields: missing,
+      });
+    }
+  }
+  // ────────────────────────────────────────────────────────────────────────────
+
   const { notes, responseDeadlineHours, basicPrice } = req.body as {
     notes?: string;
     responseDeadlineHours?: number;
@@ -972,6 +990,24 @@ logisticRfqV2Router.post("/orders/:orderId/rfq-blast", async (req: Request, res:
 
   const [order] = await db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
   if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
+
+  // ── C2 Guard: product_first wajib selesai product phase sebelum shipment RFQ ─
+  if ((order as any).orderType === "product_first") {
+    const o = order as any;
+    const missing: string[] = [];
+    if (!o.productVendorId)           missing.push("product_vendor_id (vendor produk belum dipilih)");
+    if (!o.customerProductApprovedAt) missing.push("customer_product_approved_at (customer belum approve produk)");
+    if (!o.productReadyDate)          missing.push("product_ready_date (tanggal siap produk belum diisi)");
+    if (!o.productPickupLocation)     missing.push("product_pickup_location (lokasi pickup belum diisi)");
+    if (!o.shipmentMode)              missing.push("shipment_mode (mode pengiriman belum dipilih)");
+    if (missing.length > 0) {
+      return res.status(422).json({
+        message: "Product phase belum selesai. Shipment RFQ hanya bisa dibuat setelah vendor produk confirmed, customer approve produk, ready date, pickup location, dan shipment mode tersedia.",
+        missingFields: missing,
+      });
+    }
+  }
+  // ────────────────────────────────────────────────────────────────────────────
 
   // Reuse existing RFQ or create new one
   const existingRfqs = await db.select().from(logisticOrderRfqsTable)
