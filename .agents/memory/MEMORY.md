@@ -5,3 +5,4 @@
 - [Accounting company scoping](accounting-company-scoping.md) — accounting_entry_lines has no company_id; filter via accounting_entries.company_id (ae), not ael.
 - [Drizzle sql null params](drizzle-sql-null-params.md) — bare null in sql`` template throws "could not determine data type of parameter $N"; cast it (e.g. ${x}::int).
 - [WA transport: Fonnte-only](wa-transport-fallback.md) — all WA notifications go through Fonnte; WATI removed from notif path (it silently dropped msgs & rejected WA group IDs).
+- [IDR number input parsing](idr-number-input-parsing.md) — type=number + dot thousand-separator silently drops price saves; use text+inputMode numeric, strip non-digits.
