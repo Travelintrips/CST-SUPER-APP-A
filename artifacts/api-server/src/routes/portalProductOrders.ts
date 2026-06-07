@@ -169,6 +169,13 @@ function toOrder(row: OrderRow) {
     paymentStatus: (row as any).paymentStatus ?? "unpaid",
     paidAt: (row as any).paidAt ? new Date((row as any).paidAt).toISOString() : null,
     createdAt: row.createdAt.toISOString(),
+    orderType: row.orderType ?? "standard",
+    productApproveToken: row.productApproveToken ?? null,
+    shipmentMode: row.shipmentMode ?? null,
+    vendorQuotedPrice: row.vendorQuotedPrice ? parseFloat(String(row.vendorQuotedPrice)) : null,
+    vendorNameSelected: row.vendorNameSelected ?? null,
+    readyDate: row.readyDate ?? null,
+    pickupLocation: row.pickupLocation ?? null,
   };
 }
 
@@ -196,7 +203,11 @@ function formatRupiah(amount: number): string {
   return amount.toLocaleString("id-ID");
 }
 
-const VALID_STATUSES = ["New Order", "Confirmed", "Processing", "Shipped", "Completed", "Cancelled"] as const;
+const VALID_STATUSES = [
+  "New Order", "Confirmed", "Processing", "Shipped", "Completed", "Cancelled",
+  "Admin Review", "Product RFQ Sent", "Product Quote Received", "Product Vendor Selected",
+  "Customer Product Approval", "Shipment Selection Pending", "Ready for Pickup", "Shipment RFQ Sent",
+] as const;
 
 async function sendProductOrderNotification(order: ReturnType<typeof toOrder>, items: ReturnType<typeof toItem>[]) {
   const domain = getPreferredDomain();
@@ -1520,4 +1531,212 @@ portalProductOrdersRouter.post("/orders/:token/select-shipment-mode", async (req
 
   logger.info({ orderId: row.id, shipmentMode, newStatus }, "select-shipment-mode");
   return res.json({ success: true, status: newStatus, shipmentMode });
+});
+
+// ── Admin action: Blast Product RFQ ─────────────────────────────────────────
+portalProductOrdersRouter.post("/admin/orders/:id/blast-product-rfq", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const id = parseInt(String(req.params.id), 10);
+  if (isNaN(id)) return res.status(400).json({ error: "ID tidak valid" });
+
+  const [order] = await db.select().from(portalProductOrdersTable).where(eq(portalProductOrdersTable.id, id));
+  if (!order) return res.status(404).json({ error: "Order tidak ditemukan" });
+
+  await db.execute(sql`
+    UPDATE portal_product_orders SET status = 'Product RFQ Sent', updated_at = NOW() WHERE id = ${id}
+  `);
+
+  const { sendViaService } = await import("../lib/waTransport.js");
+  const adminGroupWa = await getAdminGroupWa();
+  const domain = getPreferredDomain();
+  const adminUrl = domain ? `https://${domain}/bizportal/logistics/portal-orders` : undefined;
+  const msg = `📤 *Product RFQ Dikirim*\n\nOrder: *${order.orderNumber}*\nCustomer: ${order.customerName}\n\nAdmin perlu mencari vendor untuk barang ini dan memasukkan penawaran produk.${adminUrl ? `\n\n🔗 ${adminUrl}` : ""}`;
+  if (adminGroupWa) sendViaService(adminGroupWa, msg).catch(() => undefined);
+
+  broadcastToAdmins("order_status_update", { orderNumber: order.orderNumber, status: "Product RFQ Sent", source: "admin_blast" });
+  return res.json({ success: true, status: "Product RFQ Sent" });
+});
+
+// ── Admin action: Update Product Phase (vendor, price, ready date, pickup location) ─
+portalProductOrdersRouter.post("/admin/orders/:id/update-product-phase", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const id = parseInt(String(req.params.id), 10);
+  if (isNaN(id)) return res.status(400).json({ error: "ID tidak valid" });
+
+  const { vendorName, quotedPrice, readyDate, pickupLocation, selectVendor } = req.body as {
+    vendorName?: string;
+    quotedPrice?: number | string;
+    readyDate?: string;
+    pickupLocation?: string;
+    selectVendor?: boolean;
+  };
+
+  const [order] = await db.select().from(portalProductOrdersTable).where(eq(portalProductOrdersTable.id, id));
+  if (!order) return res.status(404).json({ error: "Order tidak ditemukan" });
+
+  const qp = quotedPrice != null ? parseFloat(String(quotedPrice)) : null;
+  await db.execute(sql`
+    UPDATE portal_product_orders SET
+      vendor_name_selected = ${vendorName?.trim() ?? null},
+      vendor_quoted_price = ${qp},
+      ready_date = ${readyDate?.trim() ?? null},
+      pickup_location = ${pickupLocation?.trim() ?? null},
+      updated_at = NOW()
+    WHERE id = ${id}
+  `);
+
+  let newStatus: string | null = null;
+  if (selectVendor && vendorName?.trim()) {
+    await db.execute(sql`
+      UPDATE portal_product_orders SET status = 'Product Vendor Selected' WHERE id = ${id}
+    `);
+    newStatus = "Product Vendor Selected";
+    broadcastToAdmins("order_status_update", { orderNumber: order.orderNumber, status: "Product Vendor Selected", source: "admin_update" });
+  }
+
+  return res.json({ success: true, status: newStatus });
+});
+
+// ── Admin action: Send Product Approval to Customer ─────────────────────────
+portalProductOrdersRouter.post("/admin/orders/:id/send-product-approval", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const id = parseInt(String(req.params.id), 10);
+  if (isNaN(id)) return res.status(400).json({ error: "ID tidak valid" });
+
+  const result = await db.execute(sql`
+    SELECT id, order_number, customer_name, phone, status, product_approve_token,
+           vendor_name_selected, vendor_quoted_price, ready_date
+    FROM portal_product_orders WHERE id = ${id} LIMIT 1
+  `);
+  const row = result.rows[0] as any;
+  if (!row) return res.status(404).json({ error: "Order tidak ditemukan" });
+  if (!row.product_approve_token) return res.status(400).json({ error: "Order ini bukan tipe product_first" });
+
+  await db.execute(sql`
+    UPDATE portal_product_orders SET status = 'Customer Product Approval', updated_at = NOW() WHERE id = ${id}
+  `);
+
+  const domain = getPreferredDomain();
+  const approveUrl = domain ? `https://${domain}/product-approve/${row.product_approve_token}` : null;
+  const qp = row.vendor_quoted_price ? `\n💰 Harga Produk: Rp ${formatRupiah(parseFloat(row.vendor_quoted_price))}` : "";
+  const rd = row.ready_date ? `\n📅 Estimasi Siap: ${row.ready_date}` : "";
+  const msg = `📦 *Persetujuan Produk*\n\nHalo ${row.customer_name}, vendor telah dipilih untuk pesanan Anda *${row.order_number}*.${qp}${rd}\n\nSilakan review dan setujui produk di link berikut:\n${approveUrl ?? "(link tidak tersedia)"}\n\nSetelah disetujui, Anda akan memilih mode pengiriman.`;
+
+  if (row.phone) {
+    const { sendViaService } = await import("../lib/waTransport.js");
+    sendViaService(String(row.phone), msg).catch(() => undefined);
+  }
+
+  broadcastToAdmins("order_status_update", { orderNumber: row.order_number, status: "Customer Product Approval", source: "admin_approval" });
+  return res.json({ success: true, status: "Customer Product Approval", approveUrl });
+});
+
+// ── Admin action: Blast Shipment RFQ (guarded) ──────────────────────────────
+portalProductOrdersRouter.post("/admin/orders/:id/blast-shipment-rfq", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const id = parseInt(String(req.params.id), 10);
+  if (isNaN(id)) return res.status(400).json({ error: "ID tidak valid" });
+
+  const result = await db.execute(sql`
+    SELECT id, order_number, customer_name, phone, status,
+           vendor_name_selected, ready_date, pickup_location, shipment_mode
+    FROM portal_product_orders WHERE id = ${id} LIMIT 1
+  `);
+  const row = result.rows[0] as any;
+  if (!row) return res.status(404).json({ error: "Order tidak ditemukan" });
+
+  const missing: string[] = [];
+  if (!row.vendor_name_selected) missing.push("Vendor produk belum dipilih");
+  if (!row.ready_date) missing.push("Ready date belum diisi");
+  if (!row.pickup_location) missing.push("Lokasi pickup belum diisi");
+  if (!row.shipment_mode) missing.push("Mode pengiriman belum dipilih customer");
+  if (row.shipment_mode === "pickup_self") missing.push("Shipment RFQ tidak diperlukan untuk Ambil Sendiri");
+  if (missing.length > 0) return res.status(400).json({ error: "Data tidak lengkap", missing });
+
+  await db.execute(sql`
+    UPDATE portal_product_orders SET status = 'Shipment RFQ Sent', updated_at = NOW() WHERE id = ${id}
+  `);
+
+  const { sendViaService } = await import("../lib/waTransport.js");
+  const adminGroupWa = await getAdminGroupWa();
+  const domain = getPreferredDomain();
+  const adminUrl = domain ? `https://${domain}/bizportal/logistics/portal-orders` : undefined;
+  const modeLabel: Record<string, string> = {
+    trucking: "Trucking (darat)", air_cargo: "Kargo Udara", sea_cargo: "Kargo Laut",
+    door_to_door: "Door-to-Door", courier: "Kurir",
+  };
+  const msg = `🚢 *Shipment RFQ Dikirim*\n\nOrder: *${row.order_number}*\nCustomer: ${row.customer_name}\nVendor Produk: ${row.vendor_name_selected}\nMode: ${modeLabel[row.shipment_mode] ?? row.shipment_mode}\nPickup: ${row.pickup_location}\nSiap: ${row.ready_date}\n\nAdmin perlu mencari vendor pengiriman.${adminUrl ? `\n\n🔗 ${adminUrl}` : ""}`;
+  if (adminGroupWa) sendViaService(adminGroupWa, msg).catch(() => undefined);
+
+  broadcastToAdmins("order_status_update", { orderNumber: row.order_number, status: "Shipment RFQ Sent", source: "admin_shipment_rfq" });
+  return res.json({ success: true, status: "Shipment RFQ Sent" });
+});
+
+// ── Admin action: Mark Ready for Pickup ─────────────────────────────────────
+portalProductOrdersRouter.post("/admin/orders/:id/mark-ready-pickup", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const id = parseInt(String(req.params.id), 10);
+  if (isNaN(id)) return res.status(400).json({ error: "ID tidak valid" });
+
+  const [order] = await db.select().from(portalProductOrdersTable).where(eq(portalProductOrdersTable.id, id));
+  if (!order) return res.status(404).json({ error: "Order tidak ditemukan" });
+
+  await db.execute(sql`
+    UPDATE portal_product_orders SET status = 'Ready for Pickup', updated_at = NOW() WHERE id = ${id}
+  `);
+
+  broadcastToAdmins("order_status_update", { orderNumber: order.orderNumber, status: "Ready for Pickup", source: "admin_mark_pickup" });
+  return res.json({ success: true, status: "Ready for Pickup" });
+});
+
+// ── Admin action: Send Pickup Instruction WA ────────────────────────────────
+portalProductOrdersRouter.post("/admin/orders/:id/send-pickup-instruction", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const id = parseInt(String(req.params.id), 10);
+  if (isNaN(id)) return res.status(400).json({ error: "ID tidak valid" });
+
+  const { customMessage } = req.body as { customMessage?: string };
+
+  const result = await db.execute(sql`
+    SELECT id, order_number, customer_name, phone, pickup_location, ready_date
+    FROM portal_product_orders WHERE id = ${id} LIMIT 1
+  `);
+  const row = result.rows[0] as any;
+  if (!row) return res.status(404).json({ error: "Order tidak ditemukan" });
+
+  if (!row.phone) return res.status(400).json({ error: "Nomor telepon customer tidak tersedia" });
+
+  const { sendViaService } = await import("../lib/waTransport.js");
+  const loc = row.pickup_location ? `\n📍 Lokasi: ${row.pickup_location}` : "";
+  const rd = row.ready_date ? `\n📅 Jadwal: ${row.ready_date}` : "";
+  const msg = customMessage?.trim() ?? `📦 *Produk Siap Diambil*\n\nHalo ${row.customer_name}, pesanan Anda *${row.order_number}* sudah siap untuk diambil.${loc}${rd}\n\nHarap bawa bukti pemesanan Anda. Terima kasih! 🙏`;
+  await sendViaService(String(row.phone), msg);
+
+  return res.json({ success: true });
+});
+
+// ── Admin action: Send Shipment Selection Reminder WA ───────────────────────
+portalProductOrdersRouter.post("/admin/orders/:id/send-shipment-reminder", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const id = parseInt(String(req.params.id), 10);
+  if (isNaN(id)) return res.status(400).json({ error: "ID tidak valid" });
+
+  const result = await db.execute(sql`
+    SELECT id, order_number, customer_name, phone, product_approve_token
+    FROM portal_product_orders WHERE id = ${id} LIMIT 1
+  `);
+  const row = result.rows[0] as any;
+  if (!row) return res.status(404).json({ error: "Order tidak ditemukan" });
+  if (!row.phone) return res.status(400).json({ error: "Nomor telepon customer tidak tersedia" });
+
+  const domain = getPreferredDomain();
+  const selUrl = domain && row.product_approve_token
+    ? `https://${domain}/shipment-selection/${row.product_approve_token}`
+    : null;
+
+  const { sendViaService } = await import("../lib/waTransport.js");
+  const msg = `🚚 *Pilih Mode Pengiriman*\n\nHalo ${row.customer_name}, produk untuk pesanan *${row.order_number}* sudah siap.\n\nSilakan pilih mode pengiriman Anda:${selUrl ? `\n${selUrl}` : "\n(link tidak tersedia)"}`;
+  await sendViaService(String(row.phone), msg);
+
+  return res.json({ success: true });
 });
