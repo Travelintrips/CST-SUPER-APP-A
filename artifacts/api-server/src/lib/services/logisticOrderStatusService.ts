@@ -54,7 +54,23 @@ const CUSTOMER_NOTIFY_STATUS_SET = new Set([
 //
 export const LOGISTIC_ORDER_VALID_TRANSITIONS: Record<string, string[]> = {
   "Order Received":    ["Admin Review", "Cancelled"],
-  "Admin Review":      ["RFQ Sent", "Quote Received", "Customer Approval", "Vendor Confirmed", "Cancelled"],
+  "Admin Review":      [
+    "RFQ Sent", "Quote Received", "Customer Approval", "Vendor Confirmed",
+    // Phase 2A: product-first path entry point
+    "Product RFQ Sent",
+    "Cancelled",
+  ],
+  // ── Phase 2A: Product-First transitions ───────────────────────────────────
+  // These statuses are only used when orderType = "product_first".
+  // The state machine itself is order-type-agnostic; enforcement of which
+  // statuses apply to which order type is done at the endpoint level.
+  "Product RFQ Sent":           ["Product Quote Received", "Admin Review", "Cancelled"],
+  "Product Quote Received":     ["Product Vendor Selected", "Product RFQ Sent", "Admin Review", "Cancelled"],
+  "Product Vendor Selected":    ["Customer Product Approval", "Product Quote Received", "Admin Review", "Cancelled"],
+  "Customer Product Approval":  ["Shipment Selection Pending", "Product Vendor Selected", "Admin Review", "Cancelled"],
+  "Shipment Selection Pending": ["RFQ Sent", "Ready for Pickup", "Customer Product Approval", "Admin Review", "Cancelled"],
+  "Ready for Pickup":           ["Delivered", "Invoice Issued", "Cancelled"],
+  // ─────────────────────────────────────────────────────────────────────────
   "RFQ Sent":          ["Quote Received", "Admin Review", "Customer Approval", "Cancelled"],
   "Quote Received":    ["Customer Approval", "RFQ Sent", "Admin Review", "Cancelled"],
   "Customer Approval": ["Vendor Confirmed", "Admin Review", "Cancelled"],

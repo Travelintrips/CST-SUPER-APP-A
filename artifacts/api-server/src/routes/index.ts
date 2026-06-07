@@ -21,6 +21,7 @@ import expensesRouter from "./expenses";
 import portalRouter from "./portal";
 import { logisticOrdersRouter } from "./logisticOrders";
 import { logisticRfqRouter } from "./logisticRfq";
+import { productFirstFlowRouter } from "./productFirstFlow";
 import { logisticRfqV2Router } from "./logisticRfqV2";
 import settingsRouter from "./settings";
 import { driverRouter, driversAdminRouter } from "./driver";
@@ -142,6 +143,8 @@ router.use("/portal", portalRouter);
 // Risiko: jika keduanya mendefinisikan path yang sama (misal GET /), hanya yang pertama yang merespons.
 // TODO Step 2: pisahkan sub-path agar tidak ada ambiguitas (misal /logistic/rfq vs /logistic/orders).
 router.use("/logistic/orders", logisticRfqRouter);
+// Phase 2A: Product-First Flow endpoints (product-rfq, select-product-vendor, dll.)
+router.use("/logistic/orders", productFirstFlowRouter);
 router.use("/logistic/orders", logisticOrdersRouter);
 router.use("/logistic", logisticRfqV2Router);
 router.use("/settings", settingsRouter);

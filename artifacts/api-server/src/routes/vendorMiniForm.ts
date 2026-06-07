@@ -697,6 +697,25 @@ export const SERVICE_SCHEMAS: Record<string, {
       { key: "notes_to_vendor", label: "Pesan / Instruksi ke Vendor", type: "textarea", section: "quotation", placeholder: "Tambahan informasi yang perlu diketahui vendor" },
     ],
   },
+  // ── Phase 2A: Product-First — Vendor Produk ─────────────────────────────
+  product_vendor: {
+    label: "Vendor Produk", emoji: "🏭",
+    fields: [
+      { key: "product_price", label: "Harga Produk (Rp)", type: "number", required: true, section: "quotation" },
+      { key: "stock_status", label: "Status Stok", type: "select", required: true, options: ["Ready Stock", "Indent", "Pre-order", "Habis"], section: "quotation" },
+      { key: "available_qty", label: "Qty Tersedia", type: "number", required: true, section: "quotation" },
+      { key: "ready_date", label: "Tanggal Siap (Produk Ready)", type: "date", required: true, section: "quotation" },
+      { key: "pickup_location", label: "Kota / Lokasi Pickup", type: "text", required: true, section: "quotation", placeholder: "Contoh: Cilincing, Jakarta Utara" },
+      { key: "warehouse_address", label: "Alamat Lengkap Gudang", type: "textarea", required: true, section: "quotation", placeholder: "Alamat gudang / lokasi pengambilan produk" },
+      { key: "product_documents", label: "Dokumen Produk", type: "text", section: "quotation", placeholder: "Link atau keterangan dokumen produk (COA, MSDS, dll.)", isUpload: true },
+      { key: "notes", label: "Catatan Tambahan", type: "textarea", section: "both" },
+      // Operational
+      { key: "qty_confirmed", label: "Qty Dikonfirmasi", type: "number", required: true, section: "operational" },
+      { key: "packing_status", label: "Status Packing", type: "select", options: ["Belum Packing", "Sedang Packing", "Sudah Packing"], section: "operational" },
+      { key: "ready_confirmation", label: "Konfirmasi Kesiapan", type: "select", options: ["Siap Dijemput", "Butuh 1-2 Hari", "Butuh 3+ Hari"], section: "operational" },
+      { key: "pickup_contact", label: "Kontak PIC Gudang", type: "text", section: "operational", placeholder: "Nama dan nomor WA PIC di lokasi" },
+    ],
+  },
 };
 
 // ── Universal operational fields (appended to all schemas for fulfillment form) ─
