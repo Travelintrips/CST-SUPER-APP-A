@@ -6,6 +6,7 @@ import { handleSportCenterSse, broadcastSportCenterEvent } from "./broadcast.js"
 import { postSportCenterBooking, postSportCenterBookingReversal, postSportCenterRefund, postSportCenterMembershipPayment, postSportCenterBookingWithTax, postSportCenterBookingRefundDirect } from "../../lib/accounting.js";
 import { ensureAccountingSettings } from "../../lib/accountingSeed.js";
 import { syncFacilityUpsert, syncFacilityDelete, syncAllFacilities, syncBookingUpsert, syncAllBookings, getLastSyncLogs, pullLegacyBookingsFromSupabase } from "./supabaseSync.js";
+import { saveAndBroadcast } from "../../lib/notificationStore.js";
 
 async function insertAccountingPaymentForSportCenter(args: {
   companyId: number;
@@ -792,6 +793,21 @@ router.post("/bookings", async (req, res) => {
     const row = r.rows[0] as Record<string, unknown>;
     broadcastSportCenterEvent({ module: "sport-center", entity: "booking", action: "created", data: row, timestamp: new Date().toISOString() }, company_id);
     void syncBookingUpsert(row as any);
+
+    void saveAndBroadcast("new_sport_booking", {
+      type: "sport_booking",
+      orderId: row.id as number,
+      orderNumber: row.booking_number as string,
+      customerName: row.customer_name as string,
+      companyName: null,
+      facilityName: row.facility_name as string,
+      bookingDate: row.booking_date as string,
+      startTime: row.start_time as string,
+      endTime: row.end_time as string,
+      grandTotal: Number(row.total_amount ?? 0),
+      createdAt: new Date().toISOString(),
+    });
+
     res.status(201).json(row);
   } catch {
     res.status(500).json({ error: "Gagal membuat booking" });

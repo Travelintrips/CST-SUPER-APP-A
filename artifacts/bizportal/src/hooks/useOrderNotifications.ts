@@ -54,6 +54,7 @@ const NOTIF_TITLES: Record<string, string> = {
   purchase_po: "✅ Purchase Order Dikonfirmasi",
   vendor_quote: "💬 Penawaran Vendor Masuk",
   vendor_po_accepted: "✅ Vendor Konfirmasi PO",
+  sport_booking: "🏋️ Booking Sport Centre Baru",
 };
 
 function showBrowserNotification(notification: OrderNotification) {
