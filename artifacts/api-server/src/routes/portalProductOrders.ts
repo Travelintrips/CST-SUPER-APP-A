@@ -81,6 +81,18 @@ db.execute(sql`
     ADD COLUMN IF NOT EXISTS goods_type TEXT
 `).catch(() => {});
 
+// ── Phase 2B-1: product_first columns ────────────────────────────────────────
+db.execute(sql`
+  ALTER TABLE portal_product_orders
+    ADD COLUMN IF NOT EXISTS order_type TEXT DEFAULT 'standard',
+    ADD COLUMN IF NOT EXISTS product_approve_token TEXT,
+    ADD COLUMN IF NOT EXISTS shipment_mode TEXT,
+    ADD COLUMN IF NOT EXISTS vendor_quoted_price NUMERIC(14,2),
+    ADD COLUMN IF NOT EXISTS vendor_name_selected TEXT,
+    ADD COLUMN IF NOT EXISTS ready_date TEXT,
+    ADD COLUMN IF NOT EXISTS pickup_location TEXT
+`).catch(() => {});
+
 // Add vendor_phone to vendor responses table
 db.execute(sql`
   ALTER TABLE portal_product_vendor_responses
@@ -524,6 +536,9 @@ portalProductOrdersRouter.post("/orders", async (req: Request, res: Response) =>
     return res.status(400).json({ message: validationErrors[0], errors: validationErrors });
   }
 
+  const orderTypeVal = (req.body as { orderType?: string }).orderType ?? "standard";
+  const productApproveToken = orderTypeVal === "product_first" ? generateToken() : null;
+
   const [order] = await db
     .insert(portalProductOrdersTable)
     .values({
@@ -549,8 +564,11 @@ portalProductOrdersRouter.post("/orders", async (req: Request, res: Response) =>
     .returning();
 
   await db.execute(sql`UPDATE portal_product_orders SET shipping_method = ${shippingMethod ?? (isPickup ? "pickup" : "delivery")} WHERE id = ${order.id}`);
-
   await db.execute(sql`UPDATE portal_product_orders SET tracking_token = ${trackingToken} WHERE id = ${order.id}`);
+  await db.execute(sql`UPDATE portal_product_orders SET order_type = ${orderTypeVal} WHERE id = ${order.id}`);
+  if (productApproveToken) {
+    await db.execute(sql`UPDATE portal_product_orders SET product_approve_token = ${productApproveToken} WHERE id = ${order.id}`);
+  }
 
   const itemRows = items.map((i) => ({
     orderId: order.id,
@@ -840,7 +858,8 @@ portalProductOrdersRouter.get("/track/:token", async (req: Request, res: Respons
     SELECT
       ppo.id, ppo.order_number, ppo.customer_name, ppo.shipping_address,
       ppo.status, ppo.grand_total, ppo.created_at, ppo.product_category,
-      ppo.invoice_token, ppo.payment_status, ppo.paid_at
+      ppo.invoice_token, ppo.payment_status, ppo.paid_at,
+      ppo.order_type, ppo.product_approve_token
     FROM portal_product_orders ppo
     WHERE ppo.tracking_token = ${token}
     LIMIT 1
@@ -856,20 +875,63 @@ portalProductOrdersRouter.get("/track/:token", async (req: Request, res: Respons
     ORDER BY id ASC
   `);
 
-  const statusTimeline = [
-    { status: "New Order",  label: "Pesanan Diterima",     icon: "📋" },
-    { status: "Confirmed",  label: "Dikonfirmasi",          icon: "✅" },
-    { status: "Processing", label: "Sedang Diproses",       icon: "🔄" },
-    { status: "Shipped",    label: "Dalam Pengiriman",      icon: "🚚" },
-    { status: "Completed",  label: "Pesanan Selesai",       icon: "🎉" },
-  ];
-
-  const currentIdx = statusTimeline.findIndex((s) => s.status === row.status);
-
+  const orderType: string = row.order_type ?? "standard";
   const domain = getPreferredDomain();
   const invoiceUrl = row.invoice_token && domain
     ? `https://${domain}/customer-invoice/${row.invoice_token}`
     : null;
+  const productApproveUrl = (orderType === "product_first") && row.product_approve_token && domain
+    ? `https://${domain}/product-approve/${row.product_approve_token}`
+    : null;
+  const shipmentSelectionUrl = (orderType === "product_first") && row.product_approve_token && domain
+    ? `https://${domain}/shipment-selection/${row.product_approve_token}`
+    : null;
+
+  const PRODUCT_FIRST_TIMELINE = [
+    { status: "Order Received",            label: "Pesanan Diterima",           icon: "📋" },
+    { status: "Admin Review",              label: "Ditinjau Admin",              icon: "🔍" },
+    { status: "Product RFQ Sent",          label: "RFQ Produk Dikirim",         icon: "📤" },
+    { status: "Product Quote Received",    label: "Penawaran Produk Masuk",     icon: "💰" },
+    { status: "Product Vendor Selected",   label: "Vendor Produk Dipilih",      icon: "🏭" },
+    { status: "Customer Product Approval", label: "Menunggu Persetujuan Produk",icon: "✍️" },
+    { status: "Shipment Selection Pending",label: "Pilih Mode Pengiriman",       icon: "🚚" },
+    { status: "Ready for Pickup",          label: "Siap Diambil",               icon: "📦" },
+    { status: "Shipment RFQ Sent",         label: "RFQ Pengiriman Dikirim",     icon: "📋" },
+    { status: "Vendor Confirmed",          label: "Vendor Dikonfirmasi",        icon: "🤝" },
+    { status: "In Progress",               label: "Sedang Diproses",            icon: "🔄" },
+    { status: "Pickup",                    label: "Penjemputan",                icon: "🚛" },
+    { status: "In Transit",               label: "Dalam Perjalanan",            icon: "🛣️" },
+    { status: "Arrived",                  label: "Tiba di Tujuan",              icon: "📍" },
+    { status: "Delivered",                label: "Terkirim",                    icon: "✅" },
+    { status: "POD Uploaded",             label: "Bukti Terkirim",              icon: "📄" },
+    { status: "Invoice Issued",           label: "Invoice Diterbitkan",         icon: "🧾" },
+    { status: "Payment Received",         label: "Pembayaran Diterima",         icon: "💳" },
+    { status: "Completed",               label: "Selesai",                     icon: "🎉" },
+  ];
+
+  const STANDARD_TIMELINE = [
+    { status: "New Order",  label: "Pesanan Diterima",   icon: "📋" },
+    { status: "Confirmed",  label: "Dikonfirmasi",        icon: "✅" },
+    { status: "Processing", label: "Sedang Diproses",     icon: "🔄" },
+    { status: "Shipped",    label: "Dalam Pengiriman",    icon: "🚚" },
+    { status: "Completed",  label: "Pesanan Selesai",     icon: "🎉" },
+  ];
+
+  const statusTimeline = orderType === "product_first" ? PRODUCT_FIRST_TIMELINE : STANDARD_TIMELINE;
+
+  // For product_first, collapse "Ready for Pickup" and "Shipment RFQ Sent" into one slot
+  // based on actual status
+  let effectiveTimeline = statusTimeline;
+  if (orderType === "product_first") {
+    const actualStatus = row.status as string;
+    if (actualStatus === "Ready for Pickup") {
+      effectiveTimeline = statusTimeline.filter(s => s.status !== "Shipment RFQ Sent");
+    } else {
+      effectiveTimeline = statusTimeline.filter(s => s.status !== "Ready for Pickup");
+    }
+  }
+
+  const currentIdx = effectiveTimeline.findIndex((s) => s.status === row.status);
 
   return res.json({
     orderNumber: row.order_number,
@@ -882,6 +944,9 @@ portalProductOrdersRouter.get("/track/:token", async (req: Request, res: Respons
     paymentStatus: row.payment_status ?? "unpaid",
     paidAt: row.paid_at ? new Date(row.paid_at).toISOString() : null,
     invoiceUrl,
+    orderType,
+    productApproveUrl,
+    shipmentSelectionUrl,
     items: (itemsResult.rows as any[]).map((i) => ({
       productName: i.product_name,
       qty: Number(i.qty),
@@ -889,7 +954,7 @@ portalProductOrdersRouter.get("/track/:token", async (req: Request, res: Respons
       unitPrice: parseFloat(i.unit_price),
       subtotal: parseFloat(i.subtotal),
     })),
-    timeline: statusTimeline.map((s, idx) => ({
+    timeline: effectiveTimeline.map((s, idx) => ({
       ...s,
       done: row.status === "Cancelled" ? false : idx <= currentIdx,
       current: s.status === row.status,
@@ -1256,4 +1321,203 @@ portalProductOrdersRouter.post("/orders/:id/assign-driver", requireClerkUser, as
 
   logger.info({ orderId, jobNum }, "Portal product order: driver assigned");
   return res.json({ success: true, jobNumber: jobNum });
+});
+
+// ── Phase 2B-1: Product-First Flow Endpoints ─────────────────────────────────
+
+// GET /api/portal-product/product-approve/:token — data untuk halaman persetujuan produk
+portalProductOrdersRouter.get("/product-approve/:token", async (req: Request, res: Response) => {
+  const token = req.params["token"] as string;
+  if (!token || token.length < 10) return res.status(400).json({ error: "Token tidak valid" });
+
+  const result = await db.execute(sql`
+    SELECT
+      id, order_number, customer_name, status, order_type,
+      product_approve_token, vendor_name_selected, vendor_quoted_price,
+      ready_date, pickup_location, notes, created_at
+    FROM portal_product_orders
+    WHERE product_approve_token = ${token}
+    LIMIT 1
+  `);
+  const row = result.rows[0] as any;
+  if (!row) return res.status(404).json({ error: "Link tidak ditemukan atau sudah kadaluarsa" });
+
+  const items = await db.execute(sql`
+    SELECT product_name, qty, unit, unit_price, subtotal
+    FROM portal_product_order_items
+    WHERE order_id = ${row.id}
+    ORDER BY id ASC
+  `);
+
+  const canApprove = row.status === "Customer Product Approval";
+  const alreadyActed = ["Shipment Selection Pending", "Ready for Pickup", "Shipment RFQ Sent",
+    "Vendor Confirmed", "In Progress", "Pickup", "In Transit", "Arrived", "Delivered",
+    "POD Uploaded", "Invoice Issued", "Payment Received", "Completed"].includes(row.status);
+
+  let actionLabel: string | null = null;
+  if (row.status === "Admin Review") actionLabel = "Produk sudah ditolak dan sedang ditinjau ulang oleh admin.";
+  else if (alreadyActed) actionLabel = "Produk sudah disetujui dan sedang diproses lebih lanjut.";
+
+  const vendorQuotedPrice = row.vendor_quoted_price ? parseFloat(row.vendor_quoted_price) : null;
+
+  return res.json({
+    orderNumber: row.order_number,
+    customerName: row.customer_name,
+    status: row.status,
+    orderType: row.order_type ?? "product_first",
+    items: (items.rows as any[]).map(i => ({
+      productName: i.product_name,
+      qty: Number(i.qty),
+      unit: i.unit ?? "pcs",
+      unitPrice: parseFloat(i.unit_price),
+      subtotal: parseFloat(i.subtotal),
+    })),
+    vendorName: row.vendor_name_selected ?? null,
+    quotedPrice: vendorQuotedPrice,
+    readyDate: row.ready_date ?? null,
+    pickupLocation: row.pickup_location ?? null,
+    notes: row.notes ?? null,
+    createdAt: new Date(row.created_at).toISOString(),
+    canApprove,
+    alreadyActed,
+    actionLabel,
+  });
+});
+
+// POST /api/portal-product/orders/:token/customer-product-approve
+portalProductOrdersRouter.post("/orders/:token/customer-product-approve", async (req: Request, res: Response) => {
+  const token = req.params["token"] as string;
+  const { action } = req.body as { action?: "approve" | "reject" };
+
+  if (!token || token.length < 10) return res.status(400).json({ error: "Token tidak valid" });
+  if (action !== "approve" && action !== "reject") return res.status(400).json({ error: "action harus approve atau reject" });
+
+  const result = await db.execute(sql`
+    SELECT id, order_number, status, customer_name, phone, order_type
+    FROM portal_product_orders
+    WHERE product_approve_token = ${token}
+    LIMIT 1
+  `);
+  const row = result.rows[0] as any;
+  if (!row) return res.status(404).json({ error: "Link tidak valid atau sudah kadaluarsa" });
+
+  if (row.status !== "Customer Product Approval") {
+    return res.status(409).json({ error: "Order tidak dalam status menunggu persetujuan produk" });
+  }
+
+  const newStatus = action === "approve" ? "Shipment Selection Pending" : "Admin Review";
+  await db.execute(sql`
+    UPDATE portal_product_orders
+    SET status = ${newStatus}, updated_at = NOW()
+    WHERE id = ${row.id}
+  `);
+
+  broadcastToAdmins("order_status_update", {
+    orderNumber: row.order_number,
+    status: newStatus,
+    label: action === "approve" ? "Pilih Mode Pengiriman" : "Ditinjau Admin",
+    source: "product_approve",
+  });
+
+  if (row.phone) {
+    const { sendViaService } = await import("../lib/waTransport.js");
+    const msg = action === "approve"
+      ? `✅ *Produk Disetujui*\n\nHalo ${row.customer_name}, Anda telah menyetujui penawaran produk untuk order *${row.order_number}*.\n\nTim kami akan segera menghubungi Anda untuk memilih layanan pengiriman. 🚚`
+      : `ℹ️ *Produk Ditolak*\n\nHalo ${row.customer_name}, Anda menolak penawaran produk untuk order *${row.order_number}*.\n\nTim kami akan segera meninjau ulang dan menghubungi Anda.`;
+    sendViaService(String(row.phone), msg).catch(() => undefined);
+  }
+
+  logger.info({ orderId: row.id, action, newStatus }, "customer-product-approve");
+  return res.json({ success: true, status: newStatus });
+});
+
+// GET /api/portal-product/shipment-selection/:token — data untuk halaman pilih pengiriman
+portalProductOrdersRouter.get("/shipment-selection/:token", async (req: Request, res: Response) => {
+  const token = req.params["token"] as string;
+  if (!token || token.length < 10) return res.status(400).json({ error: "Token tidak valid" });
+
+  const result = await db.execute(sql`
+    SELECT id, order_number, customer_name, status, shipment_mode, grand_total
+    FROM portal_product_orders
+    WHERE product_approve_token = ${token}
+    LIMIT 1
+  `);
+  const row = result.rows[0] as any;
+  if (!row) return res.status(404).json({ error: "Link tidak valid atau sudah kadaluarsa" });
+
+  const items = await db.execute(sql`
+    SELECT product_name, qty, unit, subtotal
+    FROM portal_product_order_items
+    WHERE order_id = ${row.id}
+    ORDER BY id ASC
+  `);
+
+  const canSelect = row.status === "Shipment Selection Pending";
+  const totalProduct = (items.rows as any[]).reduce((s: number, i: any) => s + parseFloat(i.subtotal), 0);
+
+  return res.json({
+    orderNumber: row.order_number,
+    customerName: row.customer_name,
+    status: row.status,
+    items: (items.rows as any[]).map(i => ({
+      productName: i.product_name,
+      qty: Number(i.qty),
+      unit: i.unit ?? "pcs",
+      subtotal: parseFloat(i.subtotal),
+    })),
+    totalProduct,
+    canSelect,
+    selectedMode: row.shipment_mode ?? null,
+  });
+});
+
+// POST /api/portal-product/orders/:token/select-shipment-mode
+portalProductOrdersRouter.post("/orders/:token/select-shipment-mode", async (req: Request, res: Response) => {
+  const token = req.params["token"] as string;
+  const { shipmentMode } = req.body as { shipmentMode?: string };
+
+  const VALID_MODES = ["pickup_self", "trucking", "air_freight", "sea_freight", "door_to_door"];
+  if (!token || token.length < 10) return res.status(400).json({ error: "Token tidak valid" });
+  if (!shipmentMode || !VALID_MODES.includes(shipmentMode)) {
+    return res.status(400).json({ error: `shipmentMode tidak valid. Pilihan: ${VALID_MODES.join(", ")}` });
+  }
+
+  const result = await db.execute(sql`
+    SELECT id, order_number, status, customer_name, phone
+    FROM portal_product_orders
+    WHERE product_approve_token = ${token}
+    LIMIT 1
+  `);
+  const row = result.rows[0] as any;
+  if (!row) return res.status(404).json({ error: "Link tidak valid atau sudah kadaluarsa" });
+
+  if (row.status !== "Shipment Selection Pending") {
+    return res.status(409).json({ error: "Order tidak dalam status Shipment Selection Pending" });
+  }
+
+  const newStatus = shipmentMode === "pickup_self" ? "Ready for Pickup" : "Shipment RFQ Sent";
+  await db.execute(sql`
+    UPDATE portal_product_orders
+    SET status = ${newStatus}, shipment_mode = ${shipmentMode}, shipping_method = ${shipmentMode}, updated_at = NOW()
+    WHERE id = ${row.id}
+  `);
+
+  broadcastToAdmins("order_status_update", {
+    orderNumber: row.order_number,
+    status: newStatus,
+    label: shipmentMode === "pickup_self" ? "Siap Diambil" : "RFQ Pengiriman Dikirim",
+    shipmentMode,
+    source: "shipment_selection",
+  });
+
+  if (row.phone) {
+    const { sendViaService } = await import("../lib/waTransport.js");
+    const msg = shipmentMode === "pickup_self"
+      ? `📦 *Pesanan Siap Diambil*\n\nHalo ${row.customer_name}, pesanan *${row.order_number}* siap untuk diambil di gudang kami.\n\nTim kami akan segera menghubungi Anda dengan detail lokasi pengambilan.`
+      : `🚚 *Pengiriman dalam Proses*\n\nHalo ${row.customer_name}, pilihan pengiriman Anda untuk order *${row.order_number}* sudah kami terima.\n\nTim kami akan mengirimkan penawaran pengiriman segera via WhatsApp ini.`;
+    sendViaService(String(row.phone), msg).catch(() => undefined);
+  }
+
+  logger.info({ orderId: row.id, shipmentMode, newStatus }, "select-shipment-mode");
+  return res.json({ success: true, status: newStatus, shipmentMode });
 });
