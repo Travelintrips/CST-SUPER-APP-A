@@ -41,13 +41,19 @@ router.use(async (req, res, next) => {
 });
 
 // ── GET /api/expenses/payment-accounts ──
-// Mengembalikan akun Kas & Bank dari COA (kode 1-1xxx) untuk dropdown Sumber Dana
+// Mengembalikan HANYA akun Kas (1-101x) & Bank (1-102x) dari COA untuk dropdown Sumber Dana.
+// Akun lain seperti Piutang (1-103x), Persediaan (1-104x), dsb dikecualikan.
 router.get("/payment-accounts", async (req: Request, res) => {
   const companyId = resolveCompanyId(req);
   const rows = await db.execute(sql.raw(`
-    SELECT id, code, name
+    SELECT id, code, name,
+      CASE
+        WHEN code LIKE '1-101%' THEN 'kas'
+        WHEN code LIKE '1-102%' THEN 'bank'
+        ELSE 'other'
+      END AS account_class
     FROM chart_of_accounts
-    WHERE code LIKE '1-1%'
+    WHERE (code LIKE '1-101%' OR code LIKE '1-102%')
       AND is_active = TRUE
       AND (company_id = ${companyId ?? "NULL"} OR company_id IS NULL)
     ORDER BY code ASC

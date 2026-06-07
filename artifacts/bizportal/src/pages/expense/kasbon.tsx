@@ -485,9 +485,22 @@ export default function KasbonPage() {
                   <SelectTrigger><SelectValue placeholder="Pilih akun kas/bank..." /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__none__">— Default —</SelectItem>
-                    {(paymentAccounts as any[]).map((a: any) => (
-                      <SelectItem key={a.id} value={String(a.id)}>{a.code} – {a.name}</SelectItem>
-                    ))}
+                    {(paymentAccounts as any[]).filter((a: any) => a.account_class === "kas").length > 0 && (
+                      <>
+                        <div className="px-2 py-1 text-xs font-semibold text-muted-foreground">💵 Kas</div>
+                        {(paymentAccounts as any[]).filter((a: any) => a.account_class === "kas").map((a: any) => (
+                          <SelectItem key={a.id} value={String(a.id)}>{a.code} – {a.name}</SelectItem>
+                        ))}
+                      </>
+                    )}
+                    {(paymentAccounts as any[]).filter((a: any) => a.account_class === "bank").length > 0 && (
+                      <>
+                        <div className="px-2 py-1 text-xs font-semibold text-muted-foreground">🏦 Bank</div>
+                        {(paymentAccounts as any[]).filter((a: any) => a.account_class === "bank").map((a: any) => (
+                          <SelectItem key={a.id} value={String(a.id)}>{a.code} – {a.name}</SelectItem>
+                        ))}
+                      </>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
