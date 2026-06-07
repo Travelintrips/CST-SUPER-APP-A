@@ -3200,6 +3200,7 @@ router.post("/gsheet/push", async (req, res) => {
   const spreadsheetId = settings?.gsheetSpreadsheetId;
   if (!spreadsheetId) return res.status(400).json({ message: "Spreadsheet belum dikonfigurasi. Jalankan setup terlebih dahulu." });
 
+  try {
   // Pastikan semua tab yang dibutuhkan ada (buat jika belum ada)
   const REQUIRED_SHEETS = ["CoA", "Jurnal", "Lines", "TrialBalance", "GL"];
   await ensureSheets(spreadsheetId, REQUIRED_SHEETS);
@@ -3328,6 +3329,13 @@ router.post("/gsheet/push", async (req, res) => {
     spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${spreadsheetId}`,
     pushed: { accounts: accounts.length, entries: entries.length, lines: lineRows.length - 1, glLines: glRows.length - 1 },
   });
+  } catch (e: unknown) {
+    const raw = (e as Error).message ?? String(e);
+    const msg = raw.includes("has not been used") || raw.includes("is disabled")
+      ? `Google Sheets API belum diaktifkan di project GCP ini. Aktifkan di: https://console.developers.google.com/apis/api/sheets.googleapis.com/overview — kemudian coba lagi.`
+      : raw;
+    return res.status(500).json({ message: msg });
+  }
 });
 
 // POST /accounting/gsheet/pull — baca dari Google Sheets → update DB
@@ -3784,6 +3792,8 @@ router.post("/rekonsiliasi-gsheet", async (req, res) => {
     return res.status(400).json({ message: "spreadsheetId wajib diisi" });
   }
 
+  try {
+
   function generateKey(tanggal: Date | string, debit: number, kredit: number): string {
     const d = new Date(tanggal);
     const dateStr =
@@ -3892,6 +3902,14 @@ router.post("/rekonsiliasi-gsheet", async (req, res) => {
     },
     results,
   });
+
+  } catch (e: unknown) {
+    const raw = (e as Error).message ?? String(e);
+    const msg = raw.includes("has not been used") || raw.includes("is disabled")
+      ? `Google Sheets API belum diaktifkan di project GCP ini. Aktifkan di: https://console.developers.google.com/apis/api/sheets.googleapis.com/overview — kemudian coba lagi. Juga aktifkan Google Drive API: https://console.developers.google.com/apis/api/drive.googleapis.com/overview`
+      : raw;
+    return res.status(500).json({ message: msg });
+  }
 });
 
 export default router;
