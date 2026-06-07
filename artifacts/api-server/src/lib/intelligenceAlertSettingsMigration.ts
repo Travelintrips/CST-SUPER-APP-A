@@ -27,5 +27,10 @@ export async function runIntelligenceAlertSettingsMigration(): Promise<void> {
       ON intelligence_alert_settings (COALESCE(company_id, -1));
   `);
 
+  await db.execute(sql`
+    ALTER TABLE intelligence_alert_settings
+      ADD COLUMN IF NOT EXISTS invoice_reminder_enabled BOOLEAN NOT NULL DEFAULT TRUE
+  `);
+
   logger.info("Intelligence alert settings migration: ok");
 }

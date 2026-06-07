@@ -1313,6 +1313,118 @@ const DEFAULT_TPL = {
       "_{{timestamp}}_",
     ].join("\n"),
   },
+  invoice_reminder: {
+    h7: [
+      "📅 *Pengingat Pembayaran — H-7*",
+      "━━━━━━━━━━━━━━━━━━",
+      "Kepada Yth. *{{customerName}}*,",
+      "",
+      "Invoice Anda akan jatuh tempo dalam *7 hari lagi*.",
+      "",
+      "📄 Invoice    : *{{invoiceNumber}}*",
+      "📋 No. Order  : {{orderNumber}}",
+      "💰 Total      : {{totalAmount}}",
+      "💳 Sisa Bayar : {{outstandingAmount}}",
+      "📅 Jatuh Tempo: *{{dueDate}}*",
+      "━━━━━━━━━━━━━━━━━━",
+      "{{#if invoiceUrl}}",
+      "Lihat & bayar invoice:",
+      "{{invoiceUrl}}",
+      "",
+      "{{/if}}",
+      "Mohon lakukan pembayaran sebelum tanggal jatuh tempo.",
+      "Terima kasih 🙏",
+      "_CST Logistics_",
+    ].join("\n"),
+    h3: [
+      "⚠️ *Pengingat Pembayaran — H-3*",
+      "━━━━━━━━━━━━━━━━━━",
+      "Kepada Yth. *{{customerName}}*,",
+      "",
+      "Invoice Anda akan jatuh tempo dalam *3 hari lagi*.",
+      "",
+      "📄 Invoice    : *{{invoiceNumber}}*",
+      "📋 No. Order  : {{orderNumber}}",
+      "💰 Total      : {{totalAmount}}",
+      "💳 Sisa Bayar : {{outstandingAmount}}",
+      "📅 Jatuh Tempo: *{{dueDate}}*",
+      "━━━━━━━━━━━━━━━━━━",
+      "{{#if invoiceUrl}}",
+      "Segera bayar invoice Anda:",
+      "{{invoiceUrl}}",
+      "",
+      "{{/if}}",
+      "Mohon segera lakukan pembayaran untuk menghindari keterlambatan.",
+      "Terima kasih 🙏",
+      "_CST Logistics_",
+    ].join("\n"),
+    h1: [
+      "🔔 *Pengingat PENTING — H-1 Jatuh Tempo*",
+      "━━━━━━━━━━━━━━━━━━",
+      "Kepada Yth. *{{customerName}}*,",
+      "",
+      "Invoice Anda akan jatuh tempo *BESOK*.",
+      "",
+      "📄 Invoice    : *{{invoiceNumber}}*",
+      "📋 No. Order  : {{orderNumber}}",
+      "💰 Total      : {{totalAmount}}",
+      "💳 Sisa Bayar : {{outstandingAmount}}",
+      "📅 Jatuh Tempo: *{{dueDate}}*",
+      "━━━━━━━━━━━━━━━━━━",
+      "{{#if invoiceUrl}}",
+      "Bayar sekarang:",
+      "{{invoiceUrl}}",
+      "",
+      "{{/if}}",
+      "Harap segera selesaikan pembayaran sebelum besok untuk menghindari denda keterlambatan.",
+      "Terima kasih 🙏",
+      "_CST Logistics_",
+    ].join("\n"),
+    due_today: [
+      "🚨 *HARI INI Tanggal Jatuh Tempo Invoice*",
+      "━━━━━━━━━━━━━━━━━━",
+      "Kepada Yth. *{{customerName}}*,",
+      "",
+      "Hari ini adalah tanggal jatuh tempo invoice Anda.",
+      "",
+      "📄 Invoice    : *{{invoiceNumber}}*",
+      "📋 No. Order  : {{orderNumber}}",
+      "💰 Total      : {{totalAmount}}",
+      "💳 Sisa Bayar : {{outstandingAmount}}",
+      "📅 Jatuh Tempo: *{{dueDate}}*",
+      "━━━━━━━━━━━━━━━━━━",
+      "{{#if invoiceUrl}}",
+      "Bayar sekarang sebelum terlambat:",
+      "{{invoiceUrl}}",
+      "",
+      "{{/if}}",
+      "Mohon lakukan pembayaran hari ini. Hubungi kami jika ada pertanyaan.",
+      "Terima kasih 🙏",
+      "_CST Logistics_",
+    ].join("\n"),
+    overdue: [
+      "🔴 *Invoice JATUH TEMPO — Segera Bayar*",
+      "━━━━━━━━━━━━━━━━━━",
+      "Kepada Yth. *{{customerName}}*,",
+      "",
+      "Invoice Anda telah melewati tanggal jatuh tempo selama *{{daysOverdue}} hari*.",
+      "",
+      "📄 Invoice    : *{{invoiceNumber}}*",
+      "📋 No. Order  : {{orderNumber}}",
+      "💰 Total      : {{totalAmount}}",
+      "💳 Sisa Bayar : {{outstandingAmount}}",
+      "📅 Jatuh Tempo: *{{dueDate}}* (lewat {{daysOverdue}} hari)",
+      "━━━━━━━━━━━━━━━━━━",
+      "{{#if invoiceUrl}}",
+      "Bayar sekarang:",
+      "{{invoiceUrl}}",
+      "",
+      "{{/if}}",
+      "Mohon segera selesaikan pembayaran. Hubungi tim kami jika memerlukan bantuan.",
+      "Terima kasih 🙏",
+      "_CST Logistics_",
+    ].join("\n"),
+  },
 } as const;
 
 /**
@@ -1430,6 +1542,14 @@ export function getWaDefaultTemplatesFlatMap(): Record<string, string> {
   add("admin_personal", "product_order_status_update", pos.admin_personal);
   add("admin_group",    "product_order_status_update", pos.admin_group);
   add("customer",       "product_order_status_update", pos.customer);
+
+  // invoice_reminder
+  const ir = DEFAULT_TPL.invoice_reminder;
+  add("customer", "invoice_reminder_h7",  ir.h7);
+  add("customer", "invoice_reminder_h3",  ir.h3);
+  add("customer", "invoice_reminder_h1",  ir.h1);
+  add("customer", "invoice_due_today",    ir.due_today);
+  add("customer", "invoice_overdue",      ir.overdue);
 
   return m;
 }
@@ -3430,6 +3550,62 @@ export async function sendInvoiceIssuedNotification(
   }
 }
 
+// ── sendInvoiceReminderWa ──────────────────────────────────────────────────────
+// Kirim WA reminder invoice ke customer sesuai tipe reminder.
+// Dipanggil oleh invoiceReminderWorker.
+export async function sendInvoiceReminderWa(
+  phone: string,
+  reminderType: string,
+  vars: {
+    customerName: string;
+    invoiceNumber: string;
+    orderNumber?: string | null;
+    totalAmount: string;
+    outstandingAmount: string;
+    dueDate: string;
+    invoiceUrl?: string | null;
+    daysOverdue?: number;
+  },
+): Promise<void> {
+  const workflowKeyMap: Record<string, string> = {
+    h7:        "invoice_reminder_h7",
+    h3:        "invoice_reminder_h3",
+    h1:        "invoice_reminder_h1",
+    due_today: "invoice_due_today",
+    overdue_1: "invoice_overdue",
+    overdue_7: "invoice_overdue",
+  };
+  const workflowKey = workflowKeyMap[reminderType];
+  if (!workflowKey) return;
+
+  const defaultBodyMap: Record<string, string> = {
+    invoice_reminder_h7: DEFAULT_TPL.invoice_reminder.h7,
+    invoice_reminder_h3: DEFAULT_TPL.invoice_reminder.h3,
+    invoice_reminder_h1: DEFAULT_TPL.invoice_reminder.h1,
+    invoice_due_today:   DEFAULT_TPL.invoice_reminder.due_today,
+    invoice_overdue:     DEFAULT_TPL.invoice_reminder.overdue,
+  };
+
+  const tplBody = await getWaTemplateConfig("customer", workflowKey, defaultBodyMap[workflowKey] ?? "");
+  const tvars: Record<string, string | null | undefined> = {
+    customerName:      vars.customerName,
+    invoiceNumber:     vars.invoiceNumber,
+    orderNumber:       vars.orderNumber ?? null,
+    totalAmount:       vars.totalAmount,
+    outstandingAmount: vars.outstandingAmount,
+    dueDate:           vars.dueDate,
+    invoiceUrl:        vars.invoiceUrl ?? null,
+    daysOverdue:       vars.daysOverdue != null ? String(vars.daysOverdue) : null,
+    timestamp:         nowWIB(),
+  };
+  const msg = renderTemplate(tplBody, tvars);
+  await sendWhatsApp(phone, msg, {
+    context: `invoice_reminder_${reminderType}`,
+    refType: "invoice",
+    refId:   vars.invoiceNumber,
+  });
+}
+
 // ── runWaTemplateMigration ─────────────────────────────────────────────────────
 // Creates the whatsapp_template_configs table if missing, seeds default templates,
 // and upgrades stale rows that are missing required markers.
@@ -3456,6 +3632,11 @@ export async function runWaTemplateMigration(): Promise<void> {
       ["vendor",         "vendor_request"],
       ["vendor",         "order_new"],
       ["vendor",         "vendor_not_selected"],
+      ["customer",       "invoice_reminder_h7"],
+      ["customer",       "invoice_reminder_h3"],
+      ["customer",       "invoice_reminder_h1"],
+      ["customer",       "invoice_due_today"],
+      ["customer",       "invoice_overdue"],
     ];
 
     const tplMap: Record<string, string> = {
@@ -3465,6 +3646,11 @@ export async function runWaTemplateMigration(): Promise<void> {
       "vendor__vendor_request":         DEFAULT_TPL.vendor.vendor_request,
       "vendor__order_new":              DEFAULT_TPL.vendor.order_new,
       "vendor__vendor_not_selected":    DEFAULT_TPL.admin_personal_extra.vendor_not_selected,
+      "customer__invoice_reminder_h7":  DEFAULT_TPL.invoice_reminder.h7,
+      "customer__invoice_reminder_h3":  DEFAULT_TPL.invoice_reminder.h3,
+      "customer__invoice_reminder_h1":  DEFAULT_TPL.invoice_reminder.h1,
+      "customer__invoice_due_today":    DEFAULT_TPL.invoice_reminder.due_today,
+      "customer__invoice_overdue":      DEFAULT_TPL.invoice_reminder.overdue,
     };
 
     // Required marker per pair — if missing from the DB row, force-upgrade it
