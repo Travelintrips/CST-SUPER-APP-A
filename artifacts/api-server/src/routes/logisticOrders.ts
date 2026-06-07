@@ -2043,7 +2043,9 @@ logisticOrdersRouter.post("/:id/delivery/:phase", async (req: Request, res: Resp
 });
 
 // POST /api/logistic/orders/export-gsheet — export semua order ke Google Sheets baru (admin only)
-logisticOrdersRouter.post("/export-gsheet", requireClerkUser, requireRole("admin"), async (req: Request, res: Response) => {
+logisticOrdersRouter.post("/export-gsheet", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  if (!(await requireRole(req, res, ["admin", "owner"]))) return;
   const companyId = resolveCompanyId(req);
   const { dateFrom, dateTo, status } = req.body as { dateFrom?: string; dateTo?: string; status?: string };
 
