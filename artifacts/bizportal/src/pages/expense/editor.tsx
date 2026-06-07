@@ -28,6 +28,7 @@ import { useUpload } from "@workspace/object-storage-web";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useCompany } from "@/contexts/CompanyContext";
 import { useVendors } from "@/hooks/useVendors";
 import {
   ArrowLeft, Save, Send, CheckCircle, XCircle, FileText, Banknote,
@@ -386,6 +387,7 @@ export default function ExpenseEditorPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
   const { t } = useLanguage();
+  const { activeCompanyId } = useCompany();
 
   const expId = isNew ? 0 : Number(id);
   const { data: expense, isLoading } = useGetExpense(
@@ -398,8 +400,8 @@ export default function ExpenseEditorPage() {
   const { data: suppliers = [] } = useVendors();
   const { data: customers = [] } = useListCustomers();
   const { data: paymentAccounts = [] } = useQuery({
-    queryKey: ["expense-payment-accounts"],
-    queryFn: () => apiFetch("/api/expenses/payment-accounts"),
+    queryKey: ["expense-payment-accounts", activeCompanyId],
+    queryFn: () => apiFetch(`/api/expenses/payment-accounts${activeCompanyId ? `?company=${activeCompanyId}` : ""}`),
   });
 
   const { data: userList = [] } = useQuery({

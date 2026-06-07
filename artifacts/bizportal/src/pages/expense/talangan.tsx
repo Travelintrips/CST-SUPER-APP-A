@@ -48,8 +48,8 @@ export default function TalanganPage() {
   });
 
   const { data: paymentAccounts = [] } = useQuery({
-    queryKey: ["expense-payment-accounts"],
-    queryFn: () => apiFetch("/api/expenses/payment-accounts"),
+    queryKey: ["expense-payment-accounts", activeCompanyId],
+    queryFn: () => apiFetch(`/api/expenses/payment-accounts${activeCompanyId ? `?company=${activeCompanyId}` : ""}`),
   });
 
   const { data: vendorList = [] } = useQuery({

@@ -128,8 +128,8 @@ export default function KasbonPage() {
     queryFn: () => apiFetch(`/api/cash-advances?type=kasbon${activeCompanyId ? `&company=${activeCompanyId}` : ""}`),
   });
   const { data: paymentAccounts = [] } = useQuery({
-    queryKey: ["expense-payment-accounts"],
-    queryFn: () => apiFetch("/api/expenses/payment-accounts"),
+    queryKey: ["expense-payment-accounts", activeCompanyId],
+    queryFn: () => apiFetch(`/api/expenses/payment-accounts${activeCompanyId ? `?company=${activeCompanyId}` : ""}`),
   });
   const { data: userList = [] } = useQuery<any[]>({
     queryKey: ["users-list"],

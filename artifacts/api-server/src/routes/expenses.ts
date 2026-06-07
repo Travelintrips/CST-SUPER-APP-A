@@ -1,6 +1,6 @@
 import { Router, type Request } from "express";
 import { resolveCompanyId } from "../lib/resolveCompany.js";
-import { eq, desc, and, gte, lte, like, sql, count, getTableColumns } from "drizzle-orm";
+import { eq, desc, and, gte, lte, like, sql, count, getTableColumns, or, isNull } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { logStorageEvent, getRequestIp, getActor } from "../lib/storageAuditLog.js";
 import {
@@ -42,23 +42,39 @@ router.use(async (req, res, next) => {
 
 // ── GET /api/expenses/payment-accounts ──
 // Mengembalikan HANYA akun Kas (1-101x) & Bank (1-102x) dari COA untuk dropdown Sumber Dana.
-// Akun lain seperti Piutang (1-103x), Persediaan (1-104x), dsb dikecualikan.
 router.get("/payment-accounts", async (req: Request, res) => {
   const companyId = resolveCompanyId(req);
-  const rows = await db.execute(sql.raw(`
-    SELECT id, code, name,
-      CASE
-        WHEN code LIKE '1-101%' THEN 'kas'
-        WHEN code LIKE '1-102%' THEN 'bank'
-        ELSE 'other'
-      END AS account_class
-    FROM chart_of_accounts
-    WHERE (code LIKE '1-101%' OR code LIKE '1-102%')
-      AND is_active = TRUE
-      AND (company_id = ${companyId ?? "NULL"} OR company_id IS NULL)
-    ORDER BY code ASC
-  `));
-  return res.json(rows.rows);
+  const rows = await db
+    .select({
+      id: chartOfAccountsTable.id,
+      code: chartOfAccountsTable.code,
+      name: chartOfAccountsTable.name,
+      companyId: chartOfAccountsTable.companyId,
+      isActive: chartOfAccountsTable.isActive,
+    })
+    .from(chartOfAccountsTable)
+    .where(
+      and(
+        or(
+          like(chartOfAccountsTable.code, "1-101%"),
+          like(chartOfAccountsTable.code, "1-102%"),
+        ),
+        or(
+          eq(chartOfAccountsTable.companyId, companyId),
+          isNull(chartOfAccountsTable.companyId),
+        ),
+      ),
+    )
+    .orderBy(chartOfAccountsTable.code);
+
+  const result = rows.map((r) => ({
+    id: r.id,
+    code: r.code,
+    name: r.name,
+    account_class: r.code.startsWith("1-101") ? "kas" : "bank",
+  }));
+
+  return res.json(result);
 });
 
 // ── Helpers ──
