@@ -28,14 +28,6 @@ args = "Customer Portal"
 task = "workflow.run"
 args = "Logistic Order"
 
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "BizPortal"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "API Server"
-
 [[workflows.workflow]]
 name = "Gateway"
 author = "agent"
@@ -71,30 +63,6 @@ outputType = "console"
 task = "shell.exec"
 args = "cd artifacts/logistic-order && PORT=3002 pnpm exec vite --config vite.config.ts --host 0.0.0.0 --port 3002"
 waitForPort = 3002
-
-[[workflows.workflow]]
-name = "BizPortal"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "cd artifacts/bizportal && PORT=18442 BIZPORTAL_PORT=6800 bash start-dev.sh"
-waitForPort = 6800
-
-[workflows.workflow.metadata]
-outputType = "console"
-
-[[workflows.workflow]]
-name = "API Server"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "cd artifacts/api-server && bash start-dev.sh"
-waitForPort = 8080
-
-[workflows.workflow.metadata]
-outputType = "console"
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
