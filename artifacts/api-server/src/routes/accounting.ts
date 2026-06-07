@@ -3902,6 +3902,30 @@ router.post("/rekonsiliasi-gsheet", async (req, res) => {
   const duplicate = results.filter((r) => r.status.startsWith("⚠️")).length;
   const notFound = results.filter((r) => r.status.startsWith("❌")).length;
 
+  // Kirim ringkasan ke WA admin (non-blocking)
+  (async () => {
+    try {
+      const { getAdminGroupWa } = await import("../lib/adminWa.js");
+      const { sendWhatsApp } = await import("../lib/fonnte.js");
+      const group = await getAdminGroupWa();
+      if (!group) return;
+      const todayStr = new Date().toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" });
+      const periodStr = dateFrom && dateTo ? `${dateFrom} s/d ${dateTo}` : dateFrom ? `sejak ${dateFrom}` : dateTo ? `s/d ${dateTo}` : "semua periode";
+      const msg =
+        `📊 *Rekonsiliasi Bank Selesai*\n\n` +
+        `📅 Tanggal: ${todayStr}\n` +
+        `📋 Sheet: ${sheetName}\n` +
+        `📆 Periode: ${periodStr}\n\n` +
+        `✅ Cocok: ${matched}\n` +
+        `⚠️ Duplikat: ${duplicate}\n` +
+        `❌ Tidak Ada: ${notFound}\n` +
+        `📝 Total Entry DB: ${results.length}\n` +
+        `🔄 Baris GSheet diperbarui: ${updateRequests.length}\n\n` +
+        `Buka BizPortal → Accounting → Rekonsiliasi Bank → tab Google Sheets untuk detail.`;
+      await sendWhatsApp(group, msg, { context: "rekon_gsheet_manual" });
+    } catch { /* non-fatal */ }
+  })();
+
   return res.json({
     ok: true,
     summary: {
