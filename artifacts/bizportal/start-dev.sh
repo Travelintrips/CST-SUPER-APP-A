@@ -12,6 +12,10 @@ else
   GW_PORT="${PORT:-3000}"
   VITE_PORT="${PORT:-3000}"
 fi
+# Replit assigns PORT (e.g. 18442) — Vite runs there for waitForPort check
+# Gateway expects BIZPORTAL_PORT (default 6800) — we proxy that → Vite port
+VITE_PORT=${PORT:-3000}
+GW_PORT=${BIZPORTAL_PORT:-6800}
 
 node "$(dirname "$0")/../api-server/kill-port.mjs" "${VITE_PORT}" "${GW_PORT}" 2>/dev/null || true
 sleep 0.3
