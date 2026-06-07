@@ -9,6 +9,19 @@ import { requireAdmin } from "../lib/requireAdmin.js";
 
 const router = Router();
 
+// Inline migration: buat tabel vendor_performance jika belum ada
+db.execute(sql`
+  CREATE TABLE IF NOT EXISTS vendor_performance (
+    id SERIAL PRIMARY KEY,
+    supplier_id INTEGER REFERENCES suppliers(id) ON DELETE CASCADE,
+    score NUMERIC(5,2) DEFAULT 0,
+    completed_orders INTEGER DEFAULT 0,
+    on_time_rate NUMERIC(5,2) DEFAULT 0,
+    total_orders INTEGER DEFAULT 0,
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+  )
+`).catch(() => {});
+
 router.use(async (req, res, next) => {
   if (!(await requireAdmin(req, res))) return;
   next();
@@ -21,10 +34,13 @@ router.use(async (req, res, next) => {
 // non-holding user → always locked to user.companyId
 function parseCompanyParam(req: Request): { isConsolidated: boolean; companyId: number | null } {
   const user = req.user as { companyId?: number | null; role?: string | null } | undefined;
-  const isHolding = !user?.companyId || user.role === "owner";
-  if (!isHolding && user?.companyId) {
-    return { isConsolidated: false, companyId: user.companyId };
+  // Hanya non-admin & non-owner yang dikunci ke company mereka sendiri
+  // (konsisten dengan resolveCompanyScope di lib/resolveCompany.ts)
+  const isLocked = user?.companyId != null && user.role !== "admin" && user.role !== "owner";
+  if (isLocked) {
+    return { isConsolidated: false, companyId: user!.companyId! };
   }
+  // Admin / owner: gunakan query param atau consolidated view
   const raw = req.query.companyId;
   if (raw === "all" || raw === undefined || raw === "") {
     return { isConsolidated: true, companyId: null };
