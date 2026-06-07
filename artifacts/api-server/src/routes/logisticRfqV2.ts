@@ -33,6 +33,7 @@ import {
   renderTemplate,
   sendVendorSelectedAdminWa,
   sendVendorAwardedWa,
+  sendVendorNotSelectedWa,
   sendTruckAssignedCustomerWa,
   sendOpRequestNotification,
   type LogisticOrderData,
@@ -1925,9 +1926,15 @@ logisticRfqV2Router.post("/rfq/:rfqId/select-vendor", async (req: Request, res: 
     force: true,
   });
 
-  const otherLinks = await db.select({ id: rfqVendorLinksTable.id, status: rfqVendorLinksTable.status })
-    .from(rfqVendorLinksTable)
+  const otherLinks = await db.select({
+    id: rfqVendorLinksTable.id,
+    status: rfqVendorLinksTable.status,
+    vendorId: rfqVendorLinksTable.vendorId,
+  }).from(rfqVendorLinksTable)
     .where(and(eq(rfqVendorLinksTable.rfqId, rfqId), sql`id != ${linkId}`));
+
+  // Status yang menandakan vendor sudah berikan penawaran (layak dapat notifikasi)
+  const RESPONDED_STATUSES = ["accepted_basic_price", "counter_offer", "late_response"];
 
   for (const other of otherLinks) {
     if (!["rejected", "expired", "late_response"].includes(other.status)) {
@@ -1937,6 +1944,24 @@ logisticRfqV2Router.post("/rfq/:rfqId/select-vendor", async (req: Request, res: 
         source: "select-vendor/deselect-others",
         force: true,
       });
+      // Kirim WA notif hanya ke vendor yang sudah merespons dengan penawaran
+      if (RESPONDED_STATUSES.includes(other.status) && other.vendorId) {
+        db.select({ name: suppliersTable.name, phone: suppliersTable.phone })
+          .from(suppliersTable)
+          .where(eq(suppliersTable.id, other.vendorId))
+          .then(([vRow]) => {
+            if (vRow?.phone) {
+              sendVendorNotSelectedWa({
+                vendorName: vRow.name ?? `Vendor #${other.vendorId}`,
+                vendorPhone: vRow.phone,
+                rfqNumber: rfqRow?.rfqNumber ?? `RFQ#${rfqId}`,
+                orderNumber: orderRow?.orderNumber ?? "",
+                route: `${orderRow?.origin ?? "—"} → ${orderRow?.destination ?? "—"}`,
+              }).catch(() => {});
+            }
+          })
+          .catch(() => {});
+      }
     }
   }
 
@@ -2035,6 +2060,22 @@ logisticRfqV2Router.post("/rfq/:rfqId/vendor-link/:linkId/action", async (req: R
     });
     await logActivity(rfqId, "admin", "Admin", "admin_reject_vendor",
       `Admin menolak vendor: ${vendorName}`);
+    // Kirim WA notifikasi ke vendor bahwa penawarannya tidak dipilih
+    if (vendor?.phone) {
+      const [rfqInfo] = await db.select({ rfqNumber: logisticOrderRfqsTable.rfqNumber, orderId: logisticOrderRfqsTable.orderId })
+        .from(logisticOrderRfqsTable).where(eq(logisticOrderRfqsTable.id, rfqId));
+      const orderRow = rfqInfo?.orderId
+        ? (await db.select({ orderNumber: logisticOrdersTable.orderNumber, origin: logisticOrdersTable.origin, destination: logisticOrdersTable.destination })
+            .from(logisticOrdersTable).where(eq(logisticOrdersTable.id, rfqInfo.orderId)))[0] ?? null
+        : null;
+      sendVendorNotSelectedWa({
+        vendorName,
+        vendorPhone: vendor.phone,
+        rfqNumber: rfqInfo?.rfqNumber ?? `RFQ#${rfqId}`,
+        orderNumber: orderRow?.orderNumber ?? "",
+        route: `${orderRow?.origin ?? "—"} → ${orderRow?.destination ?? "—"}`,
+      }).catch(() => {});
+    }
     return res.json({ ok: true });
   }
 

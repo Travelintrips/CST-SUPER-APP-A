@@ -282,7 +282,9 @@ export function isTransitionAllowed(fromRaw: string, toRaw: string): boolean {
 const FREIGHT_TO_LOGISTIC_MAP: Record<string, string> = {
   rfq_sent:   "RFQ Sent",
   confirmed:  "Vendor Confirmed",
+  pickup:     "Pickup",
   in_transit: "In Transit",
+  arrived:    "Arrived",
   completed:  "Delivered",
   cancelled:  "Cancelled",
 };

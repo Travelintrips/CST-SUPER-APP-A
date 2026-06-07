@@ -1,4 +1,5 @@
 - [Gateway port alignment](gateway-ports.md) — artifact workflows pakai port dinamis; Gateway harus set BIZPORTAL_PORT=3000 CUSTOMER_PORT=23434 secara eksplisit.
+- [External Shipment Sales Audit Fixes](ext-shipment-audit-fixes.md) — 4 gap diperbaiki: FREIGHT_TO_LOGISTIC_MAP, webhook pre-state guard, sendVendorNotSelectedWa, WA template migration.
 - [API Server build externals](api-server-build.md) — "compression" harus ada di external array build.mjs & dev.mjs agar esbuild tidak gagal.
 - [NixOS kill-port](nixos-killport.md) — fuser tidak tersedia; pakai kill-port.mjs via /proc/net/tcp.
 - [Supabase DB connection](supabase-connection.md) — semua modul pakai satu shared db dari @workspace/db; dev=SUPABASE_DATABASE_URL_DEV, prod=SUPABASE_PG_URL.

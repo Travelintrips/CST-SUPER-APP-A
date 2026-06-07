@@ -1278,6 +1278,22 @@ const DEFAULT_TPL = {
       "Terima kasih atas kepercayaan dan kerja sama Anda 🙏",
       "_CST Logistics_",
     ].join("\n"),
+    vendor_not_selected: [
+      "📋 *Informasi Status Penawaran — CST Logistics*",
+      "━━━━━━━━━━━━━━━━━━",
+      "Kepada Yth. *{{vendorName}}*,",
+      "",
+      "Terima kasih telah berpartisipasi dalam proses penawaran untuk:",
+      "",
+      "📋 No. RFQ  : {{rfqNumber}}",
+      "📄 No. Order: {{orderNumber}}",
+      "📍 Rute     : {{route}}",
+      "━━━━━━━━━━━━━━━━━━",
+      "Kami mohon maaf, penawaran Anda *tidak dapat dipilih* untuk pengiriman ini.",
+      "",
+      "Kami berharap dapat bekerja sama kembali di kesempatan mendatang 🙏",
+      "_CST Logistics_",
+    ].join("\n"),
     vendor_selected_admin: [
       "✅ *Vendor Dipilih — RFQ {{rfqNumber}}*",
       "━━━━━━━━━━━━━━━━━━",
@@ -1401,6 +1417,7 @@ export function getWaDefaultTemplatesFlatMap(): Record<string, string> {
   add("vendor", "revision_fallback", v.revision_fallback);
   add("vendor", "vendor_assignment", v.vendor_assignment);
   add("vendor", "vendor_order_status_change", v.vendor_order_status_change);
+  add("vendor", "vendor_not_selected", ape.vendor_not_selected);
 
   // product_order → workflow key: product_order_new
   const po = DEFAULT_TPL.product_order;
@@ -2583,6 +2600,34 @@ export async function sendVendorAwardedWa(data: VendorAwardedData): Promise<void
   }).catch((e: unknown) => logger.error({ e, vendorName: data.vendorName }, "sendVendorAwardedWa failed"));
 }
 
+// ── sendVendorNotSelectedWa ────────────────────────────────────────────────────
+export interface VendorNotSelectedData {
+  vendorName: string;
+  vendorPhone: string;
+  rfqNumber: string;
+  orderNumber: string;
+  route: string;
+}
+
+export async function sendVendorNotSelectedWa(data: VendorNotSelectedData): Promise<void> {
+  const tpl = await getWaTemplateConfig(
+    "vendor",
+    "vendor_not_selected",
+    DEFAULT_TPL.admin_personal_extra.vendor_not_selected,
+  );
+  const msg = renderTemplate(tpl, {
+    vendorName: data.vendorName,
+    rfqNumber: data.rfqNumber,
+    orderNumber: data.orderNumber,
+    route: data.route,
+  });
+  sendWhatsApp(data.vendorPhone, msg, {
+    context: "vendor-not-selected",
+    refType: "rfq",
+    refId: data.rfqNumber,
+  }).catch((e: unknown) => logger.error({ e, vendorName: data.vendorName }, "sendVendorNotSelectedWa failed"));
+}
+
 // ── sendVendorSelectedAdminWa ──────────────────────────────────────────────────
 export interface VendorSelectedAdminData {
   rfqNumber: string;
@@ -3410,14 +3455,16 @@ export async function runWaTemplateMigration(): Promise<void> {
       ["customer",       "order_new"],
       ["vendor",         "vendor_request"],
       ["vendor",         "order_new"],
+      ["vendor",         "vendor_not_selected"],
     ];
 
     const tplMap: Record<string, string> = {
-      "admin_personal__order_new": DEFAULT_TPL.admin_personal.order_new,
-      "admin_group__order_new":    DEFAULT_TPL.admin_group.order_new,
-      "customer__order_new":       DEFAULT_TPL.customer.order_new,
-      "vendor__vendor_request":    DEFAULT_TPL.vendor.vendor_request,
-      "vendor__order_new":         DEFAULT_TPL.vendor.order_new,
+      "admin_personal__order_new":      DEFAULT_TPL.admin_personal.order_new,
+      "admin_group__order_new":         DEFAULT_TPL.admin_group.order_new,
+      "customer__order_new":            DEFAULT_TPL.customer.order_new,
+      "vendor__vendor_request":         DEFAULT_TPL.vendor.vendor_request,
+      "vendor__order_new":              DEFAULT_TPL.vendor.order_new,
+      "vendor__vendor_not_selected":    DEFAULT_TPL.admin_personal_extra.vendor_not_selected,
     };
 
     // Required marker per pair — if missing from the DB row, force-upgrade it

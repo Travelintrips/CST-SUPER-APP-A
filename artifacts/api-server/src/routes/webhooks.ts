@@ -228,6 +228,13 @@ async function doApproveOrder(
   if (!order) return { error: "Order tidak ditemukan" };
   if (order.adminApprovalStatus === "approved") return { error: "Order sudah pernah di-approve" };
 
+  // Guard: APPROVE via WA hanya diizinkan dari status pra-quotation.
+  // Endpoint ini sudah diverifikasi: FONNTE_WEBHOOK_SECRET + isAdmin phone check.
+  const VALID_PRE_APPROVE = ["Order Received", "Admin Review", "RFQ Sent", "Quote Received"];
+  if (!VALID_PRE_APPROVE.includes(order.status ?? "")) {
+    return { error: `Order ${order.orderNumber} tidak dapat di-approve dari status "${order.status}". Status harus salah satu dari: ${VALID_PRE_APPROVE.join(", ")}.` };
+  }
+
   // Only use pending quotes from vendors who have actually replied
   const quotes = await db.select().from(logisticOrderQuotesTable)
     .where(and(eq(logisticOrderQuotesTable.orderId, orderId), eq(logisticOrderQuotesTable.quoteStatus, "pending")))
@@ -262,6 +269,10 @@ async function doApproveOrder(
     finalSellingPrice: String(sellingPrice),
     quotationSentAt: now,
   }).where(eq(logisticOrdersTable.id, orderId));
+  // force: true diperlukan karena admin WA bisa mengirim APPROVE dari berbagai status
+  // pra-quotation (Order Received, Admin Review, RFQ Sent, Quote Received). State machine
+  // mengizinkan transisi ke "Customer Approval" dari semua status tsb. Pre-state guard
+  // di atas memastikan kita tidak menerobos status yang tidak valid.
   await transitionLogisticOrderStatus(orderId, "Customer Approval", { source: "webhooks:auto_approve", actorType: "system", force: true });
 
   const [vendor] = await db.select().from(suppliersTable).where(eq(suppliersTable.id, best.vendorId));
