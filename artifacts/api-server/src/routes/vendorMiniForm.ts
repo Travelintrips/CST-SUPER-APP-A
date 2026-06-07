@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { rateLimit, ipKeyGenerator } from "express-rate-limit";
+import { broadcastInvalidation } from "../lib/alertsBroadcast.js";
 import { eq, desc, inArray, and, count, isNull, ne, sql } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import multer from "multer";
@@ -3031,6 +3032,8 @@ vendorMiniFormRouter.post("/admin/customer-approvals", async (req: Request, res:
         .where(and(eq(vendorMiniFormLinksTable.orderId, orderId), eq(vendorMiniFormLinksTable.mode, "order_based")));
     }
 
+    broadcastInvalidation("rfq", orderId ?? undefined);
+    broadcastInvalidation("logistic_orders", orderId ?? undefined);
     return res.status(201).json({ ...approval, createdAt: approval.createdAt.toISOString() });
   } catch (err) {
     req.log?.error({ err }, "create customer-approval error");
@@ -3107,6 +3110,7 @@ vendorMiniFormRouter.post("/admin/op-confirms", async (req: Request, res: Respon
       ).catch(() => {});
     }
 
+    broadcastInvalidation("logistic_orders", orderId ?? undefined);
     return res.status(201).json({ ...conf, createdAt: conf.createdAt.toISOString() });
   } catch (err) {
     req.log?.error({ err }, "create op-confirm error");
@@ -3359,6 +3363,8 @@ vendorMiniFormRouter.post("/admin/customer-approvals/:id/retry-so", async (req: 
       await logActivity("sales_order", soResult.docId, "so_created", (req.user as { id: string } | undefined)?.id ?? "admin",
         `SO ${soResult.docNumber} dibuat ulang via retry untuk approval ID ${id}${approval.customerName ? ` (${approval.customerName})` : ""}`,
         { docNumber: soResult.docNumber, approvalId: id, orderId: approval.orderId, orderNumber: approval.orderNumber });
+      broadcastInvalidation("sales_documents");
+      broadcastInvalidation("logistic_orders", approval.orderId ?? undefined);
       return res.json({ ok: true, docId: soResult.docId, docNumber: soResult.docNumber });
     } else if (soResult.reason === "already_exists") {
       if (!approval.soNumber) {
@@ -3366,6 +3372,7 @@ vendorMiniFormRouter.post("/admin/customer-approvals/:id/retry-so", async (req: 
           .set({ soNumber: soResult.docNumber })
           .where(eq(customerApprovalsTable.id, id));
       }
+      broadcastInvalidation("sales_documents");
       return res.json({ ok: true, already: true, docId: soResult.docId, docNumber: soResult.docNumber });
     } else {
       return res.status(500).json({ error: soResult.message });

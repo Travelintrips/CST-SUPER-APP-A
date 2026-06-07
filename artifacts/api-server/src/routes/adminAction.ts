@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { randomBytes } from "crypto";
+import { broadcastInvalidation } from "../lib/alertsBroadcast.js";
 import { eq, desc, inArray, sql, and } from "drizzle-orm";
 import {
   db,
@@ -1000,6 +1001,8 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
       clearTimeout(blastTimer);
       blastInProgress.delete(order.id);
 
+      broadcastInvalidation("rfq", order.id);
+      broadcastInvalidation("logistic_orders", order.id);
       return res.json({ ok: true, rfqId: rfq.id, rfqNumber: rfq.rfqNumber, results, compareUrl: compareShort });
     }
 
