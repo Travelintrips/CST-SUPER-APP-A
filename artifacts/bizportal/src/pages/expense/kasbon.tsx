@@ -478,7 +478,7 @@ export default function KasbonPage() {
                     setSourceAccountId(val);
                     if (val) {
                       const acc = (paymentAccounts as any[]).find((a: any) => String(a.id) === val);
-                      if (acc) setPm((acc.name ?? "").toLowerCase().includes("kas") ? "cash" : "bank");
+                      if (acc) setPm(acc.account_class === "kas" ? "cash" : "bank");
                     }
                   }}
                 >

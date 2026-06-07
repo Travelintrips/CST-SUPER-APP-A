@@ -186,7 +186,7 @@ export default function TalanganPage() {
                     onValueChange={(v) => {
                       setSourceAccountId(v);
                       const acc = (paymentAccounts as any[]).find((a: any) => String(a.id) === v);
-                      if (acc) setPm((acc.name ?? "").toLowerCase().includes("kas") ? "cash" : "bank");
+                      if (acc) setPm(acc.account_class === "kas" ? "cash" : "bank");
                     }}
                   >
                     <SelectTrigger><SelectValue placeholder="Pilih akun kas/bank..." /></SelectTrigger>
