@@ -1073,47 +1073,45 @@ router.get("/cross-module", async (req, res) => {
       salesRevenueThisRes,
       salesRevenueLastRes,
     ] = await Promise.all([
-      // Sport Centre – bookings count this month
+      // Sport Centre – bookings count this month (pakai booking_date, konsisten dgn sport center module)
       db.execute<{ cnt: string }>(sql`
         SELECT count(*)::text AS cnt FROM sport_bookings
         WHERE status NOT IN ('cancelled','Cancelled')
-          AND created_at >= ${startOfMonth} ${cf}
+          AND booking_date >= ${startOfMonth.toISOString().slice(0, 10)}::date ${cf}
       `),
       // Sport Centre – bookings count last month
       db.execute<{ cnt: string }>(sql`
         SELECT count(*)::text AS cnt FROM sport_bookings
         WHERE status NOT IN ('cancelled','Cancelled')
-          AND created_at >= ${startOfLastMonth}
-          AND created_at < ${endOfLastMonth} ${cf}
+          AND booking_date >= ${startOfLastMonth.toISOString().slice(0, 10)}::date
+          AND booking_date < ${endOfLastMonth.toISOString().slice(0, 10)}::date ${cf}
       `),
-      // Sport Centre – revenue this month (from sport_payments)
+      // Sport Centre – revenue this month dari sport_bookings.total_amount (paid)
       db.execute<{ total: string }>(sql`
-        SELECT COALESCE(SUM(sp.amount::numeric), 0)::text AS total
-        FROM sport_payments sp
-        JOIN sport_bookings sb ON sb.id = sp.booking_id
-        WHERE sp.status IN ('paid','confirmed','Paid','Confirmed')
-          AND sp.created_at >= ${startOfMonth}
+        SELECT COALESCE(SUM(total_amount::numeric), 0)::text AS total
+        FROM sport_bookings
+        WHERE payment_status IN ('paid','Paid')
+          AND status NOT IN ('cancelled','Cancelled')
+          AND booking_date >= ${startOfMonth.toISOString().slice(0, 10)}::date ${cf}
       `),
       // Sport Centre – revenue last month
       db.execute<{ total: string }>(sql`
-        SELECT COALESCE(SUM(sp.amount::numeric), 0)::text AS total
-        FROM sport_payments sp
-        JOIN sport_bookings sb ON sb.id = sp.booking_id
-        WHERE sp.status IN ('paid','confirmed','Paid','Confirmed')
-          AND sp.created_at >= ${startOfLastMonth}
-          AND sp.created_at < ${endOfLastMonth}
+        SELECT COALESCE(SUM(total_amount::numeric), 0)::text AS total
+        FROM sport_bookings
+        WHERE payment_status IN ('paid','Paid')
+          AND status NOT IN ('cancelled','Cancelled')
+          AND booking_date >= ${startOfLastMonth.toISOString().slice(0, 10)}::date
+          AND booking_date < ${endOfLastMonth.toISOString().slice(0, 10)}::date ${cf}
       `),
       // Sport Centre – top facilities this month
       db.execute<{ name: string; cnt: string; revenue: string }>(sql`
-        SELECT sf.name, count(sb.id)::text AS cnt,
-               COALESCE(SUM(sp.amount::numeric), 0)::text AS revenue
-        FROM sport_bookings sb
-        LEFT JOIN sport_facilities sf ON sf.id = sb.facility_id
-        LEFT JOIN sport_payments sp ON sp.booking_id = sb.id
-          AND sp.status IN ('paid','confirmed','Paid','Confirmed')
-        WHERE sb.status NOT IN ('cancelled','Cancelled')
-          AND sb.created_at >= ${startOfMonth}
-        GROUP BY sf.name
+        SELECT COALESCE(facility_name, '—') AS name,
+               count(id)::text AS cnt,
+               COALESCE(SUM(total_amount::numeric), 0)::text AS revenue
+        FROM sport_bookings
+        WHERE status NOT IN ('cancelled','Cancelled')
+          AND booking_date >= ${startOfMonth.toISOString().slice(0, 10)}::date ${cf}
+        GROUP BY facility_name
         ORDER BY cnt::int DESC
         LIMIT 5
       `),

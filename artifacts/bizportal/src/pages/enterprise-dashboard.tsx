@@ -50,7 +50,7 @@ async function fetchEnterprise(companyId?: number) {
 async function fetchCrossModule(companyId?: number) {
   const params = new URLSearchParams();
   if (companyId) params.set("companyId", String(companyId));
-  const r = await fetch(`/api/dashboard/cross-module?${params}`);
+  const r = await fetch(`/api/dashboard/cross-module?${params}`, { credentials: "include" });
   if (!r.ok) return null;
   return r.json();
 }
