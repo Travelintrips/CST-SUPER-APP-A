@@ -805,7 +805,7 @@ router.get("/ceo", async (req, res) => {
 router.get("/enterprise", async (req, res) => {
   const { isConsolidated, companyId } = parseCompanyParam(req);
   const cf = (!isConsolidated && companyId !== null)
-    ? sql` AND company_id = ${companyId}`
+    ? sql` AND (company_id = ${companyId} OR company_id IS NULL)`
     : sql``;
 
   const now = new Date();
@@ -1053,7 +1053,7 @@ router.get("/operational", async (req, res) => {
 router.get("/cross-module", async (req, res) => {
   const { isConsolidated, companyId } = parseCompanyParam(req);
   const cf = (!isConsolidated && companyId !== null)
-    ? sql` AND company_id = ${companyId}`
+    ? sql` AND (company_id = ${companyId} OR company_id IS NULL)`
     : sql``;
 
   const now = new Date();
