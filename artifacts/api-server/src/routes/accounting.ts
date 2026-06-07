@@ -3902,7 +3902,7 @@ router.post("/rekonsiliasi-gsheet", async (req, res) => {
   const duplicate = results.filter((r) => r.status.startsWith("⚠️")).length;
   const notFound = results.filter((r) => r.status.startsWith("❌")).length;
 
-  // Kirim ringkasan ke WA admin (non-blocking)
+  // Kirim ringkasan + detail ke WA admin (non-blocking)
   (async () => {
     try {
       const { getAdminGroupWa } = await import("../lib/adminWa.js");
@@ -3911,6 +3911,18 @@ router.post("/rekonsiliasi-gsheet", async (req, res) => {
       if (!group) return;
       const todayStr = new Date().toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" });
       const periodStr = dateFrom && dateTo ? `${dateFrom} s/d ${dateTo}` : dateFrom ? `sejak ${dateFrom}` : dateTo ? `s/d ${dateTo}` : "semua periode";
+      const idr = (n: number) => new Intl.NumberFormat("id-ID").format(n);
+      const fmtDate = (s: string) => new Date(s).toLocaleDateString("id-ID", { day: "2-digit", month: "2-digit", year: "numeric" });
+      const statusIcon = (st: string) => st.startsWith("✅") ? "✅" : st.startsWith("⚠️") ? "⚠️" : "❌";
+
+      const MAX_ROWS = 30;
+      const detailLines = results.slice(0, MAX_ROWS).map((r) => {
+        const nominal = r.debit > 0 ? `D: ${idr(r.debit)}` : `K: ${idr(r.credit)}`;
+        const desc = (r.description ?? "").slice(0, 30);
+        return `${statusIcon(r.status)} *${r.entryNumber}* | ${fmtDate(r.entryDate)} | ${nominal} | ${desc}`;
+      });
+      const truncatedNote = results.length > MAX_ROWS ? `\n_...dan ${results.length - MAX_ROWS} baris lainnya_` : "";
+
       const msg =
         `📊 *Rekonsiliasi Bank Selesai*\n\n` +
         `📅 Tanggal: ${todayStr}\n` +
@@ -3921,7 +3933,9 @@ router.post("/rekonsiliasi-gsheet", async (req, res) => {
         `❌ Tidak Ada: ${notFound}\n` +
         `📝 Total Entry DB: ${results.length}\n` +
         `🔄 Baris GSheet diperbarui: ${updateRequests.length}\n\n` +
-        `Buka BizPortal → Accounting → Rekonsiliasi Bank → tab Google Sheets untuk detail.`;
+        `📋 *Detail Hasil:*\n` +
+        detailLines.join("\n") +
+        truncatedNote;
       await sendWhatsApp(group, msg, { context: "rekon_gsheet_manual" });
     } catch { /* non-fatal */ }
   })();
