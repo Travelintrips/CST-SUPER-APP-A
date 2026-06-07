@@ -240,67 +240,83 @@ export default function AccountingGSheetPage() {
           </CardContent>
         </Card>
 
-        {/* Tombol Sinkronisasi */}
-        {spreadsheetId && (
-          <div className="grid grid-cols-2 gap-4">
-            <Card className="border-blue-100">
-              <CardContent className="p-5 space-y-3">
-                <div className="flex items-center gap-2">
-                  <Upload className="w-5 h-5 text-blue-600" />
-                  <p className="font-semibold text-slate-800">Push ke Sheets</p>
-                </div>
-                <p className="text-xs text-slate-500">
-                  Kirim CoA, Jurnal, Lines, Trial Balance & GL ke Sheets. Data lama ditimpa.
+        {/* Tombol Sinkronisasi — selalu tampil */}
+        <div className="grid grid-cols-2 gap-4">
+          <Card className={!spreadsheetId ? "opacity-60 border-slate-200" : "border-blue-100"}>
+            <CardContent className="p-5 space-y-3">
+              <div className="flex items-center gap-2">
+                <Upload className="w-5 h-5 text-blue-600" />
+                <p className="font-semibold text-slate-800">Push ke Sheets</p>
+              </div>
+              <p className="text-xs text-slate-500">
+                Kirim CoA, Jurnal, Lines, Trial Balance & GL ke Sheets. Data lama ditimpa.
+              </p>
+              {!spreadsheetId && !configLoading && (
+                <p className="text-xs text-amber-600 flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" /> Setup spreadsheet akuntansi dulu di atas.
                 </p>
-                <Button className="w-full bg-blue-600 hover:bg-blue-700" onClick={() => pushMut.mutate()} disabled={pushMut.isPending}>
-                  {pushMut.isPending
-                    ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Mengirim...</>
-                    : <><Upload className="w-4 h-4 mr-2" />Push Sekarang</>}
-                </Button>
-                {lastPush && (
-                  <div className="text-xs text-blue-700 bg-blue-50 rounded p-2 space-y-0.5">
-                    <p>✅ {lastPush.pushed.accounts} akun</p>
-                    <p>✅ {lastPush.pushed.entries} entri jurnal</p>
-                    <p>✅ {lastPush.pushed.lines} baris entri</p>
-                    <a href={`https://docs.google.com/spreadsheets/d/${lastPush.spreadsheetId}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-blue-600 hover:underline mt-1">
-                      <ExternalLink className="w-3 h-3" /> Buka Sheets
-                    </a>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+              )}
+              <Button
+                className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
+                onClick={() => pushMut.mutate()}
+                disabled={pushMut.isPending || !spreadsheetId}
+              >
+                {pushMut.isPending
+                  ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Mengirim...</>
+                  : <><Upload className="w-4 h-4 mr-2" />Push Sekarang</>}
+              </Button>
+              {lastPush && (
+                <div className="text-xs text-blue-700 bg-blue-50 rounded p-2 space-y-0.5">
+                  <p>✅ {lastPush.pushed.accounts} akun</p>
+                  <p>✅ {lastPush.pushed.entries} entri jurnal</p>
+                  <p>✅ {lastPush.pushed.lines} baris entri</p>
+                  <a href={`https://docs.google.com/spreadsheets/d/${lastPush.spreadsheetId}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-blue-600 hover:underline mt-1">
+                    <ExternalLink className="w-3 h-3" /> Buka Sheets
+                  </a>
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
-            <Card className="border-emerald-100">
-              <CardContent className="p-5 space-y-3">
-                <div className="flex items-center gap-2">
-                  <Download className="w-5 h-5 text-emerald-600" />
-                  <p className="font-semibold text-slate-800">Pull dari Sheets</p>
-                </div>
-                <p className="text-xs text-slate-500">
-                  Baca perubahan dari Sheets. Akun baru ditambahkan, yang ada diperbarui. Entri baru dibuat sebagai draft.
+          <Card className={!spreadsheetId ? "opacity-60 border-slate-200" : "border-emerald-100"}>
+            <CardContent className="p-5 space-y-3">
+              <div className="flex items-center gap-2">
+                <Download className="w-5 h-5 text-emerald-600" />
+                <p className="font-semibold text-slate-800">Pull dari Sheets</p>
+              </div>
+              <p className="text-xs text-slate-500">
+                Baca perubahan dari Sheets. Akun baru ditambahkan, yang ada diperbarui. Entri baru dibuat sebagai draft.
+              </p>
+              {!spreadsheetId && !configLoading && (
+                <p className="text-xs text-amber-600 flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" /> Setup spreadsheet akuntansi dulu di atas.
                 </p>
-                <Button className="w-full bg-emerald-600 hover:bg-emerald-700" onClick={() => pullMut.mutate()} disabled={pullMut.isPending}>
-                  {pullMut.isPending
-                    ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Membaca...</>
-                    : <><Download className="w-4 h-4 mr-2" />Pull Sekarang</>}
-                </Button>
-                {lastPull && (
-                  <div className="text-xs text-emerald-700 bg-emerald-50 rounded p-2 space-y-0.5">
-                    <p>✅ {lastPull.coaAdded} akun baru</p>
-                    <p>✅ {lastPull.coaUpdated} akun diperbarui</p>
-                    <p>✅ {lastPull.entriesAdded} entri draft dibuat</p>
-                    {lastPull.errors.length > 0 && (
-                      <div className="mt-1 text-amber-700">
-                        <p className="font-medium">⚠ {lastPull.errors.length} peringatan:</p>
-                        {lastPull.errors.map((e, i) => <p key={i} className="pl-2">• {e}</p>)}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        )}
+              )}
+              <Button
+                className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50"
+                onClick={() => pullMut.mutate()}
+                disabled={pullMut.isPending || !spreadsheetId}
+              >
+                {pullMut.isPending
+                  ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Membaca...</>
+                  : <><Download className="w-4 h-4 mr-2" />Pull Sekarang</>}
+              </Button>
+              {lastPull && (
+                <div className="text-xs text-emerald-700 bg-emerald-50 rounded p-2 space-y-0.5">
+                  <p>✅ {lastPull.coaAdded} akun baru</p>
+                  <p>✅ {lastPull.coaUpdated} akun diperbarui</p>
+                  <p>✅ {lastPull.entriesAdded} entri draft dibuat</p>
+                  {lastPull.errors.length > 0 && (
+                    <div className="mt-1 text-amber-700">
+                      <p className="font-medium">⚠ {lastPull.errors.length} peringatan:</p>
+                      {lastPull.errors.map((e, i) => <p key={i} className="pl-2">• {e}</p>)}
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
 
         {/* Panduan */}
         <Card className="bg-slate-50 border-slate-200">
