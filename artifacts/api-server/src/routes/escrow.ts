@@ -44,13 +44,33 @@ const DP_STATUS_LABEL: Record<string, string> = {
   completed:              "Selesai",
 };
 
+async function getCustomerPhone(customerId: number | null | undefined): Promise<string | null> {
+  if (!customerId) return null;
+  try {
+    const rows = await db.execute(sql.raw(`
+      SELECT phone FROM customers WHERE id = ${customerId} LIMIT 1
+    `));
+    const r = rows.rows[0] as Record<string, unknown> | undefined;
+    const phone = String(r?.phone ?? "").trim();
+    return phone || null;
+  } catch {
+    return null;
+  }
+}
+
+function buildConfirmUrl(req: { headers: Record<string, string | string[] | undefined> }, token: string) {
+  const proto = req.headers["x-forwarded-proto"] ?? "https";
+  const host = req.headers.host ?? "localhost";
+  return `${proto}://${host}/escrow-confirm/${token}`;
+}
+
 // ── GET /api/sales/escrow/:id ─────────────────────────────────────────────────
 escrowAdminRouter.get("/:id", async (req, res) => {
   const id = Number(req.params.id);
   if (Number.isNaN(id)) return res.status(400).json({ error: "Invalid id" });
 
   const rows = await db.execute(sql.raw(`
-    SELECT id, doc_number, customer_name, grand_total,
+    SELECT id, doc_number, customer_name, customer_id, grand_total,
            escrow_enabled, dp_percentage, dp_amount, dp_status,
            dp_held_at, dp_released_at, customer_confirmed_at,
            escrow_token, escrow_notes
@@ -65,12 +85,13 @@ escrowAdminRouter.get("/:id", async (req, res) => {
     ...r,
     dp_status_label: DP_STATUS_LABEL[String(r.dp_status ?? "none")] ?? r.dp_status,
     confirm_url: r.escrow_token
-      ? `${req.headers["x-forwarded-proto"] ?? "https"}://${req.headers.host}/escrow-confirm/${r.escrow_token}`
+      ? buildConfirmUrl(req, String(r.escrow_token))
       : null,
   });
 });
 
 // ── POST /api/sales/escrow/:id/enable ────────────────────────────────────────
+// Sends WA to customer: "Escrow aktif — silakan transfer DP"
 escrowAdminRouter.post("/:id/enable", async (req, res) => {
   const id = Number(req.params.id);
   if (Number.isNaN(id)) return res.status(400).json({ error: "Invalid id" });
@@ -82,7 +103,8 @@ escrowAdminRouter.post("/:id/enable", async (req, res) => {
   }
 
   const docRows = await db.execute(sql.raw(`
-    SELECT grand_total, escrow_token FROM sales_documents WHERE id = ${id} LIMIT 1
+    SELECT grand_total, escrow_token, customer_id, customer_name, doc_number
+    FROM sales_documents WHERE id = ${id} LIMIT 1
   `));
   const doc = docRows.rows[0] as Record<string, unknown> | undefined;
   if (!doc) return res.status(404).json({ error: "Not found" });
@@ -104,21 +126,44 @@ escrowAdminRouter.post("/:id/enable", async (req, res) => {
     WHERE id = ${id}
   `));
 
+  const confirmUrl = buildConfirmUrl(req, token);
+
+  // Notify customer WA (fire-and-forget)
+  getCustomerPhone(Number(doc.customer_id) || null).then((phone) => {
+    if (!phone) return;
+    sendWhatsApp(
+      phone,
+      `🔒 *Proteksi Escrow Aktif*\n\nHalo *${doc.customer_name}*,\n\nPesanan Anda *${doc.doc_number}* dilindungi sistem Escrow.\n\n💰 Jumlah DP: *${idrFormat(Number(dpAmount))}* (${pct}%)\n\nSilakan transfer DP ke rekening platform kami. Dana akan ditahan dan baru dirilis ke vendor setelah Anda konfirmasi penerimaan barang/jasa.${notes ? `\n\n📝 ${notes}` : ""}`
+    ).catch(() => {});
+  }).catch(() => {});
+
+  // Also notify admin group
+  getAdminGroupWa().then((waTarget) => {
+    if (!waTarget) return;
+    sendWhatsApp(
+      waTarget,
+      `🔒 *Escrow Diaktifkan*\n\n📄 ${doc.doc_number} — ${doc.customer_name}\n💰 DP: ${idrFormat(Number(dpAmount))} (${pct}%)\n\nMenunggu customer melakukan transfer DP.`
+    ).catch(() => {});
+  }).catch(() => {});
+
   return res.json({
     ok: true,
     dpAmount: Number(dpAmount),
     token,
-    confirm_url: `${req.headers["x-forwarded-proto"] ?? "https"}://${req.headers.host}/escrow-confirm/${token}`,
+    confirm_url: confirmUrl,
   });
 });
 
 // ── POST /api/sales/escrow/:id/hold ──────────────────────────────────────────
+// Sends WA to customer: "DP diterima — klik link untuk konfirmasi setelah terima barang"
 escrowAdminRouter.post("/:id/hold", async (req, res) => {
   const id = Number(req.params.id);
   if (Number.isNaN(id)) return res.status(400).json({ error: "Invalid id" });
 
   const checkRows = await db.execute(sql.raw(`
-    SELECT dp_status, escrow_enabled FROM sales_documents WHERE id = ${id} LIMIT 1
+    SELECT dp_status, escrow_enabled, customer_id, customer_name, doc_number,
+           dp_amount, escrow_token
+    FROM sales_documents WHERE id = ${id} LIMIT 1
   `));
   const doc = checkRows.rows[0] as Record<string, unknown> | undefined;
   if (!doc) return res.status(404).json({ error: "Not found" });
@@ -132,16 +177,41 @@ escrowAdminRouter.post("/:id/hold", async (req, res) => {
     WHERE id = ${id}
   `));
 
+  const token = String(doc.escrow_token ?? "");
+  const confirmUrl = token ? buildConfirmUrl(req, token) : null;
+
+  // Notify customer WA with confirm link (fire-and-forget)
+  getCustomerPhone(Number(doc.customer_id) || null).then((phone) => {
+    if (!phone) return;
+    const confirmSection = confirmUrl
+      ? `\n\nSetelah barang/jasa diterima, silakan konfirmasi melalui link berikut:\n🔗 ${confirmUrl}`
+      : "";
+    sendWhatsApp(
+      phone,
+      `✅ *DP Anda Sudah Diterima*\n\nHalo *${doc.customer_name}*,\n\nDP sebesar *${idrFormat(Number(doc.dp_amount))}* untuk pesanan *${doc.doc_number}* telah kami terima dan sedang ditahan oleh platform.\n\nDana akan dirilis ke vendor setelah Anda mengkonfirmasi penerimaan barang/jasa.${confirmSection}`
+    ).catch(() => {});
+  }).catch(() => {});
+
+  // Notify admin group
+  getAdminGroupWa().then((waTarget) => {
+    if (!waTarget) return;
+    sendWhatsApp(
+      waTarget,
+      `💰 *DP Escrow Diterima*\n\n📄 ${doc.doc_number} — ${doc.customer_name}\n💰 ${idrFormat(Number(doc.dp_amount))}\n\nDP sudah masuk & ditahan platform. Menunggu konfirmasi customer.`
+    ).catch(() => {});
+  }).catch(() => {});
+
   return res.json({ ok: true, dp_status: "dp_held" });
 });
 
 // ── POST /api/sales/escrow/:id/release ───────────────────────────────────────
+// Sends WA to customer: "Dana dirilis ke vendor, transaksi selesai"
 escrowAdminRouter.post("/:id/release", async (req, res) => {
   const id = Number(req.params.id);
   if (Number.isNaN(id)) return res.status(400).json({ error: "Invalid id" });
 
   const checkRows = await db.execute(sql.raw(`
-    SELECT dp_status, escrow_enabled, customer_name, doc_number, dp_amount
+    SELECT dp_status, escrow_enabled, customer_id, customer_name, doc_number, dp_amount
     FROM sales_documents WHERE id = ${id} LIMIT 1
   `));
   const doc = checkRows.rows[0] as Record<string, unknown> | undefined;
@@ -156,12 +226,21 @@ escrowAdminRouter.post("/:id/release", async (req, res) => {
     WHERE id = ${id}
   `));
 
-  // Notify admin WA (fire-and-forget)
+  // Notify customer WA (fire-and-forget)
+  getCustomerPhone(Number(doc.customer_id) || null).then((phone) => {
+    if (!phone) return;
+    sendWhatsApp(
+      phone,
+      `🎉 *Transaksi Escrow Selesai*\n\nHalo *${doc.customer_name}*,\n\nDana DP sebesar *${idrFormat(Number(doc.dp_amount))}* untuk pesanan *${doc.doc_number}* telah dirilis ke vendor.\n\nTerima kasih telah menggunakan layanan CST Logistics. 🙏`
+    ).catch(() => {});
+  }).catch(() => {});
+
+  // Notify admin group
   getAdminGroupWa().then((waTarget) => {
     if (!waTarget) return;
     sendWhatsApp(
       waTarget,
-      `✅ *Dana DP Dirilis*\n\nDana DP untuk *${doc.doc_number}* (${doc.customer_name}) sebesar *${idrFormat(Number(doc.dp_amount))}* telah dirilis ke vendor.`
+      `✅ *Dana DP Dirilis ke Vendor*\n\n📄 ${doc.doc_number} — ${doc.customer_name}\n💰 ${idrFormat(Number(doc.dp_amount))}\n\nEscrow selesai.`
     ).catch(() => {});
   }).catch(() => {});
 
@@ -193,7 +272,8 @@ escrowPublicRouter.get("/confirm/:token", async (req, res) => {
   });
 });
 
-// ── POST /api/sales/escrow/confirm/:token  (public) ──────────────────────────
+// ── POST /api/sales/escrow/confirm/:token  (public — customer confirms receipt)
+// Sends WA to: admin group + customer acknowledgement
 escrowPublicRouter.post("/confirm/:token", async (req, res) => {
   const token = String(req.params.token ?? "").trim();
   if (!token || !/^[0-9a-f]{64}$/i.test(token)) {
@@ -201,7 +281,7 @@ escrowPublicRouter.post("/confirm/:token", async (req, res) => {
   }
 
   const rows = await db.execute(sql.raw(`
-    SELECT id, doc_number, customer_name, dp_status, dp_amount, dp_held_at
+    SELECT id, doc_number, customer_name, customer_id, dp_status, dp_amount, dp_held_at
     FROM sales_documents
     WHERE escrow_token = '${token.replace(/'/g, "''")}' AND escrow_enabled = TRUE
     LIMIT 1
@@ -229,12 +309,21 @@ escrowPublicRouter.post("/confirm/:token", async (req, res) => {
     WHERE id = ${row.id}
   `));
 
-  // Notify admin (fire-and-forget)
+  // Notify admin group (fire-and-forget)
   getAdminGroupWa().then((waTarget) => {
     if (!waTarget) return;
     sendWhatsApp(
       waTarget,
       `🔔 *Konfirmasi Penerimaan Barang/Jasa*\n\nCustomer *${row.customer_name}* telah mengkonfirmasi penerimaan untuk:\n📄 ${row.doc_number}\n💰 DP Escrow: ${idrFormat(Number(row.dp_amount))}\n\n✅ Dana DP siap dirilis ke vendor.`
+    ).catch(() => {});
+  }).catch(() => {});
+
+  // Send acknowledgement WA to customer (fire-and-forget)
+  getCustomerPhone(Number(row.customer_id) || null).then((phone) => {
+    if (!phone) return;
+    sendWhatsApp(
+      phone,
+      `✅ *Konfirmasi Berhasil*\n\nHalo *${row.customer_name}*,\n\nKonfirmasi penerimaan barang/jasa untuk pesanan *${row.doc_number}* telah kami catat.\n\nDana DP sebesar *${idrFormat(Number(row.dp_amount))}* akan segera dirilis ke vendor oleh tim kami.\n\nTerima kasih! 🙏`
     ).catch(() => {});
   }).catch(() => {});
 
