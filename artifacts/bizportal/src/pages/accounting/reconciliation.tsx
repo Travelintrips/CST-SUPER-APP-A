@@ -245,6 +245,15 @@ interface ScheduleConfig {
   lastRunDate?: string;
 }
 
+// Konversi huruf kolom GSheet → 0-index (A=0, B=1, F=5, dst)
+function colLetterToIdx(col: string): number {
+  const s = col.trim().toUpperCase();
+  if (/^\d+$/.test(s)) return Number(s);
+  let idx = 0;
+  for (const ch of s) idx = idx * 26 + (ch.charCodeAt(0) - 64);
+  return idx - 1;
+}
+
 // ─── Schedule Card ────────────────────────────────────────────────────────────
 
 function ScheduleCard({ spreadsheetId, sheetName, colKey, colStatus, startRow }: {
@@ -279,8 +288,8 @@ function ScheduleCard({ spreadsheetId, sheetName, colKey, colStatus, startRow }:
           enabled,
           spreadsheetId: spreadsheetId.trim() || (cfg?.spreadsheetId ?? ""),
           sheetName: sheetName.trim() || (cfg?.sheetName ?? "Mutasi"),
-          colKey: Number(colKey) || (cfg?.colKey ?? 4),
-          colStatus: Number(colStatus) || (cfg?.colStatus ?? 5),
+          colKey: colLetterToIdx(colKey) ?? (cfg?.colKey ?? 5),
+          colStatus: colLetterToIdx(colStatus) ?? (cfg?.colStatus ?? 6),
           startRow: Number(startRow) || (cfg?.startRow ?? 2),
           hourWib: Number(hourWib),
         }),
@@ -367,8 +376,8 @@ function GSheetTab() {
   const [sheetName, setSheetName] = useState("Mutasi");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-  const [colKey, setColKey] = useState("4");
-  const [colStatus, setColStatus] = useState("5");
+  const [colKey, setColKey] = useState("F");
+  const [colStatus, setColStatus] = useState("G");
   const [startRow, setStartRow] = useState("2");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -395,7 +404,7 @@ function GSheetTab() {
           sheetName: sheetName.trim() || "Mutasi",
           dateFrom: dateFrom || undefined,
           dateTo: dateTo || undefined,
-          colKey: Number(colKey), colStatus: Number(colStatus), startRow: Number(startRow),
+          colKey: colLetterToIdx(colKey), colStatus: colLetterToIdx(colStatus), startRow: Number(startRow),
         }),
       });
       const json = await res.json();
@@ -429,9 +438,10 @@ function GSheetTab() {
           <div className="flex gap-2 text-blue-800">
             <Info className="h-4 w-4 mt-0.5 shrink-0" />
             <div className="text-sm space-y-1">
-              <p className="font-semibold">Format Google Sheet yang diharapkan:</p>
-              <p>Kolom A=Tanggal, B=Debit, C=Kredit, D=Keterangan, <strong>E=Unique Key</strong> (hasil formula GS), <strong>F=Status</strong> (akan diisi otomatis)</p>
-              <p>Unique Key format: <code className="bg-blue-100 px-1 rounded text-xs">yyyymmdd_jumlah_IN/OUT</code> — contoh: <code className="bg-blue-100 px-1 rounded text-xs">20241025_500000_IN</code></p>
+              <p className="font-semibold">Panduan pengaturan kolom Google Sheet:</p>
+              <p>Buat kolom <strong>Unique Key</strong> di sheet dengan formula GSheet, lalu set kolom tersebut di field "Kolom Unique Key" di bawah (misal: kolom F → isi <strong>F</strong>).</p>
+              <p>Format Unique Key yang dihasilkan BizPortal: <code className="bg-blue-100 px-1 rounded text-xs">yyyymmdd_jumlah_IN/OUT</code></p>
+              <p>Contoh formula di GSheet: <code className="bg-blue-100 px-1 rounded text-xs">=TEXT(A2,"yyyymmdd")&amp;"_"&amp;IF(C2&gt;0,C2,D2)&amp;"_"&amp;IF(C2&gt;0,"IN","OUT")</code> — di mana C=Debit, D=Kredit</p>
               {saEmail && (
                 <p className="mt-2 pt-2 border-t border-blue-200">
                   <strong>Sebelum mulai:</strong> Share spreadsheet ke email Service Account berikut sebagai <strong>Editor</strong>:{" "}
@@ -466,14 +476,14 @@ function GSheetTab() {
             <div><Label>Dari Tanggal</Label><DatePicker value={dateFrom} onChange={setDateFrom} /></div>
             <div><Label>Sampai Tanggal</Label><DatePicker value={dateTo} onChange={setDateTo} /></div>
             <div>
-              <Label>Kolom Unique Key (0-index)</Label>
-              <Input type="number" min={0} value={colKey} onChange={(e) => setColKey(e.target.value)} />
-              <p className="text-xs text-muted-foreground mt-1">A=0, B=1, E=4</p>
+              <Label>Kolom Unique Key</Label>
+              <Input placeholder="F" value={colKey} onChange={(e) => setColKey(e.target.value)} className="uppercase" />
+              <p className="text-xs text-muted-foreground mt-1">Huruf kolom, misal: E, F, G</p>
             </div>
             <div>
-              <Label>Kolom Status (0-index)</Label>
-              <Input type="number" min={0} value={colStatus} onChange={(e) => setColStatus(e.target.value)} />
-              <p className="text-xs text-muted-foreground mt-1">F=5</p>
+              <Label>Kolom Status (diisi otomatis)</Label>
+              <Input placeholder="G" value={colStatus} onChange={(e) => setColStatus(e.target.value)} className="uppercase" />
+              <p className="text-xs text-muted-foreground mt-1">Kolom yang akan ditulis hasilnya</p>
             </div>
           </div>
           <div className="flex items-end gap-4">
