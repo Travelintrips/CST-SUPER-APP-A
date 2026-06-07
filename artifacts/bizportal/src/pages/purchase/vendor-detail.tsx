@@ -440,7 +440,8 @@ export default function VendorDetailPage() {
   };
 
   const saveInlineEdit = async (itemId: number) => {
-    const val = parseFloat(inlineEditValue.replace(/[^0-9.]/g, ""));
+    if (inlineSaving) return;
+    const val = parseFloat(inlineEditValue.replace(/[^0-9]/g, ""));
     if (isNaN(val) || val < 0) { setInlineEditId(null); return; }
     setInlineSaving(true);
     try {
@@ -906,11 +907,11 @@ export default function VendorDetailPage() {
                             <div className="flex items-center justify-end gap-1">
                               <input
                                 autoFocus
-                                type="number"
-                                min={0}
+                                type="text"
+                                inputMode="numeric"
                                 className="w-28 text-right border rounded px-1.5 py-0.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-primary"
                                 value={inlineEditValue}
-                                onChange={(e) => setInlineEditValue(e.target.value)}
+                                onChange={(e) => setInlineEditValue(e.target.value.replace(/[^0-9.]/g, ""))}
                                 onKeyDown={(e) => {
                                   if (e.key === "Enter") saveInlineEdit(item.id);
                                   if (e.key === "Escape") setInlineEditId(null);
