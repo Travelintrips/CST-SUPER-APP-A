@@ -48,7 +48,7 @@ import {
 } from "@workspace/api-client-react";
 import type { Supplier, VendorCatalogItem } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Car, Link2, Pencil, Plus, Power, PowerOff, RotateCcw, Search, Tag, Trash2, Upload, X } from "lucide-react";
+import { ArrowLeft, Car, CheckSquare, Link2, Pencil, Plus, Power, PowerOff, RotateCcw, Search, Tag, Trash2, Upload, X } from "lucide-react";
 import { useUpload } from "@workspace/object-storage-web";
 
 const SERVICE_TYPES = [
@@ -232,6 +232,8 @@ export default function VendorDetailPage() {
   const [editingItem, setEditingItem] = useState<VendorCatalogItem | null>(null);
   const [itemForm, setItemForm] = useState<CatalogForm>(emptyCatalogForm());
   const [masterItemSearch, setMasterItemSearch] = useState("");
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkResetting, setBulkResetting] = useState(false);
 
   const [linkOpen, setLinkOpen] = useState(false);
   const [linkingItem, setLinkingItem] = useState<VendorCatalogItem | null>(null);
@@ -408,6 +410,50 @@ export default function VendorDetailPage() {
       toast({ title: "Override harga jual dihapus" });
     } catch (e) {
       toast({ title: t.common.error, description: String(e), variant: "destructive" });
+    }
+  };
+
+  const bulkResetOverride = async () => {
+    const targets = (filteredCatalog as any[]).filter(
+      (i) => selectedIds.has(i.id) && i.priceSellOverride != null
+    );
+    if (targets.length === 0) return;
+    if (!confirm(`Reset override harga jual untuk ${targets.length} item?`)) return;
+    setBulkResetting(true);
+    try {
+      await Promise.all(
+        targets.map((i) =>
+          updateItem.mutateAsync({ itemId: i.id, data: { priceSellOverride: null } as any })
+        )
+      );
+      await qc.invalidateQueries({ queryKey: getListVendorCatalogQueryKey(vendorId) });
+      setSelectedIds(new Set());
+      toast({ title: `${targets.length} override berhasil dihapus` });
+    } catch (e) {
+      toast({ title: t.common.error, description: String(e), variant: "destructive" });
+    } finally {
+      setBulkResetting(false);
+    }
+  };
+
+  const overrideItemsInView = (filteredCatalog as any[]).filter((i) => i.priceSellOverride != null);
+  const selectedOverrideIds = overrideItemsInView.filter((i) => selectedIds.has(i.id));
+  const allOverrideSelected = overrideItemsInView.length > 0 && selectedOverrideIds.length === overrideItemsInView.length;
+
+  const toggleSelectItem = (id: number, hasOverride: boolean) => {
+    if (!hasOverride) return;
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (allOverrideSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(overrideItemsInView.map((i) => i.id)));
     }
   };
 
@@ -739,9 +785,49 @@ export default function VendorDetailPage() {
             {catalogLoading ? (
               <p className="text-center text-muted-foreground py-8 text-sm">Memuat...</p>
             ) : (
+              <>
+                {/* ── Bulk action bar — muncul hanya jika ada yang dipilih ── */}
+                {selectedIds.size > 0 && (
+                  <div className="flex items-center gap-3 mb-3 px-3 py-2 rounded-md bg-blue-50 border border-blue-200">
+                    <CheckSquare className="h-4 w-4 text-blue-600 shrink-0" />
+                    <span className="text-sm text-blue-800 flex-1">
+                      <strong>{selectedIds.size}</strong> item dipilih
+                      {selectedOverrideIds.length > 0 && ` (${selectedOverrideIds.length} punya override)`}
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs border-blue-300 text-blue-700 hover:bg-blue-100"
+                      onClick={bulkResetOverride}
+                      disabled={bulkResetting || selectedOverrideIds.length === 0}
+                    >
+                      <RotateCcw className="h-3 w-3 mr-1" />
+                      {bulkResetting ? "Mereset..." : `Reset Override (${selectedOverrideIds.length})`}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 text-xs text-muted-foreground"
+                      onClick={() => setSelectedIds(new Set())}
+                    >
+                      <X className="h-3 w-3 mr-1" /> Batal
+                    </Button>
+                  </div>
+                )}
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-8">
+                      {overrideItemsInView.length > 0 && (
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 rounded border-gray-300 cursor-pointer accent-blue-600"
+                          checked={allOverrideSelected}
+                          onChange={toggleSelectAll}
+                          title="Pilih semua item dengan override"
+                        />
+                      )}
+                    </TableHead>
                     <TableHead>Nama</TableHead>
                     <TableHead>Kategori</TableHead>
                     <TableHead>Tipe</TableHead>
@@ -759,8 +845,20 @@ export default function VendorDetailPage() {
                     const priceBase = Number(item.priceBase ?? 0);
                     const priceSell = (item as any).priceSell as number | null;
                     const profit = (item as any).profit as number | null;
+                    const hasOverride = (item as any).priceSellOverride != null;
+                    const isSelected = selectedIds.has(item.id);
                     return (
-                      <TableRow key={item.id}>
+                      <TableRow key={item.id} className={isSelected ? "bg-blue-50/50" : undefined}>
+                        <TableCell className="w-8">
+                          {hasOverride && (
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 rounded border-gray-300 cursor-pointer accent-blue-600"
+                              checked={isSelected}
+                              onChange={() => toggleSelectItem(item.id, hasOverride)}
+                            />
+                          )}
+                        </TableCell>
                         <TableCell>
                           <p className="font-medium">{item.name}</p>
                           {item.description && (
@@ -843,7 +941,7 @@ export default function VendorDetailPage() {
                   })}
                   {filteredCatalog.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={10} className="text-center text-muted-foreground py-10">
+                      <TableCell colSpan={11} className="text-center text-muted-foreground py-10">
                         {(catalogSearch || filterKategoriCatalog !== "all" || filterSubcatCatalog !== "all")
                           ? "Tidak ada item yang cocok dengan filter."
                           : <>Belum ada item. Klik <strong>Tambah Item</strong> untuk mulai mengisi etalase.</>}
@@ -852,6 +950,7 @@ export default function VendorDetailPage() {
                   )}
                 </TableBody>
               </Table>
+              </>
             )}
           </CardContent>
         </Card>
