@@ -369,6 +369,13 @@ function ScheduleCard({ spreadsheetId, sheetName, colKey, colStatus, startRow }:
   );
 }
 
+// Konversi 0-index → huruf kolom (0=A, 5=F, dst)
+function colIdxToLetter(n: number): string {
+  let s = ""; let col = n;
+  while (col >= 0) { s = String.fromCharCode((col % 26) + 65) + s; col = Math.floor(col / 26) - 1; }
+  return s;
+}
+
 // ─── Tab: Google Sheets ───────────────────────────────────────────────────────
 
 function GSheetTab() {
@@ -380,17 +387,53 @@ function GSheetTab() {
   const [colStatus, setColStatus] = useState("G");
   const [startRow, setStartRow] = useState("2");
   const [loading, setLoading] = useState(false);
+  const [configLoaded, setConfigLoaded] = useState(false);
+  const [savingConfig, setSavingConfig] = useState(false);
+  const [configSaved, setConfigSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<RekonResponse | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [saEmail, setSaEmail] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/accounting/gsheet/sa-email", { credentials: "include" })
-      .then((r) => r.json())
-      .then((j) => { if (j.email) setSaEmail(j.email as string); })
-      .catch(() => {});
+    Promise.all([
+      fetch("/api/accounting/gsheet/sa-email", { credentials: "include" }).then((r) => r.json()).catch(() => ({})),
+      fetch("/api/accounting/rekon-schedule", { credentials: "include" }).then((r) => r.json()).catch(() => ({})),
+    ]).then(([emailData, scheduleData]) => {
+      if ((emailData as { email?: string }).email) setSaEmail((emailData as { email: string }).email);
+      const cfg = (scheduleData as { config?: ScheduleConfig }).config;
+      if (cfg?.spreadsheetId) setSpreadsheetId(cfg.spreadsheetId);
+      if (cfg?.sheetName) setSheetName(cfg.sheetName);
+      if (cfg?.colKey != null) setColKey(colIdxToLetter(cfg.colKey));
+      if (cfg?.colStatus != null) setColStatus(colIdxToLetter(cfg.colStatus));
+      if (cfg?.startRow != null) setStartRow(String(cfg.startRow));
+      setConfigLoaded(true);
+    });
   }, []);
+
+  async function handleSaveConfig() {
+    setSavingConfig(true); setConfigSaved(false);
+    try {
+      const existRes = await fetch("/api/accounting/rekon-schedule", { credentials: "include" });
+      const existJson = await existRes.json() as { config?: ScheduleConfig };
+      const existing = existJson.config;
+      await fetch("/api/accounting/rekon-schedule", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          enabled: existing?.enabled ?? false,
+          spreadsheetId: spreadsheetId.trim(),
+          sheetName: sheetName.trim() || "Mutasi",
+          colKey: colLetterToIdx(colKey),
+          colStatus: colLetterToIdx(colStatus),
+          startRow: Number(startRow) || 2,
+          hourWib: existing?.hourWib ?? 2,
+        }),
+      });
+      setConfigSaved(true);
+      setTimeout(() => setConfigSaved(false), 3000);
+    } catch { /* non-fatal */ } finally { setSavingConfig(false); }
+  }
 
   async function handleRun() {
     if (!spreadsheetId.trim()) { setError("Spreadsheet ID wajib diisi"); return; }
@@ -492,7 +535,11 @@ function GSheetTab() {
               <Input type="number" min={1} value={startRow} onChange={(e) => setStartRow(e.target.value)} />
               <p className="text-xs text-muted-foreground mt-1">Skip baris header</p>
             </div>
-            <div className="flex-1 flex items-center justify-end gap-2">
+            <div className="flex-1 flex items-center justify-end gap-2 flex-wrap">
+              <Button variant="outline" size="sm" onClick={handleSaveConfig} disabled={savingConfig || !spreadsheetId.trim()} className="gap-1.5">
+                {savingConfig ? <><RefreshCw className="h-3.5 w-3.5 animate-spin" />Menyimpan...</> : <><Save className="h-3.5 w-3.5" />Simpan Konfigurasi</>}
+              </Button>
+              {configSaved && <span className="text-xs text-emerald-600 font-medium">✓ Tersimpan</span>}
               {result && <Button variant="outline" size="sm" onClick={handleExport}><Download className="h-4 w-4 mr-1.5" />Export XLSX</Button>}
               <Button onClick={handleRun} disabled={loading} className="min-w-44">
                 {loading
@@ -501,6 +548,9 @@ function GSheetTab() {
               </Button>
             </div>
           </div>
+          {configLoaded && !spreadsheetId && (
+            <p className="text-xs text-amber-600 flex items-center gap-1"><AlertTriangle className="h-3.5 w-3.5" />Belum ada konfigurasi tersimpan. Isi Spreadsheet ID lalu klik Simpan Konfigurasi.</p>
+          )}
           {error && (
             <div className="p-3 rounded-md bg-red-50 border border-red-200 text-red-700 text-sm flex gap-2">
               <XCircle className="h-4 w-4 mt-0.5 shrink-0" />{error}
