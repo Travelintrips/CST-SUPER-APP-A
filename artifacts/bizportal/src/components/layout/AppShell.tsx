@@ -356,6 +356,7 @@ export function AppShell({ children, noPadding }: AppShellProps) {
       icon: BookOpen,
       roles: ["admin", "owner"],
       children: [
+        { titleKey: "Dashboard Akuntansi", href: "/accounting/dashboard", icon: BarChart2 },
         { titleKey: "chartOfAccounts", href: "/accounting/accounts", icon: Landmark },
         { titleKey: "journals", href: "/accounting/journals", icon: BookOpen },
         { titleKey: "journalEntry", href: "/accounting/entries", icon: FileText },

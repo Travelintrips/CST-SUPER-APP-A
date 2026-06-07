@@ -66,6 +66,7 @@ import ReportsMainPage from "@/pages/reports/main";
 import AuditLogPage from "@/pages/reports/audit-log";
 import InventoryValuationPage from "@/pages/reports/inventory-valuation";
 // Accounting
+import AccountingDashboardPage from "@/pages/accounting/dashboard";
 import AccountingAccountsPage from "@/pages/accounting/accounts";
 import AccountingJournalsPage from "@/pages/accounting/journals";
 import AccountingTaxesPage from "@/pages/accounting/taxes";
@@ -302,6 +303,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/reports/inventory-valuation" component={PR(InventoryValuationPage)} />
 
       {/* ── Accounting ─────────────────────────────────────────────────── */}
+      <Route path="/accounting/dashboard" component={PR(AccountingDashboardPage)} />
       <Route path="/accounting/accounts" component={PR(AccountingAccountsPage)} />
       <Route path="/accounting/journals" component={PR(AccountingJournalsPage)} />
       <Route path="/accounting/taxes" component={PR(AccountingTaxesPage)} />
