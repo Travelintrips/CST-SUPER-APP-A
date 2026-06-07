@@ -854,6 +854,7 @@ export default function VendorDetailPage() {
                     <TableHead className="text-right">Harga Dasar</TableHead>
                     <TableHead className="text-right">Harga Jual</TableHead>
                     <TableHead className="text-right">Profit</TableHead>
+                    <TableHead className="text-right">Margin %</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Tag</TableHead>
                     <TableHead className="w-[90px] text-right">Aksi</TableHead>
@@ -864,6 +865,7 @@ export default function VendorDetailPage() {
                     const priceBase = Number(item.priceBase ?? 0);
                     const priceSell = (item as any).priceSell as number | null;
                     const profit = (item as any).profit as number | null;
+                    const profitPct = (profit != null && priceBase > 0) ? (profit / priceBase) * 100 : null;
                     const hasOverride = (item as any).priceSellOverride != null;
                     const isSelected = selectedIds.has(item.id);
                     return (
@@ -945,6 +947,20 @@ export default function VendorDetailPage() {
                             ? <span className={profit >= 0 ? "text-green-600" : "text-destructive"}>{fmt(profit)}</span>
                             : <span className="text-muted-foreground/40">—</span>}
                         </TableCell>
+                        <TableCell className="text-right text-sm font-semibold">
+                          {profitPct != null ? (
+                            <span className={
+                              profitPct >= 20 ? "text-green-600" :
+                              profitPct >= 10 ? "text-amber-600" :
+                              profitPct >= 0  ? "text-orange-500" :
+                              "text-destructive"
+                            }>
+                              {profitPct.toFixed(1)}%
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground/40">—</span>
+                          )}
+                        </TableCell>
                         <TableCell>
                           {item.isActive
                             ? <Badge className="bg-green-100 text-green-800 hover:bg-green-100 text-xs">Aktif</Badge>
@@ -989,7 +1005,7 @@ export default function VendorDetailPage() {
                   })}
                   {filteredCatalog.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={11} className="text-center text-muted-foreground py-10">
+                      <TableCell colSpan={12} className="text-center text-muted-foreground py-10">
                         {(catalogSearch || filterKategoriCatalog !== "all" || filterSubcatCatalog !== "all")
                           ? "Tidak ada item yang cocok dengan filter."
                           : <>Belum ada item. Klik <strong>Tambah Item</strong> untuk mulai mengisi etalase.</>}
