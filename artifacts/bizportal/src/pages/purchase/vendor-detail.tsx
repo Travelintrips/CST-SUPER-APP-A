@@ -48,7 +48,7 @@ import {
 } from "@workspace/api-client-react";
 import type { Supplier, VendorCatalogItem } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Car, Link2, Pencil, Plus, Power, PowerOff, Search, Tag, Trash2, Upload, X } from "lucide-react";
+import { ArrowLeft, Car, Link2, Pencil, Plus, Power, PowerOff, RotateCcw, Search, Tag, Trash2, Upload, X } from "lucide-react";
 import { useUpload } from "@workspace/object-storage-web";
 
 const SERVICE_TYPES = [
@@ -394,6 +394,18 @@ export default function VendorDetailPage() {
         old ? old.filter((i) => i.id !== itemId) : []
       );
       toast({ title: t.common.success });
+    } catch (e) {
+      toast({ title: t.common.error, description: String(e), variant: "destructive" });
+    }
+  };
+
+  const resetOverride = async (item: VendorCatalogItem) => {
+    try {
+      const updated = await updateItem.mutateAsync({ itemId: item.id, data: { priceSellOverride: null } as any });
+      qc.setQueryData<VendorCatalogItem[]>(getListVendorCatalogQueryKey(vendorId), (old) =>
+        old ? old.map((i) => (i.id === updated.id ? { ...i, priceSellOverride: null, priceSell: (updated as any).priceSell } : i)) : [updated]
+      );
+      toast({ title: "Override harga jual dihapus" });
     } catch (e) {
       toast({ title: t.common.error, description: String(e), variant: "destructive" });
     }
@@ -806,6 +818,17 @@ export default function VendorDetailPage() {
                               onClick={() => openLinkItem(item)}
                             >
                               <Link2 className="h-4 w-4 text-amber-500" />
+                            </Button>
+                          )}
+                          {(item as any).priceSellOverride != null && (
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              title="Reset override harga jual"
+                              onClick={() => resetOverride(item)}
+                              disabled={updateItem.isPending}
+                            >
+                              <RotateCcw className="h-4 w-4 text-blue-500" />
                             </Button>
                           )}
                           <Button size="icon" variant="ghost" onClick={() => openEditItem(item)}>
