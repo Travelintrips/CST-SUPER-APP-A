@@ -118,6 +118,21 @@ export async function readSheet(
   return (res.data.values ?? []) as string[][];
 }
 
+export async function batchUpdateSheet(
+  spreadsheetId: string,
+  updates: Array<{ range: string; values: string[][] }>,
+): Promise<void> {
+  if (updates.length === 0) return;
+  const sheets = getSheetsClient();
+  await sheets.spreadsheets.values.batchUpdate({
+    spreadsheetId,
+    requestBody: {
+      data: updates,
+      valueInputOption: "USER_ENTERED",
+    },
+  });
+}
+
 // Ekspor ke spreadsheet baru dan kembalikan URL-nya
 // Berguna untuk export sekali pakai (logistic orders, dll) tanpa setup permanen
 export async function exportToNewSpreadsheet(
