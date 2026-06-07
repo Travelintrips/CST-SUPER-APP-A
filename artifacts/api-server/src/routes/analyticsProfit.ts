@@ -9,6 +9,14 @@ router.use(requireAdmin);
 
 // ── Per Order ─────────────────────────────────────────────────────────────
 // GET /api/analytics/profitability/orders?limit=50&offset=0&search=&dateFrom=&dateTo=&companyId=
+//
+// Formula (Phase 1 fix):
+//   Revenue      = logistic_orders.grand_total
+//   Vendor Cost  = approved vendor quote (logistic_order_quotes.vendor_price via MAX per order)
+//   Truck Cost   = logistic_orders.truck_price
+//   Tax          = logistic_orders.tax
+//   Gross Margin = Revenue - Vendor Cost - Truck Cost
+//   Margin %     = Gross Margin / Revenue * 100
 router.get("/orders", async (req, res) => {
   const limit = Math.min(Number(req.query.limit ?? 50), 200);
   const offset = Number(req.query.offset ?? 0);
@@ -22,7 +30,8 @@ router.get("/orders", async (req, res) => {
     const rows = await db.execute<{
       id: string; order_number: string; customer_name: string;
       created_at: string; status: string; origin: string; destination: string;
-      revenue: string; vendor_cost: string; margin: string; margin_pct: string;
+      revenue: string; vendor_cost: string; truck_cost: string; tax: string;
+      gross_margin: string; margin_pct: string;
       vendor_name: string | null;
     }>(sql`
       SELECT
@@ -31,18 +40,24 @@ router.get("/orders", async (req, res) => {
         lo.customer_name,
         lo.created_at::text,
         lo.status,
-        COALESCE(lo.origin, '') AS origin,
-        COALESCE(lo.destination, '') AS destination,
-        lo.grand_total::numeric                                         AS revenue,
-        COALESCE(loq_agg.vendor_cost, 0)::numeric                      AS vendor_cost,
-        (lo.grand_total::numeric - COALESCE(loq_agg.vendor_cost, 0))   AS margin,
+        COALESCE(lo.origin, '')                                                   AS origin,
+        COALESCE(lo.destination, '')                                              AS destination,
+        lo.grand_total::numeric                                                   AS revenue,
+        COALESCE(loq_agg.vendor_cost, 0)::numeric                                AS vendor_cost,
+        COALESCE(lo.truck_price::numeric, 0)                                     AS truck_cost,
+        COALESCE(lo.tax::numeric, 0)                                             AS tax,
+        (lo.grand_total::numeric
+          - COALESCE(loq_agg.vendor_cost, 0)
+          - COALESCE(lo.truck_price::numeric, 0))                                AS gross_margin,
         CASE WHEN lo.grand_total::numeric > 0
           THEN ROUND(
-            (lo.grand_total::numeric - COALESCE(loq_agg.vendor_cost, 0))
+            (lo.grand_total::numeric
+              - COALESCE(loq_agg.vendor_cost, 0)
+              - COALESCE(lo.truck_price::numeric, 0))
             / lo.grand_total::numeric * 100, 1)
           ELSE 0
-        END                                                             AS margin_pct,
-        s.name                                                          AS vendor_name
+        END                                                                       AS margin_pct,
+        s.name                                                                    AS vendor_name
       FROM logistic_orders lo
       LEFT JOIN (
         SELECT order_id, MAX(vendor_price::numeric) AS vendor_cost
@@ -79,7 +94,11 @@ router.get("/orders", async (req, res) => {
         destination: r.destination,
         revenue: Number(r.revenue),
         vendorCost: Number(r.vendor_cost),
-        margin: Number(r.margin),
+        truckCost: Number(r.truck_cost),
+        tax: Number(r.tax),
+        grossMargin: Number(r.gross_margin),
+        // legacy alias kept for backward compat
+        margin: Number(r.gross_margin),
         marginPct: Number(r.margin_pct),
         vendorName: r.vendor_name ?? null,
       })),
@@ -95,6 +114,10 @@ router.get("/orders", async (req, res) => {
 
 // ── Per Customer ──────────────────────────────────────────────────────────
 // GET /api/analytics/profitability/customers?companyId=&dateFrom=&dateTo=
+//
+// Formula (Phase 1 fix):
+//   Profit = SUM(grand_total - vendor_cost - truck_price)
+//   Profitability % = Profit / Revenue * 100
 router.get("/customers", async (req, res) => {
   const dateFrom = req.query.dateFrom ? new Date(String(req.query.dateFrom)) : null;
   const dateTo = req.query.dateTo ? new Date(String(req.query.dateTo)) : null;
@@ -104,25 +127,33 @@ router.get("/customers", async (req, res) => {
   try {
     const rows = await db.execute<{
       customer_name: string; order_count: string; revenue: string;
-      outstanding: string; profit: string; profitability_pct: string;
+      outstanding: string; vendor_cost: string; truck_cost: string; tax: string;
+      profit: string; profitability_pct: string;
     }>(sql`
       SELECT
         lo.customer_name,
-        COUNT(lo.id)::text                                                       AS order_count,
-        SUM(lo.grand_total::numeric)::text                                       AS revenue,
+        COUNT(lo.id)::text                                                                   AS order_count,
+        SUM(lo.grand_total::numeric)::text                                                   AS revenue,
         SUM(
           CASE WHEN lo.status NOT IN (
             'Completed','completed','Delivered','delivered','Done','done'
           ) THEN lo.grand_total::numeric ELSE 0 END
-        )::text                                                                  AS outstanding,
-        SUM(lo.grand_total::numeric - COALESCE(loq_agg.vendor_cost,0))::text    AS profit,
+        )::text                                                                              AS outstanding,
+        SUM(COALESCE(loq_agg.vendor_cost, 0))::text                                         AS vendor_cost,
+        SUM(COALESCE(lo.truck_price::numeric, 0))::text                                     AS truck_cost,
+        SUM(COALESCE(lo.tax::numeric, 0))::text                                             AS tax,
+        SUM(lo.grand_total::numeric
+          - COALESCE(loq_agg.vendor_cost, 0)
+          - COALESCE(lo.truck_price::numeric, 0))::text                                     AS profit,
         ROUND(
           CASE WHEN SUM(lo.grand_total::numeric) > 0
-            THEN SUM(lo.grand_total::numeric - COALESCE(loq_agg.vendor_cost,0))
+            THEN SUM(lo.grand_total::numeric
+              - COALESCE(loq_agg.vendor_cost, 0)
+              - COALESCE(lo.truck_price::numeric, 0))
               / SUM(lo.grand_total::numeric) * 100
             ELSE 0
           END, 1
-        )::text                                                                  AS profitability_pct
+        )::text                                                                              AS profitability_pct
       FROM logistic_orders lo
       LEFT JOIN (
         SELECT order_id, MAX(vendor_price::numeric) AS vendor_cost
@@ -142,6 +173,9 @@ router.get("/customers", async (req, res) => {
       orderCount: Number(r.order_count),
       revenue: Number(r.revenue),
       outstanding: Number(r.outstanding),
+      vendorCost: Number(r.vendor_cost),
+      truckCost: Number(r.truck_cost),
+      tax: Number(r.tax),
       profit: Number(r.profit),
       profitabilityPct: Number(r.profitability_pct),
     })));
@@ -153,6 +187,7 @@ router.get("/customers", async (req, res) => {
 
 // ── Per Vendor ────────────────────────────────────────────────────────────
 // GET /api/analytics/profitability/vendors?companyId=&dateFrom=&dateTo=
+// (Vendor analytics: spend, win rate, performance — not CST margin)
 router.get("/vendors", async (req, res) => {
   const dateFrom = req.query.dateFrom ? new Date(String(req.query.dateFrom)) : null;
   const dateTo = req.query.dateTo ? new Date(String(req.query.dateTo)) : null;

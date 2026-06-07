@@ -2293,8 +2293,13 @@ router.get("/reports/balance-sheet", async (req, res) => {
 
 /**
  * GET /accounting/reports/freight-profitability
- * Laporan profitabilitas per shipment VMF:
- * Revenue (SO.grand_total) vs Biaya Vendor (approved quote vendor_price) = Gross Margin
+ * Laporan profitabilitas per shipment VMF (Phase 1 fix):
+ *   Revenue      = sales_documents.grand_total
+ *   Vendor Cost  = logistic_order_quotes.vendor_price (approved quote)
+ *   Truck Cost   = logistic_orders.truck_price
+ *   Tax          = logistic_orders.tax
+ *   Gross Margin = Revenue - Vendor Cost - Truck Cost
+ *   Margin %     = Gross Margin / Revenue * 100
  */
 router.get("/reports/freight-profitability", async (req, res) => {
   if (!(await requireAdmin(req, res))) return;
@@ -2321,19 +2326,21 @@ router.get("/reports/freight-profitability", async (req, res) => {
 
   const rows = await db.execute(sql.raw(`
     SELECT
-      sd.id                                        AS so_id,
-      sd.doc_number                                AS so_number,
-      sd.status                                    AS so_status,
+      sd.id                                                   AS so_id,
+      sd.doc_number                                           AS so_number,
+      sd.status                                               AS so_status,
       sd.customer_name,
-      sd.grand_total                               AS revenue,
+      sd.grand_total                                          AS revenue,
       sd.created_at,
       lo.order_number,
       lo.origin,
       lo.destination,
       lo.shipment_type,
       lo.transport_mode,
-      COALESCE(loq.vendor_price, 0)                AS vendor_cost,
-      s.name                                       AS vendor_name
+      COALESCE(loq.vendor_price, 0)                          AS vendor_cost,
+      COALESCE(lo.truck_price, 0)                            AS truck_cost,
+      COALESCE(lo.tax, 0)                                    AS tax,
+      s.name                                                  AS vendor_name
     FROM sales_documents sd
     JOIN logistic_orders lo ON lo.id = sd.logistic_order_id
     LEFT JOIN logistic_order_quotes loq ON loq.id = lo.approved_quote_id
@@ -2348,14 +2355,17 @@ router.get("/reports/freight-profitability", async (req, res) => {
     customer_name: string; revenue: string; created_at: string;
     order_number: string; origin: string; destination: string;
     shipment_type: string; transport_mode: string | null;
-    vendor_cost: string; vendor_name: string | null;
+    vendor_cost: string; truck_cost: string; tax: string;
+    vendor_name: string | null;
   };
 
   const items = (rows.rows as Row[]).map((r) => {
-    const revenue    = Math.round(Number(r.revenue    ?? 0) * 100) / 100;
+    const revenue    = Math.round(Number(r.revenue     ?? 0) * 100) / 100;
     const vendorCost = Math.round(Number(r.vendor_cost ?? 0) * 100) / 100;
-    const margin     = Math.round((revenue - vendorCost) * 100) / 100;
-    const marginPct  = revenue > 0 ? Math.round((margin / revenue) * 10000) / 100 : 0;
+    const truckCost  = Math.round(Number(r.truck_cost  ?? 0) * 100) / 100;
+    const tax        = Math.round(Number(r.tax         ?? 0) * 100) / 100;
+    const grossMargin = Math.round((revenue - vendorCost - truckCost) * 100) / 100;
+    const marginPct   = revenue > 0 ? Math.round((grossMargin / revenue) * 10000) / 100 : 0;
     return {
       soId: Number(r.so_id),
       soNumber: r.so_number,
@@ -2369,7 +2379,11 @@ router.get("/reports/freight-profitability", async (req, res) => {
       vendorName: r.vendor_name ?? null,
       revenue,
       vendorCost,
-      margin,
+      truckCost,
+      tax,
+      grossMargin,
+      // legacy alias
+      margin: grossMargin,
       marginPct,
       createdAt: r.created_at,
     };
@@ -2377,13 +2391,18 @@ router.get("/reports/freight-profitability", async (req, res) => {
 
   const totalRevenue    = Math.round(items.reduce((s, r) => s + r.revenue,    0) * 100) / 100;
   const totalVendorCost = Math.round(items.reduce((s, r) => s + r.vendorCost, 0) * 100) / 100;
-  const totalMargin     = Math.round((totalRevenue - totalVendorCost) * 100) / 100;
+  const totalTruckCost  = Math.round(items.reduce((s, r) => s + r.truckCost,  0) * 100) / 100;
+  const totalTax        = Math.round(items.reduce((s, r) => s + r.tax,        0) * 100) / 100;
+  const totalMargin     = Math.round((totalRevenue - totalVendorCost - totalTruckCost) * 100) / 100;
   const totalMarginPct  = totalRevenue > 0 ? Math.round((totalMargin / totalRevenue) * 10000) / 100 : 0;
 
   return res.json({
     from: fromDate?.toISOString() ?? null,
     to:   toDate?.toISOString()   ?? null,
-    summary: { totalRevenue, totalVendorCost, totalMargin, totalMarginPct, count: items.length },
+    summary: {
+      totalRevenue, totalVendorCost, totalTruckCost, totalTax,
+      totalMargin, totalMarginPct, count: items.length,
+    },
     items,
   });
 });
