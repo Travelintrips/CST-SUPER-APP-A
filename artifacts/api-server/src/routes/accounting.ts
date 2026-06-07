@@ -3097,7 +3097,7 @@ router.get("/rekon-schedule", async (req, res) => {
     .from(accountingSettingsTable)
     .where(companyId ? eq(accountingSettingsTable.companyId, companyId) : isNull(accountingSettingsTable.companyId));
   const meta = (settings?.meta ?? {}) as Record<string, unknown>;
-  return res.json({ config: meta.rekonSchedule ?? null });
+  return res.json({ config: meta.rekonSchedule ?? null, lastManualRekonAt: meta.lastManualRekonAt ?? null });
 });
 
 // POST /accounting/rekon-schedule — simpan/update konfigurasi jadwal
@@ -3897,6 +3897,23 @@ router.post("/rekonsiliasi-gsheet", async (req, res) => {
   }
 
   await batchUpdateSheet(spreadsheetId, updateRequests);
+
+  // Simpan lastManualRekonAt ke meta
+  (async () => {
+    try {
+      const [existingRow] = await db
+        .select({ id: accountingSettingsTable.id, meta: accountingSettingsTable.meta })
+        .from(accountingSettingsTable)
+        .where(companyId ? eq(accountingSettingsTable.companyId, companyId) : isNull(accountingSettingsTable.companyId));
+      const baseMeta = (existingRow?.meta ?? {}) as Record<string, unknown>;
+      const newMeta = { ...baseMeta, lastManualRekonAt: new Date().toISOString() };
+      if (existingRow) {
+        await db.update(accountingSettingsTable).set({ meta: newMeta }).where(eq(accountingSettingsTable.id, existingRow.id));
+      } else {
+        await db.insert(accountingSettingsTable).values({ companyId: companyId ?? null, meta: newMeta } as typeof accountingSettingsTable.$inferInsert);
+      }
+    } catch { /* non-fatal */ }
+  })();
 
   const matched = results.filter((r) => r.status.startsWith("✅")).length;
   const duplicate = results.filter((r) => r.status.startsWith("⚠️")).length;

@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useCodeCheck } from "@/hooks/useCodeCheck";
 import { CodeCheckIndicator } from "@/components/ui/code-check-indicator";
 import { AppShell } from "@/components/layout/AppShell";
@@ -30,7 +30,8 @@ import {
 } from "@workspace/api-client-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCompany } from "@/contexts/CompanyContext";
-import { Pencil, Plus, Trash2, Landmark, Search, ChevronRight, ChevronDown, ChevronsUpDown, Check } from "lucide-react";
+import { Pencil, Plus, Trash2, Landmark, Search, ChevronRight, ChevronDown, ChevronsUpDown, Check, GitMerge, Clock } from "lucide-react";
+import { Link } from "wouter";
 
 const TYPE_LABELS: Record<string, string> = {
   asset: "Aset",
@@ -90,6 +91,55 @@ function flattenTree(nodes: TreeNode[]): TreeNode[] {
   }
   walk(nodes);
   return result;
+}
+
+interface RekonInfo {
+  config: { lastRunDate?: string; enabled?: boolean } | null;
+  lastManualRekonAt: string | null;
+}
+
+function RekonStatusCard() {
+  const [info, setInfo] = useState<RekonInfo | null>(null);
+  useEffect(() => {
+    fetch("/api/accounting/rekon-schedule", { credentials: "include" })
+      .then((r) => r.json())
+      .then((j) => setInfo(j as RekonInfo))
+      .catch(() => {});
+  }, []);
+
+  const manualDate = info?.lastManualRekonAt
+    ? new Date(info.lastManualRekonAt).toLocaleString("id-ID", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })
+    : null;
+  const autoDate = info?.config?.lastRunDate ?? null;
+  const autoEnabled = info?.config?.enabled ?? false;
+
+  if (!info) return null;
+
+  return (
+    <Card className="border-blue-100 bg-blue-50/40">
+      <CardContent className="p-3 flex flex-wrap items-center gap-x-6 gap-y-1">
+        <div className="flex items-center gap-1.5 text-sm text-blue-800">
+          <GitMerge className="h-4 w-4 text-blue-600 shrink-0" />
+          <span className="font-medium">Rekonsiliasi Bank</span>
+        </div>
+        <div className="flex items-center gap-1 text-sm text-slate-600">
+          <Clock className="h-3.5 w-3.5 text-slate-400" />
+          <span>Manual terakhir:</span>
+          <span className="font-semibold text-slate-800">{manualDate ?? "—"}</span>
+        </div>
+        <div className="flex items-center gap-1 text-sm text-slate-600">
+          <Clock className="h-3.5 w-3.5 text-slate-400" />
+          <span>Otomatis terakhir:</span>
+          <span className="font-semibold text-slate-800">{autoDate ?? "—"}</span>
+          {autoEnabled && <span className="ml-1 text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded border border-green-200">Aktif</span>}
+          {!autoEnabled && <span className="ml-1 text-xs bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded border border-slate-200">Nonaktif</span>}
+        </div>
+        <Link href="/accounting/reconciliation" className="ml-auto text-xs text-blue-600 hover:underline font-medium">
+          Buka Rekonsiliasi →
+        </Link>
+      </CardContent>
+    </Card>
+  );
 }
 
 export default function AccountsPage() {
@@ -314,6 +364,8 @@ export default function AccountsPage() {
             </Dialog>
           </div>
         </div>
+
+        <RekonStatusCard />
 
         <Card>
           <CardContent className="p-4">
