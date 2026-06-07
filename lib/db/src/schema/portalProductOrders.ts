@@ -45,6 +45,9 @@ export const portalProductOrdersTable = pgTable("portal_product_orders", {
   vendorNameSelected: text("vendor_name_selected"),
   readyDate: text("ready_date"),
   pickupLocation: text("pickup_location"),
+  // Phase 2B-4: invoice cost breakdown
+  shipmentCost: numeric("shipment_cost", { precision: 14, scale: 2 }),
+  truckCost: numeric("truck_cost", { precision: 14, scale: 2 }),
   // Audit timestamps
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),

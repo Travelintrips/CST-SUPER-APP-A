@@ -103,6 +103,13 @@ db.execute(sql`
     ADD COLUMN IF NOT EXISTS pickup_location TEXT
 `).catch(() => {});
 
+// ── Phase 2B-4: invoice cost breakdown columns ─────────────────────────────
+db.execute(sql`
+  ALTER TABLE portal_product_orders
+    ADD COLUMN IF NOT EXISTS shipment_cost NUMERIC(14,2),
+    ADD COLUMN IF NOT EXISTS truck_cost NUMERIC(14,2)
+`).catch(() => {});
+
 // Add vendor_phone to vendor responses table
 db.execute(sql`
   ALTER TABLE portal_product_vendor_responses
@@ -186,6 +193,8 @@ function toOrder(row: OrderRow) {
     vendorNameSelected: row.vendorNameSelected ?? null,
     readyDate: row.readyDate ?? null,
     pickupLocation: row.pickupLocation ?? null,
+    shipmentCost: row.shipmentCost != null ? parseFloat(String(row.shipmentCost)) : null,
+    truckCost: row.truckCost != null ? parseFloat(String(row.truckCost)) : null,
   };
 }
 
@@ -339,18 +348,67 @@ async function maybeCreateSalesOrder(orderId: number): Promise<{ docNumber: stri
 }
 
 // ── T004: Buat invoice link untuk customer ────────────────────────────────────
+// Untuk product-first orders, breakdown: Harga Produk + Biaya Shipment + Truck Cost + PPN = Grand Total
 async function maybeCreateInvoiceLink(orderId: number): Promise<string | null> {
   const [order] = await db.select().from(portalProductOrdersTable).where(eq(portalProductOrdersTable.id, orderId));
   if (!order) return null;
   if ((order as any).invoiceToken) return (order as any).invoiceToken as string;
 
-  const items = await db.select().from(portalProductOrderItemsTable).where(eq(portalProductOrderItemsTable.orderId, orderId));
+  const items = await db.select().from(portalProductOrderItemsTable)
+    .where(eq(portalProductOrderItemsTable.orderId, orderId));
   const token = generateToken();
   const invoiceNumber = `INV-PRD-${order.orderNumber}`;
-  const subtotal = parseFloat(order.subtotal);
-  const grandTotal = parseFloat(order.grandTotal);
-  const taxAmount = Math.max(0, grandTotal - subtotal);
-  const taxRate = subtotal > 0 ? Math.round((taxAmount / subtotal) * 100) : 11;
+  const isProductFirst = order.orderType === "product_first";
+
+  type InvLineItem = { description: string; qty: number; unit: string; unitPrice: number; subtotal: number };
+
+  let lineItems: InvLineItem[];
+  let subtotal: number;
+  let grandTotal: number;
+  let taxAmount: number;
+  const taxRate = 11;
+
+  if (isProductFirst) {
+    // Product line items
+    const productLines: InvLineItem[] = items.map((i) => ({
+      description: i.productName,
+      qty: i.qty,
+      unit: i.unit ?? "pcs",
+      unitPrice: parseFloat(i.unitPrice),
+      subtotal: parseFloat(i.subtotal),
+    }));
+    const productCost = productLines.reduce((s, l) => s + l.subtotal, 0);
+
+    // Shipment & truck cost
+    const shipCost = order.shipmentCost != null ? parseFloat(order.shipmentCost) : 0;
+    const truckCostVal = order.truckCost != null ? parseFloat(order.truckCost) : 0;
+
+    lineItems = [...productLines];
+    // Always show shipment line (0 for pickup_self)
+    const isPickupSelf = order.shipmentMode === "pickup_self";
+    const shipLabel = isPickupSelf ? "Biaya Pengiriman (Ambil Sendiri)" : "Biaya Pengiriman";
+    lineItems.push({ description: shipLabel, qty: 1, unit: "ls", unitPrice: shipCost, subtotal: shipCost });
+    if (truckCostVal > 0) {
+      lineItems.push({ description: "Biaya Truk", qty: 1, unit: "ls", unitPrice: truckCostVal, subtotal: truckCostVal });
+    }
+
+    const lineTotal = productCost + shipCost + truckCostVal;
+    taxAmount = Math.round(lineTotal * taxRate / 100);
+    subtotal = lineTotal;
+    grandTotal = lineTotal + taxAmount;
+  } else {
+    // Standard order — use stored totals
+    subtotal = parseFloat(order.subtotal);
+    grandTotal = parseFloat(order.grandTotal);
+    taxAmount = Math.max(0, grandTotal - subtotal);
+    lineItems = items.map((i) => ({
+      description: i.productName,
+      qty: i.qty,
+      unit: i.unit ?? "pcs",
+      unitPrice: parseFloat(i.unitPrice),
+      subtotal: parseFloat(i.subtotal),
+    }));
+  }
 
   const dueDate = new Date();
   dueDate.setDate(dueDate.getDate() + 7);
@@ -370,13 +428,7 @@ async function maybeCreateInvoiceLink(orderId: number): Promise<string | null> {
     paymentStatus: "unpaid",
     status: "sent",
     dueDate,
-    lineItems: items.map((i) => ({
-      name: i.productName,
-      qty: i.qty,
-      unit: i.unit ?? "pcs",
-      unitPrice: parseFloat(i.unitPrice),
-      subtotal: parseFloat(i.subtotal),
-    })),
+    lineItems,
   } as any);
 
   await db.execute(sql`
@@ -384,6 +436,45 @@ async function maybeCreateInvoiceLink(orderId: number): Promise<string | null> {
   `);
 
   return token;
+}
+
+// Helper: compute breakdown amounts for product-first invoice WA
+function computeProductFirstBreakdown(
+  productSubtotal: number,
+  shipCost: number,
+  truckCostVal: number,
+  taxRate = 11,
+) {
+  const lineTotal = productSubtotal + shipCost + truckCostVal;
+  const ppn = Math.round(lineTotal * taxRate / 100);
+  return { productCost: productSubtotal, shipCost, truckCostVal, ppn, grandTotal: lineTotal + ppn };
+}
+
+function buildProductFirstInvoiceWa(
+  orderNumber: string,
+  customerName: string,
+  productSubtotal: number,
+  shipCost: number,
+  truckCostVal: number,
+  invoiceUrl: string,
+): string {
+  const fmtRp = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
+  const { ppn, grandTotal } = computeProductFirstBreakdown(productSubtotal, shipCost, truckCostVal);
+  const truckLine = truckCostVal > 0 ? `\n🚛 Biaya Truk    : ${fmtRp(truckCostVal)}` : "";
+  return (
+    `📦 *Pesanan Dikirim — ${orderNumber}*\n` +
+    `Halo ${customerName}, pesanan Anda sedang dalam pengiriman!\n\n` +
+    `🧾 *Rincian Invoice:*\n` +
+    `━━━━━━━━━━━━━━━━━━\n` +
+    `💰 Harga Produk   : ${fmtRp(productSubtotal)}\n` +
+    `🚚 Biaya Shipment : ${fmtRp(shipCost)}` +
+    truckLine + "\n" +
+    `🧾 PPN 11%        : ${fmtRp(ppn)}\n` +
+    `━━━━━━━━━━━━━━━━━━\n` +
+    `💵 *Total         : ${fmtRp(grandTotal)}*\n\n` +
+    `🔗 Cek & konfirmasi invoice:\n${invoiceUrl}\n\n` +
+    `Terima kasih telah berbelanja! 🙏`
+  );
 }
 
 // ── T001: Kurangi stok saat order dibuat (strict=false → catat tapi tidak blokir) ──
@@ -809,10 +900,19 @@ portalProductOrdersRouter.put("/orders/:id/status", async (req: Request, res: Re
         const phone = updated.phone ?? null;
         if (phone) {
           const { sendViaService } = await import("../lib/waTransport.js");
-          const msg = `📦 *Pesanan Dikirim — ${updated.orderNumber}*\n` +
-            `Halo ${updated.customerName}, pesanan Anda sedang dalam pengiriman!\n\n` +
-            `🧾 Cek & konfirmasi invoice:\n${invoiceUrl}\n\n` +
-            `Terima kasih telah berbelanja! 🙏`;
+          let msg: string;
+          if (updated.orderType === "product_first") {
+            // Breakdown WA untuk product-first
+            const productSubtotal = parseFloat(updated.subtotal ?? "0");
+            const shipCost = updated.shipmentCost != null ? parseFloat(updated.shipmentCost) : 0;
+            const truckCostVal = updated.truckCost != null ? parseFloat(updated.truckCost) : 0;
+            msg = buildProductFirstInvoiceWa(updated.orderNumber, updated.customerName, productSubtotal, shipCost, truckCostVal, invoiceUrl);
+          } else {
+            msg = `📦 *Pesanan Dikirim — ${updated.orderNumber}*\n` +
+              `Halo ${updated.customerName}, pesanan Anda sedang dalam pengiriman!\n\n` +
+              `🧾 Cek & konfirmasi invoice:\n${invoiceUrl}\n\n` +
+              `Terima kasih telah berbelanja! 🙏`;
+          }
           sendViaService(phone, msg).catch(() => undefined);
         }
         // Email fallback untuk Shipped
@@ -1088,12 +1188,88 @@ portalProductOrdersRouter.post("/orders/:id/resend-invoice", async (req: Request
   const phone = order.phone ?? null;
   if (phone) {
     const { sendViaService } = await import("../lib/waTransport.js");
-    const msg = `🧾 *Invoice Pesanan ${order.orderNumber}*\n` +
-      `Halo ${order.customerName}, berikut link invoice Anda:\n${invoiceUrl}\n\nTerima kasih! 🙏`;
+    let msg: string;
+    if (order.orderType === "product_first") {
+      const productSubtotal = parseFloat(order.subtotal ?? "0");
+      const shipCost = order.shipmentCost != null ? parseFloat(order.shipmentCost) : 0;
+      const truckCostVal = order.truckCost != null ? parseFloat(order.truckCost) : 0;
+      msg = buildProductFirstInvoiceWa(order.orderNumber, order.customerName, productSubtotal, shipCost, truckCostVal, invoiceUrl);
+    } else {
+      msg = `🧾 *Invoice Pesanan ${order.orderNumber}*\n` +
+        `Halo ${order.customerName}, berikut link invoice Anda:\n${invoiceUrl}\n\nTerima kasih! 🙏`;
+    }
     await sendViaService(phone, msg);
   }
 
   return res.json({ success: true, invoiceUrl });
+});
+
+// ── POST /api/portal-product/admin/orders/:id/set-shipment-cost ──────────────
+// Admin menetapkan biaya shipment dan truck setelah pilih vendor pengiriman.
+// Otomatis update customer_invoice_links jika invoice sudah dibuat.
+portalProductOrdersRouter.post("/admin/orders/:id/set-shipment-cost", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const id = parseInt(String(req.params.id), 10);
+  if (isNaN(id)) return res.status(400).json({ error: "ID tidak valid" });
+
+  const { shipmentCost, truckCost } = req.body as { shipmentCost?: number | null; truckCost?: number | null };
+  const shipCostNum = shipmentCost != null ? Number(shipmentCost) : 0;
+  const truckCostNum = truckCost != null ? Number(truckCost) : 0;
+
+  const [order] = await db.select().from(portalProductOrdersTable).where(eq(portalProductOrdersTable.id, id));
+  if (!order) return res.status(404).json({ error: "Order tidak ditemukan" });
+
+  // Update kolom biaya di order
+  await db.update(portalProductOrdersTable)
+    .set({
+      shipmentCost: String(shipCostNum),
+      truckCost: String(truckCostNum),
+      updatedAt: new Date(),
+    })
+    .where(eq(portalProductOrdersTable.id, id));
+
+  // Jika invoice sudah dibuat, update customer_invoice_links dengan breakdown baru
+  const invoiceToken = (order as any).invoiceToken as string | null;
+  if (invoiceToken) {
+    const productSubtotal = parseFloat(order.subtotal ?? "0");
+    const lineTotal = productSubtotal + shipCostNum + truckCostNum;
+    const ppn = Math.round(lineTotal * 11 / 100);
+    const newGrandTotal = lineTotal + ppn;
+
+    // Rebuild line items
+    const items = await db.select().from(portalProductOrderItemsTable)
+      .where(eq(portalProductOrderItemsTable.orderId, id));
+    const productLines = items.map(i => ({
+      description: i.productName,
+      qty: i.qty,
+      unit: i.unit ?? "pcs",
+      unitPrice: parseFloat(i.unitPrice),
+      subtotal: parseFloat(i.subtotal),
+    }));
+    const isPickupSelf = order.shipmentMode === "pickup_self";
+    const shipLabel = isPickupSelf ? "Biaya Pengiriman (Ambil Sendiri)" : "Biaya Pengiriman";
+    const newLineItems = [
+      ...productLines,
+      { description: shipLabel, qty: 1, unit: "ls", unitPrice: shipCostNum, subtotal: shipCostNum },
+      ...(truckCostNum > 0 ? [{ description: "Biaya Truk", qty: 1, unit: "ls", unitPrice: truckCostNum, subtotal: truckCostNum }] : []),
+    ];
+
+    await db.execute(sql`
+      UPDATE customer_invoice_links
+      SET subtotal = ${String(lineTotal)},
+          tax_amount = ${String(ppn)},
+          grand_total = ${String(newGrandTotal)},
+          line_items = ${JSON.stringify(newLineItems)}::jsonb
+      WHERE token = ${invoiceToken}
+    `);
+  }
+
+  return res.json({
+    success: true,
+    shipmentCost: shipCostNum,
+    truckCost: truckCostNum,
+    invoiceUpdated: !!invoiceToken,
+  });
 });
 
 // ── GET /api/portal-product/vendor-access/:orderNumber ──────────────────────
