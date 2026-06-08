@@ -110,6 +110,13 @@ db.execute(sql`
     ADD COLUMN IF NOT EXISTS truck_cost NUMERIC(14,2)
 `).catch(() => {});
 
+// ── Analytics / profitability fields ─────────────────────────────────────
+db.execute(sql`
+  ALTER TABLE portal_product_orders
+    ADD COLUMN IF NOT EXISTS product_price NUMERIC(14,2),
+    ADD COLUMN IF NOT EXISTS company_id INTEGER
+`).catch(() => {});
+
 // Add vendor_phone to vendor responses table
 db.execute(sql`
   ALTER TABLE portal_product_vendor_responses

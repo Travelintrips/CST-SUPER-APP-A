@@ -1,3 +1,6 @@
 - [Logistic order lifecycle flow](logistic-order-e2e-flow.md) — non-obvious transition gaps: customer approval moves RFQ not order; driver steps are matrix-gated; invoice/payment auto-triggers.
 - [Sandbox background processes](sandbox-bg-processes.md) — bg servers die between bash calls; run server+test in one wrapper .sh; avoid raw-newline multi-line bash.
+- [Sport Center paid→payments invariant](sport-center-paid-payments.md) — any path setting booking payment_status='paid' must call ensurePaymentForPaidBooking or it vanishes from Pembayaran.
 - [Paylabs integration quirks](paylabs-integration.md) — Paylabs "Conflict" usually = wrong X-TIMESTAMP (UTC mislabeled +07:00, 7h off), NOT id length; body needs productName+payer, no expire/goodsInfo.
+- [API Server rebuild gotcha](api-server-rebuild-gotcha.md) — before manual `node build.mjs`, always run `pnpm install` inside artifacts/api-server first; googleapis is an external dep that must be present in node_modules.
+- [Portal product order template validation](portal-product-template-validation.md) — POST /api/portal-product/orders defaults to "general" template which requires customFieldValues.description + customFieldValues.quantity; tests must include both.

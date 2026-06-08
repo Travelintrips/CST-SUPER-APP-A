@@ -135,7 +135,7 @@ const PUBLIC_CACHE = "public, max-age=300, stale-while-revalidate=600";
 // Set USE_PRODUCT_TEMPLATE_ENGINE=true di environment untuk mengaktifkan resolver
 // berbasis product_templates + resolveTemplate(). Bila false, fallback ke
 // commodity_templates (tabel lama) tetap dipakai.
-const USE_PRODUCT_TEMPLATE_ENGINE = process.env.USE_PRODUCT_TEMPLATE_ENGINE === "true";
+const USE_PRODUCT_TEMPLATE_ENGINE = process.env.USE_PRODUCT_TEMPLATE_ENGINE !== "false";
 
 // ── Feature flag: Service Template Engine ─────────────────────────────────────
 // Default ON. Set USE_SERVICE_TEMPLATE_ENGINE=false untuk fallback ke SERVICE_SCHEMAS saja.

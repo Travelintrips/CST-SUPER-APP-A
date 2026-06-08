@@ -2,8 +2,107 @@ import { Router } from "express";
 import { db, suppliersTable, vendorPerformanceTable, logisticOrdersTable, rfqVendorLinksTable, driverJobsTable, driversTable } from "@workspace/db";
 import { eq, and, sql, desc, inArray } from "drizzle-orm";
 import { requireClerkUser } from "../lib/requireAdmin.js";
+import { logger } from "../lib/logger.js";
 
 const router = Router();
+
+// ── Additive migration: pastikan tabel & semua kolom ada di live DB ────────────
+// Jalankan saat module di-load (idempoten via IF NOT EXISTS / IF NOT EXISTS column).
+(async () => {
+  try {
+    // 1. Buat tabel jika belum ada (schema lengkap sesuai Drizzle schema)
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS vendor_performance (
+        id                        SERIAL PRIMARY KEY,
+        vendor_id                 INTEGER NOT NULL REFERENCES suppliers(id) ON DELETE CASCADE,
+        total_orders              INTEGER NOT NULL DEFAULT 0,
+        completed_orders          INTEGER NOT NULL DEFAULT 0,
+        cancelled_orders          INTEGER NOT NULL DEFAULT 0,
+        ontime_percentage         NUMERIC(5,2) DEFAULT 0,
+        average_response_minutes  NUMERIC(10,2) DEFAULT 0,
+        pod_completeness_score    NUMERIC(5,2) DEFAULT 0,
+        eta_accuracy_score        NUMERIC(5,2) DEFAULT 0,
+        customer_rating           NUMERIC(3,2) DEFAULT 0,
+        order_success_rate        NUMERIC(5,2) DEFAULT 0,
+        cancel_rate               NUMERIC(5,2) DEFAULT 0,
+        total_complaints          INTEGER NOT NULL DEFAULT 0,
+        recommendation_score      NUMERIC(5,2) DEFAULT 0,
+        updated_at                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(vendor_id)
+      )
+    `);
+
+    // 2. Handle old schema (dashboard.ts buat tabel dengan supplier_id, bukan vendor_id)
+    //    Tambahkan kolom yang hilang secara additive.
+    const addCols: Array<[string, string]> = [
+      ["vendor_id",                "INTEGER REFERENCES suppliers(id) ON DELETE CASCADE"],
+      ["total_orders",             "INTEGER NOT NULL DEFAULT 0"],
+      ["completed_orders",         "INTEGER NOT NULL DEFAULT 0"],
+      ["cancelled_orders",         "INTEGER NOT NULL DEFAULT 0"],
+      ["ontime_percentage",        "NUMERIC(5,2) DEFAULT 0"],
+      ["average_response_minutes", "NUMERIC(10,2) DEFAULT 0"],
+      ["pod_completeness_score",   "NUMERIC(5,2) DEFAULT 0"],
+      ["eta_accuracy_score",       "NUMERIC(5,2) DEFAULT 0"],
+      ["customer_rating",          "NUMERIC(3,2) DEFAULT 0"],
+      ["order_success_rate",       "NUMERIC(5,2) DEFAULT 0"],
+      ["cancel_rate",              "NUMERIC(5,2) DEFAULT 0"],
+      ["total_complaints",         "INTEGER NOT NULL DEFAULT 0"],
+      ["recommendation_score",     "NUMERIC(5,2) DEFAULT 0"],
+    ];
+
+    for (const [col, def] of addCols) {
+      await db.execute(sql.raw(`
+        DO $$ BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'vendor_performance' AND column_name = '${col}'
+          ) THEN
+            ALTER TABLE vendor_performance ADD COLUMN ${col} ${def};
+          END IF;
+        END $$;
+      `));
+    }
+
+    // 3. Buat UNIQUE index pada vendor_id jika belum ada
+    await db.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS vendor_perf_vendor_id_key
+        ON vendor_performance(vendor_id)
+        WHERE vendor_id IS NOT NULL
+    `);
+
+    logger.info("[vendorPerformance] migration selesai");
+  } catch (err) {
+    logger.warn({ err }, "[vendorPerformance] migration warning (non-fatal)");
+  }
+})();
+
+// ── Backfill historis: panggil satu kali setelah server start ─────────────────
+export async function backfillVendorPerformance(): Promise<{ updated: number; skipped: number }> {
+  try {
+    const vendors = await db
+      .select({ id: suppliersTable.id })
+      .from(suppliersTable)
+      .where(eq(suppliersTable.isActive, true));
+
+    let updated = 0;
+    let skipped = 0;
+
+    for (const v of vendors) {
+      try {
+        await recalcVendorPerformance(v.id);
+        updated++;
+      } catch {
+        skipped++;
+      }
+    }
+
+    logger.info({ updated, skipped }, "[vendorPerformance] backfill selesai");
+    return { updated, skipped };
+  } catch (err) {
+    logger.error({ err }, "[vendorPerformance] backfill error");
+    return { updated: 0, skipped: 0 };
+  }
+}
 
 router.use(async (req, res, next) => {
   const ok = await requireClerkUser(req, res);

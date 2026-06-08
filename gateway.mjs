@@ -37,6 +37,7 @@ const RETRYABLE_CODES = new Set(["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "ENO
 
 const API_PORT            = Number(process.env.API_PORT            ?? 8080);
 const BIZPORTAL_PORT      = Number(process.env.BIZPORTAL_PORT      ?? 18442);
+const BIZPORTAL_PORT      = Number(process.env.BIZPORTAL_PORT      ?? 6800);
 const CUSTOMER_PORT       = Number(process.env.CUSTOMER_PORT       ?? 23434);
 const LOGISTIC_ORDER_PORT = Number(process.env.LOGISTIC_ORDER_PORT ?? 19368);
 
