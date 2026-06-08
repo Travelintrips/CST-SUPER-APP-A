@@ -1921,8 +1921,13 @@ router.post("/payment-proof-upload", (req, res, next) => {
   }
   if (!req.file) return res.status(400).json({ message: "File wajib diunggah" });
   const mime = req.file.mimetype;
-  if (!mime.startsWith("image/") && mime !== "application/pdf") {
-    return res.status(415).json({ message: "Hanya file gambar (JPG/PNG/WebP) atau PDF yang diizinkan" });
+  const _PROOF_ALLOWED_MIME = new Set([
+    "image/jpeg", "image/jpg", "image/png", "image/webp",
+    "image/heic", "image/heif",
+    "application/pdf",
+  ]);
+  if (!_PROOF_ALLOWED_MIME.has(mime)) {
+    return res.status(415).json({ message: "Hanya file gambar (JPG/PNG/WebP/HEIC) atau PDF yang diizinkan. SVG, HTML, dan file eksekutabel tidak diterima." });
   }
   try {
     const objectPath = await _objectStorage.uploadPrivateEntity(req.file.buffer, mime);
@@ -2841,7 +2846,10 @@ router.post("/onboarding/upload-doc", requirePortalAuth, onboardingUpload.single
   try {
     const storage = new ObjectStorageService();
     let buf = req.file.buffer;
-    if (req.file.mimetype.startsWith("image/")) {
+    const _COMPRESS_IMAGE_MIME = new Set([
+      "image/jpeg", "image/jpg", "image/png", "image/webp", "image/heic", "image/heif",
+    ]);
+    if (_COMPRESS_IMAGE_MIME.has(req.file.mimetype)) {
       try { const c = await compressImageBuffer(buf, req.file.mimetype); buf = c.buffer; } catch { /* gunakan original */ }
     }
     // Upload ke private bucket — dokumen identitas tidak boleh public
