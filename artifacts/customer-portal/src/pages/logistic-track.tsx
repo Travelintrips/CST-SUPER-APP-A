@@ -11,6 +11,7 @@ import {
   MapPin, Package, RefreshCw, AlertCircle, FileText,
   Circle, ArrowRight, Loader2, ThumbsUp, ThumbsDown, RotateCcw, Tag,
   Bell, BellOff, Navigation, ExternalLink, Image as ImageIcon, X,
+  CreditCard, ShieldCheck,
 } from "lucide-react";
 import { usePushNotification } from "@/hooks/usePushNotification";
 import { usePortalSSEOrderTracker } from "@/hooks/usePortalSSE";
@@ -98,6 +99,7 @@ interface TrackingData {
   grandTotal: number | null;
   subtotal: number | null;
   tax: number | null;
+  paymentMethod?: string | null;
   items: { id: number; category: string; serviceName: string }[];
   driverJob: DriverJob | null;
   rfqQuote: RfqQuote | null;
@@ -105,6 +107,138 @@ interface TrackingData {
   progressEvents?: ProgressEvent[];
   podSubmissions?: PodSubmission[];
   invoiceLinks?: InvoiceLink[];
+}
+
+interface PaylabsLinkResult {
+  paymentUrl: string | null;
+  amount: number;
+  expiredAt: string | null;
+  configured?: boolean;
+  reused?: boolean;
+  message?: string;
+}
+
+function PaylabsPaymentSection({ orderNumber }: { orderNumber: string }) {
+  const [state, setState] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [result, setResult] = useState<PaylabsLinkResult | null>(null);
+  const [errorMsg, setErrorMsg] = useState("");
+  const calledRef = useRef(false);
+
+  const generate = useCallback(async () => {
+    setState("loading");
+    setErrorMsg("");
+    try {
+      const r = await fetch(`${BASE}/api/logistic/orders/${orderNumber}/create-paylabs-link`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = await r.json() as PaylabsLinkResult & { message?: string };
+      if (!r.ok) throw new Error(data.message ?? "Gagal membuat link pembayaran");
+      setResult(data);
+      setState("ready");
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : "Terjadi kesalahan");
+      setState("error");
+    }
+  }, [orderNumber]);
+
+  useEffect(() => {
+    if (!calledRef.current) {
+      calledRef.current = true;
+      void generate();
+    }
+  }, [generate]);
+
+  function fmtIdr(n: number) {
+    return "Rp " + Math.round(n).toLocaleString("id-ID");
+  }
+
+  return (
+    <div className="bg-card border border-emerald-200 rounded-xl overflow-hidden">
+      <div className="px-5 py-3 bg-emerald-50 border-b border-emerald-200 flex items-center gap-2">
+        <CreditCard className="w-4 h-4 text-emerald-600 shrink-0" />
+        <p className="text-sm font-semibold text-emerald-900">Bayar via Payment Gateway</p>
+        <Badge className="ml-auto bg-emerald-100 text-emerald-700 border-emerald-300 text-[10px] border">Paylabs</Badge>
+      </div>
+      <div className="p-5 space-y-4">
+        {state === "loading" && (
+          <div className="flex flex-col items-center py-6 gap-3">
+            <Loader2 className="w-8 h-8 animate-spin text-emerald-500" />
+            <p className="text-sm text-muted-foreground">Menyiapkan link pembayaran…</p>
+          </div>
+        )}
+        {state === "error" && (
+          <div className="space-y-3">
+            <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold">Gagal Membuat Link Pembayaran</p>
+                <p className="text-xs mt-0.5">{errorMsg}</p>
+              </div>
+            </div>
+            <Button variant="outline" size="sm" className="w-full gap-2" onClick={() => void generate()}>
+              <RefreshCw className="w-4 h-4" /> Coba Lagi
+            </Button>
+          </div>
+        )}
+        {state === "ready" && result && (
+          <>
+            {result.paymentUrl ? (
+              <>
+                <div className="rounded-lg bg-slate-50 border border-slate-200 px-4 py-3 space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Nomor Pesanan</span>
+                    <span className="font-bold tracking-wider text-foreground">{orderNumber}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Total Tagihan</span>
+                    <span className="font-bold text-emerald-700">{fmtIdr(result.amount)}</span>
+                  </div>
+                  {result.expiredAt && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-muted-foreground flex items-center gap-1">
+                        <Clock className="w-3 h-3" /> Berlaku sampai
+                      </span>
+                      <span className="text-xs text-slate-600">
+                        {new Date(result.expiredAt).toLocaleString("id-ID", {
+                          day: "numeric", month: "short", year: "numeric",
+                          hour: "2-digit", minute: "2-digit",
+                        })}
+                      </span>
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                  Pembayaran diamankan oleh Paylabs — mendukung transfer bank, QRIS, e-wallet, dan kartu.
+                </div>
+                <Button
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white gap-2 h-12 text-base font-bold shadow-md"
+                  onClick={() => window.open(result.paymentUrl!, "_blank")}
+                >
+                  <CreditCard className="w-5 h-5" />
+                  Bayar Sekarang
+                  <ExternalLink className="w-4 h-4 ml-auto opacity-70" />
+                </Button>
+                {result.reused && (
+                  <p className="text-xs text-center text-muted-foreground">
+                    Link pembayaran sebelumnya masih aktif dan digunakan kembali.
+                  </p>
+                )}
+              </>
+            ) : (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                <p className="font-semibold">Link Pembayaran Sedang Disiapkan</p>
+                <p className="text-xs mt-1">
+                  Tim kami akan mengirimkan link pembayaran via WhatsApp/Email setelah order dikonfirmasi.
+                </p>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
 }
 
 interface ProgressEvent {
@@ -1537,6 +1671,12 @@ export default function TrackPage() {
                   </div>
                 ))}
               </div>
+            )}
+
+            {/* ── Paylabs Payment — tampil jika grandTotal > 0 & belum lunas ── */}
+            {(tracking.grandTotal ?? 0) > 0 &&
+              !["Payment Received", "Completed", "Cancelled"].includes(tracking.status) && (
+              <PaylabsPaymentSection orderNumber={tracking.orderNumber} />
             )}
 
             {/* ── Invoice — tampil jika ada invoice link atau status sudah Invoice Issued+ ── */}
