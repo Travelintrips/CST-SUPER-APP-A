@@ -57,6 +57,7 @@ import { LandedCostsListPage, LandedCostEditorPage } from "@/pages/purchase/land
 import VendorComparisonPage from "@/pages/purchase/vendor-comparison";
 import PurchaseReceivePage from "@/pages/purchase/receive";
 import VendorCatalogPage from "@/pages/purchase/vendor-catalog";
+import VendorCatalogEnginePage from "@/pages/purchase/vendor-catalog-engine";
 import MarketplaceAiImagesPage from "@/pages/marketplace-ai-images";
 // Reports
 import ReportsIndexPage from "@/pages/reports/index";
@@ -309,6 +310,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/purchase/landed-costs" component={PR(LandedCostsListPage)} />
       <Route path="/purchase/receive" component={PR(PurchaseReceivePage)} />
       <Route path="/purchase/vendor-catalog" component={PR(VendorCatalogPage)} />
+      <Route path="/purchase/vendor-catalog-engine" component={PR(VendorCatalogEnginePage)} />
       <Route path="/marketplace/ai-images" component={PR(MarketplaceAiImagesPage)} />
       <Route path="/purchase" component={PR(PurchaseDashboardPage)} />
 
