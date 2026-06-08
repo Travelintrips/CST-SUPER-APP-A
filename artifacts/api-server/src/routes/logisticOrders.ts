@@ -2146,57 +2146,54 @@ function _paylabsBuildSigPayload(method: string, endpoint: string, bodyJson: str
 logisticOrdersRouter.post("/:orderNumber/create-paylabs-link", async (req: Request, res: Response) => {
   const { orderNumber } = req.params;
   const [order] = await db
-    .select({ id: logisticOrdersTable.id, orderNumber: logisticOrdersTable.orderNumber, customerName: logisticOrdersTable.customerName })
+    .select({
+      id: logisticOrdersTable.id,
+      orderNumber: logisticOrdersTable.orderNumber,
+      customerName: logisticOrdersTable.customerName,
+      grandTotal: logisticOrdersTable.grandTotal,
+      status: logisticOrdersTable.status,
+    })
     .from(logisticOrdersTable)
     .where(eq(logisticOrdersTable.orderNumber, orderNumber))
     .limit(1);
   if (!order) return res.status(404).json({ message: "Pesanan tidak ditemukan" });
-
-  const [salesDoc] = await db
-    .select({
-      id: salesDocumentsTable.id,
-      docNumber: salesDocumentsTable.docNumber,
-      grandTotal: salesDocumentsTable.grandTotal,
-      totalAmount: salesDocumentsTable.totalAmount,
-      customerName: salesDocumentsTable.customerName,
-      status: salesDocumentsTable.status,
-    })
-    .from(salesDocumentsTable)
-    .where(eq(salesDocumentsTable.logisticOrderId, order.id))
-    .limit(1);
-
-  if (!salesDoc) {
-    return res.status(404).json({ message: "Sales document belum tersedia. Silakan coba beberapa saat lagi." });
-  }
-  if (salesDoc.status === "cancelled") {
+  if (order.status === "Cancelled") {
     return res.status(400).json({ message: "Order sudah dibatalkan" });
   }
 
-  // Cek apakah sudah ada payment link pending
+  // Cek apakah sudah ada payment link pending — reuse jika masih aktif
   const existing = await db
     .select()
     .from(paymentsTable)
-    .where(and(eq(paymentsTable.refId, salesDoc.id), eq(paymentsTable.refKind, "sales"), eq(paymentsTable.status, "pending"), eq(paymentsTable.provider, "paylabs")))
+    .where(and(
+      eq(paymentsTable.refId, order.id),
+      eq(paymentsTable.refKind, "logistic"),
+      eq(paymentsTable.status, "pending"),
+      eq(paymentsTable.provider, "paylabs"),
+    ))
     .orderBy(desc(paymentsTable.createdAt))
     .limit(1);
 
   if (existing.length > 0 && existing[0].paymentUrl) {
-    return res.json({
-      reused: true,
-      paymentUrl: existing[0].paymentUrl,
-      amount: Number(existing[0].amount),
-      expiredAt: existing[0].expiredAt?.toISOString() ?? null,
-    });
+    const notExpired = !existing[0].expiredAt || existing[0].expiredAt > new Date();
+    if (notExpired) {
+      return res.json({
+        reused: true,
+        paymentUrl: existing[0].paymentUrl,
+        amount: Number(existing[0].amount),
+        expiredAt: existing[0].expiredAt?.toISOString() ?? null,
+      });
+    }
   }
 
-  const amount = Number(salesDoc.grandTotal ?? salesDoc.totalAmount ?? 0);
-  const merchantTradeNo = `BIZ-${salesDoc.id}-${Date.now()}`;
+  const amount = Number(order.grandTotal ?? 0);
+  const merchantTradeNo = `LOG-${order.id}-${Date.now()}`;
 
   if (!_PAYLABS_MERCHANT_ID || !_PAYLABS_PRIVATE_KEY) {
-    const [created] = await db.insert(paymentsTable).values({
-      refKind: "sales",
-      refId: salesDoc.id,
-      refDocNumber: salesDoc.docNumber,
+    await db.insert(paymentsTable).values({
+      refKind: "logistic",
+      refId: order.id,
+      refDocNumber: orderNumber,
       amount: String(amount),
       status: "pending",
       provider: "paylabs",
@@ -2204,7 +2201,7 @@ logisticOrdersRouter.post("/:orderNumber/create-paylabs-link", async (req: Reque
       paymentUrl: null,
       raw: { simulation: true, reason: "PAYLABS credentials not configured" },
       expiredAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-    }).returning();
+    });
     return res.status(202).json({
       configured: false,
       message: "Paylabs belum terkonfigurasi. Simulasi payment dibuat.",
@@ -2225,12 +2222,12 @@ logisticOrdersRouter.post("/:orderNumber/create-paylabs-link", async (req: Reque
     requestId,
     amount: amount.toFixed(2),
     currency: "IDR",
-    productName: `Pembayaran ${salesDoc.docNumber ?? orderNumber}`,
+    productName: `Pembayaran ${orderNumber}`,
     paymentType: "ALL",
     notifyUrl,
     redirectUrl,
     expire: 86400,
-    payer: salesDoc.customerName ?? order.customerName ?? "",
+    payer: order.customerName ?? "",
   };
   const bodyJson = JSON.stringify(body);
   const sigPayload = _paylabsBuildSigPayload("POST", new URL(_PAYLABS_API_URL).pathname, bodyJson, timestamp);
@@ -2264,9 +2261,9 @@ logisticOrdersRouter.post("/:orderNumber/create-paylabs-link", async (req: Reque
 
   const paymentUrl = (paylabsResp?.["url"] ?? paylabsResp?.["h5Url"] ?? null) as string | null;
   const [created] = await db.insert(paymentsTable).values({
-    refKind: "sales",
-    refId: salesDoc.id,
-    refDocNumber: salesDoc.docNumber,
+    refKind: "logistic",
+    refId: order.id,
+    refDocNumber: orderNumber,
     amount: String(amount),
     status: "pending",
     provider: "paylabs",

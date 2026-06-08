@@ -263,6 +263,7 @@ export default function PaylabsPage() {
                 <TableHeader>
                   <TableRow className="border-slate-700">
                     <TableHead className="text-slate-400 text-xs">No. Dokumen</TableHead>
+                    <TableHead className="text-slate-400 text-xs hidden sm:table-cell">Jenis</TableHead>
                     <TableHead className="text-slate-400 text-xs">Jumlah</TableHead>
                     <TableHead className="text-slate-400 text-xs">Status</TableHead>
                     <TableHead className="text-slate-400 text-xs hidden md:table-cell">Merchant Trade No</TableHead>
@@ -277,15 +278,33 @@ export default function PaylabsPage() {
                     <TableRow key={p.id} className="border-slate-700/50 hover:bg-slate-800/40">
                       <TableCell className="text-sm">
                         {p.refDocNumber ? (
-                          <Link href={`/sales/orders/${p.refId}`}>
-                            <span className="flex items-center gap-1.5 text-indigo-400 hover:text-indigo-300 cursor-pointer">
-                              <ShoppingCart className="h-3.5 w-3.5" />
-                              {p.refDocNumber}
-                            </span>
-                          </Link>
+                          p.refKind === "logistic" ? (
+                            <Link href={`/logistics/orders?q=${p.refDocNumber}`}>
+                              <span className="flex items-center gap-1.5 text-sky-400 hover:text-sky-300 cursor-pointer">
+                                <TrendingUp className="h-3.5 w-3.5" />
+                                {p.refDocNumber}
+                              </span>
+                            </Link>
+                          ) : (
+                            <Link href={`/sales/orders/${p.refId}`}>
+                              <span className="flex items-center gap-1.5 text-indigo-400 hover:text-indigo-300 cursor-pointer">
+                                <ShoppingCart className="h-3.5 w-3.5" />
+                                {p.refDocNumber}
+                              </span>
+                            </Link>
+                          )
                         ) : (
                           <span className="text-slate-500 font-mono text-xs">#{p.id}</span>
                         )}
+                      </TableCell>
+                      <TableCell className="hidden sm:table-cell">
+                        <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
+                          p.refKind === "logistic"
+                            ? "bg-sky-900/40 text-sky-300 border border-sky-800"
+                            : "bg-indigo-900/40 text-indigo-300 border border-indigo-800"
+                        }`}>
+                          {p.refKind === "logistic" ? "Logistik" : p.refKind === "sales" ? "Sales" : p.refKind}
+                        </span>
                       </TableCell>
                       <TableCell className="text-sm font-mono font-medium text-slate-200">
                         Rp {idr(p.amount)}
