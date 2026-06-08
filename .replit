@@ -57,7 +57,7 @@ outputType = "console"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "cd artifacts/logistic-order && PORT=6000 pnpm run dev"
+args = "PORT=6000 bash -c 'cd artifacts/logistic-order && node ../api-server/kill-port.mjs 6000 2>/dev/null; sleep 0.3; pnpm exec vite --config vite.config.ts --host 0.0.0.0 --port 6000'"
 waitForPort = 6000
 
 [[workflows.workflow]]
@@ -81,7 +81,7 @@ outputType = "console"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "cd artifacts/bizportal && BIZPORTAL_PORT=6800 pnpm run dev"
+args = "BIZPORTAL_PORT=6800 bash artifacts/bizportal/start-dev.sh"
 waitForPort = 6800
 
 [[workflows.workflow]]
@@ -169,6 +169,10 @@ externalPort = 8008
 [[ports]]
 localPort = 5000
 externalPort = 80
+
+[[ports]]
+localPort = 8082
+externalPort = 3002
 
 [[ports]]
 localPort = 8083
