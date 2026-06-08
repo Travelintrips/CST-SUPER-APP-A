@@ -13,8 +13,25 @@
  *     → Report  (VIDEO OPTIMIZATION REPORT)
  */
 
-import ffmpeg from "fluent-ffmpeg";
+import { createRequire } from "node:module";
 import sharp from "sharp";
+
+// fluent-ffmpeg loaded lazily via CJS require — avoids ESM static link failure
+// when binary is not installed (require resolves at call-time, not module link-time)
+const _lazyRequire = createRequire(import.meta.url);
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let _ffmpegModule: any = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function getFfmpeg(): any {
+  if (!_ffmpegModule) {
+    try {
+      _ffmpegModule = _lazyRequire("fluent-ffmpeg");
+    } catch {
+      throw new Error("fluent-ffmpeg tidak tersedia. Install package fluent-ffmpeg untuk menggunakan fitur optimasi video.");
+    }
+  }
+  return _ffmpegModule;
+}
 import { randomUUID } from "crypto";
 import { promises as fs } from "fs";
 import os from "os";
@@ -141,7 +158,7 @@ async function cleanupFiles(...files: string[]): Promise<void> {
 
 function probeVideo(inputPath: string): Promise<VideoProbeResult> {
   return new Promise((resolve, reject) => {
-    ffmpeg.ffprobe(inputPath, (err, meta) => {
+    getFfmpeg().ffprobe(inputPath, (err: Error | null, meta: any) => {
       if (err) return reject(new Error(`ffprobe failed: ${err.message}`));
 
       const vs = meta.streams?.find((s) => s.codec_type === "video");
@@ -174,7 +191,7 @@ function compressVideo(
         ? "scale=1280:-2"
         : "scale=trunc(iw/2)*2:trunc(ih/2)*2";
 
-    ffmpeg(inputPath)
+    getFfmpeg()(inputPath)
       .videoCodec("libx264")
       .audioCodec("aac")
       .outputOptions([
@@ -200,12 +217,12 @@ function extractThumbnail(
   timestampSec: number,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
-    ffmpeg(inputPath)
+    getFfmpeg()(inputPath)
       .seekInput(timestampSec)
       .frames(1)
       .outputOptions(["-q:v 2"])
       .output(outputPath)
-      .on("error", (err) => reject(new Error(`ffmpeg thumbnail: ${err.message}`)))
+      .on("error", (err: Error) => reject(new Error(`ffmpeg thumbnail: ${err.message}`)))
       .on("end", () => resolve())
       .run();
   });

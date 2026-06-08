@@ -30,7 +30,52 @@ args = "fuser -k 5000/tcp 2>/dev/null; sleep 0.3; BIZPORTAL_PORT=6800 PORT=5000 
 waitForPort = 5000
 
 [workflows.workflow.metadata]
+<<<<<<< HEAD
 outputType = "webview"
+=======
+outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "PORT=6000 bash -c 'cd artifacts/logistic-order && node ../api-server/kill-port.mjs 6000 2>/dev/null; sleep 0.3; pnpm exec vite --config vite.config.ts --host 0.0.0.0 --port 6000'"
+waitForPort = 6000
+
+[[workflows.workflow]]
+name = "API Server"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd artifacts/api-server && bash start-dev.sh"
+waitForPort = 8080
+
+[[workflows.workflow]]
+name = "BizPortal"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "BIZPORTAL_PORT=6800 bash artifacts/bizportal/start-dev.sh"
+waitForPort = 6800
+
+[[workflows.workflow]]
+name = "Customer Portal"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd artifacts/customer-portal && PORT=3001 pnpm run dev"
+waitForPort = 3001
+>>>>>>> f4a7855e87d23bc71ac4cde4e5120f58cce3010b
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"

@@ -120,35 +120,82 @@ router.get("/products", async (_req, res) => {
 // ── Service category normalisation ───────────────────────────────────────────
 
 const SERVICE_CATEGORY_ALIASES: Record<string, string> = {
-  trucking: "trucking",
-  truck: "trucking",
-  "land freight": "trucking",
-  land_freight: "trucking",
-  darat: "trucking",
-  "sea freight": "sea_freight",
-  sea_freight: "sea_freight",
-  fcl: "sea_freight",
-  lcl: "sea_freight",
-  laut: "sea_freight",
-  "air freight": "air_freight",
-  air_freight: "air_freight",
-  udara: "air_freight",
-  customs: "ppjk",
-  pabean: "ppjk",
-  ppjk: "ppjk",
-  handling: "handling",
-  warehouse: "handling",
-  gudang: "handling",
-  document: "document",
-  dokumen: "document",
+  // trucking
+  trucking:          "trucking",
+  truck:             "trucking",
+  "land freight":    "trucking",
+  land_freight:      "trucking",
+  darat:             "trucking",
+  pengiriman_darat:  "trucking",
+  "pengiriman darat":"trucking",
+  // sea_freight
+  "sea freight":     "sea_freight",
+  sea_freight:       "sea_freight",
+  sea:               "sea_freight",
+  ocean:             "sea_freight",
+  ocean_freight:     "sea_freight",
+  "ocean freight":   "sea_freight",
+  fcl:               "sea_freight",
+  lcl:               "sea_freight",
+  laut:              "sea_freight",
+  pengiriman_laut:   "sea_freight",
+  "pengiriman laut": "sea_freight",
+  // air_freight
+  "air freight":     "air_freight",
+  air_freight:       "air_freight",
+  air:               "air_freight",
+  udara:             "air_freight",
+  cargo_udara:       "air_freight",
+  "cargo udara":     "air_freight",
+  pengiriman_udara:  "air_freight",
+  "pengiriman udara":"air_freight",
+  // ppjk
+  ppjk:              "ppjk",
+  customs:           "ppjk",
+  custom:            "ppjk",
+  pabean:            "ppjk",
+  kepabeanan:        "ppjk",
+  pib:               "ppjk",
+  peb:               "ppjk",
+  // handling
+  handling:          "handling",
+  warehouse:         "handling",
+  warehousing:       "handling",
+  gudang:            "handling",
+  stuffing:          "handling",
+  stripping:         "handling",
+  loading:           "handling",
+  unloading:         "handling",
+  // document
+  document:          "document",
+  documents:         "document",
+  dokumen:           "document",
+  legal_doc:         "document",
+  "legal doc":       "document",
+  perizinan:         "document",
 };
 
+/** Normalize a category value to a canonical key.
+ *  - empty/null → null
+ *  - lowercase + trim
+ *  - replace spaces AND dashes with underscore
+ *  - apply alias map
+ */
 export function normalizeServiceCategory(value: string | null | undefined): string | null {
   if (!value) return null;
-  const normalized = value.toLowerCase().trim().replace(/\s+/g, "_");
-  return SERVICE_CATEGORY_ALIASES[normalized.replace(/_/g, " ")] ??
+  // Replace both spaces and dashes with underscore, then lowercase+trim
+  const normalized = value.toLowerCase().trim().replace(/[\s-]+/g, "_");
+  // Try lookup with spaces (some alias keys use spaces)
+  const withSpaces = normalized.replace(/_/g, " ");
+  const result =
+    SERVICE_CATEGORY_ALIASES[withSpaces] ??
     SERVICE_CATEGORY_ALIASES[normalized] ??
     normalized;
+  if (process.env.NODE_ENV !== "production") {
+    // Service marketplace category filter normalized
+    console.debug(`[marketplace] normalizeServiceCategory: "${value}" → "${result}"`);
+  }
+  return result;
 }
 
 export const SERVICE_CATEGORY_LABELS: Record<string, string> = {
@@ -183,22 +230,32 @@ router.get("/marketplace", async (req, res) => {
       const matchKeys = Object.entries(SERVICE_CATEGORY_ALIASES)
         .filter(([, v]) => v === normCategory)
         .map(([k]) => k);
-      // Always include the canonical value itself and the raw query value
+      // Build full variant set: canonical + raw query + all aliases (with/without underscore/dash/space)
+      const rawLower = category.toLowerCase().trim();
       const allVariants = Array.from(new Set([
         normCategory,
-        category.toLowerCase().trim(),
-        category.toLowerCase().trim().replace(/\s+/g, "_"),
+        rawLower,
+        rawLower.replace(/[\s-]+/g, "_"),
+        rawLower.replace(/[\s_]+/g, "-"),
+        rawLower.replace(/[\s_-]+/g, " "),
         ...matchKeys,
-        ...matchKeys.map((k) => k.replace(/\s+/g, "_")),
+        ...matchKeys.map((k) => k.replace(/[\s-]+/g, "_")),
+        ...matchKeys.map((k) => k.replace(/[\s_]+/g, "-")),
+        ...matchKeys.map((k) => k.replace(/[\s_-]+/g, " ")),
       ]));
 
-      // Build OR across: serviceType, categoryKey, kategori, templateSnapshot fields
+      // Build OR across: serviceType, categoryKey, kategori, templateSnapshot fields.
+      // Normalize DB values by replacing dashes AND spaces with underscore before comparing,
+      // so entries stored as e.g. "Trucking", "trucking", "sea-freight" all match correctly.
+      const normalizeDbExpr = (col: ReturnType<typeof sql>) =>
+        sql`lower(trim(replace(replace(${col}::text, '-', '_'), ' ', '_')))`;
+
       const variantConditions = allVariants.flatMap((v) => [
-        sql`lower(trim(${vendorCatalogItemsTable.serviceType})) = ${v}`,
-        sql`lower(trim(${vendorCatalogItemsTable.categoryKey})) = ${v}`,
-        sql`lower(trim(${vendorCatalogItemsTable.kategori})) = ${v}`,
-        sql`lower(trim(${vendorCatalogItemsTable.templateSnapshot}::text::jsonb->>'serviceType')) = ${v}`,
-        sql`lower(trim(${vendorCatalogItemsTable.templateSnapshot}::text::jsonb->>'category')) = ${v}`,
+        sql`${normalizeDbExpr(sql`${vendorCatalogItemsTable.serviceType}`)} = ${v}`,
+        sql`${normalizeDbExpr(sql`${vendorCatalogItemsTable.categoryKey}`)} = ${v}`,
+        sql`${normalizeDbExpr(sql`${vendorCatalogItemsTable.kategori}`)} = ${v}`,
+        sql`${normalizeDbExpr(sql`${vendorCatalogItemsTable.templateSnapshot}::text::jsonb->>'serviceType'`)} = ${v}`,
+        sql`${normalizeDbExpr(sql`${vendorCatalogItemsTable.templateSnapshot}::text::jsonb->>'category'`)} = ${v}`,
       ]);
 
       conditions.push(or(...variantConditions) as ReturnType<typeof eq>);
@@ -1921,8 +1978,13 @@ router.post("/payment-proof-upload", (req, res, next) => {
   }
   if (!req.file) return res.status(400).json({ message: "File wajib diunggah" });
   const mime = req.file.mimetype;
-  if (!mime.startsWith("image/") && mime !== "application/pdf") {
-    return res.status(415).json({ message: "Hanya file gambar (JPG/PNG/WebP) atau PDF yang diizinkan" });
+  const _PROOF_ALLOWED_MIME = new Set([
+    "image/jpeg", "image/jpg", "image/png", "image/webp",
+    "image/heic", "image/heif",
+    "application/pdf",
+  ]);
+  if (!_PROOF_ALLOWED_MIME.has(mime)) {
+    return res.status(415).json({ message: "Hanya file gambar (JPG/PNG/WebP/HEIC) atau PDF yang diizinkan. SVG, HTML, dan file eksekutabel tidak diterima." });
   }
   try {
     const objectPath = await _objectStorage.uploadPrivateEntity(req.file.buffer, mime);
@@ -2841,7 +2903,10 @@ router.post("/onboarding/upload-doc", requirePortalAuth, onboardingUpload.single
   try {
     const storage = new ObjectStorageService();
     let buf = req.file.buffer;
-    if (req.file.mimetype.startsWith("image/")) {
+    const _COMPRESS_IMAGE_MIME = new Set([
+      "image/jpeg", "image/jpg", "image/png", "image/webp", "image/heic", "image/heif",
+    ]);
+    if (_COMPRESS_IMAGE_MIME.has(req.file.mimetype)) {
       try { const c = await compressImageBuffer(buf, req.file.mimetype); buf = c.buffer; } catch { /* gunakan original */ }
     }
     // Upload ke private bucket — dokumen identitas tidak boleh public

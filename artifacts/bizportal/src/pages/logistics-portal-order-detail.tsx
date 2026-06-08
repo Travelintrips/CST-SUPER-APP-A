@@ -880,7 +880,20 @@ export default function LogisticsPortalOrderDetailPage() {
                           const marginPct = sellingPrice > 0 ? (margin / sellingPrice) * 100 : 0;
                           return (
                             <TableRow key={item.id}>
-                              <TableCell className="font-medium text-sm">{item.serviceName}</TableCell>
+                              <TableCell className="font-medium text-sm">
+                                <div>{item.serviceName}</div>
+                                <div className="flex flex-wrap gap-1 mt-0.5">
+                                  {(item as any).itemSource === "marketplace" && (
+                                    <span className="inline-flex items-center text-[10px] font-medium bg-blue-100 text-blue-700 border border-blue-200 rounded px-1.5 py-0.5">Marketplace</span>
+                                  )}
+                                  {(item as any).serviceType && (
+                                    <span className="inline-flex items-center text-[10px] font-medium bg-muted text-muted-foreground border rounded px-1.5 py-0.5">{(item as any).serviceType}</span>
+                                  )}
+                                  {(item as any).itemSource === "marketplace" && (item as any).priceSnapshot?.vendorName && (
+                                    <span className="text-[10px] text-muted-foreground">{(item as any).priceSnapshot.vendorName}</span>
+                                  )}
+                                </div>
+                              </TableCell>
                               <TableCell className="text-sm text-muted-foreground">{item.category}</TableCell>
                               <TableCell className="text-right text-sm font-mono">{idr(sellingPrice)}</TableCell>
                               {showMargin && (
