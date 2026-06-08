@@ -1,5 +1,5 @@
 #!/bin/bash
-VITE_PORT=${PORT:-23434}
+VITE_PORT=${PORT:-3001}
 
 node "$(dirname "$0")/../api-server/kill-port.mjs" "$VITE_PORT" 2>/dev/null || true
 sleep 0.3

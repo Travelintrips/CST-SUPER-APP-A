@@ -1,48 +1,16 @@
 #!/bin/bash
-# When BIZPORTAL_PORT is set (main "BizPortal" workflow):
-#   - Proxy listens on BIZPORTAL_PORT (e.g. 6800) — Gateway routes here
-#   - Vite listens on a fixed internal port (18446) so it never conflicts
-#     with the artifact-managed workflow that Replit auto-assigns PORT=18442
-# When BIZPORTAL_PORT is NOT set (artifact workflow, Replit assigns PORT):
-#   - No proxy; Vite listens on PORT (e.g. 18442)
-if [ -n "$BIZPORTAL_PORT" ]; then
-  GW_PORT="${BIZPORTAL_PORT}"
-  VITE_PORT=18446
-else
-  GW_PORT="${PORT:-3000}"
-  VITE_PORT="${PORT:-3000}"
-fi
-# Replit assigns PORT (e.g. 18442) — Vite runs there for waitForPort check
-# Gateway expects BIZPORTAL_PORT (default 6800) — we proxy that → Vite port
-VITE_PORT=${PORT:-3000}
+# BizPortal startup script
+# When BIZPORTAL_PORT is set: proxy listens on BIZPORTAL_PORT, Vite on internal port
+# When BIZPORTAL_PORT is not set: Vite listens on PORT directly
+
 GW_PORT=${BIZPORTAL_PORT:-6800}
+VITE_PORT=${PORT:-3000}
 
-# If Vite is already healthy on VITE_PORT (another workflow owns it), don't kill it.
-ALREADY_RUNNING=false
-if node -e "
-const http = require('http');
-const req = http.request(
-  { hostname: '127.0.0.1', port: ${VITE_PORT}, path: '/bizportal/', method: 'HEAD', timeout: 1500 },
-  (r) => process.exit(r.statusCode < 500 ? 0 : 1)
-);
-req.on('error',   () => process.exit(1));
-req.on('timeout', () => process.exit(1));
-req.end();
-" 2>/dev/null; then
-  ALREADY_RUNNING=true
-fi
-
-if [ "$ALREADY_RUNNING" = "true" ]; then
-  echo "[bizportal] Port ${VITE_PORT} already serving — running in stand-by mode."
-  # Keep process alive so Replit doesn't restart in a tight loop
-  while true; do sleep 60; done
-fi
-
-# --- Primary startup (no existing server found) ---
+# Kill stale processes on both ports
 node "$(dirname "$0")/../api-server/kill-port.mjs" "${VITE_PORT}" "${GW_PORT}" 2>/dev/null || true
 sleep 0.3
 
-# Proxy GW_PORT → VITE_PORT when they differ
+# Start proxy FIRST (before Vite) so Replit's waitForPort check passes immediately
 if [ "$VITE_PORT" != "$GW_PORT" ]; then
   node -e "
 const http = require('http');
@@ -51,7 +19,7 @@ function tryProxy(req, res) {
   function attempt() {
     const opts = { hostname: '127.0.0.1', port: $VITE_PORT, path: req.url, method: req.method, headers: req.headers };
     const p = http.request(opts, r => { res.writeHead(r.statusCode, r.headers); r.pipe(res, {end:true}); });
-    p.on('error', () => { if (++retries < 5) { setTimeout(attempt, 600); } else { res.writeHead(502); res.end('BizPortal starting...'); } });
+    p.on('error', () => { if (++retries < 10) { setTimeout(attempt, 500); } else { res.writeHead(502); res.end('BizPortal starting...'); } });
     req.pipe(p, {end:true});
   }
   attempt();
@@ -60,6 +28,7 @@ http.createServer(tryProxy).listen($GW_PORT, '0.0.0.0', () => {
   console.log('[bizportal] proxy :$GW_PORT -> :$VITE_PORT');
 });
 " &
+  PROXY_PID=$!
   sleep 0.5
 fi
 
