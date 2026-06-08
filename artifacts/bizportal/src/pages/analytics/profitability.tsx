@@ -63,10 +63,30 @@ interface CustomerRow {
   profit: number; profitabilityPct: number;
 }
 
-interface VendorRow {
-  vendorId: number; vendorName: string; orderCount: number;
-  totalSpend: number; winRate: number; totalInvites: number; totalWins: number;
-  ontimePct: number; recommendationScore: number; avgResponseMin: number;
+interface ProductVendorRow {
+  vendorId: number; vendorName: string; vendorType: "product";
+  totalOrders: number; totalCost: number; totalRevenue: number;
+  totalMargin: number; marginPct: number; avgProductCost: number;
+  winInvites: number; winSelected: number; winRate: number;
+}
+interface ShipmentVendorRow {
+  vendorId: number; vendorName: string; vendorType: "shipment";
+  totalOrders: number; totalShipmentCost: number; totalShipmentRevenue: number;
+  totalShipmentMargin: number; marginPct: number; rfqInvites: number;
+  selectedCount: number; winRate: number; avgResponseMin: number;
+  totalSpend: number; totalInvites: number; totalWins: number;
+  ontimePct: number; recommendationScore: number;
+}
+interface CombinedVendorRow {
+  vendorId: number; vendorName: string; vendorType: string;
+  orderCount: number; totalSpend: number; winRate: number;
+  totalInvites: number; totalWins: number; ontimePct: number;
+  recommendationScore: number; avgResponseMin: number;
+}
+interface VendorsData {
+  productVendors: ProductVendorRow[];
+  shipmentVendors: ShipmentVendorRow[];
+  combined: CombinedVendorRow[];
 }
 
 interface RouteRow {
@@ -200,6 +220,7 @@ export default function ProfitabilityAnalyticsPage() {
   const [page, setPage] = useState(0);
   const [routePage, setRoutePage] = useState(0);
   const [routeSearch, setRouteSearch] = useState("");
+  const [vendorSubTab, setVendorSubTab] = useState<"product" | "shipment" | "combined">("shipment");
   const PAGE_SIZE = 50;
   const ROUTE_PAGE_SIZE = 50;
 
@@ -239,13 +260,17 @@ export default function ProfitabilityAnalyticsPage() {
     enabled: tab === "customers",
   });
 
-  const vendorsQuery = useQuery<VendorRow[]>({
+  const vendorsQuery = useQuery<VendorsData>({
     queryKey: ["profit-vendors", companyParam, dateFrom, dateTo],
     queryFn: async () => {
       const params = [companyParam, dateParams].filter(Boolean).join("&");
       const r = await fetch(`/api/analytics/profitability/vendors?${params}`, { credentials: "include" });
       if (!r.ok) throw new Error("Gagal memuat data vendor");
-      return r.json() as Promise<VendorRow[]>;
+      const raw = await r.json() as unknown;
+      if (Array.isArray(raw)) {
+        return { productVendors: [], shipmentVendors: raw as ShipmentVendorRow[], combined: raw as CombinedVendorRow[] };
+      }
+      return raw as VendorsData;
     },
     enabled: tab === "vendors",
   });
@@ -377,6 +402,29 @@ export default function ProfitabilityAnalyticsPage() {
                     </CardContent>
                   </Card>
                 ))}
+              </div>
+            )}
+
+            {orderRows.length >= 2 && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <Card>
+                  <CardContent className="p-4">
+                    <ProfitBarChart
+                      rows={[...orderRows].sort((a, b) => (b.grossMargin ?? b.margin) - (a.grossMargin ?? a.margin)).map(r => ({ name: r.orderNumber, revenue: r.revenue, grossMargin: r.grossMargin ?? r.margin, marginPct: r.marginPct }))}
+                      metric="grossMargin"
+                      label="Top 10 Order by Gross Margin"
+                    />
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-4">
+                    <ProfitBarChart
+                      rows={[...orderRows].sort((a, b) => (a.grossMargin ?? a.margin) - (b.grossMargin ?? b.margin)).map(r => ({ name: r.orderNumber, revenue: r.revenue, grossMargin: r.grossMargin ?? r.margin, marginPct: r.marginPct }))}
+                      metric="grossMargin"
+                      label="Top 10 Low Margin Orders"
+                    />
+                  </CardContent>
+                </Card>
               </div>
             )}
 
@@ -913,13 +961,38 @@ export default function ProfitabilityAnalyticsPage() {
 
           {/* ── TAB: Vendors ── */}
           <TabsContent value="vendors" className="mt-4 space-y-3">
-            {(vendorsQuery.data ?? []).length > 0 && (
+            {/* Summary cards */}
+            {vendorsQuery.data && (
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {[
-                  { label: "Total Vendor", value: String(vendorsQuery.data!.length), icon: <Truck className="h-3.5 w-3.5 text-indigo-500" />, color: "border-l-indigo-400", text: "text-indigo-700" },
-                  { label: "Total Spend", value: idr(vendorsQuery.data!.reduce((s, r) => s + r.totalSpend, 0)), icon: <DollarSign className="h-3.5 w-3.5 text-slate-500" />, color: "border-l-slate-400", text: "text-slate-700" },
-                  { label: "Avg Win Rate", value: pct(vendorsQuery.data!.reduce((s, r) => s + r.winRate, 0) / (vendorsQuery.data!.length || 1)), icon: <Target className="h-3.5 w-3.5 text-emerald-500" />, color: "border-l-emerald-400", text: "text-emerald-700" },
-                  { label: "Avg On-Time", value: pct(vendorsQuery.data!.reduce((s, r) => s + r.ontimePct, 0) / (vendorsQuery.data!.length || 1)), icon: <Clock className="h-3.5 w-3.5 text-blue-500" />, color: "border-l-blue-400", text: "text-blue-700" },
+                  {
+                    label: "Product Vendors",
+                    value: String(vendorsQuery.data.productVendors.length),
+                    icon: <Package className="h-3.5 w-3.5 text-violet-500" />,
+                    color: "border-l-violet-400", text: "text-violet-700",
+                  },
+                  {
+                    label: "Shipment Vendors",
+                    value: String(vendorsQuery.data.shipmentVendors.length),
+                    icon: <Truck className="h-3.5 w-3.5 text-indigo-500" />,
+                    color: "border-l-indigo-400", text: "text-indigo-700",
+                  },
+                  {
+                    label: "Total Product Cost",
+                    value: idrCompact(vendorsQuery.data.productVendors.reduce((s, r) => s + r.totalCost, 0)),
+                    icon: <DollarSign className="h-3.5 w-3.5 text-violet-500" />,
+                    color: "border-l-violet-300", text: "text-violet-700",
+                  },
+                  {
+                    label: "Avg Shipment Win Rate",
+                    value: pct(
+                      vendorsQuery.data.shipmentVendors.length > 0
+                        ? vendorsQuery.data.shipmentVendors.reduce((s, r) => s + r.winRate, 0) / vendorsQuery.data.shipmentVendors.length
+                        : 0
+                    ),
+                    icon: <Target className="h-3.5 w-3.5 text-emerald-500" />,
+                    color: "border-l-emerald-400", text: "text-emerald-700",
+                  },
                 ].map(card => (
                   <Card key={card.label} className={`border-l-4 ${card.color}`}>
                     <CardContent className="flex items-center gap-2 p-2.5">
@@ -934,68 +1007,260 @@ export default function ProfitabilityAnalyticsPage() {
               </div>
             )}
 
-            <Card>
-              <CardHeader className="py-3 px-4 border-b">
-                <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                  <Truck className="h-4 w-4 text-indigo-500" />
-                  Spend · Win Rate · Performance per Vendor
-                  {vendorsQuery.data && <Badge variant="secondary" className="text-[10px]">{vendorsQuery.data.length} vendor</Badge>}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr>
-                        <th className={thCls}>#</th>
-                        <th className={thCls}>Vendor</th>
-                        <th className={`${thCls} text-right`}>Order</th>
-                        <th className={`${thCls} text-right`}>Total Spend</th>
-                        <th className={`${thCls} text-right`}>Win Rate</th>
-                        <th className={`${thCls} text-right`}>RFQ (Diundang)</th>
-                        <th className={`${thCls} text-right`}>On-Time</th>
-                        <th className={`${thCls} text-right`}>Avg Respon</th>
-                        <th className={`${thCls} text-right`}>Score</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {vendorsQuery.isLoading
-                        ? [...Array(8)].map((_, i) => <tr key={i}>{[...Array(9)].map((_, j) => <td key={j} className={tdCls}><Skeleton className="h-4 w-full" /></td>)}</tr>)
-                        : (vendorsQuery.data ?? []).length === 0
-                        ? <tr><td colSpan={9} className="text-center py-10 text-sm text-muted-foreground">Tidak ada data vendor</td></tr>
-                        : (vendorsQuery.data ?? []).map((row, i) => (
-                          <tr key={row.vendorId} className="hover:bg-slate-50 transition-colors">
-                            <td className={`${tdCls} text-xs font-bold text-muted-foreground w-8`}>{i + 1}</td>
-                            <td className={tdCls}><Link href={`/purchase/vendors/${row.vendorId}`} className="font-medium text-blue-700 hover:underline">{row.vendorName}</Link></td>
-                            <td className={`${tdCls} text-right`}><Badge variant="secondary" className="text-[10px]">{row.orderCount}</Badge></td>
-                            <td className={`${tdCls} text-right font-semibold text-slate-700`}>{idrCompact(row.totalSpend)}</td>
-                            <td className={`${tdCls} text-right`}><WinRateBadge rate={row.winRate} /></td>
-                            <td className={`${tdCls} text-right text-xs text-muted-foreground`}>{row.totalWins}/{row.totalInvites}</td>
-                            <td className={`${tdCls} text-right`}>
-                              <span className={`text-xs font-medium ${row.ontimePct >= 80 ? "text-emerald-700" : row.ontimePct >= 50 ? "text-amber-600" : "text-red-600"}`}>{pct(row.ontimePct)}</span>
-                            </td>
-                            <td className={`${tdCls} text-right`}>
-                              <span className="flex items-center justify-end gap-1 text-xs text-muted-foreground">
-                                <Clock className="h-3 w-3" />
-                                {row.avgResponseMin < 60 ? `${row.avgResponseMin.toFixed(0)}m` : `${(row.avgResponseMin / 60).toFixed(1)}j`}
-                              </span>
-                            </td>
-                            <td className={`${tdCls} text-right`}>
-                              <div className="flex items-center justify-end gap-1.5">
-                                <div className="h-1.5 w-16 rounded-full bg-slate-100">
-                                  <div className={`h-1.5 rounded-full ${row.recommendationScore >= 80 ? "bg-emerald-500" : row.recommendationScore >= 60 ? "bg-blue-400" : "bg-amber-400"}`} style={{ width: `${row.recommendationScore}%` }} />
-                                </div>
-                                <span className="text-xs font-semibold w-6 text-right">{row.recommendationScore.toFixed(0)}</span>
-                              </div>
-                            </td>
+            {/* Sub-tabs: Product / Shipment / Combined */}
+            <Tabs value={vendorSubTab} onValueChange={v => setVendorSubTab(v as typeof vendorSubTab)}>
+              <TabsList className="w-full sm:w-auto">
+                <TabsTrigger value="product" className="gap-1.5">
+                  <Package className="h-3.5 w-3.5" />
+                  Product Vendors
+                  {vendorsQuery.data && (
+                    <Badge variant="secondary" className="text-[10px] ml-1">{vendorsQuery.data.productVendors.length}</Badge>
+                  )}
+                </TabsTrigger>
+                <TabsTrigger value="shipment" className="gap-1.5">
+                  <Truck className="h-3.5 w-3.5" />
+                  Shipment Vendors
+                  {vendorsQuery.data && (
+                    <Badge variant="secondary" className="text-[10px] ml-1">{vendorsQuery.data.shipmentVendors.length}</Badge>
+                  )}
+                </TabsTrigger>
+                <TabsTrigger value="combined" className="gap-1.5">
+                  <BarChart2 className="h-3.5 w-3.5" />
+                  Combined
+                </TabsTrigger>
+              </TabsList>
+
+              {/* ── Product Vendors ── */}
+              <TabsContent value="product" className="mt-3 space-y-3">
+                {vendorsQuery.isLoading ? (
+                  <Card><CardContent className="p-4 space-y-2">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}</CardContent></Card>
+                ) : (vendorsQuery.data?.productVendors ?? []).length === 0 ? (
+                  <Card>
+                    <CardContent className="py-14 flex flex-col items-center gap-3 text-center">
+                      <Package className="h-10 w-10 text-muted-foreground/30" />
+                      <div>
+                        <p className="font-semibold text-sm text-muted-foreground">Belum ada data Product Vendor</p>
+                        <p className="text-xs text-muted-foreground mt-1 max-w-sm mx-auto">
+                          Data akan muncul setelah Product-First order memiliki product vendor terpilih.
+                        </p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <>
+                    {vendorsQuery.data!.productVendors.length >= 2 && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <Card>
+                          <CardContent className="p-4">
+                            <ProfitBarChart
+                              rows={vendorsQuery.data!.productVendors.map(v => ({ name: v.vendorName, revenue: v.totalRevenue, grossMargin: v.totalMargin, marginPct: v.marginPct }))}
+                              metric="grossMargin"
+                              label="Top Product Vendors by Margin"
+                            />
+                          </CardContent>
+                        </Card>
+                        <Card>
+                          <CardContent className="p-4">
+                            <ProfitBarChart
+                              rows={[...vendorsQuery.data!.productVendors].sort((a, b) => b.marginPct - a.marginPct).map(v => ({ name: v.vendorName, revenue: v.totalRevenue, grossMargin: v.totalMargin, marginPct: v.marginPct }))}
+                              metric="marginPct"
+                              label="Top Product Vendors by Margin %"
+                            />
+                          </CardContent>
+                        </Card>
+                      </div>
+                    )}
+                    <Card>
+                      <CardHeader className="py-3 px-4 border-b">
+                        <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                          <Package className="h-4 w-4 text-violet-500" />
+                          Product Vendor Analytics
+                          <Badge variant="secondary" className="text-[10px]">{vendorsQuery.data!.productVendors.length} vendor</Badge>
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="p-0">
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr>
+                                <th className={thCls}>#</th>
+                                <th className={thCls}>Vendor</th>
+                                <th className={`${thCls} text-right`}>Order</th>
+                                <th className={`${thCls} text-right`}>Product Revenue</th>
+                                <th className={`${thCls} text-right`}>Product Cost</th>
+                                <th className={`${thCls} text-right`}>Product Margin</th>
+                                <th className={`${thCls} text-right`}>Margin %</th>
+                                <th className={`${thCls} text-right`}>Avg Cost</th>
+                                <th className={`${thCls} text-right`}>Win Rate</th>
+                                <th className={`${thCls} text-right`}>Win</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {vendorsQuery.data!.productVendors.map((row, i) => (
+                                <tr key={row.vendorId} className="hover:bg-slate-50 transition-colors">
+                                  <td className={`${tdCls} text-xs font-bold text-muted-foreground w-8`}>{i + 1}</td>
+                                  <td className={tdCls}><Link href={`/purchase/vendors/${row.vendorId}`} className="font-medium text-blue-700 hover:underline">{row.vendorName}</Link></td>
+                                  <td className={`${tdCls} text-right`}><Badge variant="secondary" className="text-[10px]">{row.totalOrders}</Badge></td>
+                                  <td className={`${tdCls} text-right font-semibold text-emerald-700`}>{idrCompact(row.totalRevenue)}</td>
+                                  <td className={`${tdCls} text-right text-slate-600`}>{idrCompact(row.totalCost)}</td>
+                                  <td className={`${tdCls} text-right font-semibold ${row.totalMargin < 0 ? "text-red-600" : "text-blue-700"}`}>{idrCompact(row.totalMargin)}</td>
+                                  <td className={`${tdCls} text-right`}><MarginBadge pct={row.marginPct} /></td>
+                                  <td className={`${tdCls} text-right text-xs text-muted-foreground`}>{row.avgProductCost > 0 ? idrCompact(row.avgProductCost) : "—"}</td>
+                                  <td className={`${tdCls} text-right`}><WinRateBadge rate={row.winRate} /></td>
+                                  <td className={`${tdCls} text-right text-xs text-muted-foreground`}>{row.winSelected}/{row.winInvites}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </>
+                )}
+              </TabsContent>
+
+              {/* ── Shipment Vendors ── */}
+              <TabsContent value="shipment" className="mt-3 space-y-3">
+                {(vendorsQuery.data?.shipmentVendors.length ?? 0) >= 2 && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <Card>
+                      <CardContent className="p-4">
+                        <ProfitBarChart
+                          rows={(vendorsQuery.data?.shipmentVendors ?? []).map(v => ({ name: v.vendorName, revenue: v.totalShipmentRevenue, grossMargin: v.totalShipmentMargin, marginPct: v.marginPct }))}
+                          metric="grossMargin"
+                          label="Top Shipment Vendors by Margin"
+                        />
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardContent className="p-4">
+                        <ProfitBarChart
+                          rows={(vendorsQuery.data?.shipmentVendors ?? []).map(v => ({ name: v.vendorName, revenue: v.totalShipmentRevenue, grossMargin: v.totalShipmentMargin, marginPct: v.winRate }))}
+                          metric="marginPct"
+                          label="Top Shipment Vendors by Win Rate %"
+                        />
+                      </CardContent>
+                    </Card>
+                  </div>
+                )}
+                <Card>
+                  <CardHeader className="py-3 px-4 border-b">
+                    <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                      <Truck className="h-4 w-4 text-indigo-500" />
+                      Shipment / Trucking Vendor Analytics
+                      {vendorsQuery.data && <Badge variant="secondary" className="text-[10px]">{vendorsQuery.data.shipmentVendors.length} vendor</Badge>}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr>
+                            <th className={thCls}>#</th>
+                            <th className={thCls}>Vendor</th>
+                            <th className={`${thCls} text-right`}>Order</th>
+                            <th className={`${thCls} text-right`}>Shipment Revenue</th>
+                            <th className={`${thCls} text-right`}>Shipment Cost</th>
+                            <th className={`${thCls} text-right`}>Shipment Margin</th>
+                            <th className={`${thCls} text-right`}>Margin %</th>
+                            <th className={`${thCls} text-right`}>RFQ</th>
+                            <th className={`${thCls} text-right`}>Terpilih</th>
+                            <th className={`${thCls} text-right`}>Win Rate</th>
+                            <th className={`${thCls} text-right`}>Avg Respon</th>
                           </tr>
-                        ))
-                      }
-                    </tbody>
-                  </table>
-                </div>
-              </CardContent>
-            </Card>
+                        </thead>
+                        <tbody>
+                          {vendorsQuery.isLoading
+                            ? [...Array(6)].map((_, i) => <tr key={i}>{[...Array(11)].map((_, j) => <td key={j} className={tdCls}><Skeleton className="h-4 w-full" /></td>)}</tr>)
+                            : (vendorsQuery.data?.shipmentVendors ?? []).length === 0
+                            ? <tr><td colSpan={11} className="text-center py-10 text-sm text-muted-foreground">Tidak ada data shipment vendor</td></tr>
+                            : (vendorsQuery.data?.shipmentVendors ?? []).map((row, i) => (
+                              <tr key={row.vendorId} className="hover:bg-slate-50 transition-colors">
+                                <td className={`${tdCls} text-xs font-bold text-muted-foreground w-8`}>{i + 1}</td>
+                                <td className={tdCls}><Link href={`/purchase/vendors/${row.vendorId}`} className="font-medium text-blue-700 hover:underline">{row.vendorName}</Link></td>
+                                <td className={`${tdCls} text-right`}><Badge variant="secondary" className="text-[10px]">{row.totalOrders}</Badge></td>
+                                <td className={`${tdCls} text-right font-semibold text-emerald-700`}>{idrCompact(row.totalShipmentRevenue)}</td>
+                                <td className={`${tdCls} text-right text-slate-600`}>{row.totalShipmentCost > 0 ? idrCompact(row.totalShipmentCost) : <span className="text-muted-foreground text-xs">—</span>}</td>
+                                <td className={`${tdCls} text-right font-semibold ${row.totalShipmentMargin < 0 ? "text-red-600" : "text-blue-700"}`}>{idrCompact(row.totalShipmentMargin)}</td>
+                                <td className={`${tdCls} text-right`}><MarginBadge pct={row.marginPct} /></td>
+                                <td className={`${tdCls} text-right text-xs text-muted-foreground`}>{row.rfqInvites}</td>
+                                <td className={`${tdCls} text-right text-xs text-muted-foreground`}>{row.selectedCount}</td>
+                                <td className={`${tdCls} text-right`}><WinRateBadge rate={row.winRate} /></td>
+                                <td className={`${tdCls} text-right`}>
+                                  <span className="flex items-center justify-end gap-1 text-xs text-muted-foreground">
+                                    <Clock className="h-3 w-3" />
+                                    {row.avgResponseMin < 60 ? `${row.avgResponseMin.toFixed(0)}m` : `${(row.avgResponseMin / 60).toFixed(1)}j`}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))
+                          }
+                        </tbody>
+                      </table>
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              {/* ── Combined / Legacy ── */}
+              <TabsContent value="combined" className="mt-3">
+                <Card>
+                  <CardHeader className="py-3 px-4 border-b">
+                    <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                      <BarChart2 className="h-4 w-4 text-slate-500" />
+                      Combined Vendor View
+                      {vendorsQuery.data && <Badge variant="secondary" className="text-[10px]">{vendorsQuery.data.combined.length} vendor</Badge>}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr>
+                            <th className={thCls}>#</th>
+                            <th className={thCls}>Vendor</th>
+                            <th className={thCls}>Tipe</th>
+                            <th className={`${thCls} text-right`}>Order</th>
+                            <th className={`${thCls} text-right`}>Total Spend</th>
+                            <th className={`${thCls} text-right`}>Win Rate</th>
+                            <th className={`${thCls} text-right`}>Win</th>
+                            <th className={`${thCls} text-right`}>Avg Respon</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {vendorsQuery.isLoading
+                            ? [...Array(6)].map((_, i) => <tr key={i}>{[...Array(8)].map((_, j) => <td key={j} className={tdCls}><Skeleton className="h-4 w-full" /></td>)}</tr>)
+                            : (vendorsQuery.data?.combined ?? []).length === 0
+                            ? <tr><td colSpan={8} className="text-center py-10 text-sm text-muted-foreground">Tidak ada data vendor</td></tr>
+                            : (vendorsQuery.data?.combined ?? []).map((row, i) => (
+                              <tr key={`${row.vendorType}-${row.vendorId}`} className="hover:bg-slate-50 transition-colors">
+                                <td className={`${tdCls} text-xs font-bold text-muted-foreground w-8`}>{i + 1}</td>
+                                <td className={tdCls}><Link href={`/purchase/vendors/${row.vendorId}`} className="font-medium text-blue-700 hover:underline">{row.vendorName}</Link></td>
+                                <td className={tdCls}>
+                                  <Badge className={`text-[10px] ${row.vendorType === "product" ? "bg-violet-100 text-violet-800 border-violet-200" : "bg-indigo-100 text-indigo-800 border-indigo-200"}`}>
+                                    {row.vendorType === "product" ? "Produk" : "Pengiriman"}
+                                  </Badge>
+                                </td>
+                                <td className={`${tdCls} text-right`}><Badge variant="secondary" className="text-[10px]">{row.orderCount}</Badge></td>
+                                <td className={`${tdCls} text-right font-semibold text-slate-700`}>{idrCompact(row.totalSpend)}</td>
+                                <td className={`${tdCls} text-right`}><WinRateBadge rate={row.winRate} /></td>
+                                <td className={`${tdCls} text-right text-xs text-muted-foreground`}>{row.totalWins}/{row.totalInvites}</td>
+                                <td className={`${tdCls} text-right`}>
+                                  <span className="flex items-center justify-end gap-1 text-xs text-muted-foreground">
+                                    <Clock className="h-3 w-3" />
+                                    {row.avgResponseMin > 0 ? (row.avgResponseMin < 60 ? `${row.avgResponseMin.toFixed(0)}m` : `${(row.avgResponseMin / 60).toFixed(1)}j`) : "—"}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))
+                          }
+                        </tbody>
+                      </table>
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            </Tabs>
           </TabsContent>
         </Tabs>
       </div>
