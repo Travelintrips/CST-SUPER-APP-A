@@ -5,12 +5,26 @@ import { eq, and, ilike, or, sql, asc } from "drizzle-orm";
 
 export const marketplaceRouter = Router();
 
-// GET /api/marketplace/products — list active vendor catalog items (public)
+// Helper: kondisi visibilitas item publik customer
+// Aturan: isPublished = true DAN isActive = true
+// Export supaya bisa dipakai di file lain jika perlu
+export function isCatalogItemPublic(item: { isPublished: boolean; isActive: boolean }): boolean {
+  return item.isPublished === true && item.isActive !== false;
+}
+function catalogPublicConditions() {
+  return [
+    eq(vendorCatalogItemsTable.isPublished, true),
+    eq(vendorCatalogItemsTable.isActive, true),
+  ] as const;
+}
+
+// GET /api/marketplace/products — list published+active vendor catalog items (public)
 // SECURITY: hanya ekspos priceSell, BUKAN priceBase
 marketplaceRouter.get("/products", async (req, res) => {
   const { vendor, category, location, search } = req.query as Record<string, string>;
 
-  const conditions = [eq(vendorCatalogItemsTable.isActive, true)];
+  // Publik: wajib isPublished = true DAN isActive = true
+  const conditions = [...catalogPublicConditions()];
 
   if (vendor && !isNaN(Number(vendor))) {
     conditions.push(eq(vendorCatalogItemsTable.vendorId, Number(vendor)));
@@ -71,7 +85,7 @@ marketplaceRouter.get("/products", async (req, res) => {
   );
 });
 
-// GET /api/marketplace/vendors — vendor list for filter dropdown
+// GET /api/marketplace/vendors — vendor list for filter dropdown (published+active only)
 marketplaceRouter.get("/vendors", async (_req, res) => {
   const rows = await db.execute(sql`
     SELECT DISTINCT
@@ -79,18 +93,20 @@ marketplaceRouter.get("/vendors", async (_req, res) => {
       COALESCE(vci.vendor_name, s.name) AS name
     FROM vendor_catalog_items vci
     LEFT JOIN suppliers s ON vci.vendor_id = s.id
-    WHERE vci.is_active = true
+    WHERE vci.is_published = true
+      AND vci.is_active = true
     ORDER BY 2
   `);
   return res.json(rows.rows as { id: number; name: string }[]);
 });
 
-// GET /api/marketplace/categories — unique categories for filter chips
+// GET /api/marketplace/categories — unique categories for filter chips (published+active only)
 marketplaceRouter.get("/categories", async (_req, res) => {
   const rows = await db.execute(sql`
     SELECT DISTINCT COALESCE(category_key, kategori) AS key
     FROM vendor_catalog_items
-    WHERE is_active = true
+    WHERE is_published = true
+      AND is_active = true
       AND COALESCE(category_key, kategori) IS NOT NULL
       AND COALESCE(category_key, kategori) != ''
     ORDER BY 1

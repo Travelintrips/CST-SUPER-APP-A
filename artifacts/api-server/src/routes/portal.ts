@@ -166,7 +166,8 @@ router.get("/marketplace", async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
   const { kind, category } = req.query as { kind?: string; category?: string };
 
-  const conditions: ReturnType<typeof eq>[] = [eq(vendorCatalogItemsTable.isPublished, true)];
+  // Publik: wajib isPublished = true DAN isActive = true
+  const conditions: ReturnType<typeof eq>[] = [...catalogPublicConditions()];
 
   if (kind === "product" || kind === "service") {
     conditions.push(eq(vendorCatalogItemsTable.templateKind, kind));
@@ -260,6 +261,21 @@ router.get("/marketplace", async (req, res) => {
   );
 });
 
+// ── Visibility helper — item katalog publik ───────────────────────────────────
+// Aturan: isPublished = true DAN isActive = true (tidak ada deletedAt di skema)
+// Gunakan helper ini di SEMUA endpoint publik customer — jangan pakai isActive saja.
+export function isCatalogItemPublic(item: { isPublished: boolean; isActive: boolean }): boolean {
+  return item.isPublished === true && item.isActive !== false;
+}
+
+// Drizzle condition builder untuk WHERE clause — gunakan di query langsung
+function catalogPublicConditions(vci: typeof vendorCatalogItemsTable = vendorCatalogItemsTable) {
+  return [
+    eq(vci.isPublished, true),
+    eq(vci.isActive, true),
+  ] as const;
+}
+
 // ── Marketplace helpers ───────────────────────────────────────────────────────
 function mkMarketplaceOrderNumber(): string {
   const d = new Date();
@@ -303,7 +319,8 @@ async function getCatalogItemPublic(id: number) {
       isPublished: vendorCatalogItemsTable.isPublished,
     })
     .from(vendorCatalogItemsTable)
-    .where(and(eq(vendorCatalogItemsTable.id, id), eq(vendorCatalogItemsTable.isPublished, true)));
+    // Publik: wajib isPublished = true DAN isActive = true
+    .where(and(eq(vendorCatalogItemsTable.id, id), ...catalogPublicConditions()));
   if (!row) return null;
   return { ...row, priceSell: row.priceSell !== null ? Number(row.priceSell) : null };
 }
@@ -3576,7 +3593,8 @@ router.get("/vendor-catalog/compare", async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
   try {
     const { type } = req.query as Record<string, string>;
-    const conditions = [eq(vendorCatalogItemsTable.isActive, true)];
+    // Publik: wajib isPublished = true DAN isActive = true
+    const conditions = [...catalogPublicConditions()];
     if (type === "product" || type === "service") {
       conditions.push(eq(vendorCatalogItemsTable.type, type));
     }
@@ -3650,7 +3668,8 @@ router.get("/vendor-catalog", async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
   try {
     const { type, kategori } = req.query as Record<string, string>;
-    const conditions = [eq(vendorCatalogItemsTable.isActive, true)];
+    // Publik: wajib isPublished = true DAN isActive = true
+    const conditions = [...catalogPublicConditions()];
     if (type === "product" || type === "service") {
       conditions.push(eq(vendorCatalogItemsTable.type, type));
     }
@@ -3883,7 +3902,7 @@ router.get("/marketplace/:id/related", async (req, res) => {
       .where(and(
         eq(vci.vendorId, item.vendorId),
         ne(vci.id, id),
-        eq(vci.isPublished, true),
+        ...catalogPublicConditions(vci),
       ))
       .orderBy(
         sql`CASE WHEN ${vci.categoryKey} = ${item.categoryKey ?? ""} THEN 0 ELSE 1 END`,
@@ -3927,9 +3946,10 @@ router.get("/marketplace/:id/similar", async (req, res) => {
         ?? null
       : null;
 
+    // Publik: wajib isPublished = true DAN isActive = true
     const conditions = [
       ne(vci.id, id),
-      eq(vci.isPublished, true),
+      ...catalogPublicConditions(vci),
     ];
 
     // Prefer same templateKind
@@ -4016,9 +4036,10 @@ router.get("/vendors/:vendorId/public-profile", async (req, res) => {
       services: sql<number>`count(*) filter (where ${vendorCatalogItemsTable.templateKind} = 'service')`,
     })
     .from(vendorCatalogItemsTable)
+    // Publik: wajib isPublished = true DAN isActive = true
     .where(and(
       eq(vendorCatalogItemsTable.vendorId, vendorId),
-      eq(vendorCatalogItemsTable.isPublished, true),
+      ...catalogPublicConditions(),
     ));
 
   return res.json({
