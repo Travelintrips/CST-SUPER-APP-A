@@ -117,6 +117,7 @@ import expenseBudgetsRouter from "./expenseBudgets.js";
 import { watiRouter } from "./wati.js";
 import { marketplaceRouter } from "./marketplace.js";
 import { escrowAdminRouter, escrowPublicRouter } from "./escrow.js";
+import { vendorCatalogEnginePublicRouter, vendorCatalogEngineAdminRouter } from "./vendorCatalogEngine.js";
 import orderCostsRouter from "./orderCosts.js";
 import productMediaRouter from "./productMedia.js";
 
@@ -148,6 +149,8 @@ router.use("/scan-document", scanDocumentRouter);
 router.use("/expenses", expensesRouter);
 router.use("/portal", portalRouter);
 router.use("/marketplace", marketplaceRouter);
+router.use("/vendor-catalog-engine", vendorCatalogEnginePublicRouter);
+router.use("/trading/catalog-engine", vendorCatalogEngineAdminRouter);
 // PERHATIAN: logisticRfqRouter dan logisticOrdersRouter keduanya di-mount di /logistic/orders.
 // Express akan mencoba logisticRfqRouter dulu; jika tidak ada handler yang cocok, baru logisticOrdersRouter.
 // Risiko: jika keduanya mendefinisikan path yang sama (misal GET /), hanya yang pertama yang merespons.

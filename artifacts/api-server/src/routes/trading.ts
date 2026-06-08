@@ -667,6 +667,7 @@ router.get("/suppliers/catalog/all", async (req, res) => {
       isActive: vendorCatalogItemsTable.isActive,
       publishedAt: vendorCatalogItemsTable.publishedAt,
       sourceSubmissionId: vendorCatalogItemsTable.sourceSubmissionId,
+      mediaAssets: vendorCatalogItemsTable.mediaAssets,
       createdAt: vendorCatalogItemsTable.createdAt,
       updatedAt: vendorCatalogItemsTable.updatedAt,
     })
@@ -768,6 +769,7 @@ router.get("/suppliers/catalog/:itemId/detail", async (req, res) => {
     isActive: i.isActive,
     isCommodityTag: i.isCommodityTag,
     sourceSubmissionId: i.sourceSubmissionId,
+    mediaAssets: i.mediaAssets ?? [],
     publishedAt: i.publishedAt?.toISOString() ?? null,
     createdAt: i.createdAt.toISOString(),
     updatedAt: i.updatedAt.toISOString(),
@@ -844,6 +846,91 @@ router.patch("/suppliers/catalog/:itemId/fields", async (req, res) => {
 
   if (!updated) return res.status(404).json({ message: "Item not found" });
   return res.json({ ...toItem(updated), priceSell: updated.priceSell != null ? Number(updated.priceSell) : null });
+});
+
+// PATCH /api/trading/suppliers/catalog/:itemId/media
+// Reorder mediaAssets, set cover — admin only
+router.patch("/suppliers/catalog/:itemId/media", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  const itemId = Number(req.params.itemId);
+  if (Number.isNaN(itemId)) return res.status(400).json({ message: "Invalid id" });
+
+  const { mediaAssets } = req.body as {
+    mediaAssets: Array<{
+      url: string;
+      name?: string;
+      type?: string;
+      isCover?: boolean;
+      sortOrder?: number;
+      mimeType?: string;
+    }>;
+  };
+
+  if (!Array.isArray(mediaAssets)) {
+    return res.status(400).json({ message: "mediaAssets harus berupa array" });
+  }
+
+  // Ensure sortOrder is sequential and isCover is consistent (only one cover)
+  let coverSet = false;
+  const normalized = mediaAssets.map((a, i) => {
+    const isCover = !coverSet && (a.isCover === true);
+    if (isCover) coverSet = true;
+    return { ...a, sortOrder: i, isCover };
+  });
+  // If no cover set, make first one cover
+  if (!coverSet && normalized.length > 0) normalized[0].isCover = true;
+
+  const [updated] = await db
+    .update(vendorCatalogItemsTable)
+    .set({ mediaAssets: normalized, updatedAt: new Date() })
+    .where(eq(vendorCatalogItemsTable.id, itemId))
+    .returning();
+
+  if (!updated) return res.status(404).json({ message: "Item not found" });
+  return res.json({
+    id: updated.id,
+    mediaAssets: updated.mediaAssets ?? [],
+    message: "Media assets diperbarui",
+  });
+});
+
+// PATCH /api/trading/suppliers/catalog/:itemId/pricing
+// Admin-only: update priceSell. priceBase & margin TIDAK pernah dikirim ke customer API.
+router.patch("/suppliers/catalog/:itemId/pricing", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  const itemId = Number(req.params.itemId);
+  if (Number.isNaN(itemId)) return res.status(400).json({ message: "Invalid id" });
+
+  const { priceSell } = req.body as { priceSell?: number | null };
+
+  const [updated] = await db
+    .update(vendorCatalogItemsTable)
+    .set({
+      priceSell: priceSell != null ? String(parseFloat(String(priceSell)) || 0) : null,
+      updatedAt: new Date(),
+    })
+    .where(eq(vendorCatalogItemsTable.id, itemId))
+    .returning();
+
+  if (!updated) return res.status(404).json({ message: "Item not found" });
+
+  const priceSellNum  = updated.priceSell != null ? Number(updated.priceSell) : null;
+  const priceBaseNum  = Number(updated.priceBase ?? 0);
+  const marginAmount  = priceSellNum != null ? priceSellNum - priceBaseNum : null;
+  const marginPct     = priceSellNum != null && priceSellNum > 0
+    ? ((priceSellNum - priceBaseNum) / priceSellNum) * 100 : null;
+
+  return res.json({
+    id: updated.id,
+    priceSell: priceSellNum,
+    // priceBase & margin hanya dikembalikan ke admin caller — tidak pernah masuk ke public/customer API
+    _adminOnly: {
+      priceBase:   priceBaseNum,
+      marginAmount,
+      marginPct:   marginPct != null ? Math.round(marginPct * 100) / 100 : null,
+    },
+    message: "Harga jual diperbarui",
+  });
 });
 
 // ─── Vendor Drivers ─────────────────────────────────────────────────────────

@@ -58,6 +58,10 @@ type FormLink = {
   maxSubmissions: number | null; resubmitAllowed: boolean | null; adminNotes: string | null;
 };
 
+type MediaAssetItem = {
+  role: string; objectPath: string; filename: string; mimeType: string; size?: number;
+};
+
 type Submission = {
   id: number; linkId: number | null; token: string; supplierId: number | null;
   serviceType: string; vendorName: string | null; contactPerson: string | null;
@@ -71,6 +75,8 @@ type Submission = {
   orderId: number | null;
   templateId: string | null; templateVersion: string | null;
   templateSnapshot: Record<string, unknown> | null;
+  mediaAssets?: MediaAssetItem[] | null;
+  attachmentUrl?: string | null;
 };
 
 type CustomerApproval = {
@@ -1106,6 +1112,77 @@ function getHighlight(serviceType: string, fd: Record<string, unknown>): string 
 
 // ── Submission Card ───────────────────────────────────────────────────────────
 
+// ── Media Gallery helper ──────────────────────────────────────────────────────
+
+const MEDIA_ROLE_LABEL: Record<string, string> = {
+  cover: "🖼️ Cover Image",
+  gallery: "🖼️ Gallery",
+  video: "🎬 Video",
+  brochure: "📄 Brosur",
+  certificate: "🏆 Sertifikat",
+};
+
+function SubmissionMediaGallery({ mediaAssets }: { mediaAssets: MediaAssetItem[] }) {
+  const byRole = mediaAssets.reduce<Record<string, MediaAssetItem[]>>((acc, m) => {
+    if (!acc[m.role]) acc[m.role] = [];
+    acc[m.role].push(m);
+    return acc;
+  }, {});
+
+  return (
+    <div className="space-y-2">
+      {(["cover", "gallery", "video", "brochure", "certificate"] as const).map(role => {
+        const items = byRole[role];
+        if (!items || items.length === 0) return null;
+        const isImage = (m: MediaAssetItem) => m.mimeType.startsWith("image/");
+        const isVideo = (m: MediaAssetItem) => m.mimeType.startsWith("video/");
+        const downloadUrl = (m: MediaAssetItem) => `/api/storage${m.objectPath}`;
+        return (
+          <div key={role}>
+            <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide mb-1">{MEDIA_ROLE_LABEL[role]}</p>
+            {role === "gallery" || role === "certificate" ? (
+              <div className="flex flex-wrap gap-2">
+                {items.map(m => (
+                  <a key={m.objectPath} href={downloadUrl(m)} target="_blank" rel="noreferrer"
+                    className="block" title={m.filename}>
+                    {isImage(m) ? (
+                      <img src={downloadUrl(m)} alt={m.filename}
+                        className="w-14 h-14 object-cover rounded-lg border border-slate-200 shadow-sm hover:opacity-80 transition-opacity" />
+                    ) : (
+                      <div className="flex items-center gap-1.5 text-xs text-indigo-600 hover:underline bg-slate-50 rounded px-2 py-1.5 border border-slate-200">
+                        <FileText className="h-3 w-3 shrink-0" />
+                        <span className="truncate max-w-[120px]">{m.filename}</span>
+                      </div>
+                    )}
+                  </a>
+                ))}
+              </div>
+            ) : (
+              items.map(m => (
+                <a key={m.objectPath} href={downloadUrl(m)} target="_blank" rel="noreferrer"
+                  className="inline-flex items-center gap-2 text-xs text-indigo-600 hover:underline bg-slate-50 rounded-lg px-3 py-2 border border-slate-200 shadow-sm">
+                  {isImage(m) ? (
+                    <img src={downloadUrl(m)} alt={m.filename} className="w-10 h-10 object-cover rounded" />
+                  ) : isVideo(m) ? (
+                    <span className="text-base">🎬</span>
+                  ) : (
+                    <span className="text-base">📄</span>
+                  )}
+                  <div className="min-w-0">
+                    <p className="font-medium truncate max-w-[160px]">{m.filename}</p>
+                    {m.size && <p className="text-[10px] text-slate-400">{(m.size / 1024 / 1024).toFixed(1)} MB</p>}
+                  </div>
+                  <ExternalLink className="h-3 w-3 shrink-0 ml-1" />
+                </a>
+              ))
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function SubmissionCard({
   sub, idx, onDelete, onSelect, onToggleDetail, showDetail,
 }: {
@@ -1179,6 +1256,26 @@ function SubmissionCard({
                   <span className="font-medium text-slate-800 break-words">{String(v)}</span>
                 </div>
               ))}
+            </div>
+          )}
+          {/* Lampiran */}
+          {sub.attachmentUrl && (
+            <div className="pt-2 border-t border-dashed border-slate-100">
+              <p className="text-xs text-slate-400 mb-1 font-medium">📎 Lampiran</p>
+              <a
+                href={`/api/storage${sub.attachmentUrl}`}
+                target="_blank" rel="noreferrer"
+                className="text-xs text-indigo-600 hover:underline flex items-center gap-1"
+              >
+                <ExternalLink className="h-3 w-3" /> Buka Lampiran
+              </a>
+            </div>
+          )}
+          {/* Media Assets */}
+          {sub.mediaAssets && sub.mediaAssets.length > 0 && (
+            <div className="pt-2 border-t border-dashed border-slate-100">
+              <p className="text-xs text-slate-500 font-semibold mb-2">📷 Media Produk/Jasa</p>
+              <SubmissionMediaGallery mediaAssets={sub.mediaAssets} />
             </div>
           )}
         </div>
@@ -2837,6 +2934,7 @@ export default function VendorFormsPage() {
             <TabsTrigger value="approvals">✅ Customer Approval ({approvals.length})</TabsTrigger>
             <TabsTrigger value="op-confirms">🚚 Konfirmasi Operasional ({opConfirms.length})</TabsTrigger>
             <TabsTrigger value="invoices">🧾 Invoice ({invoices.length})</TabsTrigger>
+            <TabsTrigger value="media-report">📷 Media Submission ({submissions.filter(s => s.mediaAssets && s.mediaAssets.length > 0).length})</TabsTrigger>
             <TabsTrigger value="product-templates">🏭 Product Templates</TabsTrigger>
             <TabsTrigger value="activity-log">📋 Log Aktivitas</TabsTrigger>
           </TabsList>
@@ -3632,6 +3730,81 @@ export default function VendorFormsPage() {
                   </Table>
                 </CardContent>
               </Card>
+            )}
+          </TabsContent>
+
+          {/* ── MEDIA SUBMISSION REPORT TAB ── */}
+          <TabsContent value="media-report" className="space-y-4">
+            <div className="rounded-xl bg-gradient-to-r from-violet-600 to-pink-600 p-5 text-white">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0 text-xl">📷</div>
+                <div>
+                  <h2 className="font-bold text-lg">Vendor Media Submission Report</h2>
+                  <p className="text-sm text-violet-100 mt-0.5">
+                    Media yang diunggah vendor — cover, gallery, video, brosur, dan sertifikat.
+                  </p>
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-3 mt-4">
+                {[
+                  { label: "Vendor Kirim Media", value: submissions.filter(s => s.mediaAssets && s.mediaAssets.length > 0).length },
+                  { label: "Total File Media", value: submissions.reduce((acc, s) => acc + (s.mediaAssets?.length ?? 0), 0) },
+                  { label: "Dari Total Submissions", value: submissions.length },
+                ].map(st => (
+                  <div key={st.label} className="bg-white/15 rounded-lg p-3 text-center">
+                    <p className="text-xl font-bold">{st.value}</p>
+                    <p className="text-xs text-violet-100 mt-0.5">{st.label}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {submissions.filter(s => s.mediaAssets && s.mediaAssets.length > 0).length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-20 text-slate-400 gap-2">
+                <span className="text-4xl opacity-30">📷</span>
+                <p className="text-sm">Belum ada vendor yang mengunggah media.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {submissions
+                  .filter(s => s.mediaAssets && s.mediaAssets.length > 0)
+                  .map(sub => {
+                    const meta = SERVICE_META[sub.serviceType];
+                    return (
+                      <Card key={sub.id} className="overflow-hidden">
+                        <CardHeader className="pb-3 bg-slate-50 border-b">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <CardTitle className="text-sm font-semibold text-slate-800 flex items-center gap-2">
+                                {meta?.emoji} {sub.vendorName ?? "—"}
+                                {sub.selectedByAdmin && (
+                                  <span className="text-xs bg-green-100 text-green-700 border border-green-200 rounded px-1.5 py-0.5 flex items-center gap-0.5">
+                                    <Star className="h-2.5 w-2.5 fill-green-600 text-green-600" /> Dipilih
+                                  </span>
+                                )}
+                              </CardTitle>
+                              <div className="flex items-center gap-3 mt-1 flex-wrap">
+                                {sub.contactPerson && (
+                                  <span className="text-xs text-slate-500 flex items-center gap-1"><User className="h-3 w-3" />{sub.contactPerson}</span>
+                                )}
+                                <span className="text-xs text-slate-400">{meta?.label ?? sub.serviceType}</span>
+                                <span className="text-xs text-slate-400">
+                                  {new Date(sub.submittedAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
+                                </span>
+                                <span className="text-xs bg-violet-100 text-violet-700 rounded px-1.5 py-0.5 border border-violet-200">
+                                  {sub.mediaAssets!.length} file media
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="pt-4">
+                          <SubmissionMediaGallery mediaAssets={sub.mediaAssets!} />
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+              </div>
             )}
           </TabsContent>
 

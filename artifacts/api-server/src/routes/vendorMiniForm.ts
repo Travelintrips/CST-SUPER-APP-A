@@ -40,10 +40,10 @@ import { upsertCatalogDraftFromSubmission } from "../lib/vendorCatalogDraft.js";
 import type { SubmissionForCatalog, LinkForCatalog } from "../lib/vendorCatalogDraft.js";
 import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStatusService.js";
 import { deleteFromSupabase } from "../lib/supabaseStorage.js";
-import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
+import { sendViaService as sendWhatsApp, sendToAdminGroup } from "../lib/waTransport.js";
 import { getWaTemplateConfig, renderTemplate } from "../lib/orderNotification.js";
-import { getAdminGroupWa } from "../lib/adminWa.js";
-import { wasRecentlyNotified } from "../lib/notificationLog.js";
+import { getAdminWa, getAdminGroupWa } from "../lib/adminWa.js";
+import { wasRecentlyNotified, logNotification } from "../lib/notificationLog.js";
 import { createSalesOrderFromVmfApproval } from "../lib/vmfSoIntegration.js";
 import { updateOrderProgress } from "../lib/orderProgress.js";
 import {
@@ -1178,6 +1178,107 @@ vendorMiniFormRouter.post("/upload/:token", _vmfUploadRateLimit, _vmfUpload.sing
   }
 });
 
+// ── PUBLIC: POST /api/vendor-form/upload-media/:token ────────────────────────
+const _vmfMediaUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
+const _vmfMediaRateLimit = rateLimit({ windowMs: 60 * 60 * 1000, max: 40, standardHeaders: true, legacyHeaders: false });
+
+const MEDIA_ALLOWED_TYPES: Record<string, string[]> = {
+  cover:       ["image/jpeg", "image/png", "image/webp"],
+  gallery:     ["image/jpeg", "image/png", "image/webp"],
+  video:       ["video/mp4", "video/quicktime", "video/webm", "video/x-msvideo", "video/mpeg"],
+  brochure:    ["application/pdf"],
+  certificate: ["application/pdf", "image/jpeg", "image/png", "image/webp"],
+};
+
+vendorMiniFormRouter.post("/upload-media/:token", _vmfMediaRateLimit, _vmfMediaUpload.single("file"), async (req: Request, res: Response) => {
+  const { token } = req.params as { token: string };
+  if (token === "admin") return res.status(404).json({ error: "Not found" });
+  try {
+    const [link] = await db.select({
+      id: vendorMiniFormLinksTable.id,
+      isActive: vendorMiniFormLinksTable.isActive,
+      expiresAt: vendorMiniFormLinksTable.expiresAt,
+      vendorName: vendorMiniFormLinksTable.vendorName,
+      serviceType: vendorMiniFormLinksTable.serviceType,
+      orderNumber: vendorMiniFormLinksTable.orderNumber,
+    })
+      .from(vendorMiniFormLinksTable)
+      .where(eq(vendorMiniFormLinksTable.token, token));
+    if (!link) return res.status(404).json({ error: "Link tidak ditemukan" });
+    if (!link.isActive) return res.status(410).json({ error: "Link sudah dinonaktifkan" });
+    if (link.expiresAt && link.expiresAt < new Date()) return res.status(410).json({ error: "Link sudah kadaluarsa" });
+
+    if (!req.file) return res.status(400).json({ error: "File diperlukan" });
+
+    const role = String(req.body?.role ?? "gallery");
+    if (!MEDIA_ALLOWED_TYPES[role]) {
+      return res.status(400).json({ error: `Role tidak valid. Pilih: ${Object.keys(MEDIA_ALLOWED_TYPES).join(", ")}` });
+    }
+    if (!MEDIA_ALLOWED_TYPES[role].includes(req.file.mimetype)) {
+      return res.status(400).json({ error: `Tipe file tidak didukung untuk ${role}.` });
+    }
+
+    let objectPath: string;
+    try {
+      objectPath = await _vmfStorage.uploadPrivateEntity(req.file.buffer, req.file.mimetype);
+    } catch (storErr: unknown) {
+      req.log?.error({ err: storErr }, "Storage upload gagal pada VMF media");
+      return res.status(503).json({ error: "Storage sedang tidak tersedia, silakan coba lagi." });
+    }
+
+    const uploadResult = { objectPath, filename: req.file.originalname, mimeType: req.file.mimetype, size: req.file.size, role };
+
+    // ── Fire-and-forget WA notification ke admin ─────────────────────────────
+    const _linkId = String(link.id);
+    const _vendorName = link.vendorName ?? "Vendor";
+    const _serviceType = link.serviceType;
+    const _orderNumber = link.orderNumber;
+    const _filename = req.file.originalname;
+    const _role = role;
+    setImmediate(async () => {
+      try {
+        const dedupCtx = "vmf_media_upload";
+        const alreadyNotified = await wasRecentlyNotified(dedupCtx, _linkId, 30 * 60 * 1000);
+        if (alreadyNotified) return;
+
+        const ROLE_LABEL: Record<string, string> = {
+          cover: "Cover Image",
+          gallery: "Foto Gallery",
+          video: "Video",
+          brochure: "Brosur PDF",
+          certificate: "Sertifikat",
+        };
+        const msg =
+          `📷 *Media Vendor Diterima*\n\n` +
+          `Vendor *${_vendorName}* (${_serviceType})` +
+          (_orderNumber ? ` untuk order *${_orderNumber}*` : "") +
+          ` baru saja mengunggah media:\n` +
+          `• Jenis: ${ROLE_LABEL[_role] ?? _role}\n` +
+          `• File: ${_filename}\n\n` +
+          `Lihat di BizPortal → Vendor Forms → 📷 Media Submission.`;
+
+        const [adminGroupWa, adminWa] = await Promise.all([getAdminGroupWa(), getAdminWa()]);
+        const waOpts = { context: dedupCtx, refType: "vmf_link", refId: _linkId };
+
+        if (adminGroupWa) {
+          await sendToAdminGroup(adminGroupWa, msg, waOpts);
+          await logNotification({ channel: "wa", recipient: adminGroupWa, message: msg, status: "sent", context: dedupCtx, refType: "vmf_link", refId: _linkId });
+        } else if (adminWa) {
+          await sendWhatsApp(adminWa, msg, waOpts);
+          await logNotification({ channel: "wa", recipient: adminWa, message: msg, status: "sent", context: dedupCtx, refType: "vmf_link", refId: _linkId });
+        }
+      } catch (notifErr) {
+        req.log?.warn({ err: notifErr }, "vmf media upload — notifikasi WA gagal (non-fatal)");
+      }
+    });
+
+    return res.json(uploadResult);
+  } catch (err) {
+    req.log?.error({ err }, "vmf media upload error");
+    return res.status(500).json({ error: "Upload gagal" });
+  }
+});
+
 // ── PUBLIC: POST /api/vendor-form/:token ──────────────────────────────────────
 
 vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
@@ -1208,11 +1309,12 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
       if (!link.resubmitAllowed) return res.status(409).json({ error: "Penawaran sudah pernah dikirim. Hubungi admin untuk izin revisi." });
     }
 
-    const { vendorName, contactPerson, contactPhone, formData, responseStatus, vendorPrice, currency, eta, validUntil, attachmentUrl } = req.body as {
+    const { vendorName, contactPerson, contactPhone, formData, responseStatus, vendorPrice, currency, eta, validUntil, attachmentUrl, mediaAssets } = req.body as {
       vendorName?: string; contactPerson?: string; contactPhone?: string;
       formData?: Record<string, unknown>;
       responseStatus?: string; vendorPrice?: number; currency?: string;
       eta?: string; validUntil?: string; attachmentUrl?: string;
+      mediaAssets?: Array<{ role: string; objectPath: string; filename: string; mimeType: string; size?: number }>;
     };
 
     if (!formData || typeof formData !== "object") return res.status(400).json({ error: "formData diperlukan" });
@@ -1222,6 +1324,24 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
     if (attachmentUrl !== undefined && attachmentUrl !== null && attachmentUrl !== "") {
       if (!attachmentUrl.startsWith("/objects/") && !attachmentUrl.startsWith("/api/vendor-form/local-file/")) {
         return res.status(400).json({ error: "attachmentUrl tidak valid. Gunakan endpoint upload terlebih dahulu." });
+      }
+    }
+
+    // Validasi mediaAssets — setiap objectPath harus dari private storage
+    const validatedMediaAssets: Array<{ role: string; objectPath: string; filename: string; mimeType: string; size?: number }> = [];
+    if (Array.isArray(mediaAssets)) {
+      for (const item of mediaAssets) {
+        if (!item || typeof item !== "object") continue;
+        if (!item.objectPath?.startsWith("/objects/")) continue;
+        const validRoles = ["cover", "gallery", "video", "brochure", "certificate"];
+        if (!validRoles.includes(item.role)) continue;
+        validatedMediaAssets.push({
+          role: item.role,
+          objectPath: item.objectPath,
+          filename: String(item.filename ?? "").slice(0, 255),
+          mimeType: String(item.mimeType ?? "").slice(0, 128),
+          size: typeof item.size === "number" ? item.size : undefined,
+        });
       }
     }
 
@@ -1358,6 +1478,7 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
           responseStatus: "resubmitted", vendorPrice: vendorPrice ? String(vendorPrice) : undefined,
           currency: currency ?? undefined, eta: eta ?? undefined, validUntil: validUntil ?? undefined,
           attachmentUrl: attachmentUrl ?? undefined,
+          mediaAssets: validatedMediaAssets.length > 0 ? validatedMediaAssets : undefined,
           submittedIp, submittedUa,
           revisionCount: (prev?.revisionCount ?? 0) + 1,
           // Refresh snapshot from link on resubmit (captures template updates)
@@ -1413,6 +1534,7 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
           templateId: link.templateId ?? null,
           templateVersion: link.templateVersion ?? null,
           templateSnapshot: (link.templateSnapshot as Record<string, unknown> | null) ?? null,
+          mediaAssets: validatedMediaAssets.length > 0 ? validatedMediaAssets : [],
         }).returning();
         return row;
       });

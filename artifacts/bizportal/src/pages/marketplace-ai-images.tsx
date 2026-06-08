@@ -1,711 +1,628 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { AppShell } from "@/components/layout/AppShell";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  ImagePlus, RefreshCw, Sparkles, CheckCircle2, XCircle, Clock,
-  Package, Wrench, Loader2, Image, BarChart3, AlertCircle, Eye,
-  ThumbsUp, ThumbsDown, ShieldCheck, Timer, Store,
+  ImageIcon,
+  RefreshCw,
+  Eye,
+  Loader2,
+  Search,
+  Wand2,
+  CheckCircle2,
+  XCircle,
+  ImageOff,
+  ExternalLink,
+  Package,
+  Wrench,
+  AlertTriangle,
 } from "lucide-react";
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle,
-} from "@/components/ui/dialog";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
-import { Progress } from "@/components/ui/progress";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
-} from "@/components/ui/tooltip";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface CatalogItem {
+interface GenerationItem {
   id: number;
   name: string;
-  templateKind: "product" | "service";
-  isPublished: boolean;
+  vendorId: number;
   vendorName: string | null;
+  kategori: string | null;
+  type: string;
+  isPublished: boolean;
+  description: string | null;
   mediaCount: number;
-  vendorCount: number;
-  aiCount: number;
-  pendingCount: number;
-  approvedCount: number;
+  hasImage: boolean;
   primaryImageUrl: string | null;
   lastGeneratedAt: string | null;
-  hasVendorImage: boolean;
-  hasApprovedImage: boolean;
-  hasPending: boolean;
 }
 
-interface GenerationStats {
+interface GenerationStatus {
   total: number;
   withImage: number;
   withoutImage: number;
-  pendingApproval: number;
+  items: GenerationItem[];
 }
 
-interface PendingImage {
-  id: number;
-  fileUrl: string;
-  aiImageStatus: string;
-  generationPrompt: string | null;
-  isPrimary: boolean;
-  createdAt: string;
-}
-
-interface QueueItem {
-  itemId: number;
-  itemName: string;
-  templateKind: string;
-  isPublished: boolean;
-  serviceType: string | null;
-  vendorName: string | null;
-  images: PendingImage[];
+interface BulkResult {
+  processed: number;
+  success: number;
+  failed: number;
+  results: Array<{ id: number; name: string; success: boolean; error?: string }>;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function KindBadge({ kind }: { kind: string }) {
-  return kind === "product" ? (
-    <Badge variant="outline" className="gap-1 text-blue-600 border-blue-200 text-[10px]">
-      <Package className="h-2.5 w-2.5" /> Produk
-    </Badge>
-  ) : (
-    <Badge variant="outline" className="gap-1 text-purple-600 border-purple-200 text-[10px]">
-      <Wrench className="h-2.5 w-2.5" /> Layanan
-    </Badge>
-  );
+async function apiFetch(url: string, opts?: RequestInit) {
+  const r = await fetch(url, { credentials: "include", ...opts });
+  const d = await r.json();
+  if (!r.ok) throw new Error(d.error ?? d.message ?? "Terjadi kesalahan");
+  return d;
 }
 
-function ItemStatusBadge({ item }: { item: CatalogItem }) {
-  if (item.hasVendorImage) {
-    return (
-      <Badge className="bg-blue-100 text-blue-700 border-blue-200 gap-1 text-[10px]">
-        <Store className="h-2.5 w-2.5" /> Vendor Photo
-      </Badge>
-    );
-  }
-  if (item.hasApprovedImage) {
-    return (
-      <Badge className="bg-green-100 text-green-700 border-green-200 gap-1 text-[10px]">
-        <ShieldCheck className="h-2.5 w-2.5" /> AI Approved
-      </Badge>
-    );
-  }
-  if (item.hasPending) {
-    return (
-      <Badge className="bg-amber-100 text-amber-700 border-amber-200 gap-1 text-[10px]">
-        <Timer className="h-2.5 w-2.5" /> Menunggu Review
-      </Badge>
-    );
-  }
+function CoverageBar({ pct }: { pct: number }) {
+  const color = pct >= 80 ? "bg-green-500" : pct >= 40 ? "bg-yellow-500" : "bg-red-500";
   return (
-    <Badge variant="outline" className="text-slate-500 border-slate-200 gap-1 text-[10px]">
-      <AlertCircle className="h-2.5 w-2.5" /> Belum ada
-    </Badge>
+    <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
+      <div className={`h-2 rounded-full transition-all ${color}`} style={{ width: `${pct}%` }} />
+    </div>
   );
 }
 
-// ─── Main Component ───────────────────────────────────────────────────────────
+// ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function MarketplaceAiImagesPage() {
   const { toast } = useToast();
-  const qc = useQueryClient();
+  const queryClient = useQueryClient();
 
-  const [onlyPublished, setOnlyPublished] = useState(true);
-  const [previewImg, setPreviewImg] = useState<{ url: string; name: string; prompt?: string | null } | null>(null);
-  const [generatingId, setGeneratingId] = useState<number | null>(null);
-  const [approvingId, setApprovingId] = useState<number | null>(null);
-  const [rejectingId, setRejectingId] = useState<number | null>(null);
-  const [isBulkRunning, setIsBulkRunning] = useState(false);
-  const [bulkReport, setBulkReport] = useState<{ summary: any; results: any[] } | null>(null);
+  const [search, setSearch] = useState("");
+  const [filterType, setFilterType] = useState<"all" | "product" | "service">("all");
+  const [filterStatus, setFilterStatus] = useState<"all" | "with" | "without">("all");
+  const [bulkLimit, setBulkLimit] = useState("10");
+  const [onlyPublished, setOnlyPublished] = useState(false);
+  const [forceRegenerate, setForceRegenerate] = useState(false);
+  const [previewItem, setPreviewItem] = useState<GenerationItem | null>(null);
+  const [bulkResult, setBulkResult] = useState<BulkResult | null>(null);
+  const [regeneratingIds, setRegeneratingIds] = useState<Set<number>>(new Set());
 
-  // ── Queries ───────────────────────────────────────────────────────────────
-  const { data: statusData, isLoading: statusLoading, refetch: refetchStatus } = useQuery<{
-    items: CatalogItem[];
-    stats: GenerationStats;
-  }>({
-    queryKey: ["marketplace-generation-status"],
-    queryFn: () => fetch("/api/product-media/generation-status").then((r) => r.json()),
+  // ── Data fetching ───────────────────────────────────────────────────────────
+  const { data, isLoading, isError, error } = useQuery<GenerationStatus>({
+    queryKey: ["product-media/generation-status"],
+    queryFn: () => apiFetch("/api/product-media/generation-status"),
   });
 
-  const { data: queueData, isLoading: queueLoading, refetch: refetchQueue } = useQuery<{
-    queue: QueueItem[];
-    totalItems: number;
-    totalImages: number;
-  }>({
-    queryKey: ["marketplace-approval-queue"],
-    queryFn: () => fetch("/api/product-media/approval-queue").then((r) => r.json()),
-    refetchInterval: 15000,
-  });
-
-  const items = statusData?.items ?? [];
-  const stats = statusData?.stats ?? { total: 0, withImage: 0, withoutImage: 0, pendingApproval: 0 };
-  const queue = queueData?.queue ?? [];
-  const displayItems = onlyPublished ? items.filter((i) => i.isPublished) : items;
-  const needsGeneration = displayItems.filter((i) => !i.hasVendorImage && !i.hasApprovedImage && !i.hasPending);
-
-  function refetchAll() {
-    refetchStatus();
-    refetchQueue();
-  }
-
-  // ── Approve single image ──────────────────────────────────────────────────
-  const approveMutation = useMutation({
-    mutationFn: async (imageId: number) => {
-      const r = await fetch(`/api/product-media/${imageId}/approve`, { method: "POST" });
-      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? "Gagal");
-      return r.json();
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["marketplace-approval-queue"] });
-      qc.invalidateQueries({ queryKey: ["marketplace-generation-status"] });
-      setApprovingId(null);
-    },
-    onError: (e: Error) => {
-      toast({ title: "Gagal approve", description: e.message, variant: "destructive" });
-      setApprovingId(null);
-    },
-  });
-
-  // ── Reject single image ───────────────────────────────────────────────────
-  const rejectMutation = useMutation({
-    mutationFn: async (imageId: number) => {
-      const r = await fetch(`/api/product-media/${imageId}/reject`, { method: "POST" });
-      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? "Gagal");
-      return r.json();
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["marketplace-approval-queue"] });
-      qc.invalidateQueries({ queryKey: ["marketplace-generation-status"] });
-      setRejectingId(null);
-    },
-    onError: (e: Error) => {
-      toast({ title: "Gagal reject", description: e.message, variant: "destructive" });
-      setRejectingId(null);
-    },
-  });
-
-  // ── Approve all for item ──────────────────────────────────────────────────
-  const approveAllMutation = useMutation({
-    mutationFn: async (itemId: number) => {
-      const r = await fetch(`/api/product-media/${itemId}/approve-all`, { method: "POST" });
-      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? "Gagal");
-      return r.json();
-    },
-    onSuccess: () => {
-      toast({ title: "Semua gambar disetujui" });
-      qc.invalidateQueries({ queryKey: ["marketplace-approval-queue"] });
-      qc.invalidateQueries({ queryKey: ["marketplace-generation-status"] });
-    },
-    onError: (e: Error) => toast({ title: "Gagal approve all", description: e.message, variant: "destructive" }),
-  });
-
-  // ── Set primary ───────────────────────────────────────────────────────────
-  const setPrimaryMutation = useMutation({
-    mutationFn: async (imageId: number) => {
-      const r = await fetch(`/api/product-media/${imageId}/set-primary`, { method: "POST" });
-      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? "Gagal");
-      return r.json();
-    },
-    onSuccess: () => {
-      toast({ title: "Foto utama diubah" });
-      qc.invalidateQueries({ queryKey: ["marketplace-approval-queue"] });
-      qc.invalidateQueries({ queryKey: ["marketplace-generation-status"] });
-    },
-  });
-
-  // ── Regenerate item ───────────────────────────────────────────────────────
-  async function handleRegenerate(itemId: number) {
-    setGeneratingId(itemId);
-    try {
-      const r = await fetch(`/api/product-media/regenerate-ai/${itemId}`, { method: "POST" });
-      const data = await r.json();
-      if (!r.ok) throw new Error(data.error ?? "Gagal");
-      toast({ title: `${data.generated} gambar baru dibuat`, description: "Menunggu persetujuan admin." });
-      refetchAll();
-    } catch (e: any) {
-      toast({ title: "Gagal regenerate", description: e.message, variant: "destructive" });
-    } finally {
-      setGeneratingId(null);
-    }
-  }
-
-  // ── Bulk generate ─────────────────────────────────────────────────────────
-  async function handleBulkGenerate() {
-    if (needsGeneration.length === 0) {
-      toast({ title: "Tidak ada item yang perlu diproses" });
-      return;
-    }
-    setIsBulkRunning(true);
-    setBulkReport(null);
-    try {
-      const r = await fetch("/api/product-media/bulk-generate-ai", {
+  // ── Mutations ───────────────────────────────────────────────────────────────
+  const bulkMutation = useMutation<BulkResult, Error>({
+    mutationFn: () =>
+      apiFetch("/api/product-media/bulk-generate-ai", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ onlyPublished, itemIds: needsGeneration.map((i) => i.id) }),
-      });
-      const data = await r.json();
-      if (!r.ok) throw new Error(data.error ?? "Gagal");
-      setBulkReport(data);
+        body: JSON.stringify({
+          limit: parseInt(bulkLimit),
+          onlyPublished,
+          force: forceRegenerate,
+        }),
+      }),
+    onSuccess: (result) => {
+      setBulkResult(result);
+      queryClient.invalidateQueries({ queryKey: ["product-media/generation-status"] });
       toast({
-        title: `Generate selesai — ${data.summary.totalGenerated} gambar dibuat`,
-        description: `${data.summary.totalItems} item diproses. Menunggu persetujuan admin.`,
+        title: `Generate selesai: ${result.success} berhasil, ${result.failed} gagal`,
+        variant: result.failed > 0 ? "destructive" : "default",
       });
-      refetchAll();
-    } catch (e: any) {
-      toast({ title: "Bulk generate gagal", description: e.message, variant: "destructive" });
-    } finally {
-      setIsBulkRunning(false);
-    }
-  }
+    },
+    onError: (err) => {
+      const msg = err.message ?? "";
+      if (msg.includes("401") || msg.toLowerCase().includes("unauthorized")) {
+        toast({ title: "Akses ditolak — login sebagai admin/owner", variant: "destructive" });
+      } else if (msg.toLowerCase().includes("quota") || msg.toLowerCase().includes("billing")) {
+        toast({ title: "Kuota OpenAI habis — periksa billing akun OpenAI Anda", variant: "destructive" });
+      } else {
+        toast({ title: `Gagal: ${msg}`, variant: "destructive" });
+      }
+    },
+  });
 
-  const coveragePct = stats.total > 0
-    ? Math.round(((stats.withImage) / stats.total) * 100) : 0;
+  const regenerateMutation = useMutation<{ media: unknown }, Error, number>({
+    mutationFn: (id) =>
+      apiFetch(`/api/product-media/regenerate-ai/${id}`, { method: "POST" }),
+    onMutate: (id) => setRegeneratingIds((s) => new Set(s).add(id)),
+    onSettled: (_, __, id) =>
+      setRegeneratingIds((s) => { const n = new Set(s); n.delete(id); return n; }),
+    onSuccess: (_, id) => {
+      queryClient.invalidateQueries({ queryKey: ["product-media/generation-status"] });
+      if (previewItem?.id === id) setPreviewItem(null);
+      toast({ title: "Gambar berhasil di-regenerate" });
+    },
+    onError: (err, id) => {
+      const msg = err.message ?? "";
+      if (msg.toLowerCase().includes("quota") || msg.toLowerCase().includes("billing")) {
+        toast({ title: "Kuota OpenAI habis — periksa billing akun OpenAI Anda", variant: "destructive" });
+      } else if (msg.toLowerCase().includes("storage") || msg.toLowerCase().includes("supabase")) {
+        toast({ title: `Gagal upload ke storage: ${msg}`, variant: "destructive" });
+      } else {
+        toast({ title: `Gagal regenerate: ${msg}`, variant: "destructive" });
+      }
+    },
+  });
+
+  // ── Filtered items ───────────────────────────────────────────────────────────
+  const filteredItems = useMemo(() => {
+    if (!data?.items) return [];
+    return data.items.filter((item) => {
+      if (search) {
+        const q = search.toLowerCase();
+        if (
+          !item.name.toLowerCase().includes(q) &&
+          !(item.vendorName ?? "").toLowerCase().includes(q) &&
+          !(item.kategori ?? "").toLowerCase().includes(q)
+        )
+          return false;
+      }
+      if (filterType !== "all" && item.type !== filterType) return false;
+      if (filterStatus === "with" && !item.hasImage) return false;
+      if (filterStatus === "without" && item.hasImage) return false;
+      return true;
+    });
+  }, [data, search, filterType, filterStatus]);
+
+  const coverage = data ? Math.round((data.withImage / Math.max(data.total, 1)) * 100) : 0;
+
+  // ── Error state ──────────────────────────────────────────────────────────────
+  if (isError) {
+    const msg = (error as Error)?.message ?? "";
+    return (
+      <AppShell>
+        <div className="p-8 flex flex-col items-center gap-4">
+          <AlertTriangle className="w-12 h-12 text-destructive" />
+          {msg.includes("401") || msg.toLowerCase().includes("unauthorized") ? (
+            <div className="text-center">
+              <p className="font-semibold text-lg">Akses Ditolak</p>
+              <p className="text-muted-foreground">Halaman ini hanya bisa diakses oleh admin/owner.</p>
+            </div>
+          ) : (
+            <p className="text-destructive">{msg || "Gagal memuat data"}</p>
+          )}
+        </div>
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell>
-      <TooltipProvider>
-        <div className="p-6 max-w-7xl mx-auto space-y-6">
-
-          {/* Header */}
-          <div className="flex items-center justify-between flex-wrap gap-3">
-            <div>
-              <h1 className="text-2xl font-bold flex items-center gap-2">
-                <Sparkles className="h-6 w-6 text-purple-500" />
-                AI Image Generator
-              </h1>
-              <p className="text-muted-foreground text-sm mt-0.5">
-                Generate, review, dan publish gambar AI untuk Marketplace
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={refetchAll} disabled={statusLoading}>
-                <RefreshCw className={`h-4 w-4 mr-1.5 ${statusLoading ? "animate-spin" : ""}`} />
-                Refresh
-              </Button>
-              <Button
-                onClick={handleBulkGenerate}
-                disabled={isBulkRunning || needsGeneration.length === 0}
-                className="gap-1.5 bg-purple-600 hover:bg-purple-700"
-              >
-                {isBulkRunning
-                  ? <Loader2 className="h-4 w-4 animate-spin" />
-                  : <Sparkles className="h-4 w-4" />}
-                {isBulkRunning ? "Generating…" : `Generate ${needsGeneration.length} Item`}
-              </Button>
-            </div>
+      <div className="p-6 space-y-6 max-w-7xl mx-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold flex items-center gap-2">
+              <Wand2 className="w-6 h-6 text-primary" />
+              AI Image Generator
+            </h1>
+            <p className="text-muted-foreground text-sm mt-1">
+              Generate gambar produk otomatis menggunakan DALL·E 3 untuk semua item di Vendor Catalog
+            </p>
           </div>
-
-          {/* Stats */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <Card>
-              <CardContent className="pt-4">
-                <div className="text-2xl font-bold">{stats.total}</div>
-                <div className="text-xs text-muted-foreground mt-0.5">Total Item</div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-4">
-                <div className="text-2xl font-bold text-green-600">{stats.withImage}</div>
-                <div className="text-xs text-muted-foreground mt-0.5">Gambar Live</div>
-                <Progress value={coveragePct} className="h-1.5 mt-2" />
-              </CardContent>
-            </Card>
-            <Card className={stats.pendingApproval > 0 ? "border-amber-300" : ""}>
-              <CardContent className="pt-4">
-                <div className={`text-2xl font-bold ${stats.pendingApproval > 0 ? "text-amber-500" : ""}`}>
-                  {stats.pendingApproval}
-                </div>
-                <div className="text-xs text-muted-foreground mt-0.5">Menunggu Approval</div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-4">
-                <div className="text-2xl font-bold text-slate-500">{stats.withoutImage}</div>
-                <div className="text-xs text-muted-foreground mt-0.5">Belum Ada Gambar</div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Bulk generating indicator */}
-          {isBulkRunning && (
-            <Card className="border-purple-200 bg-purple-50 dark:bg-purple-900/10">
-              <CardContent className="pt-4 flex items-center gap-3">
-                <Loader2 className="h-5 w-5 text-purple-600 animate-spin flex-shrink-0" />
-                <div>
-                  <div className="text-sm font-medium text-purple-700">
-                    Sedang generate gambar… proses ini memakan beberapa menit.
-                  </div>
-                  <div className="text-xs text-muted-foreground mt-0.5">
-                    Setiap item mendapat 4 gambar AI. Setelah selesai, review di tab Antrian Approval.
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Tabs */}
-          <Tabs defaultValue="queue">
-            <TabsList>
-              <TabsTrigger value="queue" className="gap-1.5">
-                <Timer className="h-3.5 w-3.5" />
-                Antrian Approval
-                {(queueData?.totalItems ?? 0) > 0 && (
-                  <Badge className="ml-1 h-4 min-w-4 rounded-full px-1 text-[10px] bg-amber-500 text-white">
-                    {queueData!.totalItems}
-                  </Badge>
-                )}
-              </TabsTrigger>
-              <TabsTrigger value="all" className="gap-1.5">
-                <BarChart3 className="h-3.5 w-3.5" />
-                Semua Item
-              </TabsTrigger>
-            </TabsList>
-
-            {/* ── Tab: Approval Queue ─────────────────────────────────── */}
-            <TabsContent value="queue" className="mt-4">
-              {queueLoading ? (
-                <div className="flex items-center justify-center py-16">
-                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                </div>
-              ) : queue.length === 0 ? (
-                <Card>
-                  <CardContent className="py-16 text-center">
-                    <ShieldCheck className="h-10 w-10 text-green-400 mx-auto mb-3" />
-                    <div className="font-medium text-muted-foreground">
-                      Tidak ada gambar yang menunggu approval
-                    </div>
-                    <div className="text-xs text-muted-foreground mt-1">
-                      Generate gambar baru, lalu review di sini sebelum tayang di marketplace.
-                    </div>
-                  </CardContent>
-                </Card>
-              ) : (
-                <div className="space-y-4">
-                  {queue.map((qItem) => (
-                    <Card key={qItem.itemId} className="border-amber-200/60">
-                      <CardHeader className="pb-2 pt-4">
-                        <div className="flex items-start justify-between gap-2 flex-wrap">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <CardTitle className="text-base font-semibold">{qItem.itemName}</CardTitle>
-                            <KindBadge kind={qItem.templateKind} />
-                            {qItem.isPublished && (
-                              <Badge className="bg-green-100 text-green-700 border-green-200 gap-1 text-[10px]">
-                                <CheckCircle2 className="h-2.5 w-2.5" /> Published
-                              </Badge>
-                            )}
-                            <span className="text-xs text-muted-foreground">{qItem.vendorName}</span>
-                          </div>
-                          <div className="flex gap-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-7 text-xs gap-1 text-slate-600"
-                              onClick={() => handleRegenerate(qItem.itemId)}
-                              disabled={generatingId === qItem.itemId}
-                            >
-                              {generatingId === qItem.itemId
-                                ? <Loader2 className="h-3 w-3 animate-spin" />
-                                : <RefreshCw className="h-3 w-3" />}
-                              Regenerate
-                            </Button>
-                            <Button
-                              size="sm"
-                              className="h-7 text-xs gap-1 bg-green-600 hover:bg-green-700"
-                              onClick={() => approveAllMutation.mutate(qItem.itemId)}
-                              disabled={approveAllMutation.isPending}
-                            >
-                              <ThumbsUp className="h-3 w-3" />
-                              Approve Semua
-                            </Button>
-                          </div>
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {qItem.images.length} gambar menunggu review
-                        </div>
-                      </CardHeader>
-                      <CardContent className="pt-0">
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                          {qItem.images.map((img, idx) => (
-                            <div key={img.id} className="relative group rounded-xl overflow-hidden border bg-muted">
-                              {img.fileUrl ? (
-                                <img
-                                  src={img.fileUrl}
-                                  alt={`${qItem.itemName} #${idx + 1}`}
-                                  className="w-full aspect-square object-cover cursor-pointer"
-                                  onClick={() => setPreviewImg({ url: img.fileUrl, name: qItem.itemName, prompt: img.generationPrompt })}
-                                  onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-                                />
-                              ) : (
-                                <div className="w-full aspect-square flex items-center justify-center">
-                                  <Image className="h-8 w-8 text-muted-foreground/40" />
-                                </div>
-                              )}
-
-                              {/* Overlay controls */}
-                              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-end justify-between p-2 opacity-0 group-hover:opacity-100">
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <Button
-                                      size="icon"
-                                      className="h-7 w-7 bg-white/90 hover:bg-white text-slate-800 rounded-full"
-                                      onClick={() => setPreviewImg({ url: img.fileUrl, name: qItem.itemName, prompt: img.generationPrompt })}
-                                    >
-                                      <Eye className="h-3.5 w-3.5" />
-                                    </Button>
-                                  </TooltipTrigger>
-                                  <TooltipContent>Preview</TooltipContent>
-                                </Tooltip>
-                                <div className="flex gap-1.5">
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <Button
-                                        size="icon"
-                                        className="h-7 w-7 bg-red-500/90 hover:bg-red-500 text-white rounded-full"
-                                        disabled={rejectingId === img.id}
-                                        onClick={() => {
-                                          setRejectingId(img.id);
-                                          rejectMutation.mutate(img.id);
-                                        }}
-                                      >
-                                        {rejectingId === img.id
-                                          ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                          : <ThumbsDown className="h-3.5 w-3.5" />}
-                                      </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent>Tolak gambar ini</TooltipContent>
-                                  </Tooltip>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <Button
-                                        size="icon"
-                                        className="h-7 w-7 bg-green-500/90 hover:bg-green-500 text-white rounded-full"
-                                        disabled={approvingId === img.id}
-                                        onClick={() => {
-                                          setApprovingId(img.id);
-                                          approveMutation.mutate(img.id);
-                                        }}
-                                      >
-                                        {approvingId === img.id
-                                          ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                          : <ThumbsUp className="h-3.5 w-3.5" />}
-                                      </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent>Setujui gambar ini</TooltipContent>
-                                  </Tooltip>
-                                </div>
-                              </div>
-
-                              {/* Cover badge */}
-                              <div className="absolute top-1.5 left-1.5">
-                                <span className="text-[10px] bg-black/50 text-white px-1.5 py-0.5 rounded-md">
-                                  #{idx + 1}
-                                </span>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-
-                        {/* Set cover hint */}
-                        {qItem.images.length > 0 && (
-                          <p className="text-[11px] text-muted-foreground mt-2">
-                            Hover gambar untuk Approve / Reject. Approve akan mempublikasikan gambar ke marketplace.
-                          </p>
-                        )}
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              )}
-            </TabsContent>
-
-            {/* ── Tab: Semua Item ─────────────────────────────────────── */}
-            <TabsContent value="all" className="mt-4 space-y-3">
-              <div className="flex items-center gap-3">
-                <Switch
-                  id="only-published"
-                  checked={onlyPublished}
-                  onCheckedChange={setOnlyPublished}
-                />
-                <Label htmlFor="only-published" className="text-sm cursor-pointer">
-                  Hanya item yang dipublish
-                </Label>
-                <span className="text-xs text-muted-foreground ml-auto">
-                  {displayItems.length} item
-                </span>
-              </div>
-
-              <Card>
-                <CardContent className="p-0">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-14">Foto</TableHead>
-                        <TableHead>Item</TableHead>
-                        <TableHead className="w-20">Tipe</TableHead>
-                        <TableHead>Vendor</TableHead>
-                        <TableHead className="w-36">Status</TableHead>
-                        <TableHead className="w-32 text-right">Aksi</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {statusLoading ? (
-                        <TableRow>
-                          <TableCell colSpan={6} className="text-center py-10">
-                            <Loader2 className="h-5 w-5 animate-spin mx-auto text-muted-foreground" />
-                          </TableCell>
-                        </TableRow>
-                      ) : displayItems.length === 0 ? (
-                        <TableRow>
-                          <TableCell colSpan={6} className="text-center py-10 text-muted-foreground text-sm">
-                            Tidak ada item
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        displayItems.map((item) => (
-                          <TableRow
-                            key={item.id}
-                            className={
-                              !item.hasVendorImage && !item.hasApprovedImage && !item.hasPending
-                                ? "bg-slate-50/50 dark:bg-slate-900/20"
-                                : ""
-                            }
-                          >
-                            <TableCell>
-                              <div
-                                className="w-10 h-10 rounded-lg overflow-hidden border bg-muted flex items-center justify-center cursor-pointer"
-                                onClick={() => item.primaryImageUrl && setPreviewImg({ url: item.primaryImageUrl, name: item.name })}
-                              >
-                                {item.primaryImageUrl ? (
-                                  <img
-                                    src={item.primaryImageUrl}
-                                    alt={item.name}
-                                    className="w-full h-full object-cover"
-                                    onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-                                  />
-                                ) : (
-                                  <Image className="h-4 w-4 text-muted-foreground/40" />
-                                )}
-                              </div>
-                            </TableCell>
-
-                            <TableCell>
-                              <div className="font-medium text-sm leading-tight">{item.name}</div>
-                              <div className="flex items-center gap-2 mt-0.5">
-                                {item.isPublished && (
-                                  <span className="text-[10px] text-green-600 flex items-center gap-0.5">
-                                    <CheckCircle2 className="h-2.5 w-2.5" /> Published
-                                  </span>
-                                )}
-                                {item.lastGeneratedAt && (
-                                  <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
-                                    <Clock className="h-2.5 w-2.5" />
-                                    {new Date(item.lastGeneratedAt).toLocaleDateString("id-ID")}
-                                  </span>
-                                )}
-                              </div>
-                              {item.pendingCount > 0 && (
-                                <span className="text-[10px] text-amber-600">
-                                  {item.pendingCount} gambar menunggu review
-                                </span>
-                              )}
-                            </TableCell>
-
-                            <TableCell>
-                              <KindBadge kind={item.templateKind} />
-                            </TableCell>
-
-                            <TableCell className="text-sm text-muted-foreground">
-                              {item.vendorName ?? "—"}
-                            </TableCell>
-
-                            <TableCell>
-                              <ItemStatusBadge item={item} />
-                            </TableCell>
-
-                            <TableCell className="text-right">
-                              <Button
-                                size="sm"
-                                variant={item.hasVendorImage || item.hasApprovedImage ? "outline" : "default"}
-                                className={`h-7 gap-1 text-xs ${!item.hasVendorImage && !item.hasApprovedImage && !item.hasPending ? "bg-purple-600 hover:bg-purple-700 text-white" : ""}`}
-                                onClick={() => handleRegenerate(item.id)}
-                                disabled={generatingId === item.id || isBulkRunning || item.hasVendorImage}
-                              >
-                                {generatingId === item.id ? (
-                                  <Loader2 className="h-3 w-3 animate-spin" />
-                                ) : item.hasPending || item.hasApprovedImage ? (
-                                  <RefreshCw className="h-3 w-3" />
-                                ) : (
-                                  <Sparkles className="h-3 w-3" />
-                                )}
-                                {item.hasVendorImage ? "Vendor Photo" : item.hasPending || item.hasApprovedImage ? "Regenerate" : "Generate"}
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        ))
-                      )}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
-            </TabsContent>
-          </Tabs>
-
-          {/* Bulk report */}
-          {bulkReport && (
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <BarChart3 className="h-4 w-4" /> Laporan Generate Terakhir
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="text-sm space-y-1">
-                <div>
-                  Total item: <b>{bulkReport.summary.totalItems}</b> &nbsp;|&nbsp;
-                  Gambar dibuat: <b>{bulkReport.summary.totalGenerated}</b> &nbsp;|&nbsp;
-                  {bulkReport.summary.totalFailed > 0 && (
-                    <span className="text-red-500">Gagal: <b>{bulkReport.summary.totalFailed}</b></span>
-                  )}
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  Gambar menunggu review di tab <b>Antrian Approval</b>.
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => queryClient.invalidateQueries({ queryKey: ["product-media/generation-status"] })}
+            disabled={isLoading}
+          >
+            <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
         </div>
 
-        {/* Preview Dialog */}
-        <Dialog open={!!previewImg} onOpenChange={() => setPreviewImg(null)}>
-          <DialogContent className="max-w-lg">
-            <DialogHeader>
-              <DialogTitle className="text-base">{previewImg?.name}</DialogTitle>
-            </DialogHeader>
-            {previewImg?.url && (
-              <div className="rounded-lg overflow-hidden">
-                <img src={previewImg.url} alt={previewImg.name} className="w-full aspect-square object-cover" />
+        {/* Stats */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <Card>
+            <CardContent className="pt-4">
+              <p className="text-sm text-muted-foreground">Total Item</p>
+              {isLoading ? (
+                <div className="h-8 w-16 bg-muted animate-pulse rounded mt-1" />
+              ) : (
+                <p className="text-3xl font-bold">{data?.total ?? 0}</p>
+              )}
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-4">
+              <p className="text-sm text-muted-foreground">Sudah Ada Gambar</p>
+              {isLoading ? (
+                <div className="h-8 w-16 bg-muted animate-pulse rounded mt-1" />
+              ) : (
+                <p className="text-3xl font-bold text-green-600">{data?.withImage ?? 0}</p>
+              )}
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-4">
+              <p className="text-sm text-muted-foreground">Belum Ada Gambar</p>
+              {isLoading ? (
+                <div className="h-8 w-16 bg-muted animate-pulse rounded mt-1" />
+              ) : (
+                <p className="text-3xl font-bold text-red-500">{data?.withoutImage ?? 0}</p>
+              )}
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-4">
+              <p className="text-sm text-muted-foreground">Coverage</p>
+              {isLoading ? (
+                <div className="h-8 w-16 bg-muted animate-pulse rounded mt-1" />
+              ) : (
+                <>
+                  <p className="text-3xl font-bold">{coverage}%</p>
+                  <CoverageBar pct={coverage} />
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Bulk Generate */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Wand2 className="w-4 h-4" />
+              Generate Massal
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex flex-wrap items-end gap-4">
+              <div className="space-y-1.5">
+                <Label>Limit</Label>
+                <Select value={bulkLimit} onValueChange={setBulkLimit}>
+                  <SelectTrigger className="w-24">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {["5", "10", "25", "50"].map((v) => (
+                      <SelectItem key={v} value={v}>{v} item</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-center gap-2 pb-0.5">
+                <Checkbox
+                  id="onlyPublished"
+                  checked={onlyPublished}
+                  onCheckedChange={(v) => setOnlyPublished(!!v)}
+                />
+                <Label htmlFor="onlyPublished" className="cursor-pointer">Hanya yang Published</Label>
+              </div>
+              <div className="flex items-center gap-2 pb-0.5">
+                <Checkbox
+                  id="forceRegen"
+                  checked={forceRegenerate}
+                  onCheckedChange={(v) => setForceRegenerate(!!v)}
+                />
+                <Label htmlFor="forceRegen" className="cursor-pointer">Force Regenerate (termasuk yg sudah ada)</Label>
+              </div>
+              <Button
+                onClick={() => bulkMutation.mutate()}
+                disabled={bulkMutation.isPending}
+                className="ml-auto"
+              >
+                {bulkMutation.isPending ? (
+                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Sedang generate…</>
+                ) : (
+                  <><Wand2 className="w-4 h-4 mr-2" />Generate Semua yang Belum Ada</>
+                )}
+              </Button>
+            </div>
+
+            {/* Bulk Result */}
+            {bulkResult && (
+              <div className="rounded-md border p-3 space-y-2 bg-muted/30">
+                <div className="flex items-center gap-3 text-sm font-medium">
+                  <span className="flex items-center gap-1 text-green-600">
+                    <CheckCircle2 className="w-4 h-4" /> {bulkResult.success} berhasil
+                  </span>
+                  {bulkResult.failed > 0 && (
+                    <span className="flex items-center gap-1 text-destructive">
+                      <XCircle className="w-4 h-4" /> {bulkResult.failed} gagal
+                    </span>
+                  )}
+                  <span className="text-muted-foreground ml-auto">{bulkResult.processed} diproses</span>
+                </div>
+                {bulkResult.results.filter((r) => !r.success).map((r) => (
+                  <div key={r.id} className="text-xs text-destructive">
+                    ✗ {r.name}: {r.error}
+                  </div>
+                ))}
               </div>
             )}
-            {previewImg?.prompt && (
-              <details className="text-xs text-muted-foreground">
-                <summary className="cursor-pointer font-medium mb-1">Lihat prompt yang digunakan</summary>
-                <p className="bg-muted p-2 rounded text-[11px] leading-relaxed">{previewImg.prompt}</p>
-              </details>
-            )}
-            <Button variant="outline" onClick={() => setPreviewImg(null)}>Tutup</Button>
-          </DialogContent>
-        </Dialog>
+          </CardContent>
+        </Card>
 
-      </TooltipProvider>
+        {/* Filters */}
+        <div className="flex flex-wrap gap-3 items-center">
+          <div className="relative flex-1 min-w-48">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              placeholder="Cari nama item, vendor, kategori…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+          <Select value={filterType} onValueChange={(v) => setFilterType(v as any)}>
+            <SelectTrigger className="w-36">
+              <SelectValue placeholder="Tipe" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Semua Tipe</SelectItem>
+              <SelectItem value="product">Product</SelectItem>
+              <SelectItem value="service">Service</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={filterStatus} onValueChange={(v) => setFilterStatus(v as any)}>
+            <SelectTrigger className="w-44">
+              <SelectValue placeholder="Status gambar" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Semua Status</SelectItem>
+              <SelectItem value="with">Sudah Ada Gambar</SelectItem>
+              <SelectItem value="without">Belum Ada Gambar</SelectItem>
+            </SelectContent>
+          </Select>
+          <span className="text-sm text-muted-foreground">{filteredItems.length} item</span>
+        </div>
+
+        {/* Table */}
+        <Card>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-16">Gambar</TableHead>
+                    <TableHead>Nama Item</TableHead>
+                    <TableHead>Vendor</TableHead>
+                    <TableHead>Kategori</TableHead>
+                    <TableHead>Tipe</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-center">Jml</TableHead>
+                    <TableHead>Terakhir Generate</TableHead>
+                    <TableHead className="text-right">Aksi</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {isLoading ? (
+                    Array.from({ length: 5 }).map((_, i) => (
+                      <TableRow key={i}>
+                        {Array.from({ length: 9 }).map((__, j) => (
+                          <TableCell key={j}>
+                            <div className="h-4 bg-muted animate-pulse rounded" />
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    ))
+                  ) : filteredItems.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={9} className="text-center py-12 text-muted-foreground">
+                        <ImageOff className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                        Tidak ada item ditemukan
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    filteredItems.map((item) => (
+                      <TableRow key={item.id}>
+                        {/* Thumbnail */}
+                        <TableCell>
+                          <div className="w-12 h-12 rounded border overflow-hidden bg-muted flex items-center justify-center flex-shrink-0">
+                            {item.primaryImageUrl ? (
+                              <img
+                                src={item.primaryImageUrl}
+                                alt={item.name}
+                                className="w-full h-full object-cover"
+                                onError={(e) => {
+                                  (e.target as HTMLImageElement).style.display = "none";
+                                }}
+                              />
+                            ) : (
+                              <ImageOff className="w-5 h-5 text-muted-foreground opacity-50" />
+                            )}
+                          </div>
+                        </TableCell>
+
+                        {/* Name */}
+                        <TableCell className="font-medium max-w-48">
+                          <span className="line-clamp-2">{item.name}</span>
+                        </TableCell>
+
+                        {/* Vendor */}
+                        <TableCell className="text-sm text-muted-foreground max-w-32">
+                          <span className="line-clamp-1">{item.vendorName ?? "—"}</span>
+                        </TableCell>
+
+                        {/* Category */}
+                        <TableCell className="text-sm text-muted-foreground max-w-32">
+                          <span className="line-clamp-1">{item.kategori ?? "—"}</span>
+                        </TableCell>
+
+                        {/* Type */}
+                        <TableCell>
+                          <Badge variant="outline" className="text-xs gap-1">
+                            {item.type === "product" ? (
+                              <Package className="w-3 h-3" />
+                            ) : (
+                              <Wrench className="w-3 h-3" />
+                            )}
+                            {item.type}
+                          </Badge>
+                        </TableCell>
+
+                        {/* Status */}
+                        <TableCell>
+                          {item.hasImage ? (
+                            <Badge className="bg-green-100 text-green-700 border-green-200 hover:bg-green-100">
+                              <CheckCircle2 className="w-3 h-3 mr-1" /> Ada gambar
+                            </Badge>
+                          ) : (
+                            <Badge variant="destructive" className="bg-red-100 text-red-700 border-red-200 hover:bg-red-100">
+                              <XCircle className="w-3 h-3 mr-1" /> Belum ada
+                            </Badge>
+                          )}
+                        </TableCell>
+
+                        {/* Count */}
+                        <TableCell className="text-center text-sm">{item.mediaCount}</TableCell>
+
+                        {/* Last Generated */}
+                        <TableCell className="text-sm text-muted-foreground">
+                          {item.lastGeneratedAt
+                            ? new Date(item.lastGeneratedAt).toLocaleDateString("id-ID", {
+                                day: "2-digit",
+                                month: "short",
+                                year: "numeric",
+                              })
+                            : "—"}
+                        </TableCell>
+
+                        {/* Actions */}
+                        <TableCell>
+                          <div className="flex items-center justify-end gap-1.5">
+                            {item.hasImage && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-8 px-2"
+                                onClick={() => setPreviewItem(item)}
+                              >
+                                <Eye className="w-4 h-4" />
+                              </Button>
+                            )}
+                            <Button
+                              size="sm"
+                              variant={item.hasImage ? "outline" : "default"}
+                              className="h-8 text-xs"
+                              disabled={regeneratingIds.has(item.id) || bulkMutation.isPending}
+                              onClick={() => regenerateMutation.mutate(item.id)}
+                            >
+                              {regeneratingIds.has(item.id) ? (
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                              ) : item.hasImage ? (
+                                <><RefreshCw className="w-3 h-3 mr-1" />Regenerate</>
+                              ) : (
+                                <><Wand2 className="w-3 h-3 mr-1" />Generate</>
+                              )}
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Preview Dialog */}
+      <Dialog open={!!previewItem} onOpenChange={(o) => !o && setPreviewItem(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ImageIcon className="w-5 h-5" />
+              Preview Gambar
+            </DialogTitle>
+          </DialogHeader>
+          {previewItem && (
+            <div className="space-y-4">
+              {previewItem.primaryImageUrl ? (
+                <img
+                  src={previewItem.primaryImageUrl}
+                  alt={previewItem.name}
+                  className="w-full aspect-square object-cover rounded-lg border"
+                />
+              ) : (
+                <div className="w-full aspect-square bg-muted rounded-lg flex items-center justify-center">
+                  <ImageOff className="w-12 h-12 opacity-30" />
+                </div>
+              )}
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Nama</span>
+                  <span className="font-medium text-right max-w-56 line-clamp-2">{previewItem.name}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Vendor</span>
+                  <span>{previewItem.vendorName ?? "—"}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Kategori</span>
+                  <span>{previewItem.kategori ?? "—"}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Jumlah Gambar</span>
+                  <span>{previewItem.mediaCount}</span>
+                </div>
+                {previewItem.primaryImageUrl && (
+                  <div className="pt-1">
+                    <p className="text-muted-foreground text-xs mb-1">URL Gambar</p>
+                    <p className="text-xs break-all bg-muted rounded px-2 py-1 font-mono">
+                      {previewItem.primaryImageUrl}
+                    </p>
+                  </div>
+                )}
+              </div>
+              <div className="flex gap-2 pt-1">
+                {previewItem.primaryImageUrl && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => window.open(previewItem.primaryImageUrl!, "_blank")}
+                  >
+                    <ExternalLink className="w-4 h-4 mr-2" />
+                    Buka di Tab Baru
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  className="flex-1"
+                  disabled={regeneratingIds.has(previewItem.id)}
+                  onClick={() => regenerateMutation.mutate(previewItem.id)}
+                >
+                  {regeneratingIds.has(previewItem.id) ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <><RefreshCw className="w-4 h-4 mr-2" />Regenerate</>
+                  )}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 }
