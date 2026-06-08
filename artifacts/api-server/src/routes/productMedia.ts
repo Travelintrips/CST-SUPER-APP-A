@@ -5,6 +5,7 @@ import { eq, and, asc } from "drizzle-orm";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { uploadToSupabase, deleteFromSupabase } from "../lib/supabaseStorage.js";
 import { compressImageBuffer, isCompressibleImage } from "../lib/imageCompress.js";
+import { getOpenAI } from "../lib/openaiClient.js";
 
 const router = Router();
 
@@ -153,6 +154,67 @@ router.post("/:id/set-primary", async (req, res): Promise<void> => {
       .set({ isPrimary: true, updatedAt: new Date() }).where(eq(productMediaTable.id, id)).returning();
     res.json({ media: updated });
   } catch (e: any) { res.status(500).json({ error: e?.message }); }
+});
+
+// POST /api/product-media/generate-ai
+router.post("/generate-ai", async (req, res): Promise<void> => {
+  if (!(await requireClerkUser(req, res))) return;
+  const { productName, category, commodity, description, vendorCatalogItemId: rawId, vendorId: rawVid } = req.body;
+  const vendorCatalogItemId = rawId ? parseInt(rawId) : null;
+  const vendorId = rawVid ? parseInt(rawVid) : null;
+  if (!vendorCatalogItemId) { res.status(400).json({ error: "vendorCatalogItemId wajib" }); return; }
+  if (!productName?.trim()) { res.status(400).json({ error: "productName wajib" }); return; }
+
+  const prompt = [
+    `Professional B2B marketplace product photography for a logistics and international trading platform.`,
+    `Product name: ${productName.trim()}.`,
+    category?.trim() ? `Category: ${category.trim()}.` : "",
+    commodity?.trim() ? `Commodity: ${commodity.trim()}.` : "",
+    description?.trim() ? `Description: ${description.trim()}.` : "",
+    `Style: Commercial product photography, ultra realistic, marketplace quality, professional lighting, sharp focus, high detail, premium B2B catalog image.`,
+    `The product must be centered as the main subject. Clean, modern, professional background. Realistic lighting and high quality. No text, no watermarks, no logos, no writing of any kind.`,
+    `Natural colors matching the actual product condition. If a commodity, show it in its commonly traded form. If a service, show the relevant service activity professionally.`,
+    `Square 1:1 ratio. High resolution. Suitable for logistics and international trade marketplace. Focus on trust, quality, and commercial value.`,
+  ].filter(Boolean).join(" ");
+
+  try {
+    const openai = getOpenAI();
+    const response = await openai.images.generate({
+      model: "dall-e-3",
+      prompt,
+      n: 1,
+      size: "1024x1024",
+      quality: "standard",
+      response_format: "b64_json",
+    });
+
+    const b64 = response.data?.[0]?.b64_json;
+    if (!b64) { res.status(500).json({ error: "Model tidak mengembalikan gambar" }); return; }
+
+    const buffer = Buffer.from(b64, "base64");
+    const { publicUrl, storagePath } = await uploadToSupabase(buffer, "image/png", "product-media/images");
+
+    const existingMedia = await db.select().from(productMediaTable)
+      .where(eq(productMediaTable.vendorCatalogItemId, vendorCatalogItemId));
+    const isPrimary = existingMedia.length === 0;
+
+    if (isPrimary) {
+      await db.update(productMediaTable).set({ isPrimary: false, updatedAt: new Date() })
+        .where(and(eq(productMediaTable.vendorCatalogItemId, vendorCatalogItemId), eq(productMediaTable.isPrimary, true)));
+    }
+
+    const a = actor(req);
+    const [inserted] = await db.insert(productMediaTable).values({
+      vendorCatalogItemId, vendorId, mediaType: "image",
+      fileUrl: publicUrl, storagePath, isPrimary, isActive: true,
+      title: `AI — ${productName.trim()}`,
+      uploadedBy: a.email, uploadedByRole: a.role, sortOrder: 0,
+    }).returning();
+
+    res.status(201).json({ media: inserted });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message ?? "Gagal generate gambar" });
+  }
 });
 
 // POST /api/product-media/reorder

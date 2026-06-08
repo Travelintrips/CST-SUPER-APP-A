@@ -6,9 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import {
-  ImagePlus, Video, Star, Trash2, Link2, Loader2, X, Plus, Play,
+  ImagePlus, Video, Star, Trash2, Link2, Loader2, X, Plus, Play, Sparkles,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
@@ -32,6 +33,9 @@ interface ProductMediaManagerProps {
   vendorCatalogItemId: number;
   vendorId: number;
   itemName: string;
+  itemCategory?: string | null;
+  itemCommodity?: string | null;
+  itemDescription?: string | null;
 }
 
 function getYoutubeThumbnail(url: string): string | null {
@@ -89,6 +93,7 @@ function MediaThumbnail({ media }: { media: ProductMedia }) {
 
 export function ProductMediaManager({
   open, onClose, vendorCatalogItemId, vendorId, itemName,
+  itemCategory, itemCommodity, itemDescription,
 }: ProductMediaManagerProps) {
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -98,6 +103,22 @@ export function ProductMediaManager({
   const [linkTitle, setLinkTitle] = useState("");
   const [showLinkForm, setShowLinkForm] = useState(false);
   const [uploading, setUploading] = useState(false);
+
+  const [showAiForm, setShowAiForm] = useState(false);
+  const [aiProductName, setAiProductName] = useState("");
+  const [aiCategory, setAiCategory] = useState("");
+  const [aiCommodity, setAiCommodity] = useState("");
+  const [aiDescription, setAiDescription] = useState("");
+  const [aiGenerating, setAiGenerating] = useState(false);
+
+  function openAiForm() {
+    setAiProductName(itemName ?? "");
+    setAiCategory(itemCategory ?? "");
+    setAiCommodity(itemCommodity ?? "");
+    setAiDescription(itemDescription ?? "");
+    setShowAiForm(true);
+    setShowLinkForm(false);
+  }
 
   const qKey = ["product-media", vendorCatalogItemId];
 
@@ -156,6 +177,39 @@ export function ProductMediaManager({
     },
     onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
+
+  async function handleGenerateAi() {
+    if (!aiProductName.trim()) {
+      toast({ title: "Nama produk wajib diisi", variant: "destructive" });
+      return;
+    }
+    setAiGenerating(true);
+    try {
+      const res = await fetch("/api/product-media/generate-ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          productName: aiProductName.trim(),
+          category: aiCategory.trim() || null,
+          commodity: aiCommodity.trim() || null,
+          description: aiDescription.trim() || null,
+          vendorCatalogItemId,
+          vendorId,
+        }),
+      });
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(json.error ?? "Gagal generate gambar");
+      }
+      qc.invalidateQueries({ queryKey: qKey });
+      setShowAiForm(false);
+      toast({ title: "Gambar AI berhasil dibuat", description: "Gambar marketplace telah ditambahkan ke media." });
+    } catch (err: any) {
+      toast({ title: "Gagal generate", description: err?.message ?? "Terjadi kesalahan", variant: "destructive" });
+    } finally {
+      setAiGenerating(false);
+    }
+  }
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
@@ -228,6 +282,15 @@ export function ProductMediaManager({
             <Link2 className="h-3.5 w-3.5" />
             Tambah Link Video
           </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => showAiForm ? setShowAiForm(false) : openAiForm()}
+            className="gap-1.5 border-violet-200 text-violet-700 hover:bg-violet-50 hover:border-violet-300"
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            Generate Gambar AI
+          </Button>
           <input
             ref={fileInputRef}
             type="file"
@@ -237,6 +300,77 @@ export function ProductMediaManager({
             onChange={handleFileChange}
           />
         </div>
+
+        {/* AI form */}
+        {showAiForm && (
+          <div className="border border-violet-200 rounded-lg p-3 bg-violet-50 space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium flex items-center gap-1.5 text-violet-800">
+                <Sparkles className="h-3.5 w-3.5 text-violet-500" /> Generate Gambar Marketplace dengan AI
+              </p>
+              <button onClick={() => setShowAiForm(false)} className="text-slate-400 hover:text-slate-600">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <p className="text-xs text-violet-600">
+              AI akan membuat foto produk profesional B2B berdasarkan data di bawah. Proses sekitar 15–30 detik.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2 space-y-1">
+                <Label className="text-xs">Nama Produk <span className="text-red-500">*</span></Label>
+                <Input
+                  value={aiProductName}
+                  onChange={(e) => setAiProductName(e.target.value)}
+                  placeholder="Contoh: Palm Oil CPO Grade A"
+                  className="h-8 text-sm"
+                  disabled={aiGenerating}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Kategori</Label>
+                <Input
+                  value={aiCategory}
+                  onChange={(e) => setAiCategory(e.target.value)}
+                  placeholder="Contoh: Agrikultur"
+                  className="h-8 text-sm"
+                  disabled={aiGenerating}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Komoditas</Label>
+                <Input
+                  value={aiCommodity}
+                  onChange={(e) => setAiCommodity(e.target.value)}
+                  placeholder="Contoh: Minyak Kelapa Sawit"
+                  className="h-8 text-sm"
+                  disabled={aiGenerating}
+                />
+              </div>
+              <div className="col-span-2 space-y-1">
+                <Label className="text-xs">Deskripsi</Label>
+                <Textarea
+                  value={aiDescription}
+                  onChange={(e) => setAiDescription(e.target.value)}
+                  placeholder="Deskripsi singkat produk untuk membantu AI membuat gambar yang akurat..."
+                  className="text-sm resize-none"
+                  rows={2}
+                  disabled={aiGenerating}
+                />
+              </div>
+            </div>
+            <Button
+              size="sm"
+              onClick={handleGenerateAi}
+              disabled={!aiProductName.trim() || aiGenerating}
+              className="gap-1.5 bg-violet-600 hover:bg-violet-700 text-white"
+            >
+              {aiGenerating
+                ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Membuat gambar…</>
+                : <><Sparkles className="h-3.5 w-3.5" /> Generate Sekarang</>
+              }
+            </Button>
+          </div>
+        )}
 
         {/* Link form */}
         {showLinkForm && (
@@ -287,7 +421,7 @@ export function ProductMediaManager({
         ) : media.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 gap-2 text-slate-400">
             <ImagePlus className="h-10 w-10 text-slate-200" />
-            <p className="text-sm">Belum ada media. Upload foto atau tambah link video.</p>
+            <p className="text-sm">Belum ada media. Upload foto, tambah link video, atau generate dengan AI.</p>
           </div>
         ) : (
           <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
@@ -297,10 +431,13 @@ export function ProductMediaManager({
                   <MediaThumbnail media={m} />
 
                   {/* Type badge */}
-                  <div className="absolute top-1 left-1">
+                  <div className="absolute top-1 left-1 flex gap-1">
                     <Badge className={`text-[9px] px-1 py-0 ${m.mediaType === "image" ? "bg-emerald-600" : "bg-purple-600"}`}>
                       {m.mediaType === "image" ? "Foto" : m.mediaType === "video" ? "Video" : "Link"}
                     </Badge>
+                    {m.title?.startsWith("AI —") && (
+                      <Badge className="text-[9px] px-1 py-0 bg-violet-600">AI</Badge>
+                    )}
                   </div>
 
                   {/* Primary badge */}
