@@ -1,0 +1,150 @@
+LANJUTKAN SPRINT 2 — PORTAL PRODUCT ORDERS INTEGRATION KE PROFITABILITY ENGINE.
+
+Tujuan:
+Memasukkan portal_product_orders / MCT orders ke profitability analytics, dan memastikan product_price, vendor cost, shipment_cost, truck_cost terisi agar Product Margin dan Shipment Margin mulai menghasilkan angka nyata.
+
+Jangan ubah UI besar dulu.
+Jangan ubah invoice/payment workflow.
+Fokus backend analytics + data population.
+
+Scope:
+
+1. Schema / Data Field Audit
+
+Audit portal_product_orders:
+
+Pastikan field berikut ada:
+- grand_total
+- subtotal
+- vendor_quoted_price
+- shipment_cost
+- truck_cost
+- product_price
+- origin
+- destination
+- commodity
+- company_id
+- customer_id
+- vendor_id
+
+Jika belum ada:
+- tambahkan field missing secara additive
+- jangan rename field lama
+- jangan drop kolom lama
+
+2. Populate Data Saat Order Dibuat / Diupdate
+
+Pastikan saat MCT / portal product order dibuat:
+- product_price terisi dari subtotal atau total harga produk
+- vendor_quoted_price terisi saat vendor product quote diterima
+- shipment_cost terisi saat customer pilih shipment
+- truck_cost terisi jika trucking digunakan
+- origin terisi dari pickup/origin
+- destination terisi dari alamat tujuan
+- commodity terisi dari product category / commodity
+- company_id terisi
+
+3. Profitability Engine
+
+Update analyticsProfit.ts:
+
+Masukkan portal_product_orders ke:
+
+- /api/analytics/profitability/orders
+- /api/analytics/profitability/customers
+- /api/analytics/profitability/routes
+- /api/analytics/profitability/commodities
+
+Gunakan UNION ALL dengan logistic_orders.
+
+Normalisasi output:
+
+sourceType:
+- logistic_order
+- portal_product_order
+
+orderNumber:
+- logistic_orders.order_number
+- portal_product_orders.order_number / mct_number
+
+Formula portal product order:
+
+Product Revenue
+= product_price atau subtotal
+
+Product Cost
+= vendor_quoted_price
+
+Shipment Revenue
+= shipment_cost
+
+Shipment Cost
+= truck_cost
+
+Product Margin
+= Product Revenue - Product Cost
+
+Shipment Margin
+= Shipment Revenue - Shipment Cost
+
+Order Gross Margin
+= Product Margin + Shipment Margin
+
+Margin %
+= Order Gross Margin / grand_total * 100
+
+4. Guard Null
+
+Jika product_price null:
+- productRevenue = subtotal
+
+Jika vendor_quoted_price null:
+- productCost = 0
+
+Jika shipment_cost null:
+- shipmentRevenue = 0
+
+Jika truck_cost null:
+- shipmentCost = 0
+
+Jangan crash jika data lama belum lengkap.
+
+5. Before / After Audit
+
+Ambil sample:
+- 5 logistic_orders
+- 5 portal_product_orders
+
+Tampilkan:
+
+sourceType
+orderNumber
+grandTotal
+productRevenue
+productCost
+productMargin
+shipmentRevenue
+shipmentCost
+shipmentMargin
+orderGrossMargin
+marginPercent
+
+6. Test
+
+A. logistic_orders tetap muncul
+B. portal_product_orders mulai muncul
+C. customers endpoint menghitung keduanya
+D. routes endpoint menghitung keduanya
+E. commodities endpoint menghitung keduanya
+F. margin tidak error walau cost null
+G. TypeScript tidak ada error baru
+H. API server tetap running
+
+Output wajib:
+A. File yang diubah
+B. Migration jika ada
+C. Field baru yang ditambahkan
+D. Query UNION yang dibuat
+E. Sample before/after
+F. Test result
+G. Risiko tersisa
