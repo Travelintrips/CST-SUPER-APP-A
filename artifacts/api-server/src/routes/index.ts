@@ -92,6 +92,9 @@ import { exceptionsRouter } from "./exceptions.js";
 import { orderExceptionsRouter } from "./orderExceptions.js";
 import { waNotificationLogsRouter } from "./waNotificationLogs.js";
 import analyticsProfitRouter from "./analyticsProfit.js";
+import productFirstAnalyticsRouter from "./productFirstAnalytics.js";
+import productFirstAuditDashboardRouter from "./productFirstAuditDashboard.js";
+import { productFirstOverrideRouter } from "./productFirstOverride.js";
 import { systemRouter } from "./system.js";
 import rbacRouter from "./rbac.js";
 import importAdvisorRouter from "./importAdvisor.js";
@@ -235,6 +238,9 @@ router.use("/payment-proof", paymentProofRouter);
 
 router.use("/logistic", orderAuditTrailRouter);
 router.use("/logistic", orderExceptionsRouter);
+router.use("/logistic/orders", productFirstOverrideRouter);
+router.use("/logistic/product-first/analytics", productFirstAnalyticsRouter);
+router.use("/logistic/product-first/audit", productFirstAuditDashboardRouter);
 
 router.use("/exceptions", exceptionsRouter);
 router.use("/wa-notification-logs", waNotificationLogsRouter);

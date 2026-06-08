@@ -17,6 +17,8 @@
  * ATURAN:
  *  - Semua perubahan status WAJIB melalui transitionLogisticOrderStatus().
  *  - Tidak ada direct db.update pada field status.
+ *  - JANGAN gunakan db.execute(sql`...${param}...`) — gunakan Drizzle fluent API
+ *    agar kompatibel dengan Supabase PgBouncer transaction-mode pooler.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
@@ -47,71 +49,29 @@ import { logger } from "../lib/logger.js";
 
 export const productFirstFlowRouter = Router();
 
-// ── Inline migrations (boot-safe, idempotent) ─────────────────────────────────
-db.execute(sql.raw(`
-  ALTER TABLE logistic_orders
-    ADD COLUMN IF NOT EXISTS product_rfq_id           INTEGER,
-    ADD COLUMN IF NOT EXISTS product_vendor_id         INTEGER REFERENCES suppliers(id) ON DELETE SET NULL,
-    ADD COLUMN IF NOT EXISTS product_vendor_confirmed_at TIMESTAMPTZ,
-    ADD COLUMN IF NOT EXISTS product_ready_date        TEXT,
-    ADD COLUMN IF NOT EXISTS product_pickup_location   TEXT,
-    ADD COLUMN IF NOT EXISTS product_qty_confirmed     NUMERIC(12,3),
-    ADD COLUMN IF NOT EXISTS shipment_rfq_id           INTEGER,
-    ADD COLUMN IF NOT EXISTS shipment_mode             TEXT,
-    ADD COLUMN IF NOT EXISTS shipment_mode_selected_at TIMESTAMPTZ,
-    ADD COLUMN IF NOT EXISTS customer_product_approval_token TEXT UNIQUE,
-    ADD COLUMN IF NOT EXISTS customer_product_approved_at    TIMESTAMPTZ;
-
-  ALTER TABLE logistic_order_rfqs
-    ADD COLUMN IF NOT EXISTS rfq_type TEXT DEFAULT 'shipment',
-    ADD COLUMN IF NOT EXISTS phase    TEXT DEFAULT 'shipment_phase';
-
-  ALTER TABLE rfq_vendor_links
-    ADD COLUMN IF NOT EXISTS rfq_type       TEXT,
-    ADD COLUMN IF NOT EXISTS pickup_address TEXT,
-    ADD COLUMN IF NOT EXISTS ready_date     TEXT,
-    ADD COLUMN IF NOT EXISTS qty_confirmed  NUMERIC(12,3),
-    ADD COLUMN IF NOT EXISTS qty_unit       TEXT;
-`)).catch((e: unknown) => logger.warn({ e }, "productFirstFlow boot migration warn"));
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function generateRfqNumber(): string {
-  const now = new Date();
-  const yy = String(now.getFullYear()).slice(-2);
-  const mm = String(now.getMonth() + 1).padStart(2, "0");
-  const dd = String(now.getDate()).padStart(2, "0");
-  const rand = randomBytes(2).toString("hex").toUpperCase();
-  return `PRFQ/${yy}${mm}${dd}/${rand}`;
-}
+// ── Helpers ────────────────────────────────────────────────────────────────────
 
 function generateToken(): string {
-  return randomBytes(24).toString("hex");
+  return randomBytes(16).toString("hex");
 }
 
-/** Guard: hanya untuk product_first orders */
+function generateRfqNumber(): string {
+  const ts = Date.now().toString(36).toUpperCase();
+  const rnd = Math.random().toString(36).slice(2, 6).toUpperCase();
+  return `PRFQ-${ts}-${rnd}`;
+}
+
+/** Guard: hanya untuk product_first orders. Menggunakan Drizzle fluent API. */
 async function requireProductFirstOrder(id: number): Promise<
-  | { ok: true; order: Record<string, unknown> }
+  | { ok: true; order: typeof logisticOrdersTable.$inferSelect }
   | { ok: false; status: number; error: string }
 > {
-  const rows = await db.execute(sql`
-    SELECT id, order_number AS "orderNumber", status, order_type AS "orderType",
-           product_rfq_id AS "productRfqId",
-           product_vendor_id AS "productVendorId",
-           product_vendor_confirmed_at AS "productVendorConfirmedAt",
-           product_ready_date AS "productReadyDate",
-           product_pickup_location AS "productPickupLocation",
-           product_qty_confirmed AS "productQtyConfirmed",
-           shipment_rfq_id AS "shipmentRfqId",
-           shipment_mode AS "shipmentMode",
-           shipment_mode_selected_at AS "shipmentModeSelectedAt",
-           customer_product_approval_token AS "customerProductApprovalToken",
-           customer_product_approved_at AS "customerProductApprovedAt",
-           phone, customer_name AS "customerName",
-           commodity, origin, destination
-    FROM logistic_orders WHERE id = ${id}
-  `);
-  const order = rows.rows[0] as Record<string, unknown> | undefined;
+  const [order] = await db
+    .select()
+    .from(logisticOrdersTable)
+    .where(eq(logisticOrdersTable.id, id))
+    .limit(1);
+
   if (!order) return { ok: false, status: 404, error: "Order tidak ditemukan" };
   if (order.orderType !== "product_first") {
     return {
@@ -153,84 +113,94 @@ productFirstFlowRouter.post("/:id/product-rfq", requireClerkUser, async (req: Re
     : deadlineDate;
 
   const rfqNumber = generateRfqNumber();
-
-  const [rfq] = await db.execute(sql`
-    INSERT INTO logistic_order_rfqs
-      (order_id, rfq_number, vendor_ids, notes, status, rfq_type, phase,
-       response_deadline, created_at)
-    VALUES
-      (${orderId}, ${rfqNumber}, ${sql.raw(`'{}'::integer[]`)}, ${notes ?? null},
-       'open', 'product', 'product_phase',
-       ${deadlineDate?.toISOString() ?? null}, NOW())
-    RETURNING id
-  `);
-  const rfqId = (rfq.rows[0] as { id: number }).id;
-
-  // Update order.product_rfq_id
-  await db.execute(sql`
-    UPDATE logistic_orders SET product_rfq_id = ${rfqId}, updated_at = NOW()
-    WHERE id = ${orderId}
-  `);
-
-  const vendors = await db
-    .select({
-      id: suppliersTable.id,
-      name: suppliersTable.name,
-      phone: suppliersTable.phone,
-      contactPerson: suppliersTable.contactPerson,
-    })
-    .from(suppliersTable)
-    .where(inArray(suppliersTable.id, vendorIds));
-
   const domain = getPreferredDomain() || "cstlogistic.co.id";
-  const vmfLinks: { vendorId: number; token: string; formUrl: string }[] = [];
 
-  for (const vendor of vendors) {
+  // ── Step 2 (parallel): INSERT rfqs + SELECT suppliers ─────────────────────
+  const [rfqResult, vendors] = await Promise.all([
+    db
+      .insert(logisticOrderRfqsTable)
+      .values({
+        orderId,
+        rfqNumber,
+        vendorIds: [],
+        notes: notes ?? null,
+        status: "open",
+        rfqType: "product",
+        phase: "product_phase",
+        responseDeadline: deadlineDate ?? null,
+      })
+      .returning({ id: logisticOrderRfqsTable.id }),
+    db
+      .select({
+        id: suppliersTable.id,
+        name: suppliersTable.name,
+        phone: suppliersTable.phone,
+        contactPerson: suppliersTable.contactPerson,
+      })
+      .from(suppliersTable)
+      .where(inArray(suppliersTable.id, vendorIds)),
+  ]);
+
+  const rfqId = rfqResult[0].id;
+
+  // Pre-generate tokens so we can run all INSERTs in parallel
+  const vendorPayloads = vendors.map((vendor) => {
     const linkToken = generateToken();
-    const formUrl = `https://${domain}/vendor-form/${linkToken}`;
+    return { vendor, linkToken, formUrl: `https://${domain}/vendor-form/${linkToken}` };
+  });
 
-    // rfq_vendor_links
-    await db.execute(sql`
-      INSERT INTO rfq_vendor_links
-        (rfq_id, vendor_id, token, status, rfq_type,
-         ${expireDate ? sql.raw("expired_at,") : sql.raw("")} created_at)
-      VALUES
-        (${rfqId}, ${vendor.id}, ${linkToken}, 'waiting_response', 'product_rfq',
-         ${expireDate ? sql.raw(`'${expireDate.toISOString()}',`) : sql.raw("")} NOW())
-    `);
+  // ── Step 3 (parallel): UPDATE product_rfq_id + all per-vendor INSERTs ─────
+  await Promise.all([
+    db
+      .update(logisticOrdersTable)
+      .set({ productRfqId: rfqId, updatedAt: new Date() })
+      .where(eq(logisticOrdersTable.id, orderId)),
+    ...vendorPayloads.map(({ vendor, linkToken, formUrl }) =>
+      Promise.all([
+        db.insert(rfqVendorLinksTable).values({
+          rfqId,
+          vendorId: vendor.id,
+          token: linkToken,
+          status: "waiting_response",
+          rfqType: "product_rfq",
+          expiredAt: expireDate ?? null,
+        }),
+        db.insert(vendorMiniFormLinksTable).values({
+          token: linkToken,
+          supplierId: vendor.id,
+          serviceType: "product_vendor",
+          mode: "product_vendor",
+          orderId,
+          orderNumber: order.orderNumber ?? "",
+          vendorName: vendor.name,
+          isActive: true,
+          formTarget: "vendor",
+          phase: "quotation",
+          adminNotes: notes ?? null,
+          expiresAt: expireDate ?? null,
+        }),
+      ])
+    ),
+  ]);
 
-    // vendor_mini_form_links
-    await db.execute(sql`
-      INSERT INTO vendor_mini_form_links
-        (token, supplier_id, service_type, mode, order_id, order_number,
-         vendor_name, is_active, form_target, phase, admin_notes,
-         ${expireDate ? sql.raw("expires_at,") : sql.raw("")} created_at)
-      VALUES
-        (${linkToken}, ${vendor.id}, 'product_vendor', 'product_vendor',
-         ${orderId}, ${String(order.orderNumber ?? "")},
-         ${vendor.name}, TRUE, 'vendor', 'quotation',
-         ${notes ?? null},
-         ${expireDate ? sql.raw(`'${expireDate.toISOString()}',`) : sql.raw("")} NOW())
-    `);
-
-    vmfLinks.push({ vendorId: vendor.id, token: linkToken, formUrl });
-
-    // WA ke vendor produk (refId per-vendor agar tidak dedup antar vendor)
+  const vmfLinks = vendorPayloads.map(({ vendor, linkToken, formUrl }) => {
+    // Fire-and-forget WA notifications (refId per-vendor agar tidak dedup)
     if (vendor.phone) {
       sendProductRfqVendorWa({
         vendorPhone: vendor.phone,
         vendorId: vendor.id,
         orderId,
-        orderNumber: String(order.orderNumber ?? ""),
+        orderNumber: order.orderNumber ?? "",
         rfqNumber,
-        commodity: String(order.commodity ?? null),
-        origin: String(order.origin ?? null),
-        destination: String(order.destination ?? null),
+        commodity: order.commodity ?? null,
+        origin: order.origin ?? null,
+        destination: order.destination ?? null,
         formUrl,
         notes: notes ?? null,
       });
     }
-  }
+    return { vendorId: vendor.id, token: linkToken, formUrl };
+  });
 
   const tr = await transitionLogisticOrderStatus(orderId, "Product RFQ Sent", {
     actorType: "admin",
@@ -284,17 +254,19 @@ productFirstFlowRouter.post("/:id/select-product-vendor", requireClerkUser, asyn
     .where(eq(suppliersTable.id, vendorId));
   if (!vendor) return res.status(404).json({ error: "Vendor tidak ditemukan" });
 
-  await db.execute(sql`
-    UPDATE logistic_orders SET
-      product_vendor_id         = ${vendorId},
-      product_vendor_confirmed_at = NOW(),
-      product_ready_date        = ${readyDate ?? null},
-      product_pickup_location   = ${pickupLocation ?? null},
-      product_qty_confirmed     = ${qtyConfirmed ?? null},
-      product_price             = ${price ?? null},
-      updated_at                = NOW()
-    WHERE id = ${orderId}
-  `);
+  // UPDATE logistic_orders — fluent API
+  await db
+    .update(logisticOrdersTable)
+    .set({
+      productVendorId: vendorId,
+      productVendorConfirmedAt: new Date(),
+      productReadyDate: readyDate ?? null,
+      productPickupLocation: pickupLocation ?? null,
+      productQtyConfirmed: qtyConfirmed ? String(qtyConfirmed) : null,
+      productPrice: price ? String(price) : null,
+      updatedAt: new Date(),
+    })
+    .where(eq(logisticOrdersTable.id, orderId));
 
   const tr = await transitionLogisticOrderStatus(orderId, "Product Vendor Selected", {
     actorType: "admin",
@@ -333,32 +305,31 @@ productFirstFlowRouter.post("/:id/send-product-approval", requireClerkUser, asyn
   const order = guard.order;
 
   // Generate token (idempotent: reuse existing jika ada)
-  const existingToken = order.customerProductApprovalToken as string | null;
+  const existingToken = order.customerProductApprovalToken;
   const approvalToken = existingToken ?? generateToken();
 
   if (!existingToken) {
-    await db.execute(sql`
-      UPDATE logistic_orders
-      SET customer_product_approval_token = ${approvalToken}, updated_at = NOW()
-      WHERE id = ${orderId}
-    `);
+    await db
+      .update(logisticOrdersTable)
+      .set({ customerProductApprovalToken: approvalToken, updatedAt: new Date() })
+      .where(eq(logisticOrdersTable.id, orderId));
   }
 
   const domain = getPreferredDomain() || "cstlogistic.co.id";
   const approvalUrl = `https://${domain}/product-approve/${approvalToken}`;
 
   // WA ke customer
-  const customerPhone = String(order.phone ?? "").trim();
+  const customerPhone = (order.phone ?? "").trim();
   if (customerPhone) {
     const price = req.body?.sellingPrice;
     const msg =
       `✅ *Penawaran Harga Produk*\n` +
       `━━━━━━━━━━━━━━━━\n` +
-      `No Order : *${String(order.orderNumber ?? "")}*\n` +
-      `Produk   : ${String(order.commodity ?? "-")}\n` +
+      `No Order : *${order.orderNumber ?? ""}*\n` +
+      `Produk   : ${order.commodity ?? "-"}\n` +
       (price ? `Harga    : Rp ${Number(price).toLocaleString("id-ID")}\n` : "") +
-      (order.productReadyDate ? `Siap     : ${String(order.productReadyDate)}\n` : "") +
-      (order.productPickupLocation ? `Lokasi   : ${String(order.productPickupLocation)}\n` : "") +
+      (order.productReadyDate ? `Siap     : ${order.productReadyDate}\n` : "") +
+      (order.productPickupLocation ? `Lokasi   : ${order.productPickupLocation}\n` : "") +
       `\nSilakan klik link berikut untuk menyetujui atau menolak harga produk:\n` +
       `🔗 ${approvalUrl}\n\n` +
       `Link ini berlaku selama 48 jam. Terima kasih!`;
@@ -406,17 +377,13 @@ productFirstFlowRouter.post("/:token/customer-product-approve", async (req: Requ
     return res.status(400).json({ error: 'action wajib: "approve" atau "reject"' });
   }
 
-  const rows = await db.execute(sql`
-    SELECT id, order_number AS "orderNumber", status, order_type AS "orderType",
-           customer_product_approved_at AS "customerProductApprovedAt",
-           product_vendor_id AS "productVendorId",
-           phone, customer_name AS "customerName",
-           customer_product_approval_token AS "customerProductApprovalToken"
-    FROM logistic_orders
-    WHERE customer_product_approval_token = ${token}
-    LIMIT 1
-  `);
-  const order = rows.rows[0] as Record<string, unknown> | undefined;
+  // Lookup by token — Drizzle fluent API
+  const [order] = await db
+    .select()
+    .from(logisticOrdersTable)
+    .where(eq(logisticOrdersTable.customerProductApprovalToken, token))
+    .limit(1);
+
   if (!order) return res.status(404).json({ error: "Link tidak valid atau sudah kadaluarsa" });
   if (order.orderType !== "product_first") {
     return res.status(400).json({ error: "Link ini bukan untuk product-first order" });
@@ -427,13 +394,12 @@ productFirstFlowRouter.post("/:token/customer-product-approve", async (req: Requ
       return res.json({ alreadyApproved: true, status: order.status });
     }
 
-    await db.execute(sql`
-      UPDATE logistic_orders
-      SET customer_product_approved_at = NOW(), updated_at = NOW()
-      WHERE id = ${order.id}
-    `);
+    await db
+      .update(logisticOrdersTable)
+      .set({ customerProductApprovedAt: new Date(), updatedAt: new Date() })
+      .where(eq(logisticOrdersTable.id, order.id));
 
-    const tr = await transitionLogisticOrderStatus(order.id as number, "Shipment Selection Pending", {
+    const tr = await transitionLogisticOrderStatus(order.id, "Shipment Selection Pending", {
       actorType: "customer",
       source: "productFirstFlow:customer-product-approve",
       notes: `Customer menyetujui harga produk${notes ? `: ${notes}` : ""}`,
@@ -444,16 +410,16 @@ productFirstFlowRouter.post("/:token/customer-product-approve", async (req: Requ
     }
 
     // WA ke customer — notifikasi produk disetujui + link pilih pengiriman
-    const customerPhone = String(order.phone ?? "").trim();
-    const approvalTokenStr = String(order.customerProductApprovalToken ?? "");
+    const customerPhone = (order.phone ?? "").trim();
+    const approvalTokenStr = order.customerProductApprovalToken ?? "";
     if (customerPhone && approvalTokenStr) {
       const domain = getPreferredDomain() || "cstlogistic.co.id";
       const selectionUrl = `https://${domain}/shipment-selection/${approvalTokenStr}`;
       sendShipmentSelectionCustomerWa({
         customerPhone,
-        customerName: String(order.customerName ?? ""),
-        orderId: order.id as number,
-        orderNumber: String(order.orderNumber ?? ""),
+        customerName: order.customerName ?? "",
+        orderId: order.id,
+        orderNumber: order.orderNumber ?? "",
         selectionUrl,
       });
     }
@@ -465,7 +431,7 @@ productFirstFlowRouter.post("/:token/customer-product-approve", async (req: Requ
     });
   } else {
     // reject: kembalikan ke Product Vendor Selected
-    const tr = await transitionLogisticOrderStatus(order.id as number, "Product Vendor Selected", {
+    const tr = await transitionLogisticOrderStatus(order.id, "Product Vendor Selected", {
       actorType: "customer",
       source: "productFirstFlow:customer-product-reject",
       notes: `Customer menolak harga produk${notes ? `: ${notes}` : ""}`,
@@ -508,13 +474,15 @@ productFirstFlowRouter.post("/:id/select-shipment-mode", requireClerkUser, async
   const guard = await requireProductFirstOrder(orderId);
   if (!guard.ok) return res.status(guard.status).json({ error: guard.error });
 
-  await db.execute(sql`
-    UPDATE logistic_orders
-    SET shipment_mode = ${mode},
-        shipment_mode_selected_at = NOW(),
-        updated_at = NOW()
-    WHERE id = ${orderId}
-  `);
+  // UPDATE logistic_orders.shipment_mode — fluent API
+  await db
+    .update(logisticOrdersTable)
+    .set({
+      shipmentMode: mode,
+      shipmentModeSelectedAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(eq(logisticOrdersTable.id, orderId));
 
   if (mode === "pickup_self") {
     const tr = await transitionLogisticOrderStatus(orderId, "Ready for Pickup", {
@@ -533,15 +501,15 @@ productFirstFlowRouter.post("/:id/select-shipment-mode", requireClerkUser, async
     }
 
     // WA ke customer — produk siap diambil
-    const customerPhone = String(guard.order.phone ?? "").trim();
+    const customerPhone = (guard.order.phone ?? "").trim();
     if (customerPhone) {
       sendReadyForPickupCustomerWa({
         customerPhone,
-        customerName: String(guard.order.customerName ?? ""),
+        customerName: guard.order.customerName ?? "",
         orderId,
-        orderNumber: String(guard.order.orderNumber ?? ""),
-        pickupLocation: guard.order.productPickupLocation as string | null,
-        readyDate: guard.order.productReadyDate as string | null,
+        orderNumber: guard.order.orderNumber ?? "",
+        pickupLocation: guard.order.productPickupLocation ?? null,
+        readyDate: guard.order.productReadyDate ?? null,
       });
     }
 
@@ -551,8 +519,8 @@ productFirstFlowRouter.post("/:id/select-shipment-mode", requireClerkUser, async
   // WA ke admin — customer memilih mode pengiriman non-pickup
   sendShipmentModeSelectedAdminWa({
     orderId,
-    orderNumber: String(guard.order.orderNumber ?? ""),
-    customerName: String(guard.order.customerName ?? ""),
+    orderNumber: guard.order.orderNumber ?? "",
+    customerName: guard.order.customerName ?? "",
     shipmentMode: mode,
   });
 
@@ -612,22 +580,28 @@ productFirstFlowRouter.post("/:id/shipment-rfq", requireClerkUser, async (req: R
 
   const rfqNumber = generateRfqNumber().replace("PRFQ", "SRFQ");
 
-  const [rfq] = await db.execute(sql`
-    INSERT INTO logistic_order_rfqs
-      (order_id, rfq_number, vendor_ids, notes, status, rfq_type, phase,
-       response_deadline, created_at)
-    VALUES
-      (${orderId}, ${rfqNumber}, ${sql.raw(`'{}'::integer[]`)}, ${notes ?? null},
-       'open', 'shipment', 'shipment_phase',
-       ${deadlineDate?.toISOString() ?? null}, NOW())
-    RETURNING id
-  `);
-  const rfqId = (rfq.rows[0] as { id: number }).id;
+  // INSERT logistic_order_rfqs — fluent API
+  const [rfqRow] = await db
+    .insert(logisticOrderRfqsTable)
+    .values({
+      orderId,
+      rfqNumber,
+      vendorIds: [],
+      notes: notes ?? null,
+      status: "open",
+      rfqType: "shipment",
+      phase: "shipment_phase",
+      responseDeadline: deadlineDate ?? null,
+    })
+    .returning({ id: logisticOrderRfqsTable.id });
 
-  await db.execute(sql`
-    UPDATE logistic_orders SET shipment_rfq_id = ${rfqId}, updated_at = NOW()
-    WHERE id = ${orderId}
-  `);
+  const rfqId = rfqRow.id;
+
+  // UPDATE logistic_orders.shipment_rfq_id — fluent API
+  await db
+    .update(logisticOrdersTable)
+    .set({ shipmentRfqId: rfqId, updatedAt: new Date() })
+    .where(eq(logisticOrdersTable.id, orderId));
 
   const vendors = await db
     .select({
@@ -645,28 +619,31 @@ productFirstFlowRouter.post("/:id/shipment-rfq", requireClerkUser, async (req: R
     const linkToken = generateToken();
     const formUrl = `https://${domain}/vendor-form/${linkToken}`;
 
-    await db.execute(sql`
-      INSERT INTO rfq_vendor_links
-        (rfq_id, vendor_id, token, status, rfq_type,
-         ${deadlineDate ? sql.raw("expired_at,") : sql.raw("")} created_at)
-      VALUES
-        (${rfqId}, ${vendor.id}, ${linkToken}, 'waiting_response', 'shipment_rfq',
-         ${deadlineDate ? sql.raw(`'${deadlineDate.toISOString()}',`) : sql.raw("")} NOW())
-    `);
+    // INSERT rfq_vendor_links — fluent API
+    await db.insert(rfqVendorLinksTable).values({
+      rfqId,
+      vendorId: vendor.id,
+      token: linkToken,
+      status: "waiting_response",
+      rfqType: "shipment_rfq",
+      expiredAt: deadlineDate ?? null,
+    });
 
-    await db.execute(sql`
-      INSERT INTO vendor_mini_form_links
-        (token, supplier_id, service_type, mode, order_id, order_number,
-         vendor_name, is_active, form_target, phase, admin_notes,
-         ${deadlineDate ? sql.raw("expires_at,") : sql.raw("")} created_at)
-      VALUES
-        (${linkToken}, ${vendor.id},
-         ${String(order.shipmentMode ?? "trucking")}, 'order_based',
-         ${orderId}, ${String(order.orderNumber ?? "")},
-         ${vendor.name}, TRUE, 'vendor', 'quotation',
-         ${notes ?? null},
-         ${deadlineDate ? sql.raw(`'${deadlineDate.toISOString()}',`) : sql.raw("")} NOW())
-    `);
+    // INSERT vendor_mini_form_links — fluent API
+    await db.insert(vendorMiniFormLinksTable).values({
+      token: linkToken,
+      supplierId: vendor.id,
+      serviceType: order.shipmentMode ?? "trucking",
+      mode: "order_based",
+      orderId,
+      orderNumber: order.orderNumber ?? "",
+      vendorName: vendor.name,
+      isActive: true,
+      formTarget: "vendor",
+      phase: "quotation",
+      adminNotes: notes ?? null,
+      expiresAt: deadlineDate ?? null,
+    });
 
     vmfLinks.push({ vendorId: vendor.id, token: linkToken, formUrl });
 
@@ -676,12 +653,12 @@ productFirstFlowRouter.post("/:id/shipment-rfq", requireClerkUser, async (req: R
         vendorPhone: vendor.phone,
         vendorId: vendor.id,
         orderId,
-        orderNumber: String(order.orderNumber ?? ""),
+        orderNumber: order.orderNumber ?? "",
         rfqNumber,
-        commodity: String(order.commodity ?? null),
-        pickupLocation: order.productPickupLocation as string | null,
-        destination: String(order.destination ?? null),
-        readyDate: order.productReadyDate as string | null,
+        commodity: order.commodity ?? null,
+        pickupLocation: order.productPickupLocation ?? null,
+        destination: order.destination ?? null,
+        readyDate: order.productReadyDate ?? null,
         formUrl,
         notes: notes ?? null,
       });
@@ -717,26 +694,29 @@ productFirstFlowRouter.get("/:id/product-phase", requireClerkUser, async (req: R
   const orderId = parseInt(String(req.params.id), 10);
   if (isNaN(orderId)) return res.status(400).json({ error: "ID tidak valid" });
 
-  const rows = await db.execute(sql`
-    SELECT
-      lo.id, lo.order_number AS "orderNumber", lo.status, lo.order_type AS "orderType",
-      lo.product_rfq_id AS "productRfqId",
-      lo.product_vendor_id AS "productVendorId",
-      lo.product_vendor_confirmed_at AS "productVendorConfirmedAt",
-      lo.product_ready_date AS "productReadyDate",
-      lo.product_pickup_location AS "productPickupLocation",
-      lo.product_qty_confirmed AS "productQtyConfirmed",
-      lo.product_price AS "productPrice",
-      lo.shipment_rfq_id AS "shipmentRfqId",
-      lo.shipment_mode AS "shipmentMode",
-      lo.shipment_mode_selected_at AS "shipmentModeSelectedAt",
-      lo.customer_product_approval_token AS "customerProductApprovalToken",
-      lo.customer_product_approved_at AS "customerProductApprovedAt",
-      s.name AS "productVendorName"
-    FROM logistic_orders lo
-    LEFT JOIN suppliers s ON s.id = lo.product_vendor_id
-    WHERE lo.id = ${orderId}
-  `);
+  // SELECT dengan JOIN — gunakan sql.raw dengan orderId integer (aman karena sudah parseInt)
+  const rows = await db.execute(
+    sql.raw(`
+      SELECT
+        lo.id, lo.order_number AS "orderNumber", lo.status, lo.order_type AS "orderType",
+        lo.product_rfq_id AS "productRfqId",
+        lo.product_vendor_id AS "productVendorId",
+        lo.product_vendor_confirmed_at AS "productVendorConfirmedAt",
+        lo.product_ready_date AS "productReadyDate",
+        lo.product_pickup_location AS "productPickupLocation",
+        lo.product_qty_confirmed AS "productQtyConfirmed",
+        lo.product_price AS "productPrice",
+        lo.shipment_rfq_id AS "shipmentRfqId",
+        lo.shipment_mode AS "shipmentMode",
+        lo.shipment_mode_selected_at AS "shipmentModeSelectedAt",
+        lo.customer_product_approval_token AS "customerProductApprovalToken",
+        lo.customer_product_approved_at AS "customerProductApprovedAt",
+        s.name AS "productVendorName"
+      FROM logistic_orders lo
+      LEFT JOIN suppliers s ON s.id = lo.product_vendor_id
+      WHERE lo.id = ${orderId}
+    `),
+  );
 
   const row = rows.rows[0] as Record<string, unknown> | undefined;
   if (!row) return res.status(404).json({ error: "Order tidak ditemukan" });
