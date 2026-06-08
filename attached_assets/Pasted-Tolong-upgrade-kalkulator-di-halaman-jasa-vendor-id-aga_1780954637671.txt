@@ -1,0 +1,107 @@
+Tolong upgrade kalkulator di halaman /jasa/vendor/:id agar menyesuaikan serviceType.
+
+Data:
+Halaman mengambil item dari GET /api/portal/marketplace/:id.
+Gunakan:
+- item.serviceType
+- item.category
+- item.templateSnapshot
+- item.priceSell
+- item.unit
+
+Target:
+Buat function resolveServiceType(item) yang membaca:
+1. item.serviceType
+2. item.category
+3. item.templateSnapshot.serviceType
+4. item.templateSnapshot.category
+Lalu normalize memakai normalizeServiceCategory.
+
+Kalkulator:
+
+A. trucking
+Fields:
+- pickupCity
+- destinationCity
+- truckType jika tersedia
+- tripQty
+- loadingFee optional
+- unloadingFee optional
+
+Formula:
+subtotal = priceSell * tripQty + loadingFee + unloadingFee
+
+B. sea_freight
+Fields:
+- originPort
+- destinationPort
+- shipmentMode: FCL/LCL
+- containerType jika FCL
+- qtyContainer jika FCL
+- cbm jika LCL
+
+Formula:
+Jika FCL:
+subtotal = priceSell * qtyContainer
+Jika LCL:
+subtotal = priceSell * cbm
+
+C. air_freight
+Fields:
+- originAirport
+- destinationAirport
+- grossWeightKg
+- lengthCm
+- widthCm
+- heightCm
+- packageQty
+
+Formula:
+volumeWeight = lengthCm * widthCm * heightCm * packageQty / 6000
+chargeableWeight = max(grossWeightKg, volumeWeight)
+subtotal = priceSell * chargeableWeight
+
+D. ppjk
+Fields:
+- documentType
+- documentQty
+- shipmentType Import/Export
+Formula:
+subtotal = priceSell * documentQty
+
+E. handling
+Fields:
+- handlingType
+- quantity
+Formula:
+subtotal = priceSell * quantity
+
+F. document
+Fields:
+- documentName
+- documentQty
+Formula:
+subtotal = priceSell * documentQty
+
+G. fallback
+Fields:
+- quantity
+Formula:
+subtotal = priceSell * quantity
+
+Tax:
+Untuk sekarang gunakan tax = 0 jika belum ada setting pajak.
+Jika sudah ada setting PPN, gunakan PPN 11%.
+
+Tampilkan:
+- Service type
+- Input kalkulator
+- Harga satuan
+- Chargeable unit
+- Subtotal
+- Pajak
+- Total
+
+Simpan calculationInput lengkap ke cart saat klik Tambahkan ke Pesanan.
+
+Jangan mengubah kalkulator /jasa lama.

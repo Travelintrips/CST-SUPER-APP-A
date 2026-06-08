@@ -69,7 +69,7 @@ outputType = "console"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "cd artifacts/api-server && pnpm run dev"
+args = "cd artifacts/api-server && bash start-dev.sh"
 waitForPort = 8080
 
 [[workflows.workflow]]

@@ -8,6 +8,7 @@ import {
   Search, Calculator, ChevronRight, MapPin, Phone, Info,
   ImagePlus, Loader2, ClipboardList,
   Package, Wind, Globe, FileText, Factory, Coffee, Flame,
+  Droplets, Fish, Feather,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { isAuthenticated, removeAuthToken, isPortalAdmin } from "@/lib/auth";
@@ -129,6 +130,24 @@ const AUTOCOMPLETE_MAP: AutocompleteEntry[] = [
     description: "Besi beton, plat baja & profil baja",
     kind: "Produk", terms: ["besi", "baja", "iron", "steel", "beton"],
     href: "/marketplace?type=product&category=iron_steel&q=besi",
+  },
+  {
+    icon: Droplets, label: "Karet Alam",
+    description: "SIR, RSS, lateks pekat & crumb rubber",
+    kind: "Produk", terms: ["karet", "rubber", "lateks", "latex", "sir20", "rss"],
+    href: "/marketplace?type=product&category=rubber&q=karet",
+  },
+  {
+    icon: Fish, label: "Ikan Hidup",
+    description: "Ikan hias, kerapu, arwana & biota laut hidup",
+    kind: "Produk", terms: ["ikan hidup", "live fish", "arwana", "kerapu", "ikan hias", "biota laut"],
+    href: "/marketplace?type=product&category=live_fish&q=ikan+hidup",
+  },
+  {
+    icon: Feather, label: "Sarang Walet",
+    description: "Sarang burung walet putih, merah & emas",
+    kind: "Produk", terms: ["sarang walet", "bird nest", "walet", "sarang burung", "edible bird nest"],
+    href: "/marketplace?type=product&category=bird_nest&q=sarang+walet",
   },
 ];
 

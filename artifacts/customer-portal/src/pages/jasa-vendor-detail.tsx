@@ -1,6 +1,7 @@
-import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useMemo, useEffect, useCallback } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useLocation } from "wouter";
+import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -63,18 +64,53 @@ function formatCurrency(v: number, currency = "IDR") {
   return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(v);
 }
 
+// Mirrors normalizeServiceCategory from catalogFilters.ts
+const SERVICE_CATEGORY_ALIASES_DETAIL: Record<string, string> = {
+  trucking: "trucking", truck: "trucking", "land freight": "trucking", land_freight: "trucking",
+  darat: "trucking", pengiriman_darat: "trucking", "pengiriman darat": "trucking",
+  "sea freight": "sea_freight", sea_freight: "sea_freight", sea: "sea_freight",
+  ocean: "sea_freight", ocean_freight: "sea_freight", "ocean freight": "sea_freight",
+  fcl: "sea_freight", lcl: "sea_freight", laut: "sea_freight",
+  pengiriman_laut: "sea_freight", "pengiriman laut": "sea_freight",
+  "air freight": "air_freight", air_freight: "air_freight", air: "air_freight",
+  udara: "air_freight", cargo_udara: "air_freight", "cargo udara": "air_freight",
+  pengiriman_udara: "air_freight", "pengiriman udara": "air_freight",
+  ppjk: "ppjk", customs: "ppjk", custom: "ppjk", pabean: "ppjk",
+  kepabeanan: "ppjk", pib: "ppjk", peb: "ppjk",
+  handling: "handling", warehouse: "handling", warehousing: "handling",
+  gudang: "handling", stuffing: "handling", stripping: "handling",
+  loading: "handling", unloading: "handling",
+  document: "document", documents: "document", dokumen: "document",
+  legal_doc: "document", "legal doc": "document", perizinan: "document",
+};
+
+function normalizeDetailCategory(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const normalized = value.toLowerCase().trim().replace(/[\s-]+/g, "_");
+  const withSpaces = normalized.replace(/_/g, " ");
+  return SERVICE_CATEGORY_ALIASES_DETAIL[withSpaces] ?? SERVICE_CATEGORY_ALIASES_DETAIL[normalized] ?? normalized;
+}
+
 function resolveServiceType(item: CatalogDetail): string {
-  const raw = item.resolvedCategory ?? item.serviceType ?? item.kategori ?? item.categoryKey ?? "";
-  const n = raw.toLowerCase().trim().replace(/\s+/g, "_");
-  const MAP: Record<string, string> = {
-    trucking: "trucking", truck: "trucking", land_freight: "trucking", darat: "trucking",
-    sea_freight: "sea_freight", sea_fcl: "sea_freight", sea_lcl: "sea_freight", fcl: "sea_freight", lcl: "sea_freight", laut: "sea_freight",
-    air_freight: "air_freight", udara: "air_freight",
-    ppjk: "ppjk", customs: "ppjk", pabean: "ppjk",
-    handling: "handling", warehouse: "handling", gudang: "handling",
-    document: "document", dokumen: "document",
-  };
-  return MAP[n] ?? MAP[n.replace(/_/g, " ")] ?? "general";
+  const snap = item.templateSnapshot && typeof item.templateSnapshot === "object"
+    ? item.templateSnapshot as Record<string, unknown>
+    : {};
+  // Priority: resolvedCategory → serviceType → templateSnapshot.serviceType → templateSnapshot.category → kategori → categoryKey
+  const candidates = [
+    item.resolvedCategory,
+    item.serviceType,
+    typeof snap["serviceType"] === "string" ? snap["serviceType"] : null,
+    typeof snap["category"] === "string" ? snap["category"] : null,
+    item.kategori,
+    item.categoryKey,
+  ];
+  for (const c of candidates) {
+    const key = normalizeDetailCategory(c);
+    if (key && key !== c?.toLowerCase().trim()) return key; // matched an alias
+    if (key && SERVICE_CATEGORY_ALIASES_DETAIL[key]) return SERVICE_CATEGORY_ALIASES_DETAIL[key];
+    if (key) return key;
+  }
+  return "general";
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -146,19 +182,28 @@ function TruckingCalc({ item, onChange }: { item: CatalogDetail; onChange: (r: C
   const [pickupCity, setPickupCity] = useState("");
   const [destCity, setDestCity] = useState("");
   const [truckType, setTruckType] = useState("");
-  const [qty, setQty] = useState(1);
-  const [extraFee, setExtraFee] = useState(0);
+  const [tripQty, setTripQty] = useState(1);
+  const [loadingFee, setLoadingFee] = useState<number | "">(0);
+  const [unloadingFee, setUnloadingFee] = useState<number | "">(0);
 
   const snap = item.templateSnapshot && typeof item.templateSnapshot === "object" ? item.templateSnapshot as Record<string, unknown> : {};
   const truckOptions: string[] = Array.isArray(snap["truckTypes"]) ? snap["truckTypes"] as string[] : [];
 
-  function recalc(p: { pickupCity?: string; destCity?: string; truckType?: string; qty?: number; extraFee?: number }) {
-    const q = p.qty ?? qty;
-    const ef = p.extraFee ?? extraFee;
+  function recalc(p: { pickupCity?: string; destCity?: string; truckType?: string; tripQty?: number; loadingFee?: number | ""; unloadingFee?: number | "" }) {
+    const q = p.tripQty ?? tripQty;
+    const lf = Number(p.loadingFee ?? loadingFee) || 0;
+    const uf = Number(p.unloadingFee ?? unloadingFee) || 0;
     if (!item.priceSell) { onChange(null); return; }
-    const subtotal = item.priceSell * q + ef;
+    const subtotal = item.priceSell * q + lf + uf;
     onChange({
-      inputs: { pickupCity: p.pickupCity ?? pickupCity, destCity: p.destCity ?? destCity, truckType: p.truckType ?? truckType, qty: q, extraFee: ef },
+      inputs: {
+        pickupCity: p.pickupCity ?? pickupCity,
+        destinationCity: p.destCity ?? destCity,
+        truckType: p.truckType ?? truckType,
+        tripQty: q,
+        loadingFee: lf,
+        unloadingFee: uf,
+      },
       chargeableQty: q,
       chargeableUnit: item.unit ?? "trip",
       subtotal,
@@ -189,18 +234,23 @@ function TruckingCalc({ item, onChange }: { item: CatalogDetail; onChange: (r: C
           </select>
         </div>
       )}
+      <div className="space-y-1">
+        <Label className="text-[11px] font-semibold text-slate-600">Jumlah Trip</Label>
+        <Input type="number" min={1} value={tripQty}
+          onChange={(e) => { const v = Math.max(1, Number(e.target.value) || 1); setTripQty(v); recalc({ tripQty: v }); }}
+          className="h-9 text-[13px] rounded-xl border-slate-200" />
+      </div>
       <div className="grid grid-cols-2 gap-2">
         <div className="space-y-1">
-          <Label className="text-[11px] font-semibold text-slate-600">Jumlah Trip</Label>
-          <Input type="number" min={1} value={qty}
-            onChange={(e) => { const v = Math.max(1, Number(e.target.value) || 1); setQty(v); recalc({ qty: v }); }}
+          <Label className="text-[11px] font-semibold text-slate-600">Biaya Muat (opsional)</Label>
+          <Input type="number" min={0} value={loadingFee === 0 ? "" : loadingFee} placeholder="0"
+            onChange={(e) => { const v = e.target.value === "" ? "" : Number(e.target.value) || 0; setLoadingFee(v); recalc({ loadingFee: v }); }}
             className="h-9 text-[13px] rounded-xl border-slate-200" />
         </div>
         <div className="space-y-1">
-          <Label className="text-[11px] font-semibold text-slate-600">Biaya Bongkar/Muat (opsional)</Label>
-          <Input type="number" min={0} value={extraFee || ""}
-            placeholder="0"
-            onChange={(e) => { const v = Number(e.target.value) || 0; setExtraFee(v); recalc({ extraFee: v }); }}
+          <Label className="text-[11px] font-semibold text-slate-600">Biaya Bongkar (opsional)</Label>
+          <Input type="number" min={0} value={unloadingFee === 0 ? "" : unloadingFee} placeholder="0"
+            onChange={(e) => { const v = e.target.value === "" ? "" : Number(e.target.value) || 0; setUnloadingFee(v); recalc({ unloadingFee: v }); }}
             className="h-9 text-[13px] rounded-xl border-slate-200" />
         </div>
       </div>
@@ -212,21 +262,29 @@ function TruckingCalc({ item, onChange }: { item: CatalogDetail; onChange: (r: C
 function SeaFreightCalc({ item, onChange }: { item: CatalogDetail; onChange: (r: CalcResult | null) => void }) {
   const [originPort, setOriginPort] = useState("");
   const [destPort, setDestPort] = useState("");
+  const [shipmentMode, setShipmentMode] = useState<"FCL" | "LCL">("FCL");
   const [containerType, setContainerType] = useState("20ft");
-  const [qty, setQty] = useState(1);
+  const [qtyContainer, setQtyContainer] = useState(1);
   const [cbm, setCbm] = useState<number | "">(0);
 
-  const isLCL = (item.serviceType ?? item.kategori ?? "").toLowerCase().includes("lcl");
-
-  function recalc(p: { originPort?: string; destPort?: string; containerType?: string; qty?: number; cbm?: number | "" }) {
-    const q = p.qty ?? qty;
-    const v = p.cbm ?? cbm;
-    const chargeableQty = isLCL ? (Number(v) || 0) : q;
+  function recalc(p: { originPort?: string; destPort?: string; shipmentMode?: "FCL" | "LCL"; containerType?: string; qtyContainer?: number; cbm?: number | "" }) {
+    const mode = p.shipmentMode ?? shipmentMode;
+    const ct = p.containerType ?? containerType;
+    const q = p.qtyContainer ?? qtyContainer;
+    const v = Number(p.cbm ?? cbm) || 0;
+    const chargeableQty = mode === "LCL" ? v : q;
     if (!item.priceSell) { onChange(null); return; }
     onChange({
-      inputs: { originPort: p.originPort ?? originPort, destPort: p.destPort ?? destPort, containerType: p.containerType ?? containerType, qty: q, cbm: v },
+      inputs: {
+        originPort: p.originPort ?? originPort,
+        destinationPort: p.destPort ?? destPort,
+        shipmentMode: mode,
+        containerType: mode === "FCL" ? ct : undefined,
+        qtyContainer: mode === "FCL" ? q : undefined,
+        cbm: mode === "LCL" ? v : undefined,
+      },
       chargeableQty,
-      chargeableUnit: isLCL ? "CBM" : (p.containerType ?? containerType),
+      chargeableUnit: mode === "LCL" ? "CBM" : ct,
       subtotal: item.priceSell * chargeableQty,
     });
   }
@@ -245,28 +303,39 @@ function SeaFreightCalc({ item, onChange }: { item: CatalogDetail; onChange: (r:
             placeholder="Tanjung Perak" className="h-9 text-[13px] rounded-xl border-slate-200" />
         </div>
       </div>
-      {!isLCL && (
-        <div className="space-y-1">
-          <Label className="text-[11px] font-semibold text-slate-600">Tipe Kontainer</Label>
-          <select value={containerType} onChange={(e) => { setContainerType(e.target.value); recalc({ containerType: e.target.value }); }}
-            className="w-full h-9 rounded-xl border border-slate-200 text-[13px] px-3 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-400">
-            {["20ft", "40ft", "40HC", "45ft"].map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
+      <div className="space-y-1">
+        <Label className="text-[11px] font-semibold text-slate-600">Mode Pengiriman</Label>
+        <div className="flex rounded-xl border border-slate-200 overflow-hidden">
+          {(["FCL", "LCL"] as const).map((m) => (
+            <button key={m} type="button"
+              onClick={() => { setShipmentMode(m); recalc({ shipmentMode: m }); }}
+              className={`flex-1 py-2 text-[12px] font-semibold transition-colors ${shipmentMode === m ? "bg-sky-600 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}>
+              {m}
+            </button>
+          ))}
         </div>
-      )}
-      {isLCL ? (
-        <div className="space-y-1">
-          <Label className="text-[11px] font-semibold text-slate-600">Volume (CBM) <span className="text-red-400">*</span></Label>
-          <Input type="number" min={0.1} step={0.1} value={cbm}
-            placeholder="0.0"
-            onChange={(e) => { const v = e.target.value === "" ? "" : Number(e.target.value); setCbm(v); recalc({ cbm: v }); }}
-            className="h-9 text-[13px] rounded-xl border-slate-200" />
-        </div>
+      </div>
+      {shipmentMode === "FCL" ? (
+        <>
+          <div className="space-y-1">
+            <Label className="text-[11px] font-semibold text-slate-600">Tipe Kontainer</Label>
+            <select value={containerType} onChange={(e) => { setContainerType(e.target.value); recalc({ containerType: e.target.value }); }}
+              className="w-full h-9 rounded-xl border border-slate-200 text-[13px] px-3 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-400">
+              {["20ft", "40ft", "40HC", "45ft"].map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-[11px] font-semibold text-slate-600">Jumlah Kontainer</Label>
+            <Input type="number" min={1} value={qtyContainer}
+              onChange={(e) => { const v = Math.max(1, Number(e.target.value) || 1); setQtyContainer(v); recalc({ qtyContainer: v }); }}
+              className="h-9 text-[13px] rounded-xl border-slate-200" />
+          </div>
+        </>
       ) : (
         <div className="space-y-1">
-          <Label className="text-[11px] font-semibold text-slate-600">Jumlah Kontainer</Label>
-          <Input type="number" min={1} value={qty}
-            onChange={(e) => { const v = Math.max(1, Number(e.target.value) || 1); setQty(v); recalc({ qty: v }); }}
+          <Label className="text-[11px] font-semibold text-slate-600">Volume (CBM) <span className="text-red-400">*</span></Label>
+          <Input type="number" min={0.1} step={0.1} value={cbm === 0 ? "" : cbm} placeholder="0.0"
+            onChange={(e) => { const v = e.target.value === "" ? "" : Number(e.target.value); setCbm(v); recalc({ cbm: v }); }}
             className="h-9 text-[13px] rounded-xl border-slate-200" />
         </div>
       )}
@@ -278,32 +347,45 @@ function SeaFreightCalc({ item, onChange }: { item: CatalogDetail; onChange: (r:
 function AirFreightCalc({ item, onChange }: { item: CatalogDetail; onChange: (r: CalcResult | null) => void }) {
   const [originAirport, setOriginAirport] = useState("");
   const [destAirport, setDestAirport] = useState("");
-  const [grossWeight, setGrossWeight] = useState<number | "">(0);
-  const [length, setLength] = useState<number | "">(0);
-  const [width, setWidth] = useState<number | "">(0);
-  const [height, setHeight] = useState<number | "">(0);
+  const [grossWeightKg, setGrossWeightKg] = useState<number | "">(0);
+  const [lengthCm, setLengthCm] = useState<number | "">(0);
+  const [widthCm, setWidthCm] = useState<number | "">(0);
+  const [heightCm, setHeightCm] = useState<number | "">(0);
+  const [packageQty, setPackageQty] = useState(1);
 
-  function computeVolumeWeight(l: number | "", w: number | "", h: number | "") {
-    const lv = Number(l) || 0;
-    const wv = Number(w) || 0;
-    const hv = Number(h) || 0;
-    return (lv * wv * hv) / 6000;
+  function computeVolumeWeight(l: number | "", w: number | "", h: number | "", qty: number) {
+    return (Number(l) || 0) * (Number(w) || 0) * (Number(h) || 0) * qty / 6000;
   }
 
-  function recalc(p: { originAirport?: string; destAirport?: string; grossWeight?: number | ""; length?: number | ""; width?: number | ""; height?: number | "" }) {
-    const gw = Number(p.grossWeight ?? grossWeight) || 0;
-    const vw = computeVolumeWeight(p.length ?? length, p.width ?? width, p.height ?? height);
+  function recalc(p: {
+    originAirport?: string; destAirport?: string;
+    grossWeightKg?: number | ""; lengthCm?: number | ""; widthCm?: number | ""; heightCm?: number | "";
+    packageQty?: number;
+  }) {
+    const gw = Number(p.grossWeightKg ?? grossWeightKg) || 0;
+    const qty = p.packageQty ?? packageQty;
+    const vw = computeVolumeWeight(p.lengthCm ?? lengthCm, p.widthCm ?? widthCm, p.heightCm ?? heightCm, qty);
     const chargeable = Math.max(gw, vw);
     if (!item.priceSell || chargeable <= 0) { onChange(null); return; }
     onChange({
-      inputs: { originAirport: p.originAirport ?? originAirport, destAirport: p.destAirport ?? destAirport, grossWeight: gw, volumeWeight: Math.round(vw * 100) / 100, chargeableWeight: Math.round(chargeable * 100) / 100 },
+      inputs: {
+        originAirport: p.originAirport ?? originAirport,
+        destinationAirport: p.destAirport ?? destAirport,
+        grossWeightKg: gw,
+        lengthCm: Number(p.lengthCm ?? lengthCm) || 0,
+        widthCm: Number(p.widthCm ?? widthCm) || 0,
+        heightCm: Number(p.heightCm ?? heightCm) || 0,
+        packageQty: qty,
+        volumeWeight: Math.round(vw * 100) / 100,
+        chargeableWeight: Math.round(chargeable * 100) / 100,
+      },
       chargeableQty: Math.round(chargeable * 100) / 100,
       chargeableUnit: "kg",
       subtotal: item.priceSell * chargeable,
     });
   }
 
-  const vw = computeVolumeWeight(length, width, height);
+  const vw = computeVolumeWeight(lengthCm, widthCm, heightCm, packageQty);
 
   return (
     <div className="space-y-3">
@@ -319,28 +401,32 @@ function AirFreightCalc({ item, onChange }: { item: CatalogDetail; onChange: (r:
             placeholder="SUB" className="h-9 text-[13px] rounded-xl border-slate-200" />
         </div>
       </div>
-      <div className="space-y-1">
-        <Label className="text-[11px] font-semibold text-slate-600">Berat Kotor (kg) <span className="text-red-400">*</span></Label>
-        <Input type="number" min={0.1} step={0.1} value={grossWeight} placeholder="0.0"
-          onChange={(e) => { const v = e.target.value === "" ? "" : Number(e.target.value); setGrossWeight(v); recalc({ grossWeight: v }); }}
-          className="h-9 text-[13px] rounded-xl border-slate-200" />
+      <div className="grid grid-cols-2 gap-2">
+        <div className="space-y-1">
+          <Label className="text-[11px] font-semibold text-slate-600">Berat Kotor (kg) <span className="text-red-400">*</span></Label>
+          <Input type="number" min={0.1} step={0.1} value={grossWeightKg === 0 ? "" : grossWeightKg} placeholder="0.0"
+            onChange={(e) => { const v = e.target.value === "" ? "" : Number(e.target.value); setGrossWeightKg(v); recalc({ grossWeightKg: v }); }}
+            className="h-9 text-[13px] rounded-xl border-slate-200" />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-[11px] font-semibold text-slate-600">Jumlah Koli</Label>
+          <Input type="number" min={1} value={packageQty}
+            onChange={(e) => { const v = Math.max(1, Number(e.target.value) || 1); setPackageQty(v); recalc({ packageQty: v }); }}
+            className="h-9 text-[13px] rounded-xl border-slate-200" />
+        </div>
       </div>
       <div>
-        <Label className="text-[11px] font-semibold text-slate-600 mb-1.5 block">Dimensi untuk Volume Weight (cm, opsional)</Label>
+        <Label className="text-[11px] font-semibold text-slate-600 mb-1.5 block">Dimensi per Koli (cm, untuk volume weight)</Label>
         <div className="grid grid-cols-3 gap-2">
           {[
-            { label: "P", val: length, set: setLength, key: "length" as const },
-            { label: "L", val: width, set: setWidth, key: "width" as const },
-            { label: "T", val: height, set: setHeight, key: "height" as const },
+            { label: "P", val: lengthCm, set: setLengthCm, key: "lengthCm" as const },
+            { label: "L", val: widthCm, set: setWidthCm, key: "widthCm" as const },
+            { label: "T", val: heightCm, set: setHeightCm, key: "heightCm" as const },
           ].map(({ label, val, set, key }) => (
             <div key={key} className="space-y-1">
               <Label className="text-[10px] text-slate-400">{label} (cm)</Label>
-              <Input type="number" min={0} step={1} value={val} placeholder="0"
-                onChange={(e) => {
-                  const v = e.target.value === "" ? "" : Number(e.target.value);
-                  set(v);
-                  recalc({ [key]: v });
-                }}
+              <Input type="number" min={0} step={1} value={val === 0 ? "" : val} placeholder="0"
+                onChange={(e) => { const v = e.target.value === "" ? "" : Number(e.target.value); set(v as number | ""); recalc({ [key]: v }); }}
                 className="h-8 text-[12px] rounded-xl border-slate-200" />
             </div>
           ))}
@@ -348,7 +434,7 @@ function AirFreightCalc({ item, onChange }: { item: CatalogDetail; onChange: (r:
         {vw > 0 && (
           <p className="text-[11px] text-slate-400 mt-1.5 flex items-center gap-1">
             <Info className="h-3 w-3" />
-            Volume weight: {vw.toFixed(2)} kg
+            Volume weight: {vw.toFixed(2)} kg ({packageQty} koli × P×L×T/6000)
           </p>
         )}
       </div>
@@ -358,15 +444,19 @@ function AirFreightCalc({ item, onChange }: { item: CatalogDetail; onChange: (r:
 
 // PPJK / Customs
 function PpjkCalc({ item, onChange }: { item: CatalogDetail; onChange: (r: CalcResult | null) => void }) {
-  const [shipmentType, setShipmentType] = useState("import");
-  const [docCount, setDocCount] = useState(1);
-  const [hasPib, setHasPib] = useState(false);
+  const [documentType, setDocumentType] = useState("PIB");
+  const [documentQty, setDocumentQty] = useState(1);
+  const [shipmentType, setShipmentType] = useState("Import");
 
-  function recalc(p: { shipmentType?: string; docCount?: number; hasPib?: boolean }) {
-    const d = p.docCount ?? docCount;
+  function recalc(p: { documentType?: string; documentQty?: number; shipmentType?: string }) {
+    const d = p.documentQty ?? documentQty;
     if (!item.priceSell) { onChange(null); return; }
     onChange({
-      inputs: { shipmentType: p.shipmentType ?? shipmentType, docCount: d, hasPib: p.hasPib ?? hasPib },
+      inputs: {
+        documentType: p.documentType ?? documentType,
+        documentQty: d,
+        shipmentType: p.shipmentType ?? shipmentType,
+      },
       chargeableQty: d,
       chargeableUnit: "dokumen",
       subtotal: item.priceSell * d,
@@ -376,23 +466,33 @@ function PpjkCalc({ item, onChange }: { item: CatalogDetail; onChange: (r: CalcR
   return (
     <div className="space-y-3">
       <div className="space-y-1">
-        <Label className="text-[11px] font-semibold text-slate-600">Jenis Shipment</Label>
-        <select value={shipmentType} onChange={(e) => { setShipmentType(e.target.value); recalc({ shipmentType: e.target.value }); }}
+        <Label className="text-[11px] font-semibold text-slate-600">Jenis Dokumen</Label>
+        <select value={documentType} onChange={(e) => { setDocumentType(e.target.value); recalc({ documentType: e.target.value }); }}
           className="w-full h-9 rounded-xl border border-slate-200 text-[13px] px-3 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-400">
-          <option value="import">Import</option>
-          <option value="export">Export</option>
-          <option value="lokal">Lokal</option>
+          <option value="PIB">PIB (Import)</option>
+          <option value="PEB">PEB (Export)</option>
+          <option value="BC 2.3">BC 2.3</option>
+          <option value="BC 3.0">BC 3.0</option>
+          <option value="Lainnya">Lainnya</option>
         </select>
       </div>
       <div className="space-y-1">
-        <Label className="text-[11px] font-semibold text-slate-600">Jumlah Dokumen</Label>
-        <Input type="number" min={1} value={docCount}
-          onChange={(e) => { const v = Math.max(1, Number(e.target.value) || 1); setDocCount(v); recalc({ docCount: v }); }}
-          className="h-9 text-[13px] rounded-xl border-slate-200" />
+        <Label className="text-[11px] font-semibold text-slate-600">Jenis Shipment</Label>
+        <div className="flex rounded-xl border border-slate-200 overflow-hidden">
+          {["Import", "Export"].map((m) => (
+            <button key={m} type="button"
+              onClick={() => { setShipmentType(m); recalc({ shipmentType: m }); }}
+              className={`flex-1 py-2 text-[12px] font-semibold transition-colors ${shipmentType === m ? "bg-sky-600 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}>
+              {m}
+            </button>
+          ))}
+        </div>
       </div>
-      <div className="flex items-center justify-between py-1">
-        <Label className="text-[12px] font-semibold text-slate-600">Termasuk PIB / PEB</Label>
-        <Switch checked={hasPib} onCheckedChange={(v) => { setHasPib(v); recalc({ hasPib: v }); }} />
+      <div className="space-y-1">
+        <Label className="text-[11px] font-semibold text-slate-600">Jumlah Dokumen</Label>
+        <Input type="number" min={1} value={documentQty}
+          onChange={(e) => { const v = Math.max(1, Number(e.target.value) || 1); setDocumentQty(v); recalc({ documentQty: v }); }}
+          className="h-9 text-[13px] rounded-xl border-slate-200" />
       </div>
     </div>
   );
@@ -400,37 +500,91 @@ function PpjkCalc({ item, onChange }: { item: CatalogDetail; onChange: (r: CalcR
 
 // Handling
 function HandlingCalc({ item, onChange }: { item: CatalogDetail; onChange: (r: CalcResult | null) => void }) {
-  const [qty, setQty] = useState(1);
+  const [handlingType, setHandlingType] = useState("Stuffing");
+  const [quantity, setQuantity] = useState(1);
 
-  function recalc(q: number) {
+  function recalc(p: { handlingType?: string; quantity?: number }) {
+    const q = p.quantity ?? quantity;
     if (!item.priceSell) { onChange(null); return; }
-    onChange({ inputs: { qty: q }, chargeableQty: q, chargeableUnit: item.unit ?? "unit", subtotal: item.priceSell * q });
+    onChange({
+      inputs: { handlingType: p.handlingType ?? handlingType, quantity: q },
+      chargeableQty: q,
+      chargeableUnit: item.unit ?? "unit",
+      subtotal: item.priceSell * q,
+    });
   }
 
   return (
-    <div className="space-y-1">
-      <Label className="text-[11px] font-semibold text-slate-600">Kuantitas ({item.unit ?? "unit"})</Label>
-      <Input type="number" min={1} value={qty}
-        onChange={(e) => { const v = Math.max(1, Number(e.target.value) || 1); setQty(v); recalc(v); }}
-        className="h-9 text-[13px] rounded-xl border-slate-200" />
+    <div className="space-y-3">
+      <div className="space-y-1">
+        <Label className="text-[11px] font-semibold text-slate-600">Jenis Handling</Label>
+        <select value={handlingType} onChange={(e) => { setHandlingType(e.target.value); recalc({ handlingType: e.target.value }); }}
+          className="w-full h-9 rounded-xl border border-slate-200 text-[13px] px-3 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-400">
+          <option value="Stuffing">Stuffing</option>
+          <option value="Stripping">Stripping</option>
+          <option value="Loading">Loading</option>
+          <option value="Unloading">Unloading</option>
+          <option value="Warehousing">Warehousing</option>
+          <option value="Lainnya">Lainnya</option>
+        </select>
+      </div>
+      <div className="space-y-1">
+        <Label className="text-[11px] font-semibold text-slate-600">Kuantitas ({item.unit ?? "unit"})</Label>
+        <Input type="number" min={1} value={quantity}
+          onChange={(e) => { const v = Math.max(1, Number(e.target.value) || 1); setQuantity(v); recalc({ quantity: v }); }}
+          className="h-9 text-[13px] rounded-xl border-slate-200" />
+      </div>
+    </div>
+  );
+}
+
+// Document
+function DocumentCalc({ item, onChange }: { item: CatalogDetail; onChange: (r: CalcResult | null) => void }) {
+  const [documentName, setDocumentName] = useState("");
+  const [documentQty, setDocumentQty] = useState(1);
+
+  function recalc(p: { documentName?: string; documentQty?: number }) {
+    const q = p.documentQty ?? documentQty;
+    if (!item.priceSell) { onChange(null); return; }
+    onChange({
+      inputs: { documentName: p.documentName ?? documentName, documentQty: q },
+      chargeableQty: q,
+      chargeableUnit: item.unit ?? "dokumen",
+      subtotal: item.priceSell * q,
+    });
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="space-y-1">
+        <Label className="text-[11px] font-semibold text-slate-600">Nama / Jenis Dokumen</Label>
+        <Input value={documentName} onChange={(e) => { setDocumentName(e.target.value); recalc({ documentName: e.target.value }); }}
+          placeholder="Contoh: Surat Jalan, SKA, COO…" className="h-9 text-[13px] rounded-xl border-slate-200" />
+      </div>
+      <div className="space-y-1">
+        <Label className="text-[11px] font-semibold text-slate-600">Jumlah Dokumen</Label>
+        <Input type="number" min={1} value={documentQty}
+          onChange={(e) => { const v = Math.max(1, Number(e.target.value) || 1); setDocumentQty(v); recalc({ documentQty: v }); }}
+          className="h-9 text-[13px] rounded-xl border-slate-200" />
+      </div>
     </div>
   );
 }
 
 // General / Fallback
 function GeneralCalc({ item, onChange }: { item: CatalogDetail; onChange: (r: CalcResult | null) => void }) {
-  const [qty, setQty] = useState(1);
+  const [quantity, setQuantity] = useState(1);
 
   function recalc(q: number) {
     if (!item.priceSell) { onChange(null); return; }
-    onChange({ inputs: { qty: q }, chargeableQty: q, chargeableUnit: item.unit ?? "unit", subtotal: item.priceSell * q });
+    onChange({ inputs: { quantity: q }, chargeableQty: q, chargeableUnit: item.unit ?? "unit", subtotal: item.priceSell * q });
   }
 
   return (
     <div className="space-y-1">
       <Label className="text-[11px] font-semibold text-slate-600">Kuantitas ({item.unit ?? "unit"})</Label>
-      <Input type="number" min={1} value={qty}
-        onChange={(e) => { const v = Math.max(1, Number(e.target.value) || 1); setQty(v); recalc(v); }}
+      <Input type="number" min={1} value={quantity}
+        onChange={(e) => { const v = Math.max(1, Number(e.target.value) || 1); setQuantity(v); recalc(v); }}
         className="h-9 text-[13px] rounded-xl border-slate-200" />
     </div>
   );
@@ -460,8 +614,11 @@ export default function JasaVendorDetail() {
   const [added, setAdded] = useState(false);
   const [activeImage, setActiveImage] = useState<string | null>(null);
 
+  const qc = useQueryClient();
+  const queryKey = ["jasa-vendor-detail", id];
+
   const { data: item, isLoading, isError } = useQuery<CatalogDetail>({
-    queryKey: ["jasa-vendor-detail", id],
+    queryKey,
     queryFn: async () => {
       const r = await fetch(`/api/portal/marketplace/${id}`);
       if (!r.ok) throw new Error("not_found");
@@ -470,6 +627,41 @@ export default function JasaVendorDetail() {
     enabled: !!id && !isNaN(Number(id)),
     retry: false,
   });
+
+  // Realtime: watch vendor_catalog_items untuk item ini (dan semua item vendor yg sama)
+  const handleCatalogChange = useCallback((payload: { eventType: string; new: Record<string, unknown>; old: Record<string, unknown> }) => {
+    const row = (payload.new ?? payload.old ?? {}) as Record<string, unknown>;
+    if (row["template_kind"] !== "service" && row["templateKind"] !== "service") return;
+    if (import.meta.env.DEV) {
+      console.log("[Realtime] vendor_catalog_items service changed, refetch marketplace", payload.eventType, row["id"]);
+    }
+    qc.invalidateQueries({ queryKey });
+  }, [qc, id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!supabase || !id) return;
+    const channel = supabase
+      .channel(`jasa-vendor-detail-catalog-${id}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "vendor_catalog_items" },
+        handleCatalogChange,
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "vendor_catalog_items" },
+        handleCatalogChange,
+      )
+      .on(
+        "postgres_changes",
+        { event: "DELETE", schema: "public", table: "vendor_catalog_items" },
+        handleCatalogChange,
+      )
+      .subscribe();
+    return () => {
+      supabase!.removeChannel(channel);
+    };
+  }, [id, handleCatalogChange]);
 
   const serviceType = useMemo(() => item ? resolveServiceType(item) : "general", [item]);
   const categoryLabel = CATEGORY_LABELS[serviceType] ?? "Layanan";
@@ -730,6 +922,15 @@ export default function JasaVendorDetail() {
 
               <Separator />
 
+              {/* Service type badge */}
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Tipe:</span>
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-sky-50 border border-sky-200 text-[11px] font-bold text-sky-700">
+                  {categoryIcon && <span className="[&>svg]:h-3 [&>svg]:w-3 [&>svg]:text-sky-600">{categoryIcon}</span>}
+                  {categoryLabel}
+                </span>
+              </div>
+
               {/* Calculator form by type */}
               {item.priceSell == null && (
                 <div className="text-center py-4">
@@ -744,7 +945,8 @@ export default function JasaVendorDetail() {
                   {serviceType === "air_freight" && <AirFreightCalc item={item} onChange={setCalcResult} />}
                   {serviceType === "ppjk" && <PpjkCalc item={item} onChange={setCalcResult} />}
                   {serviceType === "handling" && <HandlingCalc item={item} onChange={setCalcResult} />}
-                  {(serviceType === "document" || serviceType === "general") && <GeneralCalc item={item} onChange={setCalcResult} />}
+                  {serviceType === "document" && <DocumentCalc item={item} onChange={setCalcResult} />}
+                  {serviceType === "general" && <GeneralCalc item={item} onChange={setCalcResult} />}
                 </>
               )}
 

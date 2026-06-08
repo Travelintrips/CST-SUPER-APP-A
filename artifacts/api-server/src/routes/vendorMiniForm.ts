@@ -737,22 +737,7 @@ const UNIVERSAL_OP_FIELDS: {
   { key: "pod_doc",            label: "Proof of Delivery (POD)", type: "text",                      placeholder: "Upload bukti pengiriman / POD",                              section: "operational", isUpload: true },
 ];
 
-// ── PUBLIC: GET /api/vendor-form/local-file/:filename ─────────────────────────
-vendorMiniFormRouter.get("/local-file/:filename", async (req: Request, res: Response) => {
-  const { filename } = req.params as { filename: string };
-  if (!/^[a-zA-Z0-9_\-]+\.[a-z0-9]+$/i.test(filename)) return res.status(400).send("Invalid");
-  try {
-    const { promises: fs } = await import("fs");
-    const path = await import("path");
-    const data = await fs.readFile(path.join("/tmp/vmf-uploads", filename));
-    const ext = filename.split(".").pop()?.toLowerCase() ?? "";
-    const mimeMap: Record<string, string> = { pdf: "application/pdf", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp" };
-    res.setHeader("Content-Type", mimeMap[ext] ?? "application/octet-stream");
-    return res.send(data);
-  } catch {
-    return res.status(404).send("Not found");
-  }
-});
+// ── /local-file removed — uploads go directly to object storage (no /tmp fallback) ──
 
 // ── PUBLIC: GET /api/vendor-form/:token/drivers ───────────────────────────────
 vendorMiniFormRouter.get("/:token/drivers", async (req: Request, res: Response) => {
