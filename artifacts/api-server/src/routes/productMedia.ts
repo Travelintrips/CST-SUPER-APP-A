@@ -1,9 +1,7 @@
 import { Router } from "express";
 import multer from "multer";
-import { db, productMediaTable, vendorCatalogItemsTable } from "@workspace/db";
-import { eq, and, asc, desc, isNull } from "drizzle-orm";
-import { db, productMediaTable } from "@workspace/db";
-import { eq, and, asc, sql } from "drizzle-orm";
+import { db, productMediaTable, vendorCatalogItemsTable, suppliersTable } from "@workspace/db";
+import { eq, and, asc, inArray, isNull, ne } from "drizzle-orm";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { uploadToSupabase, deleteFromSupabase } from "../lib/supabaseStorage.js";
 import { compressImageBuffer, isCompressibleImage } from "../lib/imageCompress.js";
@@ -437,129 +435,186 @@ router.post("/generate-ai", async (req, res): Promise<void> => {
   }
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// POST /api/product-media/regenerate-ai/:itemId — hapus pending/rejected AI, buat 4 baru
-// ─────────────────────────────────────────────────────────────────────────────
-router.post("/regenerate-ai/:itemId", async (req, res): Promise<void> => {
+// ─── AI Generation helpers ────────────────────────────────────────────────────
+
+async function generateAiImageForItem(
+  item: { id: number; name: string; vendorId?: number | null; kategori?: string | null; description?: string | null },
+  actorEmail: string,
+  actorRole: string,
+): Promise<{ fileUrl: string; storagePath: string }> {
+  const prompt = [
+    `Professional B2B marketplace product photography for a logistics and international trading platform.`,
+    `Product name: ${item.name.trim()}.`,
+    item.kategori?.trim() ? `Category: ${item.kategori.trim()}.` : "",
+    item.description?.trim() ? `Description: ${item.description.trim()}.` : "",
+    `Style: Commercial product photography, ultra realistic, marketplace quality, professional lighting, sharp focus, high detail, premium B2B catalog image.`,
+    `The product must be centered as the main subject. Clean, modern, professional background. Realistic lighting and high quality. No text, no watermarks, no logos, no writing of any kind.`,
+    `Square 1:1 ratio. High resolution. Suitable for logistics and international trade marketplace.`,
+  ].filter(Boolean).join(" ");
+
+  const openai = getOpenAI();
+  const response = await openai.images.generate({
+    model: "dall-e-3",
+    prompt,
+    n: 1,
+    size: "1024x1024",
+    quality: "standard",
+    response_format: "b64_json",
+  });
+
+  const b64 = response.data?.[0]?.b64_json;
+  if (!b64) throw new Error("Model tidak mengembalikan gambar");
+
+  const buffer = Buffer.from(b64, "base64");
+  return uploadToSupabase(buffer, "image/png", "product-media/images");
+}
+
+// GET /api/product-media/generation-status
+router.get("/generation-status", async (req, res): Promise<void> => {
   if (!(await requireClerkUser(req, res))) return;
-  const itemId = parseInt(req.params.itemId);
-  if (isNaN(itemId)) { res.status(400).json({ error: "Invalid id" }); return; }
-
   try {
-    const [r] = (await db.execute(sql`
-      SELECT vci.id, vci.name, vci.template_kind, vci.description, vci.spec_values,
-             vci.kategori, vci.service_type, vci.origin, vci.vendor_id,
-             s.name AS vendor_name, s.service_type AS vendor_service_type
-      FROM vendor_catalog_items vci
-      LEFT JOIN suppliers s ON s.id = vci.vendor_id
-      WHERE vci.id = ${itemId}
-    `)) as any[];
+    const items = await db
+      .select({
+        id: vendorCatalogItemsTable.id,
+        name: vendorCatalogItemsTable.name,
+        vendorId: vendorCatalogItemsTable.vendorId,
+        vendorName: suppliersTable.name,
+        kategori: vendorCatalogItemsTable.kategori,
+        type: vendorCatalogItemsTable.type,
+        isPublished: vendorCatalogItemsTable.isPublished,
+        description: vendorCatalogItemsTable.description,
+      })
+      .from(vendorCatalogItemsTable)
+      .leftJoin(suppliersTable, eq(vendorCatalogItemsTable.vendorId, suppliersTable.id))
+      .where(eq(vendorCatalogItemsTable.isActive, true));
 
-    if (!r) { res.status(404).json({ error: "Item tidak ditemukan" }); return; }
+    const itemIds = items.map((i) => i.id);
+    const allMedia =
+      itemIds.length > 0
+        ? await db
+            .select()
+            .from(productMediaTable)
+            .where(
+              and(
+                inArray(productMediaTable.vendorCatalogItemId, itemIds),
+                eq(productMediaTable.isActive, true),
+                eq(productMediaTable.mediaType, "image"),
+              ),
+            )
+        : [];
 
-    // Hapus AI images yang belum approved (pending + rejected)
-    const toDelete = await db.select({ id: productMediaTable.id, storagePath: productMediaTable.storagePath })
-      .from(productMediaTable)
-      .where(and(
-        eq(productMediaTable.vendorCatalogItemId, itemId),
-        sql`image_source = 'ai' AND (ai_image_status = 'waiting_approval' OR ai_image_status = 'rejected')`,
-      ));
-
-    for (const m of toDelete) {
-      if (m.storagePath) await deleteFromSupabase(m.storagePath).catch(() => {});
+    const mediaByItem = new Map<number, typeof allMedia>();
+    for (const m of allMedia) {
+      const k = m.vendorCatalogItemId!;
+      if (!mediaByItem.has(k)) mediaByItem.set(k, []);
+      mediaByItem.get(k)!.push(m);
     }
-    if (toDelete.length > 0) {
-      await db.execute(sql`
-        DELETE FROM product_media
-        WHERE vendor_catalog_item_id = ${itemId}
-          AND image_source = 'ai'
-          AND (ai_image_status = 'waiting_approval' OR ai_image_status = 'rejected')
-      `);
-    }
 
-    const item: CatalogItemData = {
-      id: r.id, name: r.name, templateKind: r.template_kind,
-      description: r.description, specValues: r.spec_values,
-      kategori: r.kategori, serviceType: r.service_type,
-      origin: r.origin, vendorId: r.vendor_id ? parseInt(r.vendor_id) : null,
-      vendorName: r.vendor_name, vendorServiceType: r.vendor_service_type,
-    };
+    const result = items.map((item) => {
+      const media = mediaByItem.get(item.id) ?? [];
+      const primary = media.find((m) => m.isPrimary) ?? media[0] ?? null;
+      return {
+        ...item,
+        mediaCount: media.length,
+        hasImage: media.length > 0,
+        primaryImageUrl: primary?.fileUrl ?? null,
+        lastGeneratedAt: primary?.createdAt ?? null,
+      };
+    });
 
-    const a = actor(req);
-    const count = Math.min(parseInt(req.body?.count ?? "4") || 4, 4);
-    const results = await generateImagesForItem({ item, uploadedBy: a.email, uploadedByRole: a.role, count });
-    const succeeded = results.filter((x) => x.success);
-
-    res.status(201).json({
-      generated: succeeded.length,
-      failed: results.filter((x) => !x.success).length,
-      results,
-      prompt: buildAiPrompt(item),
+    const withImage = result.filter((i) => i.hasImage).length;
+    res.json({
+      total: result.length,
+      withImage,
+      withoutImage: result.length - withImage,
+      items: result,
     });
   } catch (e: any) {
-    res.status(500).json({ error: e?.message ?? "Gagal regenerate gambar" });
+    res.status(500).json({ error: e?.message });
   }
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// POST /api/product-media/bulk-generate-ai — generate untuk semua item tanpa gambar
-// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/product-media/bulk-generate-ai
 router.post("/bulk-generate-ai", async (req, res): Promise<void> => {
   if (!(await requireClerkUser(req, res))) return;
-  const { onlyPublished = false, itemIds, imagesPerItem = 4 } = req.body as {
-    onlyPublished?: boolean;
-    itemIds?: number[];
-    imagesPerItem?: number;
-  };
-
-  const count = Math.min(Number(imagesPerItem) || 4, 4);
+  const { limit = 10, onlyPublished = false, force = false } = req.body;
 
   try {
-    let rows = (await db.execute(sql`
-      SELECT vci.id, vci.name, vci.template_kind, vci.description, vci.spec_values,
-             vci.kategori, vci.service_type, vci.origin, vci.vendor_id, vci.is_published,
-             s.name AS vendor_name, s.service_type AS vendor_service_type,
-             COUNT(pm.id) FILTER (WHERE pm.is_active = true) AS media_count
-      FROM vendor_catalog_items vci
-      LEFT JOIN suppliers s ON s.id = vci.vendor_id
-      LEFT JOIN product_media pm ON pm.vendor_catalog_item_id = vci.id
-      GROUP BY vci.id, vci.name, vci.template_kind, vci.description, vci.spec_values,
-               vci.kategori, vci.service_type, vci.origin, vci.vendor_id, vci.is_published,
-               s.name, s.service_type
-      HAVING COUNT(pm.id) FILTER (WHERE pm.is_active = true) = 0
-      ORDER BY vci.is_published DESC, vci.id
-    `)) as any[];
+    const conditions: any[] = [eq(vendorCatalogItemsTable.isActive, true)];
+    if (onlyPublished) conditions.push(eq(vendorCatalogItemsTable.isPublished, true));
 
-    if (onlyPublished) rows = rows.filter((i: any) => i.is_published);
-    if (itemIds && itemIds.length > 0) rows = rows.filter((i: any) => itemIds.includes(Number(i.id)));
+    const allItems = await db
+      .select({
+        id: vendorCatalogItemsTable.id,
+        name: vendorCatalogItemsTable.name,
+        vendorId: vendorCatalogItemsTable.vendorId,
+        kategori: vendorCatalogItemsTable.kategori,
+        description: vendorCatalogItemsTable.description,
+      })
+      .from(vendorCatalogItemsTable)
+      .where(and(...conditions));
 
-    const a = actor(req);
-    const results: Array<{ id: number; name: string; generated: number; failed: number; errors: string[] }> = [];
-
-    for (const row of rows) {
-      const item: CatalogItemData = {
-        id: Number(row.id), name: row.name, templateKind: row.template_kind,
-        description: row.description, specValues: row.spec_values,
-        kategori: row.kategori, serviceType: row.service_type,
-        origin: row.origin, vendorId: row.vendor_id ? Number(row.vendor_id) : null,
-        vendorName: row.vendor_name, vendorServiceType: row.vendor_service_type,
-      };
-
-      const imgs = await generateImagesForItem({ item, uploadedBy: a.email, uploadedByRole: a.role, count });
-      results.push({
-        id: Number(row.id),
-        name: row.name,
-        generated: imgs.filter((x) => x.success).length,
-        failed: imgs.filter((x) => !x.success).length,
-        errors: imgs.filter((x) => !x.success).map((x) => x.error ?? "unknown"),
-      });
+    let candidates = allItems;
+    if (!force) {
+      const itemIds = allItems.map((i) => i.id);
+      const existingMedia =
+        itemIds.length > 0
+          ? await db
+              .select({ vendorCatalogItemId: productMediaTable.vendorCatalogItemId })
+              .from(productMediaTable)
+              .where(
+                and(
+                  inArray(productMediaTable.vendorCatalogItemId, itemIds),
+                  eq(productMediaTable.isActive, true),
+                  eq(productMediaTable.mediaType, "image"),
+                ),
+              )
+          : [];
+      const withImageIds = new Set(existingMedia.map((m) => m.vendorCatalogItemId!));
+      candidates = allItems.filter((i) => !withImageIds.has(i.id));
     }
 
-    const totalGenerated = results.reduce((s, r) => s + r.generated, 0);
-    const totalFailed = results.reduce((s, r) => s + r.failed, 0);
+    const batch = candidates.slice(0, Math.min(Number(limit), 50));
+    const a = actor(req);
+    const results: Array<{ id: number; name: string; success: boolean; error?: string }> = [];
+
+    for (const item of batch) {
+      try {
+        if (force) {
+          await db
+            .update(productMediaTable)
+            .set({ isActive: false, updatedAt: new Date() })
+            .where(
+              and(
+                eq(productMediaTable.vendorCatalogItemId, item.id),
+                eq(productMediaTable.mediaType, "image"),
+              ),
+            );
+        }
+        const { publicUrl, storagePath } = await generateAiImageForItem(item, a.email, a.role);
+        await db.insert(productMediaTable).values({
+          vendorCatalogItemId: item.id,
+          vendorId: item.vendorId,
+          mediaType: "image",
+          fileUrl: publicUrl,
+          storagePath,
+          isPrimary: true,
+          isActive: true,
+          title: `AI — ${item.name.trim()}`,
+          uploadedBy: a.email,
+          uploadedByRole: a.role,
+          sortOrder: 0,
+        });
+        results.push({ id: item.id, name: item.name, success: true });
+      } catch (e: any) {
+        results.push({ id: item.id, name: item.name, success: false, error: e?.message });
+      }
+    }
 
     res.json({
-      summary: { totalItems: results.length, totalGenerated, totalFailed, imagesPerItem: count },
+      processed: results.length,
+      success: results.filter((r) => r.success).length,
+      failed: results.filter((r) => !r.success).length,
       results,
     });
   } catch (e: any) {
@@ -567,7 +622,62 @@ router.post("/bulk-generate-ai", async (req, res): Promise<void> => {
   }
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/product-media/regenerate-ai/:id  (id = vendor_catalog_item id)
+router.post("/regenerate-ai/:id", async (req, res): Promise<void> => {
+  if (!(await requireClerkUser(req, res))) return;
+  const itemId = parseInt(req.params.id);
+  if (isNaN(itemId)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  try {
+    const [item] = await db
+      .select({
+        id: vendorCatalogItemsTable.id,
+        name: vendorCatalogItemsTable.name,
+        vendorId: vendorCatalogItemsTable.vendorId,
+        kategori: vendorCatalogItemsTable.kategori,
+        description: vendorCatalogItemsTable.description,
+      })
+      .from(vendorCatalogItemsTable)
+      .where(eq(vendorCatalogItemsTable.id, itemId));
+
+    if (!item) { res.status(404).json({ error: "Item tidak ditemukan" }); return; }
+
+    await db
+      .update(productMediaTable)
+      .set({ isActive: false, isPrimary: false, updatedAt: new Date() })
+      .where(
+        and(
+          eq(productMediaTable.vendorCatalogItemId, itemId),
+          eq(productMediaTable.mediaType, "image"),
+        ),
+      );
+
+    const a = actor(req);
+    const { publicUrl, storagePath } = await generateAiImageForItem(item, a.email, a.role);
+
+    const [inserted] = await db
+      .insert(productMediaTable)
+      .values({
+        vendorCatalogItemId: item.id,
+        vendorId: item.vendorId,
+        mediaType: "image",
+        fileUrl: publicUrl,
+        storagePath,
+        isPrimary: true,
+        isActive: true,
+        title: `AI — ${item.name.trim()}`,
+        uploadedBy: a.email,
+        uploadedByRole: a.role,
+        sortOrder: 0,
+      })
+      .returning();
+
+    res.status(201).json({ media: inserted });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message ?? "Gagal regenerate gambar" });
+  }
+});
+
 // POST /api/product-media/reorder
 // ─────────────────────────────────────────────────────────────────────────────
 router.post("/reorder", async (req, res): Promise<void> => {
