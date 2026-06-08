@@ -980,9 +980,22 @@ export default function MarketplacePage() {
             {/* Grid */}
             {!isLoading && visibleItems.length > 0 && (
               <>
-                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                <div className={`grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 ${compareIds.length > 0 ? "pb-28" : ""}`}>
                   {pagedItems.map((item) => (
-                    <ItemCard key={item.id} item={item} onClick={() => setLocation(`/marketplace/${item.id}`)} />
+                    <ItemCard
+                      key={item.id}
+                      item={item}
+                      isCompared={compareIds.includes(item.id)}
+                      compareDisabled={compareIds.length >= MAX_COMPARE && !compareIds.includes(item.id)}
+                      onToggleCompare={handleToggleCompare}
+                      onClick={() => {
+                        if (item.templateKind === "service") {
+                          setLocation(`/jasa/vendor/${item.id}`);
+                        } else {
+                          setLocation(`/marketplace/${item.id}`);
+                        }
+                      }}
+                    />
                   ))}
                 </div>
                 {/* Pagination */}
@@ -1008,25 +1021,6 @@ export default function MarketplacePage() {
                   </div>
                 )}
               </>
-              <div className={`grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 ${compareIds.length > 0 ? "pb-28" : ""}`}>
-                {visibleItems.map((item) => (
-                  <ItemCard
-                    key={item.id}
-                    item={item}
-                    onClick={() => setLocation(`/marketplace/${item.id}`)}
-                    isCompared={compareIds.includes(item.id)}
-                    compareDisabled={compareIds.length >= MAX_COMPARE && !compareIds.includes(item.id)}
-                    onToggleCompare={handleToggleCompare}
-                    onClick={() => {
-                      if (item.templateKind === "service") {
-                        setLocation(`/jasa/vendor/${item.id}`);
-                      } else {
-                        setLocation(`/marketplace/${item.id}`);
-                      }
-                    }}
-                  />
-                ))}
-              </div>
             )}
           </div>
         </div>
