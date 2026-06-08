@@ -1,6 +1,6 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -424,26 +424,48 @@ function FilterSidebar({
 // ── Main Page ──────────────────────────────────────────────────────────────────
 export default function MarketplacePage() {
   const [, setLocation] = useLocation();
-  const [activeTab, setActiveTab] = useState<"product" | "service">("product");
-  const [activeCategory, setActiveCategory] = useState("all");
+  const search = useSearch(); // e.g. "type=service&category=trucking&q=foo"
+
+  // Derive tab/category/q from URL search string — reactive to navigation
+  const { urlTab, urlCategory, urlQ } = useMemo(() => {
+    const sp = new URLSearchParams(search);
+    return {
+      urlTab:     (sp.get("type") === "service" ? "service" : "product") as "product" | "service",
+      urlCategory: sp.get("category") ?? "all",
+      urlQ:        sp.get("q") ?? "",
+    };
+  }, [search]);
+
+  const [activeTab, setActiveTab] = useState<"product" | "service">(urlTab);
+  const [activeCategory, setActiveCategory] = useState(urlCategory);
   const [activeFilters, setActiveFilters] = useState<ActiveFilters>({});
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState(urlQ);
   const [showMobileFilter, setShowMobileFilter] = useState(false);
+
+  // Sync state whenever URL search params change (navbar links, back/forward)
+  useEffect(() => {
+    setActiveTab(urlTab);
+    setActiveCategory(urlCategory);
+    setSearchQuery(urlQ);
+    setActiveFilters({});
+  }, [urlTab, urlCategory, urlQ]);
 
   const categories = activeTab === "product" ? PRODUCT_CATS : SERVICE_CATS;
 
-  // Reset category when tab changes
+  // Reset category when tab changes — also update URL
   function handleTabChange(tab: "product" | "service") {
-    setActiveTab(tab);
-    setActiveCategory("all");
-    setActiveFilters({});
-    setSearchQuery("");
+    const sp = new URLSearchParams(search);
+    sp.set("type", tab);
+    sp.delete("category");
+    sp.delete("q");
+    setLocation(`/marketplace?${sp.toString()}`);
   }
 
   function handleCategoryChange(cat: string) {
-    setActiveCategory(cat);
-    setActiveFilters({});
-    setSearchQuery("");
+    const sp = new URLSearchParams(search);
+    if (cat === "all") sp.delete("category"); else sp.set("category", cat);
+    sp.delete("q");
+    setLocation(`/marketplace?${sp.toString()}`);
   }
 
   // ── Fetch all published items for current tab + category ──────────────────
@@ -615,13 +637,17 @@ export default function MarketplacePage() {
             {!isLoading && visibleItems.length === 0 && (
               <div className="flex flex-col items-center justify-center py-20 text-center">
                 <Store className="h-12 w-12 text-slate-300 mb-3" />
-                <p className="text-[16px] font-semibold text-slate-500">Belum ada item tersedia</p>
+                <p className="text-[16px] font-semibold text-slate-500">
+                  {activeFilterCount > 0 || searchQuery.trim()
+                    ? "Tidak ada produk atau layanan yang cocok."
+                    : "Belum ada item tersedia"}
+                </p>
                 <p className="text-[13px] text-slate-400 mt-1 max-w-xs">
-                  {activeFilterCount > 0
+                  {activeFilterCount > 0 || searchQuery.trim()
                     ? "Coba ubah atau hapus filter untuk melihat lebih banyak item."
                     : "Item akan muncul di sini setelah vendor mempublikasikan katalognya."}
                 </p>
-                {activeFilterCount > 0 && (
+                {(activeFilterCount > 0 || searchQuery.trim()) && (
                   <button onClick={handleReset} className="mt-4 text-[13px] text-sky-600 font-semibold hover:underline">
                     Hapus semua filter
                   </button>

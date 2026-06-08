@@ -15,21 +15,22 @@ import { useLanguage } from "@/i18n/LanguageContext";
 import { useEditMode } from "@/contexts/EditModeContext";
 
 const SERVICES_ITEMS = [
-  { icon: Ship,      titleKey: "servicesMenu.freight.title",   descKey: "servicesMenu.freight.desc",   href: "/freight-forwarding" },
-  { icon: FileCheck, titleKey: "servicesMenu.customs.title",   descKey: "servicesMenu.customs.desc",   href: "/pabean" },
-  { icon: Truck,     titleKey: "servicesMenu.domestic.title",  descKey: "servicesMenu.domestic.desc",  href: "/jasa" },
-  { icon: Truck,     titleKey: "servicesMenu.trucking.title",  descKey: "servicesMenu.trucking.desc",  href: "/jasa/trucking" },
+  { icon: Ship,      titleKey: "servicesMenu.freight.title",   descKey: "servicesMenu.freight.desc",   href: "/marketplace?type=service&category=sea_freight" },
+  { icon: FileCheck, titleKey: "servicesMenu.customs.title",   descKey: "servicesMenu.customs.desc",   href: "/marketplace?type=service&category=ppjk" },
+  { icon: Truck,     titleKey: "servicesMenu.domestic.title",  descKey: "servicesMenu.domestic.desc",  href: "/marketplace?type=service&category=trucking" },
+  { icon: Truck,     titleKey: "servicesMenu.trucking.title",  descKey: "servicesMenu.trucking.desc",  href: "/marketplace?type=service&category=trucking" },
   { icon: Search,    titleKey: "servicesMenu.tracking.title",  descKey: "servicesMenu.tracking.desc",  href: "/track" },
 ];
 
 const SEARCH_SUGGESTIONS = [
-  { label: "Freight Forwarding", href: "/freight-forwarding" },
-  { label: "Customs / Kepabeanan", href: "/pabean" },
-  { label: "Trucking Domestik", href: "/jasa/trucking" },
+  { label: "Freight Shipment", href: "/marketplace?type=service&category=sea_freight" },
+  { label: "Customs / PPJK", href: "/marketplace?type=service&category=ppjk" },
+  { label: "Trucking Domestik", href: "/marketplace?type=service&category=trucking" },
+  { label: "Air Freight", href: "/marketplace?type=service&category=air_freight" },
   { label: "Lacak Pesanan", href: "/track" },
   { label: "Kalkulator Biaya", href: "/calculator" },
-  { label: "Marketplace Produk", href: "/marketplace" },
-  { label: "Layanan Jasa", href: "/jasa" },
+  { label: "Marketplace Produk", href: "/marketplace?type=product" },
+  { label: "Semua Layanan Jasa", href: "/marketplace?type=service" },
 ];
 
 const NAV_BASE: React.CSSProperties = {
@@ -202,7 +203,8 @@ export function Navbar() {
     location.startsWith("/jasa") ||
     location.startsWith("/services") ||
     location === "/freight-forwarding" ||
-    location === "/pabean";
+    location === "/pabean" ||
+    (location.startsWith("/marketplace") && location.includes("type=service"));
 
   const brandName = company?.name
     ? company.name.length > 22 ? "CST Logistics" : company.name
