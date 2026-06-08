@@ -318,13 +318,14 @@ router.get("/marketplace/:id", async (req, res) => {
 
   let media: unknown[] = [];
   try {
-    media = (await db.execute(sql`
+    const mediaResult = await db.execute(sql`
       SELECT * FROM product_media
       WHERE vendor_catalog_item_id = ${id}
         AND is_active = true
         AND (image_source IS NULL OR image_source != 'ai' OR ai_image_status = 'approved')
       ORDER BY sort_order ASC, created_at ASC
-    `)) as unknown[];
+    `);
+    media = Array.isArray(mediaResult) ? mediaResult : ((mediaResult as any).rows ?? []);
   } catch {
     // non-fatal jika tabel belum ada
   }
