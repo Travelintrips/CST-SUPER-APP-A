@@ -1,6 +1,6 @@
 import { Router, type Request } from "express";
 import { resolveCompanyId } from "../lib/resolveCompany.js";
-import { eq, desc, and, gte, lte, like, sql, count, getTableColumns } from "drizzle-orm";
+import { eq, desc, and, gte, lte, like, sql, count, getTableColumns, or, isNull } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { logStorageEvent, getRequestIp, getActor } from "../lib/storageAuditLog.js";
 import {
@@ -38,6 +38,43 @@ router.use(async (req, res, next) => {
   if (!(await requireClerkUser(req, res))) return;
   await ensureExpenseColumns();
   next();
+});
+
+// ── GET /api/expenses/payment-accounts ──
+// Mengembalikan HANYA akun Kas (1-101x) & Bank (1-102x) dari COA untuk dropdown Sumber Dana.
+router.get("/payment-accounts", async (req: Request, res) => {
+  const companyId = resolveCompanyId(req);
+  const rows = await db
+    .select({
+      id: chartOfAccountsTable.id,
+      code: chartOfAccountsTable.code,
+      name: chartOfAccountsTable.name,
+      companyId: chartOfAccountsTable.companyId,
+      isActive: chartOfAccountsTable.isActive,
+    })
+    .from(chartOfAccountsTable)
+    .where(
+      and(
+        or(
+          like(chartOfAccountsTable.code, "1-101%"),
+          like(chartOfAccountsTable.code, "1-102%"),
+        ),
+        or(
+          eq(chartOfAccountsTable.companyId, companyId),
+          isNull(chartOfAccountsTable.companyId),
+        ),
+      ),
+    )
+    .orderBy(chartOfAccountsTable.code);
+
+  const result = rows.map((r) => ({
+    id: r.id,
+    code: r.code,
+    name: r.name,
+    account_class: r.code.startsWith("1-101") ? "kas" : "bank",
+  }));
+
+  return res.json(result);
 });
 
 // ── Helpers ──
@@ -145,6 +182,49 @@ router.post("/categories", async (req, res) => {
 
   const row = (await db.execute(sql.raw(`SELECT * FROM expense_categories WHERE id = ${(created as any).id}`))).rows[0];
   return res.status(201).json(serializeCategory(row));
+});
+
+// Seed preset kategori rutin (idempotent by code)
+const PRESET_ROUTINE_CATEGORIES = [
+  { code: "ENTERTAINMENT", name: "Entertainment" },
+  { code: "MAKAN_MINUM", name: "Makan & Minum" },
+  { code: "SEWA_KANTOR", name: "Sewa Kantor" },
+  { code: "UTILITAS", name: "Utilitas" },
+  { code: "PERALATAN", name: "Peralatan & ATK" },
+  { code: "LAIN_LAIN", name: "Lain-lain" },
+];
+
+router.post("/seed-categories", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+
+  const existing = await db.execute(sql.raw(`SELECT code FROM expense_categories`));
+  const existingCodes = new Set(
+    (existing.rows as any[]).map((r) => String(r.code ?? "").toUpperCase()),
+  );
+
+  const toCreate = PRESET_ROUTINE_CATEGORIES.filter(
+    (c) => !existingCodes.has(c.code),
+  );
+
+  let seeded = 0;
+  for (const cat of toCreate) {
+    const [created] = await db
+      .insert(expenseCategoriesTable)
+      .values({
+        name: cat.name,
+        code: cat.code,
+        isActive: true,
+      } as any)
+      .returning();
+    await db.execute(
+      sql.raw(
+        `UPDATE expense_categories SET category_type = 'expense' WHERE id = ${(created as any).id}`,
+      ),
+    );
+    seeded += 1;
+  }
+
+  return res.json({ seeded, total: PRESET_ROUTINE_CATEGORIES.length });
 });
 
 router.patch("/categories/:id", async (req, res) => {

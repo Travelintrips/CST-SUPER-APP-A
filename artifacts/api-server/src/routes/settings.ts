@@ -1249,7 +1249,8 @@ router.put("/bank-transfer-info", async (req: Request, res: Response) => {
 });
 
 // GET /api/settings/quick-stats — ringkasan jumlah item utama ERP (admin)
-router.get("/quick-stats", requireAdmin, async (req: Request, res: Response) => {
+router.get("/quick-stats", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
   try {
     const companyId = await resolveCompanyId(req);
     const [[orders], [salesOrders], [customers], [vendors], [shipments], [staff]] = await Promise.all([

@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { randomUUID } from "crypto";
+import { broadcastInvalidation } from "../lib/alertsBroadcast.js";
 import { rfqRateLimit } from "../middlewares/rfqRateLimit.js";
 import { db, suppliersTable, logisticOrdersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, logisticOrderItemsTable, vendorCatalogItemsTable, vendorOffersTable, vendorRatesTable, salesDocumentsTable, salesDocumentLinesTable, rfqVendorLinksTable, productTemplatesTable } from "@workspace/db";
 import { resolveTemplate } from "@workspace/product-templates";
@@ -1504,6 +1505,8 @@ logisticRfqRouter.post("/:id/manual-rfq", async (req: Request, res: Response) =>
   }).catch(() => {});
 
   logger.info({ rfqNumber, orderId, vendorCount: eligible.length }, "Manual RFQ created and sent to vendors");
+  broadcastInvalidation("rfq", orderId);
+  broadcastInvalidation("logistic_orders", orderId);
   return res.json({ ok: true, rfqNumber, vendorCount: eligible.length });
 });
 
@@ -1726,6 +1729,7 @@ logisticRfqRouter.post("/:id/resend-rfq", async (req: Request, res: Response) =>
 
   const sentCount = results.filter((r) => r.sent).length;
   logger.info({ rfqNumber: rfqs.rfqNumber, orderId, sentCount }, "Resend RFQ WA");
+  broadcastInvalidation("rfq", orderId);
   return res.json({ ok: true, rfqNumber: rfqs.rfqNumber, sentCount, results });
 });
 
@@ -2115,6 +2119,9 @@ logisticRfqRouter.post("/confirm/:token", async (req: Request, res: Response) =>
   }
 
   logger.info({ orderId: order.id, action, orderNumber: order.orderNumber, soNumber: createdSoNumber }, "Customer confirmation received");
+  broadcastInvalidation("rfq", order.id);
+  broadcastInvalidation("logistic_orders", order.id);
+  if (createdSoNumber) broadcastInvalidation("sales_documents");
   return res.json({ ok: true, action, salesOrderNumber: createdSoNumber });
 });
 
@@ -2396,6 +2403,8 @@ logisticRfqRouter.post("/choose-option", async (req: Request, res: Response) => 
 
   console.log(`[MULTI-MODE] State: Options Sent → Confirmed (order ${order.id}, chose offer ${chosen.id})`);
   logger.info({ orderId: order.id, offerId: chosen.id, price: chosenPrice }, "[MULTI-MODE] Customer chose option");
+  broadcastInvalidation("rfq", order.id);
+  broadcastInvalidation("logistic_orders", order.id);
   return res.json({ ok: true, chosenLabel: chosen.optionLabel ?? "Opsi", price: chosenPrice });
 });
 

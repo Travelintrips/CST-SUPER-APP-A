@@ -1,0 +1,67 @@
+[plugin:vite:esbuild] Transform failed with 6 errors:
+/home/runner/workspace/artifacts/bizportal/src/pages/logistics/product-first-audit.tsx:563:16: ERROR: Unexpected closing "div" tag does not match opening "CardContent" tag
+/home/runner/workspace/artifacts/bizportal/src/pages/logistics/product-first-audit.tsx:564:14: ERROR: Unexpected closing "CardContent" tag does not match opening "Card" tag
+/home/runner/workspace/artifacts/bizportal/src/pages/logistics/product-first-audit.tsx:565:12: ERROR: Unexpected closing "Card" tag does not match opening "TabsContent" tag
+/home/runner/workspace/artifacts/bizportal/src/pages/logistics/product-first-audit.tsx:566:10: ERROR: Unexpected closing "TabsContent" tag does not match opening "Tabs" tag
+/home/runner/workspace/artifacts/bizportal/src/pages/logistics/product-first-audit.tsx:567:8: ERROR: Unexpected closing "Tabs" tag does not match opening "div" tag
+...
+/home/runner/workspace/artifacts/bizportal/src/pages/logistics/product-first-audit.tsx:563:16
+Unexpected closing "div" tag does not match opening "CardContent" tag
+561 |  
+562 |                <OverrideManualCards overrideLabels={overrideLabels} openOverride={openOverride} />
+563 |                </div>
+    |                  ^
+564 |              </CardContent>
+565 |            </Card>
+
+Unexpected closing "CardContent" tag does not match opening "Card" tag
+562 |                <OverrideManualCards overrideLabels={overrideLabels} openOverride={openOverride} />
+563 |                </div>
+564 |              </CardContent>
+    |                ^
+565 |            </Card>
+566 |          </TabsContent>
+
+Unexpected closing "Card" tag does not match opening "TabsContent" tag
+563 |                </div>
+564 |              </CardContent>
+565 |            </Card>
+    |              ^
+566 |          </TabsContent>
+567 |        </Tabs>
+
+Unexpected closing "TabsContent" tag does not match opening "Tabs" tag
+564 |              </CardContent>
+565 |            </Card>
+566 |          </TabsContent>
+    |            ^
+567 |        </Tabs>
+568 |  
+
+Unexpected closing "Tabs" tag does not match opening "div" tag
+565 |            </Card>
+566 |          </TabsContent>
+567 |        </Tabs>
+    |          ^
+568 |  
+569 |        {/* Override Dialog */}
+
+Expected ")" but found "{"
+567 |        </Tabs>
+568 |  
+569 |        {/* Override Dialog */}
+    |        ^
+570 |        <Dialog open={override.open} onOpenChange={(o) => setOverride((p) => ({ ...p, open: o }))}>
+571 |          <DialogContent className="bg-slate-800 border-slate-700 text-white max-w-md">
+    at failureErrorWithLog (/home/runner/workspace/node_modules/.pnpm/esbuild@0.27.3/node_modules/esbuild/lib/main.js:1467:15)
+    at /home/runner/workspace/node_modules/.pnpm/esbuild@0.27.3/node_modules/esbuild/lib/main.js:736:50
+    at responseCallbacks.<computed> (/home/runner/workspace/node_modules/.pnpm/esbuild@0.27.3/node_modules/esbuild/lib/main.js:603:9)
+    at handleIncomingPacket (/home/runner/workspace/node_modules/.pnpm/esbuild@0.27.3/node_modules/esbuild/lib/main.js:658:12)
+    at Socket.readFromStdout (/home/runner/workspace/node_modules/.pnpm/esbuild@0.27.3/node_modules/esbuild/lib/main.js:581:7)
+    at Socket.emit (node:events:524:28)
+    at addChunk (node:internal/streams/readable:561:12)
+    at readableAddChunkPushByteMode (node:internal/streams/readable:512:3)
+    at Readable.push (node:internal/streams/readable:392:5)
+    at Pipe.onStreamRead (node:internal/stream_base_commons:191:23)
+Click outside, press Esc key, or fix the code to dismiss.
+You can also disable this overlay by setting server.hmr.overlay to false in vite.config.ts.

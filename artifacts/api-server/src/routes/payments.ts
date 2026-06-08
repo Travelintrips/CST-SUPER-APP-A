@@ -3,6 +3,8 @@ import {
   db,
   paymentsTable,
   salesDocumentsTable,
+  logisticOrdersTable,
+  customersTable,
 } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
 import crypto from "node:crypto";
@@ -17,8 +19,30 @@ const router = Router();
 const PAYLABS_MERCHANT_ID = process.env["PAYLABS_MERCHANT_ID"] ?? "";
 const PAYLABS_API_URL =
   process.env["PAYLABS_API_URL"] ?? "https://sit-pay.paylabs.co.id/payment/v2.1/h5/createLink";
-const PAYLABS_PRIVATE_KEY = process.env["PAYLABS_PRIVATE_KEY"] ?? "";
 const PAYLABS_PUBLIC_KEY = process.env["PAYLABS_PUBLIC_KEY"] ?? "";
+
+/**
+ * Normalise a PEM key that was stored with spaces instead of newlines
+ * (common when environment variables are set without escaping \n).
+ */
+function normalizePemKey(raw: string): string {
+  if (!raw) return raw;
+  // If already has real newlines, return as-is
+  if (raw.includes("\n")) return raw;
+  // Replace header/footer space separators, then chunk body into 64-char lines
+  return raw
+    .replace(/-----BEGIN RSA PRIVATE KEY-----\s+/, "-----BEGIN RSA PRIVATE KEY-----\n")
+    .replace(/\s+-----END RSA PRIVATE KEY-----/, "\n-----END RSA PRIVATE KEY-----")
+    .split("\n")
+    .map((line) =>
+      line.startsWith("-----")
+        ? line
+        : (line.replace(/ /g, "").match(/.{1,64}/g) ?? [line]).join("\n"),
+    )
+    .join("\n");
+}
+
+const PAYLABS_PRIVATE_KEY = normalizePemKey(process.env["PAYLABS_PRIVATE_KEY"] ?? "");
 
 function paylabsConfigured(): boolean {
   return !!PAYLABS_MERCHANT_ID && !!PAYLABS_PRIVATE_KEY;
@@ -96,6 +120,13 @@ router.post("/sales/:id/create-link", async (req, res) => {
     return res.status(400).json({ message: "Hanya sales order aktif yang bisa dibayar" });
   }
 
+  // Lookup customer phone number for Paylabs (required field)
+  let customerPhone = "081234567890"; // fallback
+  if (doc.customerId) {
+    const [cust] = await db.select({ phone: customersTable.phone }).from(customersTable).where(eq(customersTable.id, doc.customerId));
+    if (cust?.phone) customerPhone = cust.phone.replace(/\D/g, ""); // strip non-digits
+  }
+
   const merchantTradeNo = `BIZ-${doc.id}-${Date.now()}`;
   const amount = Number(doc.grandTotal ?? doc.totalAmount);
 
@@ -123,8 +154,8 @@ router.post("/sales/:id/create-link", async (req, res) => {
     });
   }
 
-  const requestId = crypto.randomUUID();
-  const timestamp = new Date().toISOString().replace(/\.\d+Z$/, "+07:00");
+  const requestId = `${Date.now()}${Math.floor(Math.random() * 100000).toString().padStart(5, "0")}`;
+  const timestamp = new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().replace(/\.\d+Z$/, "+07:00");
   const baseUrl = (req.headers["x-forwarded-proto"] ?? "https") + "://" + (req.headers.host ?? "");
   const notifyUrl = `${baseUrl}/api/payments/paylabs/webhook`;
   const redirectUrl = `${baseUrl}/sales/orders/${doc.id}`;
@@ -134,13 +165,11 @@ router.post("/sales/:id/create-link", async (req, res) => {
     merchantTradeNo,
     requestId,
     amount: amount.toFixed(2),
-    currency: "IDR",
     productName: `Pembayaran ${doc.docNumber}`,
-    paymentType: "ALL",
+    payer: doc.customerName ?? "Customer",
+    phoneNumber: customerPhone,
     notifyUrl,
     redirectUrl,
-    expire: 86400,
-    payer: doc.customerName,
   };
   const bodyJson = JSON.stringify(body);
   const signaturePayload = buildSignaturePayload("POST", new URL(PAYLABS_API_URL).pathname, bodyJson, timestamp);
@@ -247,11 +276,9 @@ router.post("/paylabs/webhook", async (req, res) => {
           taxAccountId: null,
         });
       }
-      // ── RECALCULATE PAYMENT STATUS (unpaid → partial → paid) ──────────────
       void recalculatePaymentStatus(payment.refId, "sales_order").catch(
         (e: unknown) => console.warn("[payments] recalculatePaymentStatus failed (paylabs webhook)", e)
       );
-      // ── AUTO STATUS: Payment Received ─────────────────────────────────────
       if (salesDoc?.logisticOrderId && Number(salesDoc.grandTotal) > 0 && Number(payment.amount) >= Number(salesDoc.grandTotal)) {
         void transitionLogisticOrderStatus(salesDoc.logisticOrderId, "Payment Received", {
           source: "paylabs:webhook",
@@ -259,12 +286,18 @@ router.post("/paylabs/webhook", async (req, res) => {
           notes: `Pembayaran lunas via Paylabs (merchantTradeNo: ${merchantTradeNo})`,
         }).catch((e: unknown) => console.warn("auto Payment Received transition failed (Paylabs webhook)", e));
       }
-      // ── SEND WA PROOF LINK TO CUSTOMER ────────────────────────────────────
       if (salesDoc) {
         void sendPaymentProofWaLink(salesDoc.id).catch(
           (e: unknown) => console.warn("[payments] sendPaymentProofWaLink failed (paylabs webhook)", e)
         );
       }
+    } else if (payment.refKind === "logistic") {
+      // Logistic order direct payment — transition to "Payment Received"
+      void transitionLogisticOrderStatus(payment.refId, "Payment Received", {
+        source: "paylabs:webhook",
+        actorType: "system",
+        notes: `Pembayaran lunas via Paylabs (merchantTradeNo: ${merchantTradeNo})`,
+      }).catch((e: unknown) => console.warn("auto Payment Received transition failed (Paylabs webhook/logistic)", e));
     }
     void postPaymentReceived({
       paymentId: payment.id,
@@ -287,36 +320,41 @@ router.post("/:id/simulate-paid", async (req, res) => {
     .update(paymentsTable)
     .set({ status: "paid", paidAt: new Date(), updatedAt: new Date() })
     .where(eq(paymentsTable.id, id));
-  if (payment.refKind === "sales" && payment.status !== "paid") {
-    const [salesDoc2] = await db.select().from(salesDocumentsTable).where(eq(salesDocumentsTable.id, payment.refId));
-    const invoiceResult2 = await markSalesInvoiced(payment.refId, "paylabs");
-    if (invoiceResult2.ok && !invoiceResult2.alreadySet && salesDoc2) {
-      void postSalesInvoice({
-        salesDocId: salesDoc2.id,
-        docNumber: salesDoc2.docNumber,
-        customerName: salesDoc2.customerName,
-        netAmount: Number(salesDoc2.totalAmount),
-        taxAmount: Number(salesDoc2.taxAmount ?? 0),
-        taxAccountId: null,
-      });
-    }
-    // ── RECALCULATE PAYMENT STATUS (unpaid → partial → paid) ──────────────
-    void recalculatePaymentStatus(payment.refId, "sales_order").catch(
-      (e: unknown) => console.warn("[payments] recalculatePaymentStatus failed (simulate-paid)", e)
-    );
-    // ── AUTO STATUS: Payment Received ─────────────────────────────────────
-    if (salesDoc2?.logisticOrderId && Number(salesDoc2.grandTotal) > 0 && Number(payment.amount) >= Number(salesDoc2.grandTotal)) {
-      void transitionLogisticOrderStatus(salesDoc2.logisticOrderId, "Payment Received", {
+  if (payment.status !== "paid") {
+    if (payment.refKind === "sales") {
+      const [salesDoc2] = await db.select().from(salesDocumentsTable).where(eq(salesDocumentsTable.id, payment.refId));
+      const invoiceResult2 = await markSalesInvoiced(payment.refId, "paylabs");
+      if (invoiceResult2.ok && !invoiceResult2.alreadySet && salesDoc2) {
+        void postSalesInvoice({
+          salesDocId: salesDoc2.id,
+          docNumber: salesDoc2.docNumber,
+          customerName: salesDoc2.customerName,
+          netAmount: Number(salesDoc2.totalAmount),
+          taxAmount: Number(salesDoc2.taxAmount ?? 0),
+          taxAccountId: null,
+        });
+      }
+      void recalculatePaymentStatus(payment.refId, "sales_order").catch(
+        (e: unknown) => console.warn("[payments] recalculatePaymentStatus failed (simulate-paid)", e)
+      );
+      if (salesDoc2?.logisticOrderId && Number(salesDoc2.grandTotal) > 0 && Number(payment.amount) >= Number(salesDoc2.grandTotal)) {
+        void transitionLogisticOrderStatus(salesDoc2.logisticOrderId, "Payment Received", {
+          source: "paylabs:simulate-paid",
+          actorType: "admin",
+          notes: `Simulasi pembayaran lunas via Paylabs (payment #${payment.id})`,
+        }).catch((e: unknown) => console.warn("auto Payment Received transition failed (simulate-paid)", e));
+      }
+      if (salesDoc2) {
+        void sendPaymentProofWaLink(salesDoc2.id).catch(
+          (e: unknown) => console.warn("[payments] sendPaymentProofWaLink failed (simulate-paid)", e)
+        );
+      }
+    } else if (payment.refKind === "logistic") {
+      void transitionLogisticOrderStatus(payment.refId, "Payment Received", {
         source: "paylabs:simulate-paid",
         actorType: "admin",
         notes: `Simulasi pembayaran lunas via Paylabs (payment #${payment.id})`,
-      }).catch((e: unknown) => console.warn("auto Payment Received transition failed (simulate-paid)", e));
-    }
-    // ── SEND WA PROOF LINK TO CUSTOMER ────────────────────────────────────
-    if (salesDoc2) {
-      void sendPaymentProofWaLink(salesDoc2.id).catch(
-        (e: unknown) => console.warn("[payments] sendPaymentProofWaLink failed (simulate-paid)", e)
-      );
+      }).catch((e: unknown) => console.warn("auto Payment Received transition failed (simulate-paid/logistic)", e));
     }
   }
   if (payment.status !== "paid") {

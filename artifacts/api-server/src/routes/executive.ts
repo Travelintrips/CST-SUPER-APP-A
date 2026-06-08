@@ -26,7 +26,8 @@ function parseDateRange(req: { query: Record<string, unknown> }) {
  *   F  — cash position per company + consolidated
  *   H  — validation: sum per company == consolidated
  */
-router.get("/summary", requireAdmin, async (req, res) => {
+router.get("/summary", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
   try {
     const range = parseDateRange(req);
     if (range.error) return res.status(400).json({ message: range.error });

@@ -36,14 +36,14 @@ export const api = {
     return res.json();
   },
 
-  async updateStatus(token: string, jobId: string, status: ShipmentStatus, note?: string) {
+  async updateStatus(token: string, jobId: string, status: ShipmentStatus, note?: string, geoLocation?: { lat: number; lng: number; deviceTimestamp?: string }) {
     const res = await fetch(`${BASE_URL}/driver/jobs/${jobId}/status`, {
       method: 'PUT',
       headers: {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ status, note }),
+      body: JSON.stringify({ status, note, geoLocation }),
     });
     if (!res.ok) throw new Error('Gagal update status');
     return res.json();

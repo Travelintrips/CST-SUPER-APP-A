@@ -78,6 +78,11 @@ const GoodsReceiptFormPage      = lazy(() => import("@/pages/goods-receipt-form"
 const DriverProgressPage        = lazy(() => import("@/pages/driver-progress"));
 const PaymentProofPage          = lazy(() => import("@/pages/payment-proof"));
 const ProductOrderTrackPage     = lazy(() => import("@/pages/product-order-track"));
+const Marketplace               = lazy(() => import("@/pages/marketplace"));
+const MarketplaceDetail         = lazy(() => import("@/pages/marketplace-detail"));
+const EscrowConfirmPage         = lazy(() => import("@/pages/escrow-confirm"));
+const ProductApprovePage        = lazy(() => import("@/pages/product-approve"));
+const ShipmentSelectionPage     = lazy(() => import("@/pages/shipment-selection"));
 const NotFound                  = lazy(() => import("@/pages/not-found"));
 
 const queryClient = new QueryClient();
@@ -102,6 +107,9 @@ const NO_SHELL_PREFIXES = [
   "/driver-progress",
   "/payment-proof",
   "/track-produk",
+  "/product-approve",
+  "/shipment-selection",
+  "/escrow-confirm",
   "/q/",
 ];
 
@@ -119,6 +127,9 @@ const NO_AUTH_CHECK_PREFIXES = [
   "/driver-progress",
   "/payment-proof",
   "/track-produk",
+  "/product-approve",
+  "/shipment-selection",
+  "/escrow-confirm",
 ];
 
 const BASE_PREFIX = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -262,7 +273,12 @@ function AppShell() {
         <Route path="/vendor-invoice/:token" component={VendorInvoiceFormPage} />
         <Route path="/goods-receipt/:token" component={GoodsReceiptFormPage} />
         <Route path="/payment-proof/:token" component={PaymentProofPage} />
+        <Route path="/escrow-confirm/:token" component={EscrowConfirmPage} />
         <Route path="/track-produk/:token" component={ProductOrderTrackPage} />
+        <Route path="/product-approve/:token" component={ProductApprovePage} />
+        <Route path="/shipment-selection/:token" component={ShipmentSelectionPage} />
+        <Route path="/marketplace" component={Marketplace} />
+        <Route path="/marketplace/:id" component={MarketplaceDetail} />
         <Route component={NotFound} />
       </Switch>
     </Suspense>

@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AppShell } from "@/components/layout/AppShell";
@@ -23,7 +23,9 @@ import {
   Link2, FileText, AlertTriangle, Eye, EyeOff, StickyNote, Globe,
   RotateCcw, Bell, ChevronDown, ChevronUp, Download, Shield, ZoomIn,
   Camera, Navigation, Phone, CreditCard, PenLine,
+  Receipt, Search, Trash2, DollarSign, ShoppingBag, TrendingUp,
 } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Link } from "wouter";
 import GpsTrackingPanel from "@/components/logistics/GpsTrackingPanel";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -85,6 +87,9 @@ type DriverPodData = {
   podSubmittedAt: string | null;
   podGeoLat: string | null;
   podGeoLng: string | null;
+  podDeviceTimestamp: string | null;
+  podMapUrl: string | null;
+  podStreetViewUrl: string | null;
   podSignatureDataUrl: string | null;
   driverName: string | null;
   driverPhone: string | null;
@@ -272,6 +277,418 @@ async function apiFetch<T>(url: string, opts?: RequestInit): Promise<T> {
   const data = await res.json() as T & { message?: string };
   if (!res.ok) throw new Error((data as { message?: string }).message ?? "API error");
   return data;
+}
+
+// ── Gap #6: OPEX Panel ────────────────────────────────────────────────────────
+type OpexItem = {
+  id: number; expenseNumber: string; date: string; description: string | null;
+  status: string; total: number; categoryName: string | null; categoryCode: string | null;
+  vendorEmployee: string | null; notes: string | null;
+};
+type OpexSearchResult = {
+  id: number; expenseNumber: string; date: string; description: string | null;
+  status: string; total: number; categoryName: string | null; linkedOrderId: number | null;
+};
+
+function OrderOpexPanel({ orderId }: { orderId: number }) {
+  const [open, setOpen] = useState(false);
+  const [dlgOpen, setDlgOpen] = useState(false);
+  const [searchQ, setSearchQ] = useState("");
+  const [searchResults, setSearchResults] = useState<OpexSearchResult[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [linking, setLinking] = useState<number | null>(null);
+  const [unlinking, setUnlinking] = useState<number | null>(null);
+  const { toast } = useToast();
+  const qc = useQueryClient();
+
+  const { data, isLoading, refetch } = useQuery<{ items: OpexItem[]; totalOpex: number }>({
+    queryKey: ["order-opex", orderId],
+    queryFn: () => apiFetch(`/api/order-costs/${orderId}/expenses`),
+    enabled: open,
+    staleTime: 15000,
+  });
+
+  useEffect(() => {
+    if (!dlgOpen) { setSearchQ(""); setSearchResults([]); }
+  }, [dlgOpen]);
+
+  const doSearch = async () => {
+    setSearching(true);
+    try {
+      const r = await apiFetch<OpexSearchResult[]>(`/api/order-costs/expenses/search?q=${encodeURIComponent(searchQ)}&limit=20`);
+      setSearchResults(r);
+    } catch { toast({ title: "Gagal mencari expense", variant: "destructive" }); }
+    finally { setSearching(false); }
+  };
+
+  const doLink = async (expId: number) => {
+    setLinking(expId);
+    try {
+      await apiFetch(`/api/order-costs/${orderId}/expenses/${expId}/link`, { method: "POST" });
+      toast({ title: "Expense berhasil dilink ke order" });
+      void refetch(); void qc.invalidateQueries({ queryKey: ["order-opex-summary", orderId] });
+      setDlgOpen(false);
+    } catch { toast({ title: "Gagal link expense", variant: "destructive" }); }
+    finally { setLinking(null); }
+  };
+
+  const doUnlink = async (expId: number) => {
+    setUnlinking(expId);
+    try {
+      await apiFetch(`/api/order-costs/${orderId}/expenses/${expId}/link`, { method: "DELETE" });
+      toast({ title: "Expense berhasil di-unlink" });
+      void refetch(); void qc.invalidateQueries({ queryKey: ["order-opex-summary", orderId] });
+    } catch { toast({ title: "Gagal unlink expense", variant: "destructive" }); }
+    finally { setUnlinking(null); }
+  };
+
+  const items = data?.items ?? [];
+  const totalOpex = data?.totalOpex ?? 0;
+  const activeOpex = items.filter(i => i.status === "active").reduce((s, i) => s + i.total, 0);
+
+  return (
+    <>
+      <Card className="border-orange-200">
+        <CardHeader
+          className="pb-2 cursor-pointer select-none"
+          onClick={() => setOpen(v => !v)}
+        >
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm font-semibold text-orange-700 uppercase tracking-wide flex items-center gap-1.5">
+              <Receipt className="w-4 h-4" /> OPEX / Operational Expense
+              {open && data && (
+                <span className="ml-1 text-xs font-normal normal-case text-orange-500">
+                  ({items.length} item · {idr(activeOpex)})
+                </span>
+              )}
+            </CardTitle>
+            <div className="flex items-center gap-2">
+              {open && (
+                <Button
+                  variant="outline" size="sm"
+                  className="h-6 text-xs border-orange-300 text-orange-700 hover:bg-orange-50"
+                  onClick={e => { e.stopPropagation(); setDlgOpen(true); }}
+                >
+                  <Plus className="h-3 w-3 mr-1" /> Link Expense
+                </Button>
+              )}
+              {open ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+            </div>
+          </div>
+        </CardHeader>
+        {open && (
+          <CardContent className="pt-0">
+            {isLoading ? (
+              <div className="space-y-2">{[...Array(2)].map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}</div>
+            ) : items.length === 0 ? (
+              <p className="text-sm text-slate-400 text-center py-3">Belum ada OPEX terhubung ke order ini</p>
+            ) : (
+              <div className="space-y-2">
+                {items.map(item => (
+                  <div key={item.id} className="flex items-start gap-2 rounded-lg border border-orange-100 bg-orange-50/40 px-3 py-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-mono text-xs font-semibold text-orange-700">{item.expenseNumber}</span>
+                        <Badge
+                          className={`text-[10px] ${item.status === "active" ? "bg-emerald-100 text-emerald-700" : item.status === "draft" ? "bg-slate-100 text-slate-600" : "bg-red-100 text-red-600"}`}
+                        >
+                          {item.status}
+                        </Badge>
+                        {item.categoryName && <span className="text-[10px] text-slate-500">{item.categoryName}</span>}
+                      </div>
+                      {item.description && <p className="text-xs text-slate-600 mt-0.5 truncate">{item.description}</p>}
+                      <div className="flex items-center gap-3 mt-1">
+                        <span className="text-xs text-slate-400">{item.date}</span>
+                        <span className={`text-sm font-semibold ${item.status === "active" ? "text-orange-700" : "text-slate-500"}`}>{idr(item.total)}</span>
+                      </div>
+                    </div>
+                    <Button
+                      variant="ghost" size="icon"
+                      className="h-7 w-7 text-slate-400 hover:text-red-600 shrink-0"
+                      disabled={unlinking === item.id}
+                      onClick={() => doUnlink(item.id)}
+                    >
+                      {unlinking === item.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                    </Button>
+                  </div>
+                ))}
+                {activeOpex > 0 && (
+                  <div className="flex justify-between items-center pt-1 border-t border-orange-200 text-sm">
+                    <span className="text-orange-600 font-medium flex items-center gap-1">
+                      <TrendingUp className="h-3.5 w-3.5" /> Total OPEX (aktif)
+                    </span>
+                    <span className="font-bold text-orange-700">{idr(activeOpex)}</span>
+                  </div>
+                )}
+              </div>
+            )}
+          </CardContent>
+        )}
+      </Card>
+
+      <Dialog open={dlgOpen} onOpenChange={setDlgOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Receipt className="h-4 w-4 text-orange-600" /> Link OPEX ke Order
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="flex gap-2">
+              <Input
+                placeholder="Cari expense (nomor/deskripsi)…"
+                value={searchQ}
+                onChange={e => setSearchQ(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && doSearch()}
+                className="flex-1"
+              />
+              <Button variant="outline" onClick={doSearch} disabled={searching} className="shrink-0">
+                {searching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+              </Button>
+            </div>
+            <div className="max-h-64 overflow-y-auto space-y-1.5">
+              {searchResults.length === 0 && !searching && (
+                <p className="text-sm text-slate-400 text-center py-4">Ketik dan tekan Enter untuk mencari expense</p>
+              )}
+              {searchResults.map(r => (
+                <div key={r.id} className={`flex items-center gap-2 rounded border px-3 py-2 text-sm ${r.linkedOrderId && r.linkedOrderId !== orderId ? "opacity-50 cursor-not-allowed border-slate-100 bg-slate-50" : "border-orange-100 bg-orange-50/30 hover:bg-orange-50 cursor-pointer"}`}
+                  onClick={() => !r.linkedOrderId || r.linkedOrderId === orderId ? doLink(r.id) : undefined}
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-mono font-semibold text-xs text-orange-700">{r.expenseNumber}</span>
+                      <Badge className={`text-[10px] ${r.status === "active" ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>{r.status}</Badge>
+                      {r.categoryName && <span className="text-[10px] text-slate-500">{r.categoryName}</span>}
+                      {r.linkedOrderId && r.linkedOrderId !== orderId && <Badge className="text-[10px] bg-amber-100 text-amber-700">Sudah di-link ke order lain</Badge>}
+                    </div>
+                    {r.description && <p className="text-xs text-slate-500 truncate">{r.description}</p>}
+                  </div>
+                  <div className="shrink-0 flex items-center gap-2">
+                    <span className="font-semibold text-orange-700 text-xs">{idr(r.total)}</span>
+                    {linking === r.id
+                      ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      : (!r.linkedOrderId || r.linkedOrderId === orderId) && <Plus className="h-3.5 w-3.5 text-orange-500" />}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDlgOpen(false)}>Tutup</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+// ── Gap #7: Purchase Link Panel ────────────────────────────────────────────────
+type PoItem = {
+  id: number; docNumber: string; kind: string; status: string;
+  billStatus: string; paymentStatus: string;
+  supplierName: string; totalAmount: number; taxAmount: number; grandTotal: number;
+  confirmedAt: string | null; createdAt: string;
+};
+type PoSearchResult = {
+  id: number; docNumber: string; kind: string; status: string;
+  supplierName: string; grandTotal: number; createdAt: string;
+  linkedOrderId: number | null;
+};
+
+function OrderPurchaseLinkPanel({ orderId }: { orderId: number }) {
+  const [open, setOpen] = useState(false);
+  const [dlgOpen, setDlgOpen] = useState(false);
+  const [searchQ, setSearchQ] = useState("");
+  const [searchResults, setSearchResults] = useState<PoSearchResult[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [linking, setLinking] = useState<number | null>(null);
+  const [unlinking, setUnlinking] = useState<number | null>(null);
+  const { toast } = useToast();
+  const qc = useQueryClient();
+
+  const { data, isLoading, refetch } = useQuery<{ items: PoItem[]; totalPurchaseCost: number }>({
+    queryKey: ["order-purchases", orderId],
+    queryFn: () => apiFetch(`/api/order-costs/${orderId}/purchases`),
+    enabled: open,
+    staleTime: 15000,
+  });
+
+  useEffect(() => {
+    if (!dlgOpen) { setSearchQ(""); setSearchResults([]); }
+  }, [dlgOpen]);
+
+  const doSearch = async () => {
+    setSearching(true);
+    try {
+      const r = await apiFetch<PoSearchResult[]>(`/api/order-costs/purchases/search?q=${encodeURIComponent(searchQ)}&limit=20`);
+      setSearchResults(r);
+    } catch { toast({ title: "Gagal mencari PO", variant: "destructive" }); }
+    finally { setSearching(false); }
+  };
+
+  const doLink = async (poId: number) => {
+    setLinking(poId);
+    try {
+      await apiFetch(`/api/order-costs/${orderId}/purchases/${poId}/link`, { method: "POST" });
+      toast({ title: "PO berhasil dilink ke order" });
+      void refetch(); void qc.invalidateQueries({ queryKey: ["order-opex-summary", orderId] });
+      setDlgOpen(false);
+    } catch { toast({ title: "Gagal link PO", variant: "destructive" }); }
+    finally { setLinking(null); }
+  };
+
+  const doUnlink = async (poId: number) => {
+    setUnlinking(poId);
+    try {
+      await apiFetch(`/api/order-costs/${orderId}/purchases/${poId}/link`, { method: "DELETE" });
+      toast({ title: "PO berhasil di-unlink" });
+      void refetch(); void qc.invalidateQueries({ queryKey: ["order-opex-summary", orderId] });
+    } catch { toast({ title: "Gagal unlink PO", variant: "destructive" }); }
+    finally { setUnlinking(null); }
+  };
+
+  const items = data?.items ?? [];
+  const totalPO = data?.totalPurchaseCost ?? 0;
+  const STATUS_PO: Record<string, string> = {
+    draft: "bg-slate-100 text-slate-600", sent: "bg-blue-100 text-blue-700",
+    confirmed: "bg-emerald-100 text-emerald-700", done: "bg-green-200 text-green-800",
+    cancelled: "bg-red-100 text-red-700",
+  };
+
+  return (
+    <>
+      <Card className="border-indigo-200">
+        <CardHeader
+          className="pb-2 cursor-pointer select-none"
+          onClick={() => setOpen(v => !v)}
+        >
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm font-semibold text-indigo-700 uppercase tracking-wide flex items-center gap-1.5">
+              <ShoppingBag className="w-4 h-4" /> Purchase Order Terkait
+              {open && data && (
+                <span className="ml-1 text-xs font-normal normal-case text-indigo-500">
+                  ({items.length} PO/RFQ · PO total: {idr(totalPO)})
+                </span>
+              )}
+            </CardTitle>
+            <div className="flex items-center gap-2">
+              {open && (
+                <Button
+                  variant="outline" size="sm"
+                  className="h-6 text-xs border-indigo-300 text-indigo-700 hover:bg-indigo-50"
+                  onClick={e => { e.stopPropagation(); setDlgOpen(true); }}
+                >
+                  <Plus className="h-3 w-3 mr-1" /> Link PO
+                </Button>
+              )}
+              {open ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+            </div>
+          </div>
+        </CardHeader>
+        {open && (
+          <CardContent className="pt-0">
+            {isLoading ? (
+              <div className="space-y-2">{[...Array(2)].map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}</div>
+            ) : items.length === 0 ? (
+              <p className="text-sm text-slate-400 text-center py-3">Belum ada PO/RFQ terhubung ke order ini</p>
+            ) : (
+              <div className="space-y-2">
+                {items.map(item => (
+                  <div key={item.id} className="flex items-start gap-2 rounded-lg border border-indigo-100 bg-indigo-50/40 px-3 py-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-mono text-xs font-semibold text-indigo-700">{item.docNumber}</span>
+                        <Badge className="text-[10px] bg-slate-100 text-slate-600">{item.kind === "order" ? "PO" : "RFQ"}</Badge>
+                        <Badge className={`text-[10px] ${STATUS_PO[item.status] ?? "bg-slate-100 text-slate-600"}`}>{item.status}</Badge>
+                        <Badge className={`text-[10px] ${item.billStatus === "billed" ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
+                          {item.billStatus}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-slate-600 mt-0.5">{item.supplierName}</p>
+                      <div className="flex items-center gap-3 mt-1">
+                        <span className="text-sm font-semibold text-indigo-700">{idr(item.grandTotal)}</span>
+                        {item.taxAmount > 0 && <span className="text-xs text-slate-400">PPN: {idr(item.taxAmount)}</span>}
+                      </div>
+                    </div>
+                    <Button
+                      variant="ghost" size="icon"
+                      className="h-7 w-7 text-slate-400 hover:text-red-600 shrink-0"
+                      disabled={unlinking === item.id}
+                      onClick={() => doUnlink(item.id)}
+                    >
+                      {unlinking === item.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                    </Button>
+                  </div>
+                ))}
+                {totalPO > 0 && (
+                  <div className="flex justify-between items-center pt-1 border-t border-indigo-200 text-sm">
+                    <span className="text-indigo-600 font-medium flex items-center gap-1">
+                      <DollarSign className="h-3.5 w-3.5" /> Total Actual Purchase Cost
+                    </span>
+                    <span className="font-bold text-indigo-700">{idr(totalPO)}</span>
+                  </div>
+                )}
+              </div>
+            )}
+          </CardContent>
+        )}
+      </Card>
+
+      <Dialog open={dlgOpen} onOpenChange={setDlgOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ShoppingBag className="h-4 w-4 text-indigo-600" /> Link Purchase Order ke Order
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="flex gap-2">
+              <Input
+                placeholder="Cari PO (nomor/supplier)…"
+                value={searchQ}
+                onChange={e => setSearchQ(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && doSearch()}
+                className="flex-1"
+              />
+              <Button variant="outline" onClick={doSearch} disabled={searching} className="shrink-0">
+                {searching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+              </Button>
+            </div>
+            <div className="max-h-64 overflow-y-auto space-y-1.5">
+              {searchResults.length === 0 && !searching && (
+                <p className="text-sm text-slate-400 text-center py-4">Ketik dan tekan Enter untuk mencari PO</p>
+              )}
+              {searchResults.map(r => (
+                <div key={r.id}
+                  className={`flex items-center gap-2 rounded border px-3 py-2 text-sm ${r.linkedOrderId && r.linkedOrderId !== orderId ? "opacity-50 cursor-not-allowed border-slate-100 bg-slate-50" : "border-indigo-100 bg-indigo-50/30 hover:bg-indigo-50 cursor-pointer"}`}
+                  onClick={() => !r.linkedOrderId || r.linkedOrderId === orderId ? doLink(r.id) : undefined}
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-mono font-semibold text-xs text-indigo-700">{r.docNumber}</span>
+                      <Badge className="text-[10px] bg-slate-100 text-slate-600">{r.kind === "order" ? "PO" : "RFQ"}</Badge>
+                      <Badge className={`text-[10px] ${STATUS_PO[r.status] ?? "bg-slate-100 text-slate-500"}`}>{r.status}</Badge>
+                      {r.linkedOrderId && r.linkedOrderId !== orderId && <Badge className="text-[10px] bg-amber-100 text-amber-700">Sudah di-link</Badge>}
+                    </div>
+                    <p className="text-xs text-slate-500 truncate">{r.supplierName}</p>
+                  </div>
+                  <div className="shrink-0 flex items-center gap-2">
+                    <span className="font-semibold text-indigo-700 text-xs">{idr(r.grandTotal)}</span>
+                    {linking === r.id
+                      ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      : (!r.linkedOrderId || r.linkedOrderId === orderId) && <Plus className="h-3.5 w-3.5 text-indigo-500" />}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDlgOpen(false)}>Tutup</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
 }
 
 // ── Create Customer Approval Dialog ───────────────────────────────────────────
@@ -3391,9 +3808,9 @@ export default function LogisticOrderDetailPage() {
                     const isPending = !isComplete && !isSubmitted;
                     const hasPhotos = dpod.podPhotos.length > 0;
                     const hasGeo = !!(dpod.podGeoLat && dpod.podGeoLng);
-                    const mapsUrl = hasGeo
+                    const mapsUrl = dpod.podMapUrl ?? (hasGeo
                       ? `https://www.google.com/maps?q=${dpod.podGeoLat},${dpod.podGeoLng}`
-                      : null;
+                      : null);
                     const podSubmitted = isSubmitted || isComplete;
 
                     return (
@@ -3499,27 +3916,37 @@ export default function LogisticOrderDetailPage() {
 
                         {/* Geo Location */}
                         {hasGeo && (
-                          <div className="flex items-center justify-between gap-3 rounded-lg border border-blue-100 bg-blue-50/40 px-3 py-2.5">
+                          <div className="rounded-lg border border-blue-100 bg-blue-50/40 px-3 py-2.5 space-y-2">
                             <div className="flex items-center gap-2 text-xs min-w-0">
                               <MapPin className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-                              <div className="min-w-0">
+                              <div className="min-w-0 flex-1">
                                 <span className="text-slate-400 block text-[10px]">Lokasi GPS saat submit POD</span>
                                 <p className="font-mono text-slate-600 text-[11px] truncate">
-                                  {dpod.podGeoLat}, {dpod.podGeoLng}
+                                  {Number(dpod.podGeoLat).toFixed(6)}, {Number(dpod.podGeoLng).toFixed(6)}
                                 </p>
+                                {dpod.podDeviceTimestamp && (
+                                  <p className="text-[10px] text-slate-400 mt-0.5">
+                                    ⏱ {new Date(dpod.podDeviceTimestamp).toLocaleString("id-ID", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })} (waktu perangkat)
+                                  </p>
+                                )}
                               </div>
                             </div>
-                            <a
-                              href={mapsUrl!}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="shrink-0"
-                            >
-                              <Button variant="outline" size="sm" className="h-7 px-2.5 text-[11px] gap-1 text-blue-700 border-blue-200 hover:bg-blue-50">
-                                <Navigation className="w-3 h-3" />
-                                Buka Maps
-                              </Button>
-                            </a>
+                            <div className="flex gap-2">
+                              <a href={mapsUrl!} target="_blank" rel="noopener noreferrer" className="flex-1">
+                                <Button variant="outline" size="sm" className="w-full h-7 px-2 text-[11px] gap-1 text-blue-700 border-blue-200 hover:bg-blue-50">
+                                  <Navigation className="w-3 h-3" />
+                                  Buka Maps
+                                </Button>
+                              </a>
+                              {dpod.podStreetViewUrl && (
+                                <a href={dpod.podStreetViewUrl} target="_blank" rel="noopener noreferrer" className="flex-1">
+                                  <Button variant="outline" size="sm" className="w-full h-7 px-2 text-[11px] gap-1 text-violet-700 border-violet-200 hover:bg-violet-50">
+                                    <ExternalLink className="w-3 h-3" />
+                                    Street View
+                                  </Button>
+                                </a>
+                              )}
+                            </div>
                           </div>
                         )}
 
@@ -4056,6 +4483,12 @@ export default function LogisticOrderDetailPage() {
               order={order}
               salesDocId={approvalData?.find(a => a.salesDocId != null)?.salesDocId}
             />
+
+            {/* Gap #6: OPEX */}
+            <OrderOpexPanel orderId={orderId} />
+
+            {/* Gap #7: Purchase Linkage */}
+            <OrderPurchaseLinkPanel orderId={orderId} />
           </div>
 
           {/* Right: Exception + Audit Trail + WA Log */}

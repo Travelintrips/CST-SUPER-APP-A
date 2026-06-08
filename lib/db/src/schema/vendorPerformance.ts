@@ -1,4 +1,4 @@
-import { pgTable, serial, integer, numeric, timestamp, text, index } from "drizzle-orm/pg-core";
+import { pgTable, serial, integer, numeric, timestamp, index } from "drizzle-orm/pg-core";
 import { suppliersTable } from "./suppliers";
 
 export const vendorPerformanceTable = pgTable("vendor_performance", {
@@ -17,6 +17,17 @@ export const vendorPerformanceTable = pgTable("vendor_performance", {
   totalComplaints: integer("total_complaints").notNull().default(0),
   recommendationScore: numeric("recommendation_score", { precision: 5, scale: 2 }).default("0"),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  // Extended spec columns (additive)
+  totalRfqInvites: integer("total_rfq_invites").default(0),
+  totalSubmitted: integer("total_submitted").default(0),
+  totalSelected: integer("total_selected").default(0),
+  totalRejected: integer("total_rejected").default(0),
+  avgResponseHours: numeric("avg_response_hours", { precision: 10, scale: 2 }).default("0"),
+  onTimeOrders: integer("on_time_orders").default(0),
+  lateOrders: integer("late_orders").default(0),
+  podCompleteOrders: integer("pod_complete_orders").default(0),
+  score: numeric("score", { precision: 5, scale: 2 }).default("0"),
+  lastCalculatedAt: timestamp("last_calculated_at"),
 }, (t) => [
   index("vendor_perf_vendor_idx").on(t.vendorId),
 ]);

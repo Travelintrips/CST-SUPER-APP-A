@@ -30,6 +30,7 @@ import { AccountingWidget } from "@/components/dashboard/AccountingWidget";
 import { LogisticsWidget } from "@/components/dashboard/LogisticsWidget";
 import { PurchasingWidget } from "@/components/dashboard/PurchasingWidget";
 import { SalesWidget } from "@/components/dashboard/SalesWidget";
+import { ProfitLossComparisonWidget } from "@/components/dashboard/ProfitLossComparisonWidget";
 
 interface ResponseTimeEntry {
   timestamp: string;
@@ -1122,6 +1123,7 @@ export default function DashboardPage() {
           <SportCenterWidget />
           <PosWidget />
           <AccountingWidget />
+          <ProfitLossComparisonWidget />
           <LogisticsWidget />
           <PurchasingWidget />
           <TasksWidget />

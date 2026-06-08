@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { rateLimit, ipKeyGenerator } from "express-rate-limit";
+import { broadcastInvalidation } from "../lib/alertsBroadcast.js";
 import { eq, desc, inArray, and, count, isNull, ne, sql } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import multer from "multer";
@@ -134,7 +135,7 @@ const PUBLIC_CACHE = "public, max-age=300, stale-while-revalidate=600";
 // Set USE_PRODUCT_TEMPLATE_ENGINE=true di environment untuk mengaktifkan resolver
 // berbasis product_templates + resolveTemplate(). Bila false, fallback ke
 // commodity_templates (tabel lama) tetap dipakai.
-const USE_PRODUCT_TEMPLATE_ENGINE = process.env.USE_PRODUCT_TEMPLATE_ENGINE === "true";
+const USE_PRODUCT_TEMPLATE_ENGINE = process.env.USE_PRODUCT_TEMPLATE_ENGINE !== "false";
 
 // ── Feature flag: Service Template Engine ─────────────────────────────────────
 // Default ON. Set USE_SERVICE_TEMPLATE_ENGINE=false untuk fallback ke SERVICE_SCHEMAS saja.
@@ -695,6 +696,25 @@ export const SERVICE_SCHEMAS: Record<string, {
       { key: "quote_deadline", label: "Batas Waktu Penawaran dari Vendor", type: "date", required: true, section: "quotation" },
       { key: "vendor_phone", label: "No. WhatsApp Vendor (untuk notifikasi otomatis)", type: "text", section: "quotation", placeholder: "Contoh: 628123456789" },
       { key: "notes_to_vendor", label: "Pesan / Instruksi ke Vendor", type: "textarea", section: "quotation", placeholder: "Tambahan informasi yang perlu diketahui vendor" },
+    ],
+  },
+  // ── Phase 2A: Product-First — Vendor Produk ─────────────────────────────
+  product_vendor: {
+    label: "Vendor Produk", emoji: "🏭",
+    fields: [
+      { key: "product_price", label: "Harga Produk (Rp)", type: "number", required: true, section: "quotation" },
+      { key: "stock_status", label: "Status Stok", type: "select", required: true, options: ["Ready Stock", "Indent", "Pre-order", "Habis"], section: "quotation" },
+      { key: "available_qty", label: "Qty Tersedia", type: "number", required: true, section: "quotation" },
+      { key: "ready_date", label: "Tanggal Siap (Produk Ready)", type: "date", required: true, section: "quotation" },
+      { key: "pickup_location", label: "Kota / Lokasi Pickup", type: "text", required: true, section: "quotation", placeholder: "Contoh: Cilincing, Jakarta Utara" },
+      { key: "warehouse_address", label: "Alamat Lengkap Gudang", type: "textarea", required: true, section: "quotation", placeholder: "Alamat gudang / lokasi pengambilan produk" },
+      { key: "product_documents", label: "Dokumen Produk", type: "text", section: "quotation", placeholder: "Link atau keterangan dokumen produk (COA, MSDS, dll.)", isUpload: true },
+      { key: "notes", label: "Catatan Tambahan", type: "textarea", section: "both" },
+      // Operational
+      { key: "qty_confirmed", label: "Qty Dikonfirmasi", type: "number", required: true, section: "operational" },
+      { key: "packing_status", label: "Status Packing", type: "select", options: ["Belum Packing", "Sedang Packing", "Sudah Packing"], section: "operational" },
+      { key: "ready_confirmation", label: "Konfirmasi Kesiapan", type: "select", options: ["Siap Dijemput", "Butuh 1-2 Hari", "Butuh 3+ Hari"], section: "operational" },
+      { key: "pickup_contact", label: "Kontak PIC Gudang", type: "text", section: "operational", placeholder: "Nama dan nomor WA PIC di lokasi" },
     ],
   },
 };
@@ -3012,6 +3032,8 @@ vendorMiniFormRouter.post("/admin/customer-approvals", async (req: Request, res:
         .where(and(eq(vendorMiniFormLinksTable.orderId, orderId), eq(vendorMiniFormLinksTable.mode, "order_based")));
     }
 
+    broadcastInvalidation("rfq", orderId ?? undefined);
+    broadcastInvalidation("logistic_orders", orderId ?? undefined);
     return res.status(201).json({ ...approval, createdAt: approval.createdAt.toISOString() });
   } catch (err) {
     req.log?.error({ err }, "create customer-approval error");
@@ -3088,6 +3110,7 @@ vendorMiniFormRouter.post("/admin/op-confirms", async (req: Request, res: Respon
       ).catch(() => {});
     }
 
+    broadcastInvalidation("logistic_orders", orderId ?? undefined);
     return res.status(201).json({ ...conf, createdAt: conf.createdAt.toISOString() });
   } catch (err) {
     req.log?.error({ err }, "create op-confirm error");
@@ -3340,6 +3363,8 @@ vendorMiniFormRouter.post("/admin/customer-approvals/:id/retry-so", async (req: 
       await logActivity("sales_order", soResult.docId, "so_created", (req.user as { id: string } | undefined)?.id ?? "admin",
         `SO ${soResult.docNumber} dibuat ulang via retry untuk approval ID ${id}${approval.customerName ? ` (${approval.customerName})` : ""}`,
         { docNumber: soResult.docNumber, approvalId: id, orderId: approval.orderId, orderNumber: approval.orderNumber });
+      broadcastInvalidation("sales_documents");
+      broadcastInvalidation("logistic_orders", approval.orderId ?? undefined);
       return res.json({ ok: true, docId: soResult.docId, docNumber: soResult.docNumber });
     } else if (soResult.reason === "already_exists") {
       if (!approval.soNumber) {
@@ -3347,6 +3372,7 @@ vendorMiniFormRouter.post("/admin/customer-approvals/:id/retry-so", async (req: 
           .set({ soNumber: soResult.docNumber })
           .where(eq(customerApprovalsTable.id, id));
       }
+      broadcastInvalidation("sales_documents");
       return res.json({ ok: true, already: true, docId: soResult.docId, docNumber: soResult.docNumber });
     } else {
       return res.status(500).json({ error: soResult.message });
