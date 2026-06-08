@@ -2607,6 +2607,7 @@ export default function VendorFormsPage() {
   const [compareOpen, setCompareOpen] = useState(false);
   const [searchLinks, setSearchLinks] = useState("");
   const [filterMode, setFilterMode] = useState("all");
+  const [filterCategoryKey, setFilterCategoryKey] = useState("all");
   const [approvalSearch, setApprovalSearch] = useState("");
   const [approvalStatusFilter, setApprovalStatusFilter] = useState("all");
   const [invoiceSearch, setInvoiceSearch] = useState("");
@@ -2759,9 +2760,23 @@ export default function VendorFormsPage() {
   });
 
   // ── Filtered links ──
+  const activeCategoryKeys = useMemo(() => {
+    const keys = new Set(links.map(l => l.categoryKey).filter(Boolean) as string[]);
+    return Array.from(keys).sort((a, b) =>
+      (inCodeTemplates[a]?.label ?? a).localeCompare(inCodeTemplates[b]?.label ?? b, "id")
+    );
+  }, [links]);
+
   const filteredLinks = useMemo(() => {
     let list = links;
     if (filterMode !== "all") list = list.filter(l => l.mode === filterMode);
+    if (filterCategoryKey !== "all") {
+      if (filterCategoryKey === "__none__") {
+        list = list.filter(l => !l.categoryKey);
+      } else {
+        list = list.filter(l => l.categoryKey === filterCategoryKey);
+      }
+    }
     if (searchLinks.trim()) {
       const q = searchLinks.toLowerCase();
       list = list.filter(l =>
@@ -2773,7 +2788,7 @@ export default function VendorFormsPage() {
       );
     }
     return list;
-  }, [links, filterMode, searchLinks]);
+  }, [links, filterMode, filterCategoryKey, searchLinks]);
 
   const rateCollectionLinks = links.filter(l => l.mode === "rate_collection");
   const orderBasedLinks = links.filter(l => l.mode === "order_based");
@@ -2843,6 +2858,20 @@ export default function VendorFormsPage() {
                   <SelectItem value="order_based">📦 Order-Based</SelectItem>
                 </SelectContent>
               </Select>
+              {activeCategoryKeys.length > 0 && (
+                <Select value={filterCategoryKey} onValueChange={setFilterCategoryKey}>
+                  <SelectTrigger className="w-48 h-9 text-sm"><SelectValue placeholder="Semua Komoditas" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">📦 Semua Komoditas</SelectItem>
+                    <SelectItem value="__none__">— Tanpa template —</SelectItem>
+                    {activeCategoryKeys.map(k => (
+                      <SelectItem key={k} value={k}>
+                        {inCodeTemplates[k]?.label ?? k}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
               <div className="ml-auto">
                 <CreateLinkDialog onCreated={() => queryClient.invalidateQueries({ queryKey: ["vmf-links"] })} />
               </div>
