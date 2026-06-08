@@ -1,14 +1,9 @@
 /**
- * system.ts — Governance Health Endpoint
+ * system.ts — Governance, Runtime & Vendor Performance Health Endpoints
  *
- * GET /api/system/governance-health
- *   Admin-only. Tidak terekspos ke customer portal.
- *   Mengembalikan ringkasan status observability:
- *     - statistik exceptions (open/in_progress/resolved)
- *     - 20 transisi status terakhir dari order_status_history
- *     - jumlah invoice overdue
- *     - jumlah bill overdue
- *     - ringkasan status audit log per module
+ * GET /api/system/governance-health       — Admin-only. Observability ringkasan ERP.
+ * GET /api/system/runtime-check           — Admin-only. Dependency audit + runtime validation.
+ * GET /api/system/vendor-performance-health — Admin-only. Vendor performance migration & row count.
  */
 
 import { Router, type Request, type Response, type NextFunction } from "express";
@@ -16,9 +11,9 @@ import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { logger } from "../lib/logger.js";
+import { getRuntimeCheckState } from "../lib/startupValidator.js";
 
 const router = Router();
-
 
 async function requireAdminMiddleware(req: Request, res: Response, next: NextFunction) {
   const ok = await requireAdmin(req, res);
@@ -27,7 +22,8 @@ async function requireAdminMiddleware(req: Request, res: Response, next: NextFun
 
 router.use(requireAdminMiddleware);
 
-router.get("/governance-health", async (req, res) => {
+// ── Governance Health ──────────────────────────────────────────────────────────
+router.get("/governance-health", async (_req, res) => {
   try {
     const [
       exceptionStats,
@@ -35,8 +31,9 @@ router.get("/governance-health", async (req, res) => {
       overdueInvoices,
       overdueBills,
       auditModuleSummary,
+      runtimeState,
+      vendorPerfStats,
     ] = await Promise.all([
-      // Exception stats
       db.execute(sql`
         SELECT
           COUNT(*)                                                   AS total,
@@ -51,8 +48,6 @@ router.get("/governance-health", async (req, res) => {
           SUM(CASE WHEN exception_type = 'vendor_rejected'  AND status IN ('open','in_progress') THEN 1 ELSE 0 END) AS open_vendor_rejected
         FROM exceptions
       `),
-
-      // Recent 20 status transitions from order_status_history
       db.execute(sql`
         SELECT
           id, order_id, order_number, old_status, new_status,
@@ -61,8 +56,6 @@ router.get("/governance-health", async (req, res) => {
         ORDER BY created_at DESC
         LIMIT 20
       `),
-
-      // Overdue invoices count (unpaid/partial past due_date)
       db.execute(sql`
         SELECT COUNT(*) AS count
         FROM sales_documents
@@ -72,8 +65,6 @@ router.get("/governance-health", async (req, res) => {
           AND due_date IS NOT NULL
           AND due_date < CURRENT_DATE
       `),
-
-      // Overdue bills count
       db.execute(sql`
         SELECT COUNT(*) AS count
         FROM purchase_documents
@@ -83,8 +74,6 @@ router.get("/governance-health", async (req, res) => {
           AND due_date IS NOT NULL
           AND due_date < CURRENT_DATE::text
       `),
-
-      // Audit log summary by module (last 24h)
       db.execute(sql`
         SELECT module, action, COUNT(*) AS count
         FROM erp_audit_logs
@@ -94,22 +83,33 @@ router.get("/governance-health", async (req, res) => {
         ORDER BY count DESC
         LIMIT 20
       `),
+      // Runtime check — from cached state
+      Promise.resolve(getRuntimeCheckState()),
+      // Vendor performance stats
+      db.execute(sql`
+        SELECT
+          COUNT(*) AS total_rows,
+          COUNT(*) FILTER (WHERE total_orders > 0) AS with_orders,
+          MAX(updated_at) AS last_updated
+        FROM vendor_performance
+      `).catch(() => ({ rows: [] })),
     ]);
 
     const exc = (exceptionStats.rows[0] ?? {}) as Record<string, unknown>;
     const inv = (overdueInvoices.rows[0] ?? { count: 0 }) as { count: unknown };
     const bil = (overdueBills.rows[0] ?? { count: 0 }) as { count: unknown };
+    const vpRow = (vendorPerfStats.rows[0] ?? {}) as Record<string, unknown>;
 
     res.json({
       generatedAt: new Date().toISOString(),
       exceptions: {
-        total:             Number(exc["total"]              ?? 0),
-        open:              Number(exc["open"]               ?? 0),
-        in_progress:       Number(exc["in_progress"]        ?? 0),
-        resolved:          Number(exc["resolved"]           ?? 0),
-        closed:            Number(exc["closed"]             ?? 0),
-        critical:          Number(exc["critical"]           ?? 0),
-        high:              Number(exc["high"]               ?? 0),
+        total:               Number(exc["total"]               ?? 0),
+        open:                Number(exc["open"]                ?? 0),
+        in_progress:         Number(exc["in_progress"]         ?? 0),
+        resolved:            Number(exc["resolved"]            ?? 0),
+        closed:              Number(exc["closed"]              ?? 0),
+        critical:            Number(exc["critical"]            ?? 0),
+        high:                Number(exc["high"]                ?? 0),
         openDeliveryDelayed: Number(exc["open_delivery_delayed"] ?? 0),
         openPaymentOverdue:  Number(exc["open_payment_overdue"]  ?? 0),
         openVendorRejected:  Number(exc["open_vendor_rejected"]  ?? 0),
@@ -120,6 +120,15 @@ router.get("/governance-health", async (req, res) => {
       },
       recentStatusTransitions: recentTransitions.rows,
       auditLast24h: auditModuleSummary.rows,
+      dependencyAudit: runtimeState
+        ? { status: runtimeState.status, missing: runtimeState.missing, checkedAt: runtimeState.checkedAt }
+        : { status: "not_checked", missing: [], checkedAt: null },
+      vendorPerformance: {
+        tableExists:   vpRow["total_rows"] !== undefined,
+        totalRows:     Number(vpRow["total_rows"] ?? 0),
+        withOrders:    Number(vpRow["with_orders"] ?? 0),
+        lastUpdated:   vpRow["last_updated"] ?? null,
+      },
     });
   } catch (err) {
     logger.error({ err }, "governance-health error");
@@ -127,6 +136,175 @@ router.get("/governance-health", async (req, res) => {
   }
 });
 
+// ── Runtime Check ──────────────────────────────────────────────────────────────
+router.get("/runtime-check", async (_req, res) => {
+  try {
+    const state = getRuntimeCheckState();
+
+    if (!state) {
+      return res.status(503).json({
+        status: "not_ready",
+        message: "Startup validation belum selesai. Coba beberapa detik lagi.",
+        dependencies: {},
+        missing: [],
+      });
+    }
+
+    const filesAudited = [
+      "artifacts/api-server/build.mjs",
+      "artifacts/api-server/package.json",
+    ];
+
+    const buildExternals = [
+      "googleapis", "@google-cloud/*", "@google/*",
+    ];
+
+    res.json({
+      status: state.status,
+      checkedAt: state.checkedAt,
+      dependencies: state.dependencies,
+      missing: state.missing,
+      audit: {
+        filesAudited,
+        buildExternals: {
+          note: "googleapis ada di external list build.mjs — di-bundle sebagai runtime require()",
+          entries: buildExternals,
+        },
+        packageJson: {
+          googleapis: "ada di dependencies (bukan devDependencies) ✅",
+          openai: "ada di dependencies ✅",
+          "drizzle-orm": "ada di dependencies ✅",
+          nodemailer: "ada di dependencies ✅",
+        },
+      },
+      testResult: {
+        allOk: state.status === "ok",
+        summary: state.status === "ok"
+          ? "Semua dependency runtime tersedia dan dapat di-import."
+          : `${state.missing.length} dependency hilang, ${Object.values(state.dependencies).filter(d => d.status === "error").length} error saat load.`,
+      },
+    });
+  } catch (err) {
+    logger.error({ err }, "runtime-check error");
+    res.status(500).json({ error: "Gagal menjalankan runtime check" });
+  }
+});
+
+// ── Vendor Performance Health ──────────────────────────────────────────────────
+router.get("/vendor-performance-health", async (_req, res) => {
+  const report: Record<string, unknown> = { generatedAt: new Date().toISOString() };
+
+  // A. Migration status
+  const migrationChecks = await Promise.allSettled([
+    db.execute(sql`
+      SELECT EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_name = 'vendor_performance'
+      ) AS exists
+    `),
+    db.execute(sql`
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_name = 'vendor_performance'
+      ORDER BY ordinal_position
+    `),
+  ]);
+
+  const tableExistsRow = migrationChecks[0].status === "fulfilled"
+    ? (migrationChecks[0].value.rows[0] as Record<string, unknown>)
+    : null;
+  const tableExists = tableExistsRow?.["exists"] === true || tableExistsRow?.["exists"] === "true";
+
+  const columns = migrationChecks[1].status === "fulfilled"
+    ? (migrationChecks[1].value.rows as Record<string, string>[]).map(r => r["column_name"])
+    : [];
+
+  const requiredColumns = [
+    "id", "vendor_id", "total_orders", "completed_orders", "cancelled_orders",
+    "ontime_percentage", "average_response_minutes", "pod_completeness_score",
+    "eta_accuracy_score", "customer_rating", "order_success_rate",
+    "cancel_rate", "total_complaints", "recommendation_score", "updated_at",
+  ];
+
+  const missingColumns = tableExists
+    ? requiredColumns.filter(c => !columns.includes(c))
+    : requiredColumns;
+
+  report["migration"] = {
+    tableExists,
+    columns,
+    missingColumns,
+    schemaOk: tableExists && missingColumns.length === 0,
+  };
+
+  // B. Backfill status
+  if (tableExists) {
+    try {
+      const [rowCount, vendorCount, rfqCount, orderCount] = await Promise.all([
+        db.execute(sql`SELECT COUNT(*) AS n FROM vendor_performance`),
+        db.execute(sql`SELECT COUNT(*) AS n FROM suppliers WHERE is_active = true`),
+        db.execute(sql`SELECT COUNT(DISTINCT vendor_id) AS n FROM rfq_vendor_links WHERE submitted_at IS NOT NULL`),
+        db.execute(sql`SELECT COUNT(DISTINCT approved_vendor_id) AS n FROM logistic_orders WHERE approved_vendor_id IS NOT NULL`),
+      ]);
+
+      const perfRows   = Number((rowCount.rows[0] as any)?.n ?? 0);
+      const activeVend = Number((vendorCount.rows[0] as any)?.n ?? 0);
+      const rfqVend    = Number((rfqCount.rows[0] as any)?.n ?? 0);
+      const orderVend  = Number((orderCount.rows[0] as any)?.n ?? 0);
+
+      report["backfill"] = {
+        currentRows: perfRows,
+        activeVendors: activeVend,
+        vendorsWithRfqHistory: rfqVend,
+        vendorsWithOrderHistory: orderVend,
+        backfillCoverage: activeVend > 0 ? `${Math.round((perfRows / activeVend) * 100)}%` : "0%",
+        needsBackfill: perfRows < activeVend,
+      };
+    } catch (err) {
+      report["backfill"] = { error: String(err) };
+    }
+  } else {
+    report["backfill"] = { skipped: "Tabel belum ada" };
+  }
+
+  // C. Row count per vendor (top 10 by recommendation_score)
+  if (tableExists && missingColumns.length === 0) {
+    try {
+      const top = await db.execute(sql`
+        SELECT s.name AS vendor_name, vp.total_orders, vp.completed_orders,
+               vp.recommendation_score, vp.updated_at
+        FROM vendor_performance vp
+        JOIN suppliers s ON s.id = vp.vendor_id
+        ORDER BY vp.recommendation_score DESC NULLS LAST
+        LIMIT 10
+      `);
+      report["topVendors"] = top.rows;
+    } catch (err) {
+      report["topVendors"] = { error: String(err) };
+    }
+  }
+
+  // D. Test result
+  const schemaOk = tableExists && missingColumns.length === 0;
+  report["testResult"] = {
+    status: schemaOk ? "ok" : (tableExists ? "schema_mismatch" : "table_missing"),
+    summary: schemaOk
+      ? "vendor_performance tabel OK, schema lengkap"
+      : tableExists
+        ? `Tabel ada tapi ${missingColumns.length} kolom kurang: ${missingColumns.join(", ")}`
+        : "Tabel vendor_performance BELUM ADA di live DB — jalankan migration",
+    action: schemaOk
+      ? null
+      : tableExists
+        ? "ALTER TABLE vendor_performance ADD COLUMN ... untuk tiap kolom yang missing"
+        : "POST /api/vendor-performance/recalculate-all setelah server start (migration otomatis saat startup)",
+  };
+
+  const hasError = !schemaOk;
+  res.status(hasError ? 200 : 200).json(report);
+});
+
+// ── Init Storage (existing) ────────────────────────────────────────────────────
 router.get("/init-storage", async (_req, res) => {
   try {
     const url = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "";

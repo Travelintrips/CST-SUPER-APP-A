@@ -78,6 +78,8 @@ import { runDriverPodMigration, runDriverAssignmentMigration } from "./routes/dr
 import { runProductVolumeCbmMigration } from "./routes/ecommerce.js";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
+import { runStartupValidation } from "./lib/startupValidator.js";
+import { backfillVendorPerformance } from "./routes/vendorPerformance.js";
 
 
 // REPLIT_API_PORT overrides PORT so the server listens on the local port
@@ -507,6 +509,11 @@ async function startServer() {
   initAlertsBroadcast(server);
   warmupMailer().catch(() => {});
 
+  // Startup dependency validation — non-blocking, results cached for /api/system/runtime-check
+  runStartupValidation().catch((err) => {
+    logger.warn({ err }, "[startupValidator] validation error (non-fatal)");
+  });
+
   // Also bind on secondary gateway port if REPLIT_API_GATEWAY_PORT is set.
   // Set SKIP_GATEWAY=1 to disable this secondary binding.
   const GATEWAY_PORT = process.env.REPLIT_API_GATEWAY_PORT ? Number(process.env.REPLIT_API_GATEWAY_PORT) : null;
@@ -634,6 +641,11 @@ async function startServer() {
         .catch((seedErr) => {
           logger.error({ err: seedErr }, "Logistics/demo seed failed");
         })
+    )
+    .then(() =>
+      backfillVendorPerformance().catch((err) => {
+        logger.warn({ err }, "Vendor performance backfill failed (non-fatal)");
+      })
     )
     .then(() => {
       migrationsComplete = true;
