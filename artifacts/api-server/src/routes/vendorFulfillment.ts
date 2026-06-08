@@ -295,16 +295,8 @@ vendorFulfillmentPublicRouter.post(
       try {
         url = await objectStorage.uploadPublicRaw(subPath, req.file.buffer, req.file.mimetype);
       } catch (uploadErr: unknown) {
-        logger.warn({ err: uploadErr, subPath }, "GCS upload gagal, fallback ke local storage");
-        try {
-          await fs.mkdir(LOCAL_UPLOAD_DIR, { recursive: true });
-          const localFile = `${fileType}-${uuid}.${ext}`;
-          await fs.writeFile(path.join(LOCAL_UPLOAD_DIR, localFile), req.file.buffer);
-          url = `/api/vendor-fulfillment/local-file/${localFile}`;
-        } catch (localErr: unknown) {
-          logger.error({ err: localErr }, "Local fallback upload juga gagal");
-          return res.status(500).json({ error: "Upload file gagal. Coba lagi atau hubungi admin." });
-        }
+        logger.error({ err: uploadErr, subPath }, "Storage upload gagal pada vendor-fulfillment");
+        return res.status(503).json({ error: "Storage sedang tidak tersedia, silakan coba lagi." });
       }
       return res.json({ url });
     } catch (err) {

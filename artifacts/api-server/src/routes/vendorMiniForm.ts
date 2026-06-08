@@ -1168,23 +1168,8 @@ vendorMiniFormRouter.post("/upload/:token", _vmfUploadRateLimit, _vmfUpload.sing
     try {
       objectPath = await _vmfStorage.uploadPrivateEntity(req.file.buffer, req.file.mimetype);
     } catch (storErr: unknown) {
-      req.log?.warn({ err: storErr }, "GCS upload gagal, fallback ke local storage");
-      try {
-        const { promises: fs } = await import("fs");
-        const path = await import("path");
-        const { randomUUID } = await import("crypto");
-        const LOCAL_VMF_DIR = "/tmp/vmf-uploads";
-        await fs.mkdir(LOCAL_VMF_DIR, { recursive: true });
-        const ext = req.file.mimetype === "application/pdf" ? "pdf"
-          : req.file.mimetype.startsWith("image/") ? req.file.mimetype.split("/")[1]
-          : "bin";
-        const fname = `${randomUUID()}.${ext}`;
-        await fs.writeFile(path.join(LOCAL_VMF_DIR, fname), req.file.buffer);
-        objectPath = `/api/vendor-form/local-file/${fname}`;
-      } catch (localErr: unknown) {
-        req.log?.error({ err: localErr }, "Local fallback upload juga gagal");
-        return res.status(500).json({ error: "Upload file gagal. Coba lagi atau hubungi admin." });
-      }
+      req.log?.error({ err: storErr }, "Storage upload gagal pada VMF");
+      return res.status(503).json({ error: "Storage sedang tidak tersedia, silakan coba lagi." });
     }
     return res.json({ objectPath });
   } catch (err) {

@@ -1646,7 +1646,8 @@ const _multerUpload = multer({ storage: multer.memoryStorage(), limits: { fileSi
 router.post("/admin/upload", requirePortalAdmin, _multerUpload.single("file"), async (req, res) => {
   const file = req.file;
   if (!file) return res.status(400).json({ message: "File gambar wajib diisi" });
-  if (!file.mimetype.startsWith("image/")) return res.status(415).json({ message: "Hanya file gambar yang diizinkan" });
+  const _ADMIN_IMG_MIME = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp", "image/heic", "image/heif"]);
+  if (!_ADMIN_IMG_MIME.has(file.mimetype)) return res.status(415).json({ message: "Hanya file gambar (JPG, PNG, WebP, HEIC) yang diizinkan" });
   try {
     const { buffer, contentType } = await compressImageBuffer(file.buffer, file.mimetype, "photo");
     const objectId = randomUUID();
@@ -1684,9 +1685,15 @@ const _portalUpload = multer({
 
 const _PORTAL_ALLOWED_MIME = new Set([
   "application/pdf",
-  "image/jpeg", "image/png", "image/webp", "image/gif",
+  "image/jpeg", "image/jpg", "image/png", "image/webp",
+  "image/heic", "image/heif",
   "application/msword",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+]);
+// Explicitly blocked types that must never pass even if a future wildcard is added
+const _PORTAL_BLOCKED_MIME = new Set([
+  "image/svg+xml", "text/html", "application/javascript",
+  "application/x-javascript", "text/javascript",
 ]);
 
 // POST /api/portal/order-upload
@@ -1715,8 +1722,8 @@ router.post("/order-upload", requirePortalAuth, (req, res, next) => {
   if (!req.file) return res.status(400).json({ message: "File wajib diunggah" });
 
   const mime = req.file.mimetype;
-  if (!_PORTAL_ALLOWED_MIME.has(mime) && !mime.startsWith("image/")) {
-    return res.status(415).json({ message: "Tipe file tidak diizinkan" });
+  if (_PORTAL_BLOCKED_MIME.has(mime) || !_PORTAL_ALLOWED_MIME.has(mime)) {
+    return res.status(415).json({ message: "Tipe file tidak diizinkan. Gunakan JPG, PNG, WebP, HEIC, PDF, atau dokumen Office." });
   }
 
   try {
