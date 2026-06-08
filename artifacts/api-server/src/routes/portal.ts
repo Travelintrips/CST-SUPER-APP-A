@@ -3,7 +3,7 @@ import { LOGISTICS_SUBCATEGORIES as LOGISTICS_SUBCATEGORIES_FALLBACK } from "@wo
 import { rateLimit, ipKeyGenerator } from "express-rate-limit";
 import { db, productsTable, productCategoryMapTable, productCategoriesTable, portalCustomersTable, portalCustomerServicesTable, portalContentTable, accountingSettingsTable, salesDocumentsTable, salesDocumentLinesTable, customersTable, logisticOrdersTable, suppliersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, quoteRequestsTable, userProfilesTable, identityDocumentsTable, ocrResultsTable, vendorProfilesTable, driverProfilesTable, employeeProfilesTable, onboardingApprovalsTable, waOtpCodesTable, trustedDevicesTable, vendorMiniFormLinksTable, vendorMiniFormSubmissionsTable, vendorCatalogItemsTable, productTemplatesTable, serviceTemplatesTable } from "@workspace/db";
 import { db, productsTable, productCategoryMapTable, productCategoriesTable, portalCustomersTable, portalCustomerServicesTable, portalContentTable, accountingSettingsTable, salesDocumentsTable, salesDocumentLinesTable, customersTable, logisticOrdersTable, suppliersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, quoteRequestsTable, userProfilesTable, identityDocumentsTable, ocrResultsTable, vendorProfilesTable, driverProfilesTable, employeeProfilesTable, onboardingApprovalsTable, waOtpCodesTable, trustedDevicesTable, vendorMiniFormLinksTable, vendorMiniFormSubmissionsTable, vendorCatalogItemsTable, portalProductOrdersTable, portalProductOrderItemsTable, vendorPerformanceTable } from "@workspace/db";
-import { deleteFromSupabase } from "../lib/supabaseStorage.js";
+import { deleteFromSupabase, uploadToSupabase } from "../lib/supabaseStorage.js";
 import { invalidateTokenCache, SERVICE_SCHEMAS } from "./vendorMiniForm";
 import { eq, inArray, and, ne, isNull, sql, desc, gte, lte, ilike, or, asc } from "drizzle-orm";
 import { productMediaTable } from "@workspace/db";
@@ -20,7 +20,7 @@ import { broadcastToAdmins, broadcastToPortal } from "../lib/sseManager";
 import { saveAndBroadcast } from "../lib/notificationStore";
 import multer from "multer";
 import { randomUUID } from "crypto";
-import { compressImageBuffer } from "../lib/imageCompress.js";
+import { compressImageBuffer, isCompressibleImage } from "../lib/imageCompress.js";
 import bcrypt from "bcryptjs";
 import { signPortalJwt } from "../lib/portalJwt.js";
 import OpenAI from "openai";
@@ -229,6 +229,7 @@ router.get("/marketplace", async (req, res) => {
       publishedAt: vendorCatalogItemsTable.publishedAt,
       sortOrder: vendorCatalogItemsTable.sortOrder,
       primaryImageUrl: productMediaTable.fileUrl,
+      mediaAssets: vendorCatalogItemsTable.mediaAssets,
     })
     .from(vendorCatalogItemsTable)
     .leftJoin(
@@ -248,10 +249,17 @@ router.get("/marketplace", async (req, res) => {
     rows.map((r) => {
       const rawCat = r.serviceType || r.kategori || r.categoryKey;
       const resolvedCategory = normalizeServiceCategory(rawCat);
+      // Fallback: jika tidak ada primaryImageUrl dari productMedia, ambil dari mediaAssets kolom
+      const mediaAssets = Array.isArray(r.mediaAssets)
+        ? r.mediaAssets as { type: string; url: string; isPrimary?: boolean }[]
+        : [];
+      const fallbackImageUrl = mediaAssets.find((m) => m.type === "image" && m.isPrimary)?.url
+        ?? mediaAssets.find((m) => m.type === "image")?.url
+        ?? null;
       return {
         ...r,
         priceSell: r.priceSell !== null ? Number(r.priceSell) : null,
-        primaryImageUrl: r.primaryImageUrl ?? null,
+        primaryImageUrl: r.primaryImageUrl ?? fallbackImageUrl,
         resolvedCategory,
         resolvedCategoryLabel: resolvedCategory
           ? (SERVICE_CATEGORY_LABELS[resolvedCategory] ?? resolvedCategory)
@@ -4060,6 +4068,211 @@ router.get("/vendors/:vendorId/public-profile", async (req, res) => {
     productCount: Number(countResult?.products ?? 0),
     serviceCount: Number(countResult?.services ?? 0),
   });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// VENDOR CATALOG MEDIA — vendor self-service photo upload
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function _getLinkedSupplier(customerId: number) {
+  const [customer] = await db.select().from(portalCustomersTable).where(eq(portalCustomersTable.id, customerId));
+  if (!customer) return null;
+  const allSuppliers = await db.select().from(suppliersTable);
+  const normalizePhone = (p: string | null) => (p ? p.replace(/[^\d]/g, "").replace(/^0/, "62") : null);
+  const customerPhone = normalizePhone(customer.phone);
+  return (
+    allSuppliers.find(
+      (s) =>
+        (s.contactEmail && s.contactEmail.toLowerCase() === customer.email.toLowerCase()) ||
+        (customerPhone && normalizePhone(s.phone) === customerPhone),
+    ) ?? null
+  );
+}
+
+const _vendorImgUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
+const _VENDOR_IMG_MIME = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp"]);
+
+// GET /api/portal/vendor/catalog — list vendor's own catalog items with media
+router.get("/vendor/catalog", requirePortalAuth, async (req, res) => {
+  const customerId = (req as PortalAuthReq).portalCustomerId;
+  const supplier = await _getLinkedSupplier(customerId);
+  if (!supplier) return res.status(403).json({ message: "Akun belum terhubung ke data vendor" });
+
+  try {
+    const rows = await db.execute(sql`
+      SELECT
+        vci.id,
+        vci.name,
+        vci.template_kind,
+        vci.kategori,
+        vci.category_key,
+        vci.is_active,
+        vci.is_published,
+        vci.description,
+        COUNT(pm.id) FILTER (WHERE pm.is_active = true)                       AS media_count,
+        COALESCE(json_agg(
+          json_build_object(
+            'id',          pm.id,
+            'fileUrl',     pm.file_url,
+            'isPrimary',   pm.is_primary,
+            'mediaType',   pm.media_type,
+            'imageSource', pm.image_source
+          ) ORDER BY pm.sort_order, pm.created_at
+        ) FILTER (WHERE pm.is_active = true AND pm.media_type = 'image'), '[]') AS images
+      FROM vendor_catalog_items vci
+      LEFT JOIN product_media pm ON pm.vendor_catalog_item_id = vci.id
+      WHERE vci.vendor_id = ${supplier.id}
+      GROUP BY vci.id, vci.name, vci.template_kind, vci.kategori, vci.category_key,
+               vci.is_active, vci.is_published, vci.description
+      ORDER BY vci.sort_order ASC NULLS LAST, vci.id ASC
+    `);
+
+    return res.json({
+      supplierId: supplier.id,
+      supplierName: supplier.name,
+      items: (rows as any[]).map((r: any) => ({
+        id: r.id,
+        name: r.name,
+        templateKind: r.template_kind,
+        kategori: r.kategori,
+        categoryKey: r.category_key,
+        isActive: r.is_active,
+        isPublished: r.is_published,
+        description: r.description,
+        mediaCount: parseInt(r.media_count ?? "0"),
+        images: Array.isArray(r.images) ? r.images : [],
+      })),
+    });
+  } catch (e: any) {
+    return res.status(500).json({ error: e?.message });
+  }
+});
+
+// POST /api/portal/vendor/catalog/:itemId/media/upload
+router.post(
+  "/vendor/catalog/:itemId/media/upload",
+  requirePortalAuth,
+  (req: any, res: any, next: any) =>
+    (_vendorImgUpload.single("file") as any)(req, res, (err: any) => {
+      if (err?.code === "LIMIT_FILE_SIZE") {
+        return res.status(413).json({ error: "Ukuran foto maks 5 MB" });
+      }
+      next(err);
+    }),
+  async (req: any, res: any) => {
+    const customerId = (req as PortalAuthReq).portalCustomerId;
+    const itemId = parseInt(req.params.itemId);
+    if (isNaN(itemId)) return res.status(400).json({ error: "ID item tidak valid" });
+
+    const supplier = await _getLinkedSupplier(customerId);
+    if (!supplier) return res.status(403).json({ message: "Akun belum terhubung ke data vendor" });
+
+    const [item] = await db
+      .select({ id: vendorCatalogItemsTable.id })
+      .from(vendorCatalogItemsTable)
+      .where(and(eq(vendorCatalogItemsTable.id, itemId), eq(vendorCatalogItemsTable.vendorId, supplier.id)));
+    if (!item) return res.status(404).json({ error: "Item tidak ditemukan atau bukan milik vendor ini" });
+
+    if (!req.file) return res.status(400).json({ error: "Tidak ada file yang diunggah" });
+    if (!_VENDOR_IMG_MIME.has(req.file.mimetype)) {
+      return res.status(415).json({ error: "Hanya file JPG, PNG, atau WebP yang diizinkan" });
+    }
+
+    try {
+      let buffer = req.file.buffer as Buffer;
+      let mime = req.file.mimetype as string;
+      if (isCompressibleImage(mime)) {
+        const c = await compressImageBuffer(buffer, mime, "photo");
+        buffer = c.buffer;
+        mime = c.contentType;
+      }
+
+      const folder = `product-media/vendor-${supplier.id}/item-${itemId}`;
+      const { publicUrl, storagePath } = await uploadToSupabase(buffer, mime, folder);
+
+      const [existingPrimary] = await db
+        .select({ id: productMediaTable.id })
+        .from(productMediaTable)
+        .where(
+          and(
+            eq(productMediaTable.vendorCatalogItemId, itemId),
+            eq(productMediaTable.isPrimary, true),
+            eq(productMediaTable.isActive, true),
+          ),
+        );
+      const isPrimary = !existingPrimary;
+
+      const [customer] = await db
+        .select({ email: portalCustomersTable.email })
+        .from(portalCustomersTable)
+        .where(eq(portalCustomersTable.id, customerId));
+
+      const [inserted] = await db
+        .insert(productMediaTable)
+        .values({
+          vendorCatalogItemId: itemId,
+          vendorId: supplier.id,
+          mediaType: "image",
+          fileUrl: publicUrl,
+          storagePath,
+          isPrimary,
+          isActive: true,
+          uploadedBy: customer?.email ?? "vendor",
+          uploadedByRole: "vendor",
+          sortOrder: 0,
+          imageSource: "vendor",
+          aiImageStatus: null,
+        })
+        .returning();
+
+      return res.status(201).json({ media: inserted });
+    } catch (e: any) {
+      return res.status(500).json({ error: e?.message });
+    }
+  },
+);
+
+// DELETE /api/portal/vendor/catalog/media/:mediaId
+router.delete("/vendor/catalog/media/:mediaId", requirePortalAuth, async (req, res) => {
+  const customerId = (req as PortalAuthReq).portalCustomerId;
+  const mediaId = parseInt(req.params.mediaId);
+  if (isNaN(mediaId)) return res.status(400).json({ error: "ID media tidak valid" });
+
+  const supplier = await _getLinkedSupplier(customerId);
+  if (!supplier) return res.status(403).json({ message: "Akun belum terhubung ke data vendor" });
+
+  const [media] = await db.select().from(productMediaTable).where(eq(productMediaTable.id, mediaId));
+  if (!media) return res.status(404).json({ error: "Media tidak ditemukan" });
+  if (media.vendorId !== supplier.id) return res.status(403).json({ error: "Bukan milik vendor ini" });
+
+  try {
+    if (media.storagePath) await deleteFromSupabase(media.storagePath);
+    await db.delete(productMediaTable).where(eq(productMediaTable.id, mediaId));
+
+    if (media.isPrimary && media.vendorCatalogItemId) {
+      const [next] = await db
+        .select()
+        .from(productMediaTable)
+        .where(
+          and(
+            eq(productMediaTable.vendorCatalogItemId, media.vendorCatalogItemId),
+            eq(productMediaTable.isActive, true),
+          ),
+        )
+        .orderBy(asc(productMediaTable.sortOrder), asc(productMediaTable.createdAt))
+        .limit(1);
+      if (next) {
+        await db
+          .update(productMediaTable)
+          .set({ isPrimary: true, updatedAt: new Date() })
+          .where(eq(productMediaTable.id, next.id));
+      }
+    }
+
+    return res.json({ success: true });
+  } catch (e: any) {
+    return res.status(500).json({ error: e?.message });
+  }
 });
 
 export default router;

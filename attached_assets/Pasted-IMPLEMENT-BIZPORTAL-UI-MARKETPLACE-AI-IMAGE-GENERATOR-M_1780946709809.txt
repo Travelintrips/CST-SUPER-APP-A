@@ -1,0 +1,106 @@
+IMPLEMENT BIZPORTAL UI — MARKETPLACE AI IMAGE GENERATOR.
+
+Masalah:
+Endpoint backend sudah ada:
+- GET /api/product-media/generation-status
+- POST /api/product-media/bulk-generate-ai
+- POST /api/product-media/regenerate-ai/:id
+
+Tetapi Admin UI /marketplace/ai-images belum ada atau belum terdaftar.
+
+Tujuan:
+Admin bisa generate gambar AI dari BizPortal tanpa call API manual.
+
+Scope:
+
+1. Buat halaman:
+artifacts/bizportal/src/pages/marketplace-ai-images.tsx
+
+Route:
+- /marketplace/ai-images
+
+2. Tambahkan menu sidebar:
+Procurement / Vendor Catalog / Marketplace
+Label:
+AI Image Generator
+
+Role:
+admin / owner
+
+3. Halaman menampilkan stats:
+- Total item
+- Sudah ada gambar
+- Belum ada gambar
+- Coverage %
+
+Data dari:
+GET /api/product-media/generation-status
+
+4. Tabel item:
+Kolom:
+- Thumbnail
+- Item Name
+- Vendor
+- Category
+- Type product/service
+- Status gambar
+- Media count
+- Last Generated
+- Action
+
+Action:
+- Regenerate
+- Preview
+- Generate jika belum ada gambar
+
+5. Tombol bulk:
+- Generate Semua yang Belum Ada
+- Limit selector: 5 / 10 / 25 / 50
+- Checkbox: onlyPublished
+- Checkbox: force regenerate
+
+POST:
+- /api/product-media/bulk-generate-ai
+
+6. Regenerate per item:
+POST:
+- /api/product-media/regenerate-ai/:id
+
+Setelah success:
+- refresh generation-status
+- tampilkan toast sukses/gagal
+
+7. Preview dialog:
+- tampilkan gambar besar
+- item info
+- URL Supabase
+- tombol buka image di tab baru
+
+8. Loading UX:
+- tombol disabled saat generate berjalan
+- progress / spinner
+- result summary:
+  - success count
+  - failed count
+  - error per item
+
+9. Error handling:
+- 401 tampilkan login/admin required
+- OpenAI quota error tampilkan message
+- Supabase upload error tampilkan message
+
+10. Test:
+A. /marketplace/ai-images terbuka admin
+B. Stats tampil 7 total, 2 with image, 5 without image
+C. Klik Generate limit 1 → product_media bertambah
+D. Thumbnail muncul setelah refresh
+E. Klik Regenerate → gambar lama inactive, gambar baru primary
+F. Customer marketplace card menampilkan gambar baru
+G. Unauthenticated access ditolak
+
+Output:
+A. File yang dibuat/diubah
+B. Route baru
+C. Sidebar menu
+D. Test result
+E. Risiko tersisa

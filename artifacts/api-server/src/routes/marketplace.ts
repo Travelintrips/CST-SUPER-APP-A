@@ -70,6 +70,7 @@ marketplaceRouter.get("/products", async (req, res) => {
       vendorId:       vendorCatalogItemsTable.vendorId,
       vendorName:     vendorCatalogItemsTable.vendorName,
       supplierName:   suppliersTable.name,
+      mediaAssets:    vendorCatalogItemsTable.mediaAssets,
     })
     .from(vendorCatalogItemsTable)
     .leftJoin(suppliersTable, eq(vendorCatalogItemsTable.vendorId, suppliersTable.id))
@@ -77,11 +78,19 @@ marketplaceRouter.get("/products", async (req, res) => {
     .orderBy(asc(vendorCatalogItemsTable.sortOrder), asc(vendorCatalogItemsTable.id));
 
   return res.json(
-    rows.map((r) => ({
-      ...r,
-      priceSell:        r.priceSell != null ? Number(r.priceSell) : null,
-      vendorDisplayName: r.vendorName || r.supplierName || "Vendor",
-    })),
+    rows.map((r) => {
+      const media = Array.isArray(r.mediaAssets) ? r.mediaAssets as { type: string; url: string; isPrimary?: boolean }[] : [];
+      const primaryImage = media.find((m) => m.type === "image" && m.isPrimary)?.url
+        ?? media.find((m) => m.type === "image")?.url
+        ?? null;
+      return {
+        ...r,
+        priceSell:         r.priceSell != null ? Number(r.priceSell) : null,
+        vendorDisplayName: r.vendorName || r.supplierName || "Vendor",
+        imageUrl:          primaryImage,
+        mediaItems:        media,
+      };
+    }),
   );
 });
 

@@ -1319,21 +1319,44 @@ export default function MarketplaceDetailPage() {
 
             {/* CTA Buttons */}
             <div className="space-y-2">
-              <Button
-                className="w-full h-11 rounded-xl font-semibold text-[14px] gap-2 bg-sky-600 hover:bg-sky-700"
-                onClick={() => setDialog("quote")}
-              >
-                <MessageSquare className="h-4 w-4" />
-                Inquiry / Request Quote
-              </Button>
-              <Button
-                variant="outline"
-                className="w-full h-11 rounded-xl font-semibold text-[14px] gap-2 border-slate-300 text-slate-700 hover:bg-slate-50"
-                onClick={() => setDialog("order")}
-              >
-                <ShoppingCart className="h-4 w-4" />
-                Order Sekarang
-              </Button>
+              {!isProduct ? (
+                /* ── Service: redirect ke halaman detail vendor ── */
+                !item.id ? (
+                  <Button
+                    className="w-full h-11 rounded-xl font-semibold text-[14px]"
+                    disabled
+                  >
+                    Item belum siap dipesan
+                  </Button>
+                ) : (
+                  <Button
+                    className="w-full h-11 rounded-xl font-semibold text-[14px] gap-2 bg-sky-600 hover:bg-sky-700"
+                    onClick={() => setLocation(`/jasa/vendor/${item.id}`)}
+                  >
+                    <MessageSquare className="h-4 w-4" />
+                    Minta Penawaran
+                  </Button>
+                )
+              ) : (
+                /* ── Produk: flow lama (inline form) ── */
+                <>
+                  <Button
+                    className="w-full h-11 rounded-xl font-semibold text-[14px] gap-2 bg-sky-600 hover:bg-sky-700"
+                    onClick={() => setDialog("quote")}
+                  >
+                    <MessageSquare className="h-4 w-4" />
+                    Inquiry / Request Quote
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="w-full h-11 rounded-xl font-semibold text-[14px] gap-2 border-slate-300 text-slate-700 hover:bg-slate-50"
+                    onClick={() => setDialog("order")}
+                  >
+                    <ShoppingCart className="h-4 w-4" />
+                    Order Sekarang
+                  </Button>
+                </>
+              )}
             </div>
 
             {/* Estimasi total */}
