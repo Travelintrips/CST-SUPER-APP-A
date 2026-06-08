@@ -12,7 +12,7 @@ import {
   TrendingUp, Search, RefreshCw,
   ShoppingCart, Users, Truck, DollarSign, AlertTriangle,
   ChevronLeft, ChevronRight, Target, BarChart2, Clock,
-  Receipt, MapPin, Package,
+  Receipt, MapPin, Package, FileDown,
 } from "lucide-react";
 import { Link } from "wouter";
 import { ArrowLeft } from "lucide-react";
@@ -409,6 +409,71 @@ export default function ProfitabilityAnalyticsPage() {
     "Missing cost data":      "bg-amber-100 text-amber-800 border-amber-200",
     "Unknown":                "bg-slate-100 text-slate-800 border-slate-200",
   };
+
+  function downloadLeakageCSV() {
+    const allLeakage = [
+      ...negativeMarginOrders.map(r => ({ ...r, _category: "Margin Negatif" })),
+      ...lowMarginOrders
+        .filter(r => !negativeMarginOrders.find(x => x.id === r.id))
+        .map(r => ({ ...r, _category: "Margin Rendah (0-10%)" })),
+      ...highRevLowMargin
+        .filter(r => !negativeMarginOrders.find(x => x.id === r.id) && !lowMarginOrders.find(x => x.id === r.id))
+        .map(r => ({ ...r, _category: "High Revenue Low Margin" })),
+    ];
+
+    if (allLeakage.length === 0) return;
+
+    const esc = (v: string | number | null | undefined) => {
+      const s = String(v ?? "");
+      return s.includes(",") || s.includes('"') || s.includes("\n")
+        ? `"${s.replace(/"/g, '""')}"`
+        : s;
+    };
+
+    const headers = [
+      "Kategori", "No. Order", "Customer", "Revenue (IDR)",
+      "Vendor Cost (IDR)", "Truck Cost (IDR)", "Tax (IDR)",
+      "Gross Margin (IDR)", "Margin %",
+      "Product Cost (IDR)", "Product Margin (IDR)",
+      "Shipment Cost (IDR)", "Shipment Margin (IDR)",
+      "Leakage Reason", "Saran Tindakan",
+    ];
+
+    const rows = allLeakage.map(r => {
+      const pc = deriveProdCost(r);
+      const sc = deriveShipCost(r);
+      const sm = deriveShipMargin(r);
+      const pm = r.productMargin ?? (pc > 0 ? r.revenue - pc : 0);
+      const gm = r.grossMargin ?? r.margin;
+      return [
+        r._category,
+        r.orderNumber,
+        r.customerName,
+        r.revenue.toFixed(0),
+        r.vendorCost.toFixed(0),
+        (r.truckCost ?? 0).toFixed(0),
+        (r.tax ?? 0).toFixed(0),
+        gm.toFixed(0),
+        r.marginPct.toFixed(2),
+        pc.toFixed(0),
+        pm.toFixed(0),
+        sc.toFixed(0),
+        sm.toFixed(0),
+        classifyLeakageReason(r),
+        getLeakageSuggestions(r).join("; "),
+      ].map(esc).join(",");
+    });
+
+    const csv = [headers.join(","), ...rows].join("\n");
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const now = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = `profit-leakage-${now}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
 
   // filtered route rows for search
   const routeRows = (routesQuery.data?.items ?? []).filter(r =>
@@ -1439,6 +1504,30 @@ export default function ProfitabilityAnalyticsPage() {
 
           {/* ─────────────────── PROFIT LEAKAGE TAB ─────────────────── */}
           <TabsContent value="leakage" className="mt-4 space-y-4">
+            {/* Tab header with export button */}
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-semibold flex items-center gap-2 text-red-700">
+                  <AlertTriangle className="h-4 w-4" />
+                  Profit Leakage Dashboard
+                </h2>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Identifikasi order bermasalah: margin negatif, margin rendah, dan high-revenue low-margin.
+                </p>
+              </div>
+              {!ordersQuery.isLoading && problematicOrders.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={downloadLeakageCSV}
+                  className="gap-1.5 h-8 shrink-0 border-red-200 text-red-700 hover:bg-red-50"
+                >
+                  <FileDown className="h-3.5 w-3.5" />
+                  Export CSV
+                </Button>
+              )}
+            </div>
+
             {/* Loading skeleton */}
             {ordersQuery.isLoading && (
               <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
