@@ -1,7 +1,7 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 import { LOGISTICS_SUBCATEGORIES as LOGISTICS_SUBCATEGORIES_FALLBACK } from "@workspace/logistics-constants";
 import { rateLimit, ipKeyGenerator } from "express-rate-limit";
-import { db, productsTable, productCategoryMapTable, productCategoriesTable, portalCustomersTable, portalCustomerServicesTable, portalContentTable, accountingSettingsTable, salesDocumentsTable, salesDocumentLinesTable, customersTable, logisticOrdersTable, suppliersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, quoteRequestsTable, userProfilesTable, identityDocumentsTable, ocrResultsTable, vendorProfilesTable, driverProfilesTable, employeeProfilesTable, onboardingApprovalsTable, waOtpCodesTable, trustedDevicesTable, vendorMiniFormLinksTable, vendorMiniFormSubmissionsTable } from "@workspace/db";
+import { db, productsTable, productCategoryMapTable, productCategoriesTable, portalCustomersTable, portalCustomerServicesTable, portalContentTable, accountingSettingsTable, salesDocumentsTable, salesDocumentLinesTable, customersTable, logisticOrdersTable, suppliersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, quoteRequestsTable, userProfilesTable, identityDocumentsTable, ocrResultsTable, vendorProfilesTable, driverProfilesTable, employeeProfilesTable, onboardingApprovalsTable, waOtpCodesTable, trustedDevicesTable, vendorMiniFormLinksTable, vendorMiniFormSubmissionsTable, vendorCatalogItemsTable, productTemplatesTable, serviceTemplatesTable } from "@workspace/db";
 import { deleteFromSupabase } from "../lib/supabaseStorage.js";
 import { invalidateTokenCache, SERVICE_SCHEMAS } from "./vendorMiniForm";
 import { eq, inArray, and, ne, isNull, sql, desc, gte, lte, ilike, or } from "drizzle-orm";
@@ -3194,6 +3194,184 @@ router.get("/me/dashboard-stats", requirePortalAuth, async (req, res) => {
       totalOrders: 0, activeOrders: 0, completedOrders: 0,
       invoiceOutstandingCount: 0, invoiceOutstandingAmount: 0, trackingActive: 0,
     });
+  }
+});
+
+// ── GET /api/portal/vendor-catalog — Etalase vendor publik ───────────────────
+router.get("/vendor-catalog", async (req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  try {
+    const { type, kategori } = req.query as Record<string, string>;
+    const conditions = [eq(vendorCatalogItemsTable.isActive, true)];
+    if (type === "product" || type === "service") {
+      conditions.push(eq(vendorCatalogItemsTable.type, type));
+    }
+    if (kategori) {
+      conditions.push(ilike(vendorCatalogItemsTable.kategori, `%${kategori}%`));
+    }
+    const rows = await db
+      .select({
+        id: vendorCatalogItemsTable.id,
+        vendorId: vendorCatalogItemsTable.vendorId,
+        vendorName: suppliersTable.name,
+        vendorLogo: suppliersTable.logo,
+        type: vendorCatalogItemsTable.type,
+        name: vendorCatalogItemsTable.name,
+        description: vendorCatalogItemsTable.description,
+        unit: vendorCatalogItemsTable.unit,
+        kategori: vendorCatalogItemsTable.kategori,
+        subcategory: vendorCatalogItemsTable.subcategory,
+        priceBase: vendorCatalogItemsTable.priceBase,
+        markupPct: vendorCatalogItemsTable.markupPct,
+        sortOrder: vendorCatalogItemsTable.sortOrder,
+      })
+      .from(vendorCatalogItemsTable)
+      .innerJoin(suppliersTable, eq(vendorCatalogItemsTable.vendorId, suppliersTable.id))
+      .where(and(...conditions))
+      .orderBy(vendorCatalogItemsTable.sortOrder, vendorCatalogItemsTable.name);
+
+    return res.json(rows.map((r) => {
+      const base = Number(r.priceBase);
+      const markup = Number(r.markupPct);
+      const sellPrice = base > 0 ? Math.ceil(base * (1 + markup / 100)) : 0;
+      return {
+        id: r.id,
+        vendorId: r.vendorId,
+        vendorName: r.vendorName,
+        vendorLogo: r.vendorLogo,
+        type: r.type,
+        name: r.name,
+        description: r.description ?? null,
+        unit: r.unit ?? null,
+        kategori: r.kategori ?? null,
+        subcategory: r.subcategory ?? null,
+        sellPrice,
+        sortOrder: r.sortOrder,
+      };
+    }));
+  } catch (err) {
+    req.log?.error({ err }, "vendor-catalog error");
+    return res.status(500).json({ message: "Gagal memuat katalog vendor" });
+  }
+});
+
+// ── GET /api/portal/product-templates — Template produk publik ────────────────
+router.get("/product-templates", async (req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  try {
+    const rows = await db
+      .select({
+        id: productTemplatesTable.id,
+        categoryKey: productTemplatesTable.categoryKey,
+        label: productTemplatesTable.label,
+        icon: productTemplatesTable.icon,
+        description: productTemplatesTable.description,
+        version: productTemplatesTable.version,
+        sortOrder: productTemplatesTable.sortOrder,
+        customFields: productTemplatesTable.customFields,
+        requiredDocuments: productTemplatesTable.requiredDocuments,
+        checklist: productTemplatesTable.checklist,
+        packagingInstructions: productTemplatesTable.packagingInstructions,
+      })
+      .from(productTemplatesTable)
+      .where(eq(productTemplatesTable.isActive, true))
+      .orderBy(productTemplatesTable.sortOrder, productTemplatesTable.label);
+    return res.json(rows);
+  } catch (err) {
+    req.log?.error({ err }, "product-templates error");
+    return res.status(500).json({ message: "Gagal memuat template produk" });
+  }
+});
+
+// ── GET /api/portal/service-templates — Template layanan publik ───────────────
+router.get("/service-templates", async (req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  try {
+    const rows = await db
+      .select({
+        id: serviceTemplatesTable.id,
+        serviceType: serviceTemplatesTable.serviceType,
+        label: serviceTemplatesTable.label,
+        emoji: serviceTemplatesTable.emoji,
+        description: serviceTemplatesTable.description,
+        version: serviceTemplatesTable.version,
+        sortOrder: serviceTemplatesTable.sortOrder,
+        fields: serviceTemplatesTable.fields,
+        requiredDocuments: serviceTemplatesTable.requiredDocuments,
+        checklist: serviceTemplatesTable.checklist,
+      })
+      .from(serviceTemplatesTable)
+      .where(eq(serviceTemplatesTable.isActive, true))
+      .orderBy(serviceTemplatesTable.sortOrder, serviceTemplatesTable.label);
+    return res.json(rows);
+  } catch (err) {
+    req.log?.error({ err }, "service-templates error");
+    return res.status(500).json({ message: "Gagal memuat template layanan" });
+  }
+});
+
+// Rate limiter untuk catalog inquiry
+const catalogInquiryLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  keyGenerator: ipKeyGenerator,
+  message: { message: "Terlalu banyak permintaan. Coba lagi dalam 15 menit." },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// ── POST /api/portal/catalog-inquiry — Minta penawaran dari katalog ──────────
+router.post("/catalog-inquiry", catalogInquiryLimiter, async (req, res) => {
+  try {
+    const {
+      name, email, whatsapp, itemName, itemType, vendorName, kategori,
+      quantity, unit, notes,
+    } = req.body ?? {};
+    if (!name || !whatsapp || !itemName) {
+      return res.status(400).json({ message: "Nama, WhatsApp, dan item wajib diisi" });
+    }
+
+    const cfg = await getAppConfig();
+    const adminWa = await getAdminWa();
+
+    const adminMsg = [
+      `📋 *PERMINTAAN PENAWARAN KATALOG*`,
+      ``,
+      `👤 *Nama:* ${name}`,
+      email ? `📧 *Email:* ${email}` : null,
+      `📱 *WhatsApp:* ${whatsapp}`,
+      ``,
+      `📦 *Item:* ${itemName}`,
+      itemType ? `🏷️ *Tipe:* ${itemType === "service" ? "Layanan" : "Produk"}` : null,
+      vendorName ? `🏢 *Vendor:* ${vendorName}` : null,
+      kategori ? `📁 *Kategori:* ${kategori}` : null,
+      quantity ? `🔢 *Qty:* ${quantity}${unit ? " " + unit : ""}` : null,
+      notes ? `📝 *Catatan:* ${notes}` : null,
+    ].filter(Boolean).join("\n");
+
+    const customerMsg = [
+      `Halo ${name}! 👋`,
+      ``,
+      `Terima kasih atas permintaan penawaran Anda untuk *${itemName}*.`,
+      ``,
+      `Tim kami akan segera menghubungi Anda melalui WhatsApp ini untuk mendiskusikan kebutuhan Anda lebih lanjut.`,
+      ``,
+      `_${cfg?.name ?? "CST Logistics"}_`,
+    ].join("\n");
+
+    try {
+      if (adminWa) await sendWhatsApp(adminWa, adminMsg);
+      const cleaned = String(whatsapp).replace(/\D/g, "");
+      const waNum = cleaned.startsWith("0") ? "62" + cleaned.slice(1) : cleaned;
+      if (waNum.length >= 10) await sendWhatsApp(waNum + "@s.whatsapp.net", customerMsg);
+    } catch (waErr) {
+      req.log?.warn({ waErr }, "WA notification failed for catalog-inquiry");
+    }
+
+    return res.json({ success: true, message: "Permintaan penawaran berhasil dikirim" });
+  } catch (err) {
+    req.log?.error({ err }, "catalog-inquiry error");
+    return res.status(500).json({ message: "Gagal mengirim permintaan" });
   }
 });
 
