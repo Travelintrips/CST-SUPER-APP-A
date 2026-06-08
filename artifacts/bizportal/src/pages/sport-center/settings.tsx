@@ -6,16 +6,24 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCompany } from "@/contexts/CompanyContext";
 import { useToast } from "@/hooks/use-toast";
-import { Settings2, RefreshCw, Save, ArrowLeft, Plus, X, Bell } from "lucide-react";
+import { Settings2, RefreshCw, Save, ArrowLeft, Plus, X, Bell, MessageSquare, RotateCcw } from "lucide-react";
 
 export default function SportCenterSettings() {
   const [, navigate] = useLocation();
   const qc = useQueryClient();
   const { activeCompanyId } = useCompany();
   const { toast } = useToast();
+
+  const DEFAULT_WA_TEMPLATE =
+    "Halo *{{name}}*! 👋\n\n" +
+    "Kami ingin menginformasikan bahwa masa keanggotaan Anda di *{{center_name}}* akan berakhir *{{days_label}}* ({{end_date}}).\n\n" +
+    "Segera perpanjang keanggotaan Anda agar tetap dapat menikmati fasilitas kami tanpa gangguan.\n\n" +
+    "Untuk informasi perpanjangan, silakan hubungi kami atau kunjungi langsung Sport Center.\n\n" +
+    "Terima kasih atas kepercayaan Anda! 🏆";
 
   const [form, setForm] = useState({
     center_name: "", address: "", phone: "",
@@ -25,6 +33,7 @@ export default function SportCenterSettings() {
 
   const [reminderDays, setReminderDays] = useState<number[]>([4, 1]);
   const [newDay, setNewDay] = useState("");
+  const [waTemplate, setWaTemplate] = useState(DEFAULT_WA_TEMPLATE);
 
   const { data, isLoading } = useQuery({
     queryKey: ["sport-center-settings", activeCompanyId],
@@ -54,6 +63,9 @@ export default function SportCenterSettings() {
           .filter((d: number) => !isNaN(d) && d >= 1 && d <= 90)
           .sort((a: number, b: number) => b - a);
         if (parsed.length > 0) setReminderDays(parsed);
+      }
+      if (data.wa_template) {
+        setWaTemplate(data.wa_template);
       }
     }
   }, [data]);
@@ -109,6 +121,7 @@ export default function SportCenterSettings() {
       min_booking_hours: Number(form.min_booking_hours),
       cancellation_hours: Number(form.cancellation_hours),
       reminder_days: reminderDays.join(","),
+      wa_template: waTemplate || DEFAULT_WA_TEMPLATE,
     });
   };
 
@@ -257,6 +270,69 @@ export default function SportCenterSettings() {
                 <p className="text-xs text-muted-foreground">
                   Contoh: tambahkan <strong>7</strong>, <strong>3</strong>, <strong>1</strong> agar reminder dikirim 7 hari, 3 hari, dan 1 hari sebelum expired.
                 </p>
+              </CardContent>
+            </Card>
+
+            {/* Template Pesan WA */}
+            <Card className="border-border/60">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <MessageSquare className="h-4 w-4 text-blue-400" />
+                    Format Pesan WA Reminder
+                  </CardTitle>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs text-muted-foreground gap-1"
+                    onClick={() => setWaTemplate(DEFAULT_WA_TEMPLATE)}
+                  >
+                    <RotateCcw className="h-3 w-3" /> Reset Default
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <p className="text-xs text-muted-foreground">
+                  Gunakan variabel berikut dalam teks pesan:
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    { v: "{{name}}", desc: "Nama member" },
+                    { v: "{{end_date}}", desc: "Tanggal berakhir" },
+                    { v: "{{days_label}}", desc: "Label hari (misal: 4 hari lagi)" },
+                    { v: "{{center_name}}", desc: "Nama sport center" },
+                  ].map(({ v, desc }) => (
+                    <button
+                      key={v}
+                      type="button"
+                      title={desc}
+                      onClick={() => setWaTemplate((t) => t + v)}
+                      className="font-mono text-xs bg-slate-800 hover:bg-slate-700 text-blue-300 border border-slate-600 rounded px-2 py-0.5 transition-colors"
+                    >
+                      {v}
+                    </button>
+                  ))}
+                </div>
+                <Textarea
+                  value={waTemplate}
+                  onChange={(e) => setWaTemplate(e.target.value)}
+                  rows={10}
+                  className="font-mono text-xs resize-y"
+                  placeholder="Tulis template pesan di sini..."
+                />
+                {/* Preview */}
+                {waTemplate && (
+                  <div className="rounded-md border border-emerald-800/50 bg-emerald-950/20 p-3">
+                    <p className="text-xs text-emerald-400 font-medium mb-1.5">Preview (contoh dengan nama "Budi"):</p>
+                    <p className="text-xs text-slate-300 whitespace-pre-wrap">
+                      {waTemplate
+                        .replace(/\{\{name\}\}/g, "Budi")
+                        .replace(/\{\{end_date\}\}/g, "30 Juni 2026")
+                        .replace(/\{\{days_label\}\}/g, `${reminderDays[0] ?? 4} hari lagi`)
+                        .replace(/\{\{center_name\}\}/g, form.center_name || "Sport Center")}
+                    </p>
+                  </div>
+                )}
               </CardContent>
             </Card>
 

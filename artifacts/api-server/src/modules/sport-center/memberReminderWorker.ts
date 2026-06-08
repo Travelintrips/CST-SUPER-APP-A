@@ -98,19 +98,53 @@ function formatDate(dateStr: string): string {
   }
 }
 
-function buildMessage(name: string, endDate: string, label: string): string {
+const DEFAULT_WA_TEMPLATE =
+  "Halo *{{name}}*! 👋\n\n" +
+  "Kami ingin menginformasikan bahwa masa keanggotaan Anda di *{{center_name}}* akan berakhir *{{days_label}}* ({{end_date}}).\n\n" +
+  "Segera perpanjang keanggotaan Anda agar tetap dapat menikmati fasilitas kami tanpa gangguan.\n\n" +
+  "Untuk informasi perpanjangan, silakan hubungi kami atau kunjungi langsung Sport Center.\n\n" +
+  "Terima kasih atas kepercayaan Anda! 🏆";
+
+/**
+ * Baca wa_template dari sport_settings.
+ * Fallback ke DEFAULT_WA_TEMPLATE jika belum diset.
+ */
+export async function getWaTemplate(companyId?: number | null): Promise<{ template: string; centerName: string }> {
+  try {
+    const r = await db.execute(sql`
+      SELECT wa_template, center_name FROM sport_settings
+      WHERE (${companyId ?? null}::int IS NULL OR company_id = ${companyId ?? null})
+      LIMIT 1
+    `);
+    const row = r.rows[0] as { wa_template?: string; center_name?: string } | undefined;
+    return {
+      template: row?.wa_template?.trim() || DEFAULT_WA_TEMPLATE,
+      centerName: row?.center_name || "Sport Center",
+    };
+  } catch {
+    return { template: DEFAULT_WA_TEMPLATE, centerName: "Sport Center" };
+  }
+}
+
+function buildMessage(
+  name: string,
+  endDate: string,
+  label: string,
+  template: string,
+  centerName: string,
+): string {
   const formatted = formatDate(endDate);
-  return (
-    `Halo *${name}*! 👋\n\n` +
-    `Kami ingin menginformasikan bahwa masa keanggotaan Anda di Sport Center akan berakhir *${label}* (${formatted}).\n\n` +
-    `Segera perpanjang keanggotaan Anda agar tetap dapat menikmati fasilitas kami tanpa gangguan.\n\n` +
-    `Untuk informasi perpanjangan, silakan hubungi kami atau kunjungi langsung Sport Center.\n\n` +
-    `Terima kasih atas kepercayaan Anda! 🏆`
-  );
+  return template
+    .replace(/\{\{name\}\}/g, name)
+    .replace(/\{\{end_date\}\}/g, formatted)
+    .replace(/\{\{days_label\}\}/g, label)
+    .replace(/\{\{center_name\}\}/g, centerName);
 }
 
 async function processReminder(
   config: ReminderConfig,
+  waTemplate: string,
+  centerName: string,
 ): Promise<{ sent: number; skipped: number; errors: number; details: ReminderResult["details"] }> {
   const { daysAhead, reminderType, label } = config;
   const details: ReminderResult["details"] = [];
@@ -164,7 +198,7 @@ async function processReminder(
       continue;
     }
 
-    const message = buildMessage(member.name, member.end_date, label);
+    const message = buildMessage(member.name, member.end_date, label, waTemplate, centerName);
 
     try {
       await sendViaService(phone, message, {
@@ -219,8 +253,10 @@ export async function runMemberReminders(
   let totalErrors = 0;
   const allDetails: ReminderResult["details"] = [];
 
+  const { template: waTemplate, centerName } = await getWaTemplate();
+
   for (const config of reminders) {
-    const r = await processReminder(config);
+    const r = await processReminder(config, waTemplate, centerName);
     totalSent    += r.sent;
     totalSkipped += r.skipped;
     totalErrors  += r.errors;

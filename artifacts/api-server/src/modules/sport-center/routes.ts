@@ -2421,12 +2421,15 @@ router.get("/purchase-requests", async (req, res) => {
   }
 });
 
-// Inline migration: add reminder_days column if not exists
+// Inline migrations: add reminder_days + wa_template columns if not exists
 (async () => {
   try {
+    await db.execute(sql`ALTER TABLE sport_settings ADD COLUMN IF NOT EXISTS reminder_days TEXT NOT NULL DEFAULT '4,1'`);
+  } catch {}
+  try {
     await db.execute(sql`
-      ALTER TABLE sport_settings
-        ADD COLUMN IF NOT EXISTS reminder_days TEXT NOT NULL DEFAULT '4,1'
+      ALTER TABLE sport_settings ADD COLUMN IF NOT EXISTS wa_template TEXT NOT NULL DEFAULT
+        E'Halo *{{name}}*! 👋\n\nKami ingin menginformasikan bahwa masa keanggotaan Anda di *{{center_name}}* akan berakhir *{{days_label}}* ({{end_date}}).\n\nSegera perpanjang keanggotaan Anda agar tetap dapat menikmati fasilitas kami tanpa gangguan.\n\nUntuk informasi perpanjangan, silakan hubungi kami atau kunjungi langsung Sport Center.\n\nTerima kasih atas kepercayaan Anda! 🏆'
     `);
   } catch {}
 })();
@@ -2442,19 +2445,29 @@ router.get("/settings", async (req, res) => {
   }
 });
 
+const DEFAULT_WA_TEMPLATE =
+  "Halo *{{name}}*! 👋\n\n" +
+  "Kami ingin menginformasikan bahwa masa keanggotaan Anda di *{{center_name}}* akan berakhir *{{days_label}}* ({{end_date}}).\n\n" +
+  "Segera perpanjang keanggotaan Anda agar tetap dapat menikmati fasilitas kami tanpa gangguan.\n\n" +
+  "Untuk informasi perpanjangan, silakan hubungi kami atau kunjungi langsung Sport Center.\n\n" +
+  "Terima kasih atas kepercayaan Anda! 🏆";
+
 async function upsertSettings(body: Record<string, unknown>) {
   const { company_id, center_name, address, phone, open_time, close_time,
-          booking_advance_days, min_booking_hours, cancellation_hours, reminder_days } = body;
+          booking_advance_days, min_booking_hours, cancellation_hours, reminder_days, wa_template } = body;
   const reminderDaysStr = Array.isArray(reminder_days)
     ? (reminder_days as number[]).filter((d) => Number.isInteger(d) && d >= 1 && d <= 90).join(",")
     : typeof reminder_days === "string" ? reminder_days : "4,1";
+  const waTemplateStr = typeof wa_template === "string" && wa_template.trim()
+    ? wa_template.trim()
+    : DEFAULT_WA_TEMPLATE;
   return db.execute(sql`
     INSERT INTO sport_settings (company_id, center_name, address, phone, open_time, close_time,
-      booking_advance_days, min_booking_hours, cancellation_hours, reminder_days)
+      booking_advance_days, min_booking_hours, cancellation_hours, reminder_days, wa_template)
     VALUES (${company_id ?? null}, ${center_name ?? "Sport Center"}, ${address ?? null}, ${phone ?? null},
             ${open_time ?? "06:00"}::time, ${close_time ?? "22:00"}::time,
             ${booking_advance_days ?? 30}, ${min_booking_hours ?? 1}, ${cancellation_hours ?? 2},
-            ${reminderDaysStr})
+            ${reminderDaysStr}, ${waTemplateStr})
     ON CONFLICT (company_id) DO UPDATE SET
       center_name = EXCLUDED.center_name,
       address = EXCLUDED.address,
@@ -2465,6 +2478,7 @@ async function upsertSettings(body: Record<string, unknown>) {
       min_booking_hours = EXCLUDED.min_booking_hours,
       cancellation_hours = EXCLUDED.cancellation_hours,
       reminder_days = EXCLUDED.reminder_days,
+      wa_template = EXCLUDED.wa_template,
       updated_at = NOW()
     RETURNING *
   `);
