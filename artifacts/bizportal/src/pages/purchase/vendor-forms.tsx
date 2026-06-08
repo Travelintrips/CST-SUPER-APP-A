@@ -698,8 +698,8 @@ function CreateLinkDialog({ onCreated }: { onCreated: () => void }) {
             )}
           </div>
 
-          {/* Commodity Template */}
-          <div className="space-y-1.5">
+          {/* Commodity Template — hanya muncul jika jenis form = produk */}
+          {serviceType === "product" && <div className="space-y-1.5">
             <Label>Template Komoditas (opsional)</Label>
             <Select value={selectedCategoryKey || "__none__"} onValueChange={v => {
               const key = v === "__none__" ? "" : v;
@@ -721,7 +721,7 @@ function CreateLinkDialog({ onCreated }: { onCreated: () => void }) {
                 ✅ Vendor akan melihat custom fields, dokumen wajib, & checklist dari template ini.
               </p>
             )}
-          </div>
+          </div>}
 
           {/* Vendor name override */}
           <div className="space-y-1.5">
