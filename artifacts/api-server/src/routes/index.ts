@@ -118,6 +118,7 @@ import { watiRouter } from "./wati.js";
 import { marketplaceRouter } from "./marketplace.js";
 import { escrowAdminRouter, escrowPublicRouter } from "./escrow.js";
 import orderCostsRouter from "./orderCosts.js";
+import productMediaRouter from "./productMedia.js";
 
 import type { Request, Response } from "express";
 
@@ -167,6 +168,7 @@ router.use(geocodeRouter);
 router.use("/whatsapp", whatsappRouter);
 router.use("/vendor-response", vendorResponseRouter);
 router.use("/media", mediaRouter);
+router.use("/product-media", productMediaRouter);
 
 router.use("/warehouse", warehouseRouter);
 router.use("/inventory", inventoryMainRouter);

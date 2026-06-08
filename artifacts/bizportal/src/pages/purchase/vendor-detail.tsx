@@ -48,8 +48,9 @@ import {
 } from "@workspace/api-client-react";
 import type { Supplier, VendorCatalogItem } from "@workspace/api-client-react";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
-import { ArrowLeft, Car, CheckSquare, Globe, Link2, Pencil, Plus, Power, PowerOff, RotateCcw, Search, Tag, Trash2, Upload, X } from "lucide-react";
+import { ArrowLeft, Car, CheckSquare, Globe, Images, Link2, Pencil, Plus, Power, PowerOff, RotateCcw, Search, Tag, Trash2, Upload, X } from "lucide-react";
 import { useUpload } from "@workspace/object-storage-web";
+import { ProductMediaManager } from "@/components/catalog/ProductMediaManager";
 
 const SERVICE_TYPES = [
   "Import", "Export", "Domestic", "Door to Door",
@@ -247,6 +248,7 @@ export default function VendorDetailPage() {
 
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<VendorCatalogItem | null>(null);
+  const [mediaItem, setMediaItem] = useState<{ id: number; name: string } | null>(null);
   const [itemForm, setItemForm] = useState<CatalogForm>(emptyCatalogForm());
   const [masterItemSearch, setMasterItemSearch] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
@@ -1052,6 +1054,14 @@ export default function VendorDetailPage() {
                               <Globe className="h-4 w-4 text-blue-600" />
                             </Button>
                           )}
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            title="Kelola Foto / Video"
+                            onClick={() => setMediaItem({ id: item.id, name: item.name })}
+                          >
+                            <Images className="h-4 w-4 text-sky-500" />
+                          </Button>
                           <Button size="icon" variant="ghost" onClick={() => openEditItem(item)}>
                             <Pencil className="h-4 w-4" />
                           </Button>
@@ -1679,6 +1689,17 @@ export default function VendorDetailPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ── Product Media Manager ── */}
+      {mediaItem && (
+        <ProductMediaManager
+          open={!!mediaItem}
+          onClose={() => setMediaItem(null)}
+          vendorCatalogItemId={mediaItem.id}
+          vendorId={vendorId}
+          itemName={mediaItem.name}
+        />
+      )}
     </AppShell>
   );
 }

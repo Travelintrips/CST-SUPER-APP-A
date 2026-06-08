@@ -14,9 +14,9 @@ import {
 import {
   ArrowLeft, Building2, Package, Truck, MapPin, Clock,
   Tag, Box, FileText, CheckCircle2, AlertCircle, Info,
-  ShoppingCart, MessageSquare, Loader2, Calendar,
+  ShoppingCart, MessageSquare, Loader2, Calendar, Images, Play, Link2,
 } from "lucide-react";
-import type { MarketplaceItem } from "@/lib/catalogFilters";
+import type { ProductMediaItem, MarketplaceItem } from "@/lib/catalogFilters";
 
 // ── Formatters ────────────────────────────────────────────────────────────────
 const idr = (n: number) =>
@@ -39,6 +39,128 @@ function StockBadge({ status }: { status?: string | null }) {
     <span className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border ${c.cls}`}>
       {c.icon}{c.label}
     </span>
+  );
+}
+
+// ── Media Gallery ─────────────────────────────────────────────────────────────
+function getYoutubeThumbnail(url: string): string | null {
+  const m = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&?/]+)/);
+  if (m) return `https://img.youtube.com/vi/${m[1]}/hqdefault.jpg`;
+  return null;
+}
+
+function MediaGallery({ media }: { media: ProductMediaItem[] }) {
+  const [selected, setSelected] = useState<ProductMediaItem | null>(null);
+  if (!media || media.length === 0) return null;
+
+  const primaryIdx = media.findIndex((m) => m.isPrimary);
+  const initialSelected = media[primaryIdx !== -1 ? primaryIdx : 0];
+
+  const current = selected ?? initialSelected;
+
+  function renderMain(m: ProductMediaItem) {
+    if (m.mediaType === "image" && m.fileUrl) {
+      return (
+        <img
+          src={m.fileUrl}
+          alt={m.title ?? "foto produk"}
+          className="w-full h-full object-contain bg-slate-50"
+        />
+      );
+    }
+    if (m.mediaType === "video" && m.fileUrl) {
+      return (
+        <video
+          src={m.fileUrl}
+          controls
+          className="w-full h-full object-contain bg-slate-900"
+        />
+      );
+    }
+    if (m.mediaType === "video_link" && m.externalUrl) {
+      const ytId = m.externalUrl.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&?/]+)/)?.[1];
+      if (ytId) {
+        return (
+          <iframe
+            src={`https://www.youtube.com/embed/${ytId}`}
+            className="w-full h-full"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+          />
+        );
+      }
+      return (
+        <div className="w-full h-full flex flex-col items-center justify-center gap-3 bg-slate-50">
+          <Link2 className="h-10 w-10 text-slate-300" />
+          <a href={m.externalUrl} target="_blank" rel="noopener noreferrer"
+            className="text-sky-600 hover:underline text-sm font-medium">
+            Buka Video Eksternal
+          </a>
+        </div>
+      );
+    }
+    return null;
+  }
+
+  function renderThumb(m: ProductMediaItem) {
+    if (m.mediaType === "image" && m.fileUrl) {
+      return <img src={m.fileUrl} alt="" className="w-full h-full object-cover" loading="lazy" />;
+    }
+    if (m.mediaType === "video" && m.fileUrl) {
+      return (
+        <div className="w-full h-full flex items-center justify-center bg-slate-200">
+          <Play className="h-5 w-5 text-slate-500 fill-slate-500" />
+        </div>
+      );
+    }
+    if (m.mediaType === "video_link" && m.externalUrl) {
+      const thumb = getYoutubeThumbnail(m.externalUrl);
+      if (thumb) return <img src={thumb} alt="" className="w-full h-full object-cover" />;
+      return (
+        <div className="w-full h-full flex items-center justify-center bg-slate-200">
+          <Play className="h-5 w-5 text-slate-500 fill-slate-500" />
+        </div>
+      );
+    }
+    return <div className="w-full h-full bg-slate-200" />;
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+      <div className="bg-slate-50 px-4 py-2.5 border-b border-slate-200">
+        <p className="text-[12px] font-semibold text-slate-600 uppercase tracking-wide flex items-center gap-1.5">
+          <Images className="h-3.5 w-3.5" /> Foto & Video
+          <span className="normal-case font-normal text-slate-400">({media.length})</span>
+        </p>
+      </div>
+
+      {/* Main viewer */}
+      <div className="relative w-full aspect-video bg-slate-100 overflow-hidden">
+        {renderMain(current)}
+      </div>
+
+      {/* Thumbnails */}
+      {media.length > 1 && (
+        <div className="flex gap-2 p-3 overflow-x-auto">
+          {media.map((m) => (
+            <button
+              key={m.id}
+              onClick={() => setSelected(m)}
+              className={`relative shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 transition-all ${
+                current.id === m.id ? "border-sky-400 ring-1 ring-sky-200" : "border-transparent hover:border-slate-300"
+              }`}
+            >
+              {renderThumb(m)}
+              {(m.mediaType === "video" || m.mediaType === "video_link") && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                  <Play className="h-4 w-4 text-white fill-white" />
+                </div>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -580,6 +702,11 @@ export default function MarketplaceDetailPage() {
                 </div>
               </div>
             </div>
+
+            {/* Media Gallery */}
+            {Array.isArray((item as any).media) && (item as any).media.length > 0 && (
+              <MediaGallery media={(item as any).media as ProductMediaItem[]} />
+            )}
 
             {/* Specs */}
             <SpecTable item={item} />

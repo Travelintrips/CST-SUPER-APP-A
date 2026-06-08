@@ -5,7 +5,8 @@ import { db, productsTable, productCategoryMapTable, productCategoriesTable, por
 import { db, productsTable, productCategoryMapTable, productCategoriesTable, portalCustomersTable, portalCustomerServicesTable, portalContentTable, accountingSettingsTable, salesDocumentsTable, salesDocumentLinesTable, customersTable, logisticOrdersTable, suppliersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, quoteRequestsTable, userProfilesTable, identityDocumentsTable, ocrResultsTable, vendorProfilesTable, driverProfilesTable, employeeProfilesTable, onboardingApprovalsTable, waOtpCodesTable, trustedDevicesTable, vendorMiniFormLinksTable, vendorMiniFormSubmissionsTable, vendorCatalogItemsTable, portalProductOrdersTable, portalProductOrderItemsTable } from "@workspace/db";
 import { deleteFromSupabase } from "../lib/supabaseStorage.js";
 import { invalidateTokenCache, SERVICE_SCHEMAS } from "./vendorMiniForm";
-import { eq, inArray, and, ne, isNull, sql, desc, gte, lte, ilike, or } from "drizzle-orm";
+import { eq, inArray, and, ne, isNull, sql, desc, gte, lte, ilike, or, asc } from "drizzle-orm";
+import { productMediaTable } from "@workspace/db";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getAdminWa } from "../lib/adminWa.js";
@@ -230,7 +231,30 @@ router.get("/marketplace/:id", async (req, res) => {
   if (isNaN(id)) return res.status(400).json({ error: "id tidak valid" });
   const item = await getCatalogItemPublic(id);
   if (!item) return res.status(404).json({ error: "Item tidak ditemukan atau belum dipublikasikan" });
-  return res.json(item);
+
+  let media: unknown[] = [];
+  try {
+    media = await db
+      .select()
+      .from(productMediaTable)
+      .where(
+        and(
+          eq(productMediaTable.vendorCatalogItemId, id),
+          eq(productMediaTable.isActive, true),
+        ),
+      )
+      .orderBy(asc(productMediaTable.sortOrder), asc(productMediaTable.createdAt));
+  } catch {
+    // non-fatal jika tabel belum ada
+  }
+
+  const primaryMedia = (media as Array<Record<string, unknown>>).find((m) => m.isPrimary) ?? (media.length > 0 ? media[0] : null);
+  return res.json({
+    ...item,
+    media,
+    primaryImageUrl: (primaryMedia as any)?.mediaType === "image" ? (primaryMedia as any)?.fileUrl ?? null : null,
+    hasVideo: media.some((m) => (m as any).mediaType === "video" || (m as any).mediaType === "video_link"),
+  });
 });
 
 // POST /api/portal/marketplace/:id/quote — buat Quote Request dari catalog item

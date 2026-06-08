@@ -111,6 +111,7 @@ function SpecChips({ specValues, templateSnapshot, limit = 3 }: {
 // ── Item Card ─────────────────────────────────────────────────────────────────
 function ItemCard({ item, onClick }: { item: MarketplaceItem; onClick: () => void }) {
   const isProduct = item.templateKind === "product";
+  const hasImage = !!item.primaryImageUrl;
   return (
     <div
       className="bg-white rounded-2xl border border-slate-200 hover:border-sky-300 hover:shadow-md transition-all duration-200 cursor-pointer flex flex-col overflow-hidden"
@@ -118,6 +119,24 @@ function ItemCard({ item, onClick }: { item: MarketplaceItem; onClick: () => voi
     >
       {/* Header band */}
       <div className={`h-1.5 w-full ${isProduct ? "bg-gradient-to-r from-emerald-400 to-teal-400" : "bg-gradient-to-r from-sky-400 to-blue-500"}`} />
+
+      {/* Primary image */}
+      {hasImage && (
+        <div className="relative w-full h-[140px] overflow-hidden bg-slate-100">
+          <img
+            src={item.primaryImageUrl!}
+            alt={item.name}
+            className="w-full h-full object-cover"
+            loading="lazy"
+          />
+          {item.hasVideo && (
+            <div className="absolute top-2 right-2 bg-black/60 rounded-full px-2 py-0.5 flex items-center gap-1">
+              <svg className="h-3 w-3 text-white fill-white" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+              <span className="text-[10px] text-white font-medium">Video</span>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="p-4 flex flex-col flex-1 gap-2">
         {/* Vendor + category */}

@@ -81,6 +81,7 @@ import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { runStartupValidation } from "./lib/startupValidator.js";
 import { backfillVendorPerformance } from "./routes/vendorPerformance.js";
+import { runProductMediaMigration } from "./lib/productMediaMigration.js";
 
 
 // REPLIT_API_PORT overrides PORT so the server listens on the local port
@@ -619,6 +620,7 @@ async function startServer() {
     .then(() => runWithRetry("Driver assignment migration", runDriverAssignmentMigration))
     .then(() => runWithRetry("Vendor company assignments migration", runVendorCompanyAssignmentsMigration))
     .then(() => runWithRetry("Vendor catalog schema migration", runVendorCatalogSchemaMigration))
+    .then(() => runWithRetry("Product media migration", runProductMediaMigration))
     .then(() => enableRealtimeTables().catch((err) => {
       logger.warn({ err }, "Supabase Realtime table enable failed (non-fatal)");
     }))
