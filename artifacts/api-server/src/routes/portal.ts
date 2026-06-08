@@ -23,6 +23,7 @@ import { randomUUID } from "crypto";
 import { compressImageBuffer, isCompressibleImage } from "../lib/imageCompress.js";
 import bcrypt from "bcryptjs";
 import { signPortalJwt } from "../lib/portalJwt.js";
+import { isCatalogItemPublic, catalogPublicConditions } from "../lib/catalogVisibility.js";
 import OpenAI from "openai";
 
 const router = Router();
