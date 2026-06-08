@@ -163,8 +163,18 @@ router.get("/marketplace", async (req, res) => {
       origin: vendorCatalogItemsTable.origin,
       publishedAt: vendorCatalogItemsTable.publishedAt,
       sortOrder: vendorCatalogItemsTable.sortOrder,
+      primaryImageUrl: productMediaTable.fileUrl,
     })
     .from(vendorCatalogItemsTable)
+    .leftJoin(
+      productMediaTable,
+      and(
+        eq(productMediaTable.vendorCatalogItemId, vendorCatalogItemsTable.id),
+        eq(productMediaTable.isPrimary, true),
+        eq(productMediaTable.isActive, true),
+        eq(productMediaTable.mediaType, "image"),
+      ),
+    )
     .where(and(...conditions))
     .orderBy(vendorCatalogItemsTable.sortOrder, desc(vendorCatalogItemsTable.publishedAt));
 
@@ -172,6 +182,7 @@ router.get("/marketplace", async (req, res) => {
     rows.map((r) => ({
       ...r,
       priceSell: r.priceSell !== null ? Number(r.priceSell) : null,
+      primaryImageUrl: r.primaryImageUrl ?? null,
     })),
   );
 });
