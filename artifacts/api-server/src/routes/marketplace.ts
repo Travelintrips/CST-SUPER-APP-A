@@ -2,21 +2,11 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { vendorCatalogItemsTable, suppliersTable } from "@workspace/db";
 import { eq, and, ilike, or, sql, asc, isNull, gte } from "drizzle-orm";
+import { isCatalogItemPublic, catalogPublicConditions } from "../lib/catalogVisibility.js";
+
+export { isCatalogItemPublic };
 
 export const marketplaceRouter = Router();
-
-// Helper: kondisi visibilitas item publik customer
-// Aturan: isPublished = true DAN isActive = true
-// Export supaya bisa dipakai di file lain jika perlu
-export function isCatalogItemPublic(item: { isPublished: boolean; isActive: boolean }): boolean {
-  return item.isPublished === true && item.isActive !== false;
-}
-function catalogPublicConditions() {
-  return [
-    eq(vendorCatalogItemsTable.isPublished, true),
-    eq(vendorCatalogItemsTable.isActive, true),
-  ] as const;
-}
 
 // GET /api/marketplace/products — list published+active vendor catalog items (public)
 // SECURITY: hanya ekspos priceSell, BUKAN priceBase
@@ -24,8 +14,7 @@ marketplaceRouter.get("/products", async (req, res) => {
   const { vendor, category, location, search } = req.query as Record<string, string>;
 
   const conditions = [
-    eq(vendorCatalogItemsTable.isPublished, true),
-    eq(vendorCatalogItemsTable.isActive, true),
+    ...catalogPublicConditions(),
     or(isNull(vendorCatalogItemsTable.validityDate), gte(vendorCatalogItemsTable.validityDate, sql`CURRENT_DATE`))!,
   ];
 

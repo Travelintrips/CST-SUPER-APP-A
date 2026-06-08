@@ -360,19 +360,10 @@ function normalizeMarketplaceStockStatus(raw: string | null): string | null {
 }
 
 // ── Visibility helper — item katalog publik ───────────────────────────────────
-// Aturan: isPublished = true DAN isActive = true (tidak ada deletedAt di skema)
-// Gunakan helper ini di SEMUA endpoint publik customer — jangan pakai isActive saja.
-export function isCatalogItemPublic(item: { isPublished: boolean; isActive: boolean }): boolean {
-  return item.isPublished === true && item.isActive !== false;
-}
-
-// Drizzle condition builder untuk WHERE clause — gunakan di query langsung
-function catalogPublicConditions(vci: typeof vendorCatalogItemsTable = vendorCatalogItemsTable) {
-  return [
-    eq(vci.isPublished, true),
-    eq(vci.isActive, true),
-  ] as const;
-}
+// Single source of truth ada di lib/catalogVisibility.ts
+// isCatalogItemPublic: isPublished=true && isActive!=false && !deletedAt
+// catalogPublicConditions: builder WHERE clause untuk Drizzle query
+export { isCatalogItemPublic, catalogPublicConditions } from "../lib/catalogVisibility.js";
 
 // ── Marketplace helpers ───────────────────────────────────────────────────────
 function mkMarketplaceOrderNumber(): string {

@@ -45,18 +45,6 @@ args = "PORT=6000 bash -c 'cd artifacts/logistic-order && node ../api-server/kil
 waitForPort = 6000
 
 [[workflows.workflow]]
-name = "API Server"
-author = "agent"
-
-[workflows.workflow.metadata]
-outputType = "console"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "cd artifacts/api-server && pnpm run dev"
-waitForPort = 8080
-
-[[workflows.workflow]]
 name = "BizPortal"
 author = "agent"
 
@@ -163,7 +151,3 @@ externalPort = 6800
 [[ports]]
 localPort = 8080
 externalPort = 8080
-
-[[ports]]
-localPort = 18444
-externalPort = 3000
