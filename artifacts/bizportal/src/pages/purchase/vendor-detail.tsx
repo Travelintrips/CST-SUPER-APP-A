@@ -248,7 +248,7 @@ export default function VendorDetailPage() {
 
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<VendorCatalogItem | null>(null);
-  const [mediaItem, setMediaItem] = useState<{ id: number; name: string } | null>(null);
+  const [mediaItem, setMediaItem] = useState<{ id: number; name: string; kategori?: string | null; description?: string | null } | null>(null);
   const [itemForm, setItemForm] = useState<CatalogForm>(emptyCatalogForm());
   const [masterItemSearch, setMasterItemSearch] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
@@ -1058,7 +1058,7 @@ export default function VendorDetailPage() {
                             size="icon"
                             variant="ghost"
                             title="Kelola Foto / Video"
-                            onClick={() => setMediaItem({ id: item.id, name: item.name })}
+                            onClick={() => setMediaItem({ id: item.id, name: item.name, kategori: item.kategori, description: item.description })}
                           >
                             <Images className="h-4 w-4 text-sky-500" />
                           </Button>
@@ -1698,6 +1698,8 @@ export default function VendorDetailPage() {
           vendorCatalogItemId={mediaItem.id}
           vendorId={vendorId}
           itemName={mediaItem.name}
+          itemCategory={mediaItem.kategori}
+          itemDescription={mediaItem.description}
         />
       )}
     </AppShell>
