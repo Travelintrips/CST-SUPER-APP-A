@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import {
@@ -31,6 +32,15 @@ type AutocompleteEntry = {
   kind: "Layanan" | "Produk";
   href: string;
   terms: string[];
+};
+
+type MarketplaceResult = {
+  id: number;
+  name: string;
+  description: string | null;
+  templateKind: string;
+  serviceType: string | null;
+  categoryKey: string | null;
 };
 
 const AUTOCOMPLETE_MAP: AutocompleteEntry[] = [
@@ -292,17 +302,55 @@ export function Navbar() {
     setLocation(href);
   }
 
-  // Smart autocomplete: ≥2 chars → filter by label+terms, else show defaults
+  // Pre-fetch live marketplace items for real search autocomplete
+  const { data: liveItems = [] } = useQuery<MarketplaceResult[]>({
+    queryKey: ["navbar-marketplace-all"],
+    queryFn: async () => {
+      const [svc, prod] = await Promise.all([
+        fetch("/api/portal/marketplace?kind=service").then((r) => r.ok ? r.json() : []),
+        fetch("/api/portal/marketplace?kind=product").then((r) => r.ok ? r.json() : []),
+      ]);
+      return [...(svc as MarketplaceResult[]), ...(prod as MarketplaceResult[])];
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Smart autocomplete: ≥2 chars → search live items + static, else show defaults
   const autocompleteSuggestions: AutocompleteEntry[] = (() => {
     const q = searchQuery.trim().toLowerCase();
     if (q.length < 2) return DEFAULT_SUGGESTIONS;
-    const results = AUTOCOMPLETE_MAP.filter(
+
+    // Search live items first
+    const liveResults: AutocompleteEntry[] = liveItems
+      .filter((item) =>
+        item.name.toLowerCase().includes(q) ||
+        (item.description ?? "").toLowerCase().includes(q),
+      )
+      .slice(0, 5)
+      .map((item) => {
+        const isSvc = item.templateKind === "service";
+        const cat = isSvc ? item.serviceType : item.categoryKey;
+        return {
+          icon: isSvc ? Truck : Package,
+          label: item.name,
+          description: item.description ?? (isSvc ? "Layanan" : "Produk"),
+          kind: isSvc ? ("Layanan" as const) : ("Produk" as const),
+          href: `/marketplace?type=${isSvc ? "service" : "product"}${cat ? `&category=${cat}` : ""}&q=${encodeURIComponent(item.name)}`,
+          terms: [],
+        };
+      });
+
+    // Supplement with static suggestions (deduplicate by label)
+    const liveLabels = new Set(liveResults.map((r) => r.label.toLowerCase()));
+    const staticResults = AUTOCOMPLETE_MAP.filter(
       (e) =>
-        e.label.toLowerCase().includes(q) ||
-        e.description.toLowerCase().includes(q) ||
-        e.terms.some((t) => t.includes(q) || q.includes(t)),
-    );
-    return results.length > 0 ? results : [];
+        !liveLabels.has(e.label.toLowerCase()) &&
+        (e.label.toLowerCase().includes(q) ||
+          e.description.toLowerCase().includes(q) ||
+          e.terms.some((t) => t.includes(q) || q.includes(t))),
+    ).slice(0, 3);
+
+    return [...liveResults, ...staticResults].slice(0, 8);
   })();
 
   const isServicesActive =
@@ -503,120 +551,105 @@ export function Navbar() {
           {/* ── Right Actions ──────────────────────────────── */}
           <div className="hidden lg:flex items-center gap-1.5 shrink-0 ml-auto">
 
-            {/* Search */}
+            {/* Search — always visible */}
             <div className="relative" ref={searchRef}>
-              {searchOpen ? (
-                <form onSubmit={handleSearchSubmit} className="flex items-center">
-                  <div
-                    className="flex items-center gap-2 px-3 py-2 rounded-xl border transition-all duration-200"
-                    style={{
-                      width: "240px",
-                      background: "rgba(248,250,252,0.9)",
-                      borderColor: searchFocused ? "#0ea5e9" : "#E2E8F0",
-                      boxShadow: searchFocused ? "0 0 0 3px rgba(14,165,233,0.12)" : "none",
-                    }}
-                  >
-                    <Search className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                    <input
-                      ref={searchInput}
-                      type="text"
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      onFocus={() => setSearchFocused(true)}
-                      onBlur={() => setTimeout(() => setSearchFocused(false), 150)}
-                      placeholder="Cari layanan, produk…"
-                      className="flex-1 bg-transparent text-[13px] text-slate-800 placeholder-slate-400 outline-none"
-                      autoComplete="off"
-                    />
+              <form onSubmit={handleSearchSubmit} className="flex items-center">
+                <div
+                  className="flex items-center gap-2 px-3 py-2 rounded-xl border transition-all duration-200"
+                  style={{
+                    width: "240px",
+                    background: "rgba(248,250,252,0.9)",
+                    borderColor: searchFocused ? "#0ea5e9" : "#E2E8F0",
+                    boxShadow: searchFocused ? "0 0 0 3px rgba(14,165,233,0.12)" : "none",
+                  }}
+                >
+                  <Search className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                  <input
+                    ref={searchInput}
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onFocus={() => setSearchFocused(true)}
+                    onBlur={() => setTimeout(() => setSearchFocused(false), 150)}
+                    placeholder="Cari layanan, produk…"
+                    className="flex-1 bg-transparent text-[13px] text-slate-800 placeholder-slate-400 outline-none"
+                    autoComplete="off"
+                  />
+                  {searchQuery && (
                     <button
                       type="button"
-                      onClick={() => { setSearchOpen(false); setSearchQuery(""); }}
+                      onClick={() => setSearchQuery("")}
                       className="text-slate-400 hover:text-slate-600 transition-colors"
                     >
                       <X className="h-3.5 w-3.5" />
                     </button>
-                  </div>
-
-                  {/* Smart autocomplete dropdown */}
-                  {searchFocused && (
-                    <div
-                      className="absolute top-full left-0 mt-2 rounded-2xl overflow-hidden z-50"
-                      style={{
-                        width: "340px",
-                        background: "rgba(255,255,255,0.99)",
-                        border: "1px solid #E2E8F0",
-                        boxShadow: "0 16px 48px rgba(15,23,42,0.13)",
-                      }}
-                    >
-                      {/* Header */}
-                      <div className="px-4 py-2.5 border-b border-slate-100 flex items-center justify-between">
-                        <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest">
-                          {searchQuery.trim().length >= 2 ? "Saran pencarian" : "Populer"}
-                        </span>
-                        <span className="text-[10px] text-slate-300">Enter untuk cari semua</span>
-                      </div>
-
-                      {/* Suggestions */}
-                      {autocompleteSuggestions.length > 0 ? (
-                        <div className="py-1">
-                          {autocompleteSuggestions.map((s) => {
-                            const Icon = s.icon;
-                            const isService = s.kind === "Layanan";
-                            return (
-                              <button
-                                key={s.href}
-                                type="button"
-                                onMouseDown={() => handleSuggestionClick(s.href)}
-                                className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-sky-50 transition-colors text-left group"
-                              >
-                                <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
-                                  isService ? "bg-sky-50 group-hover:bg-sky-100" : "bg-emerald-50 group-hover:bg-emerald-100"
-                                }`}>
-                                  <Icon className={`h-3.5 w-3.5 ${isService ? "text-sky-600" : "text-emerald-600"}`} />
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-[13px] font-semibold text-slate-800 group-hover:text-sky-700 transition-colors truncate">
-                                      {s.label}
-                                    </span>
-                                    <span className={`shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
-                                      isService
-                                        ? "bg-sky-100 text-sky-600"
-                                        : "bg-emerald-100 text-emerald-600"
-                                    }`}>
-                                      {s.kind}
-                                    </span>
-                                  </div>
-                                  <p className="text-[11px] text-slate-400 leading-tight truncate mt-0.5">
-                                    {s.description}
-                                  </p>
-                                </div>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <div className="px-4 py-6 text-center">
-                          <Search className="h-5 w-5 text-slate-300 mx-auto mb-1.5" />
-                          <p className="text-[13px] text-slate-400 font-medium">Tidak ada saran</p>
-                          <p className="text-[11px] text-slate-300 mt-0.5">Tekan Enter untuk cari "{searchQuery}"</p>
-                        </div>
-                      )}
-                    </div>
                   )}
-                </form>
-              ) : (
-                <button
-                  onClick={() => {
-                    setSearchOpen(true);
-                    setTimeout(() => searchInput.current?.focus(), 50);
-                  }}
-                  className="flex items-center justify-center w-9 h-9 rounded-xl text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-all duration-200"
-                  title="Cari (⌘K)"
-                >
-                  <Search className="h-[17px] w-[17px]" />
-                </button>
-              )}
+                </div>
+
+                {/* Smart autocomplete dropdown */}
+                {searchFocused && (
+                  <div
+                    className="absolute top-full left-0 mt-2 rounded-2xl overflow-hidden z-50"
+                    style={{
+                      width: "340px",
+                      background: "rgba(255,255,255,0.99)",
+                      border: "1px solid #E2E8F0",
+                      boxShadow: "0 16px 48px rgba(15,23,42,0.13)",
+                    }}
+                  >
+                    <div className="px-4 py-2.5 border-b border-slate-100 flex items-center justify-between">
+                      <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest">
+                        {searchQuery.trim().length >= 2 ? "Saran pencarian" : "Populer"}
+                      </span>
+                      <span className="text-[10px] text-slate-300">Enter untuk cari semua</span>
+                    </div>
+
+                    {autocompleteSuggestions.length > 0 ? (
+                      <div className="py-1">
+                        {autocompleteSuggestions.map((s) => {
+                          const Icon = s.icon;
+                          const isService = s.kind === "Layanan";
+                          return (
+                            <button
+                              key={s.href}
+                              type="button"
+                              onMouseDown={() => handleSuggestionClick(s.href)}
+                              className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-sky-50 transition-colors text-left group"
+                            >
+                              <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
+                                isService ? "bg-sky-50 group-hover:bg-sky-100" : "bg-emerald-50 group-hover:bg-emerald-100"
+                              }`}>
+                                <Icon className={`h-3.5 w-3.5 ${isService ? "text-sky-600" : "text-emerald-600"}`} />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[13px] font-semibold text-slate-800 group-hover:text-sky-700 transition-colors truncate">
+                                    {s.label}
+                                  </span>
+                                  <span className={`shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
+                                    isService ? "bg-sky-100 text-sky-600" : "bg-emerald-100 text-emerald-600"
+                                  }`}>
+                                    {s.kind}
+                                  </span>
+                                </div>
+                                <p className="text-[11px] text-slate-400 leading-tight truncate mt-0.5">
+                                  {s.description}
+                                </p>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="px-4 py-6 text-center">
+                        <Search className="h-5 w-5 text-slate-300 mx-auto mb-1.5" />
+                        <p className="text-[13px] text-slate-400 font-medium">Tidak ada saran</p>
+                        <p className="text-[11px] text-slate-300 mt-0.5">Tekan Enter untuk cari "{searchQuery}"</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </form>
             </div>
 
             {/* Cart */}
