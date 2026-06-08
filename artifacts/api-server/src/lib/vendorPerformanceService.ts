@@ -165,34 +165,48 @@ export async function recalculateVendorPerformance(vendorId: number) {
     lastCalculatedAt:  new Date(),
   };
 
-  await db
-    .insert(vendorPerformanceTable)
-    .values(perf)
-    .onConflictDoUpdate({
-      target: vendorPerformanceTable.vendorId,
-      set: {
-        totalOrders:            sql`excluded.total_orders`,
-        completedOrders:        sql`excluded.completed_orders`,
-        cancelledOrders:        sql`excluded.cancelled_orders`,
-        ontimePercentage:       sql`excluded.ontime_percentage`,
-        averageResponseMinutes: sql`excluded.average_response_minutes`,
-        podCompletenessScore:   sql`excluded.pod_completeness_score`,
-        orderSuccessRate:       sql`excluded.order_success_rate`,
-        cancelRate:             sql`excluded.cancel_rate`,
-        recommendationScore:    sql`excluded.recommendation_score`,
-        updatedAt:              sql`NOW()`,
-        totalRfqInvites:        sql`excluded.total_rfq_invites`,
-        totalSubmitted:         sql`excluded.total_submitted`,
-        totalSelected:          sql`excluded.total_selected`,
-        totalRejected:          sql`excluded.total_rejected`,
-        avgResponseHours:       sql`excluded.avg_response_hours`,
-        onTimeOrders:           sql`excluded.on_time_orders`,
-        lateOrders:             sql`excluded.late_orders`,
-        podCompleteOrders:      sql`excluded.pod_complete_orders`,
-        score:                  sql`excluded.score`,
-        lastCalculatedAt:       sql`excluded.last_calculated_at`,
-      },
-    });
+  // Use raw SQL to match the partial unique index (WHERE vendor_id IS NOT NULL)
+  await db.execute(sql`
+    INSERT INTO vendor_performance (
+      vendor_id, total_orders, completed_orders, cancelled_orders,
+      ontime_percentage, average_response_minutes, pod_completeness_score,
+      eta_accuracy_score, customer_rating, order_success_rate, cancel_rate,
+      total_complaints, recommendation_score, updated_at,
+      total_rfq_invites, total_submitted, total_selected, total_rejected,
+      avg_response_hours, on_time_orders, late_orders, pod_complete_orders,
+      score, last_calculated_at
+    ) VALUES (
+      ${vendorId}, ${total}, ${completed}, ${cancelled},
+      ${ontimePct.toFixed(2)}, ${avgResponseMin.toFixed(2)}, ${podScore.toFixed(2)},
+      0, 0, ${successRate.toFixed(2)}, ${cancelRate.toFixed(2)}, 0,
+      ${recScore.toFixed(2)}, NOW(),
+      ${totalRfqInvites}, ${totalSubmitted}, ${totalSelected}, ${totalRejected},
+      ${avgResponseHours.toFixed(2)}, ${onTimeOrders}, ${lateOrders}, ${podCompleteOrders},
+      ${recScore.toFixed(2)}, NOW()
+    )
+    ON CONFLICT (vendor_id) WHERE vendor_id IS NOT NULL
+    DO UPDATE SET
+      total_orders             = EXCLUDED.total_orders,
+      completed_orders         = EXCLUDED.completed_orders,
+      cancelled_orders         = EXCLUDED.cancelled_orders,
+      ontime_percentage        = EXCLUDED.ontime_percentage,
+      average_response_minutes = EXCLUDED.average_response_minutes,
+      pod_completeness_score   = EXCLUDED.pod_completeness_score,
+      order_success_rate       = EXCLUDED.order_success_rate,
+      cancel_rate              = EXCLUDED.cancel_rate,
+      recommendation_score     = EXCLUDED.recommendation_score,
+      updated_at               = NOW(),
+      total_rfq_invites        = EXCLUDED.total_rfq_invites,
+      total_submitted          = EXCLUDED.total_submitted,
+      total_selected           = EXCLUDED.total_selected,
+      total_rejected           = EXCLUDED.total_rejected,
+      avg_response_hours       = EXCLUDED.avg_response_hours,
+      on_time_orders           = EXCLUDED.on_time_orders,
+      late_orders              = EXCLUDED.late_orders,
+      pod_complete_orders      = EXCLUDED.pod_complete_orders,
+      score                    = EXCLUDED.score,
+      last_calculated_at       = NOW()
+  `);
 
   return perf;
 }
