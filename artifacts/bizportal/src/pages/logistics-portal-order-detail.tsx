@@ -883,16 +883,36 @@ export default function LogisticsPortalOrderDetailPage() {
                               <TableCell className="font-medium text-sm">
                                 <div>{item.serviceName}</div>
                                 <div className="flex flex-wrap gap-1 mt-0.5">
-                                  {(item as any).itemSource === "marketplace" && (
-                                    <span className="inline-flex items-center text-[10px] font-medium bg-blue-100 text-blue-700 border border-blue-200 rounded px-1.5 py-0.5">Marketplace</span>
+                                  {(item as any).itemSource === "vendor_catalog_item" && (
+                                    <span className="inline-flex items-center text-[10px] font-medium bg-blue-100 text-blue-700 border border-blue-200 rounded px-1.5 py-0.5">Vendor Marketplace</span>
                                   )}
                                   {(item as any).serviceType && (
                                     <span className="inline-flex items-center text-[10px] font-medium bg-muted text-muted-foreground border rounded px-1.5 py-0.5">{(item as any).serviceType}</span>
                                   )}
-                                  {(item as any).itemSource === "marketplace" && (item as any).priceSnapshot?.vendorName && (
-                                    <span className="text-[10px] text-muted-foreground">{(item as any).priceSnapshot.vendorName}</span>
-                                  )}
                                 </div>
+                                {(item as any).itemSource === "vendor_catalog_item" && (item as any).priceSnapshot && (
+                                  <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] bg-blue-50 border border-blue-100 rounded px-2 py-1.5">
+                                    {(item as any).priceSnapshot.vendorName && (
+                                      <span><span className="text-slate-400">Vendor: </span><span className="font-semibold text-slate-700">{(item as any).priceSnapshot.vendorName}</span></span>
+                                    )}
+                                    {(item as any).priceSnapshot.priceSell != null && (
+                                      <span><span className="text-slate-400">Harga Jual: </span><span className="font-semibold text-sky-700">{Number((item as any).priceSnapshot.priceSell).toLocaleString("id-ID", { style: "currency", currency: (item as any).priceSnapshot.currency ?? "IDR", maximumFractionDigits: 0 })}</span></span>
+                                    )}
+                                    {(item as any).priceSnapshot.unit && (
+                                      <span><span className="text-slate-400">Unit: </span><span className="font-medium text-slate-700">/ {(item as any).priceSnapshot.unit}</span></span>
+                                    )}
+                                  </div>
+                                )}
+                                {(item as any).itemSource === "vendor_catalog_item" && (item as any).calculationInput && typeof (item as any).calculationInput === "object" && Object.keys((item as any).calculationInput).length > 0 && (
+                                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] bg-slate-50 border border-slate-100 rounded px-2 py-1.5">
+                                    <span className="text-slate-400 font-semibold w-full">Input Kalkulator:</span>
+                                    {Object.entries((item as any).calculationInput as Record<string, unknown>)
+                                      .filter(([, v]) => v !== undefined && v !== null && v !== "")
+                                      .map(([k, v]) => (
+                                        <span key={k}><span className="text-slate-400">{k}: </span><span className="font-medium text-slate-700">{String(v)}</span></span>
+                                      ))}
+                                  </div>
+                                )}
                               </TableCell>
                               <TableCell className="text-sm text-muted-foreground">{item.category}</TableCell>
                               <TableCell className="text-right text-sm font-mono">{idr(sellingPrice)}</TableCell>
