@@ -428,11 +428,66 @@ export default function ProfitabilityAnalyticsPage() {
               </div>
             )}
 
+            {/* ── Product vs Shipment Margin Breakdown Chart ── */}
+            {orderRows.length >= 2 && (totalProductCost > 0 || totalShipmentCost > 0) && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <Card>
+                  <CardHeader className="py-3 px-4 border-b">
+                    <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                      <Package className="h-4 w-4 text-violet-500" />
+                      Product Margin vs Shipment Margin
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-4 space-y-3">
+                    {[
+                      { label: "Product Revenue", value: totalRevenue, max: totalRevenue, color: "bg-violet-400" },
+                      { label: "Product Cost", value: totalProductCost, max: totalRevenue, color: "bg-violet-200" },
+                      { label: "Product Margin", value: totalProductMargin, max: totalRevenue, color: totalProductMargin < 0 ? "bg-red-400" : "bg-violet-600" },
+                      { label: "Shipment Revenue", value: totalRevenue, max: totalRevenue, color: "bg-indigo-400" },
+                      { label: "Shipment Cost", value: totalShipmentCost, max: totalRevenue, color: "bg-indigo-200" },
+                      { label: "Shipment Margin", value: totalShipmentMargin, max: totalRevenue, color: totalShipmentMargin < 0 ? "bg-red-400" : "bg-indigo-600" },
+                    ].map(row => (
+                      <div key={row.label} className="space-y-0.5">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-muted-foreground">{row.label}</span>
+                          <span className="font-medium tabular-nums">{idrCompact(row.value)}</span>
+                        </div>
+                        <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all ${row.color}`}
+                            style={{ width: `${row.max > 0 ? Math.max(0, Math.min(100, Math.abs(row.value) / row.max * 100)) : 0}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="py-3 px-4 border-b">
+                    <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                      <TrendingUp className="h-4 w-4 text-blue-500" />
+                      Top 10 Order by Gross Margin
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-4">
+                    <ProfitBarChart
+                      rows={[...orderRows]
+                        .sort((a, b) => (b.grossMargin ?? b.margin) - (a.grossMargin ?? a.margin))
+                        .slice(0, 10)
+                        .map(r => ({ name: r.orderNumber, revenue: r.revenue, grossMargin: r.grossMargin ?? r.margin, marginPct: r.marginPct }))}
+                      metric="grossMargin"
+                      label=""
+                    />
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+
             <Card>
               <CardHeader className="py-3 px-4 border-b">
                 <CardTitle className="text-sm font-semibold flex items-center gap-2">
                   <ShoppingCart className="h-4 w-4 text-blue-500" />
-                  Revenue · Vendor Cost · Truck Cost · Tax · Gross Margin per Order
+                  Profitability 2.0 — Detail Order
                   {ordersQuery.data && <Badge variant="secondary" className="text-[10px]">{ordersQuery.data.total} order</Badge>}
                 </CardTitle>
               </CardHeader>
@@ -448,10 +503,14 @@ export default function ProfitabilityAnalyticsPage() {
                         <th className={thCls}>Tanggal</th>
                         <th className={thCls}>Status</th>
                         <th className={`${thCls} text-right`}>Revenue</th>
+                        <th className={`${thCls} text-right bg-violet-50`}>Product Cost</th>
+                        <th className={`${thCls} text-right bg-violet-50`}>Product Margin</th>
                         <th className={`${thCls} text-right`}>Vendor Cost</th>
                         <th className={`${thCls} text-right`}>Truck Cost</th>
+                        <th className={`${thCls} text-right bg-indigo-50`}>Shipment Cost</th>
+                        <th className={`${thCls} text-right bg-indigo-50`}>Shipment Margin</th>
                         <th className={`${thCls} text-right`}>Tax</th>
-                        <th className={`${thCls} text-right`}>Gross Margin</th>
+                        <th className={`${thCls} text-right`}>Order Gross Margin</th>
                         <th className={`${thCls} text-right`}>Margin %</th>
                         <th className={`${thCls} text-right`}>OPEX</th>
                         <th className={`${thCls} text-right`}>Net Margin</th>
@@ -460,14 +519,18 @@ export default function ProfitabilityAnalyticsPage() {
                     </thead>
                     <tbody>
                       {ordersQuery.isLoading
-                        ? [...Array(8)].map((_, i) => <tr key={i}>{[...Array(15)].map((_, j) => <td key={j} className={tdCls}><Skeleton className="h-4 w-full" /></td>)}</tr>)
+                        ? [...Array(8)].map((_, i) => <tr key={i}>{[...Array(19)].map((_, j) => <td key={j} className={tdCls}><Skeleton className="h-4 w-full" /></td>)}</tr>)
                         : orderRows.length === 0
-                        ? <tr><td colSpan={15} className="text-center py-10 text-sm text-muted-foreground">Tidak ada data order</td></tr>
+                        ? <tr><td colSpan={19} className="text-center py-10 text-sm text-muted-foreground">Tidak ada data order</td></tr>
                         : orderRows.map(row => {
                           const gm = row.grossMargin ?? row.margin;
                           const nm = row.netMargin ?? gm;
                           const op = row.opexCost ?? 0;
                           const nmpct = row.netMarginPct ?? row.marginPct;
+                          const pc = deriveProdCost(row);
+                          const sc = deriveShipCost(row);
+                          const sm = deriveShipMargin(row);
+                          const pm = row.productMargin ?? (pc > 0 ? row.revenue - pc : null);
                           return (
                             <tr key={row.id} className="hover:bg-slate-50 transition-colors">
                               <td className={tdCls}><Link href={`/logistics/orders/${row.id}`} className="font-mono text-xs text-blue-600 hover:underline">{row.orderNumber}</Link></td>
@@ -477,8 +540,12 @@ export default function ProfitabilityAnalyticsPage() {
                               <td className={tdCls}><span className="text-xs text-muted-foreground">{new Date(row.createdAt).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "2-digit" })}</span></td>
                               <td className={tdCls}><Badge variant="outline" className="text-[10px] whitespace-nowrap">{row.status}</Badge></td>
                               <td className={`${tdCls} text-right font-medium text-emerald-700`}>{idrCompact(row.revenue)}</td>
+                              <td className={`${tdCls} text-right bg-violet-50/40`}>{pc > 0 ? <span className="text-violet-700">{idrCompact(pc)}</span> : <span className="text-muted-foreground text-xs">—</span>}</td>
+                              <td className={`${tdCls} text-right bg-violet-50/40`}>{pm !== null ? <span className={`font-semibold ${pm < 0 ? "text-red-600" : "text-violet-700"}`}>{idrCompact(pm)}</span> : <span className="text-muted-foreground text-xs">—</span>}</td>
                               <td className={`${tdCls} text-right text-slate-600`}>{idrCompact(row.vendorCost)}</td>
                               <td className={`${tdCls} text-right`}>{(row.truckCost ?? 0) > 0 ? <span className="text-orange-600">{idrCompact(row.truckCost)}</span> : <span className="text-muted-foreground text-xs">—</span>}</td>
+                              <td className={`${tdCls} text-right bg-indigo-50/40`}><span className="text-indigo-700">{idrCompact(sc)}</span></td>
+                              <td className={`${tdCls} text-right bg-indigo-50/40 font-semibold ${sm < 0 ? "text-red-600" : "text-indigo-700"}`}>{idrCompact(sm)}</td>
                               <td className={`${tdCls} text-right`}>{(row.tax ?? 0) > 0 ? <span className="text-violet-600">{idrCompact(row.tax)}</span> : <span className="text-muted-foreground text-xs">—</span>}</td>
                               <td className={`${tdCls} text-right font-semibold ${gm < 0 ? "text-red-600" : "text-blue-700"}`}>{idrCompact(gm)}</td>
                               <td className={`${tdCls} text-right`}><MarginBadge pct={row.marginPct} /></td>
@@ -495,11 +562,15 @@ export default function ProfitabilityAnalyticsPage() {
                         <tr className="bg-slate-50 font-semibold border-t-2 border-slate-200">
                           <td colSpan={6} className="px-3 py-2 text-xs text-muted-foreground">Subtotal halaman ini ({orderRows.length} order)</td>
                           <td className="px-3 py-2 text-right text-sm text-emerald-700">{idrCompact(totalRevenue)}</td>
+                          <td className="px-3 py-2 text-right text-sm text-violet-700 bg-violet-50/40">{totalProductCost > 0 ? idrCompact(totalProductCost) : "—"}</td>
+                          <td className="px-3 py-2 text-right text-sm bg-violet-50/40"><span className={totalProductMargin < 0 ? "text-red-600 font-bold" : "text-violet-700 font-bold"}>{totalProductCost > 0 ? idrCompact(totalProductMargin) : "—"}</span></td>
                           <td className="px-3 py-2 text-right text-sm text-slate-700">{idrCompact(totalVendor)}</td>
                           <td className="px-3 py-2 text-right text-sm text-orange-700">{idrCompact(totalTruck)}</td>
+                          <td className="px-3 py-2 text-right text-sm text-indigo-700 bg-indigo-50/40">{idrCompact(totalShipmentCost)}</td>
+                          <td className={`px-3 py-2 text-right text-sm font-bold bg-indigo-50/40 ${totalShipmentMargin < 0 ? "text-red-600" : "text-indigo-700"}`}>{idrCompact(totalShipmentMargin)}</td>
                           <td className="px-3 py-2 text-right text-sm text-violet-700">{idrCompact(totalTax)}</td>
-                          <td className={`px-3 py-2 text-right text-sm font-bold ${totalGrossMargin < 0 ? "text-red-600" : "text-blue-700"}`}>{idrCompact(totalGrossMargin)}</td>
-                          <td className="px-3 py-2 text-right"><MarginBadge pct={avgMarginPct} /></td>
+                          <td className={`px-3 py-2 text-right text-sm font-bold ${totalOrderGM < 0 ? "text-red-600" : "text-blue-700"}`}>{idrCompact(totalOrderGM)}</td>
+                          <td className="px-3 py-2 text-right"><MarginBadge pct={avgOrderMarginPct} /></td>
                           <td className="px-3 py-2 text-right text-sm text-orange-700">{totalOpex > 0 ? idrCompact(totalOpex) : "—"}</td>
                           <td className={`px-3 py-2 text-right text-sm font-bold ${totalNetMargin < 0 ? "text-red-600" : "text-indigo-700"}`}>{idrCompact(totalNetMargin)}</td>
                           <td className="px-3 py-2 text-right"><MarginBadge pct={avgNetMarginPct} /></td>
@@ -687,19 +758,22 @@ export default function ProfitabilityAnalyticsPage() {
                         <th className={`${thCls} text-right`}>Vendor Cost</th>
                         <th className={`${thCls} text-right`}>Truck Cost</th>
                         <th className={`${thCls} text-right`}>Tax</th>
-                        <th className={`${thCls} text-right`}>Gross Margin</th>
+                        <th className={`${thCls} text-right bg-indigo-50`}>Shipment Margin</th>
+                        <th className={`${thCls} text-right`}>Order Gross Margin</th>
                         <th className={`${thCls} text-right`}>Margin %</th>
                         <th className={thCls}>Bar</th>
                       </tr>
                     </thead>
                     <tbody>
                       {routesQuery.isLoading
-                        ? [...Array(8)].map((_, i) => <tr key={i}>{[...Array(11)].map((_, j) => <td key={j} className={tdCls}><Skeleton className="h-4 w-full" /></td>)}</tr>)
+                        ? [...Array(8)].map((_, i) => <tr key={i}>{[...Array(12)].map((_, j) => <td key={j} className={tdCls}><Skeleton className="h-4 w-full" /></td>)}</tr>)
                         : routeRows.length === 0
-                        ? <tr><td colSpan={11} className="text-center py-10 text-sm text-muted-foreground">Tidak ada data rute{routeSearch ? ` untuk "${routeSearch}"` : ""}</td></tr>
+                        ? <tr><td colSpan={12} className="text-center py-10 text-sm text-muted-foreground">Tidak ada data rute{routeSearch ? ` untuk "${routeSearch}"` : ""}</td></tr>
                         : routeRows.map((row, i) => {
                           const maxRev = routeRows[0]?.revenue ?? 1;
                           const barW = Math.min(row.revenue / maxRev * 100, 100);
+                          const shipMargin = row.shipmentMargin ?? row.grossMargin;
+                          const ogm = row.orderGrossMargin ?? row.grossMargin;
                           return (
                             <tr key={row.route} className="hover:bg-slate-50 transition-colors">
                               <td className={`${tdCls} text-xs font-bold text-muted-foreground w-8`}>{routePage * ROUTE_PAGE_SIZE + i + 1}</td>
@@ -720,7 +794,8 @@ export default function ProfitabilityAnalyticsPage() {
                               <td className={`${tdCls} text-right`}>
                                 {row.tax > 0 ? <span className="text-violet-600">{idrCompact(row.tax)}</span> : <span className="text-muted-foreground text-xs">—</span>}
                               </td>
-                              <td className={`${tdCls} text-right font-semibold ${row.grossMargin < 0 ? "text-red-600" : "text-blue-700"}`}>{idrCompact(row.grossMargin)}</td>
+                              <td className={`${tdCls} text-right bg-indigo-50/40 font-semibold ${shipMargin < 0 ? "text-red-600" : "text-indigo-700"}`}>{idrCompact(shipMargin)}</td>
+                              <td className={`${tdCls} text-right font-semibold ${ogm < 0 ? "text-red-600" : "text-blue-700"}`}>{idrCompact(ogm)}</td>
                               <td className={`${tdCls} text-right`}><MarginBadge pct={row.marginPct} /></td>
                               <td className={`${tdCls} w-24`}>
                                 <div className="flex items-center gap-1">
@@ -743,6 +818,9 @@ export default function ProfitabilityAnalyticsPage() {
                           <td className="px-3 py-2 text-right text-sm text-slate-700">{idrCompact(routesQuery.data.summary.totalVendorCost)}</td>
                           <td className="px-3 py-2 text-right text-sm text-orange-700">{idrCompact(routesQuery.data.summary.totalTruckCost)}</td>
                           <td className="px-3 py-2 text-right text-sm text-violet-700">{idrCompact(routesQuery.data.summary.totalTax)}</td>
+                          <td className={`px-3 py-2 text-right text-sm font-bold bg-indigo-50/40 ${routesQuery.data.summary.totalGrossMargin < 0 ? "text-red-600" : "text-indigo-700"}`}>
+                            {idrCompact(routesQuery.data.summary.totalGrossMargin)}
+                          </td>
                           <td className={`px-3 py-2 text-right text-sm font-bold ${routesQuery.data.summary.totalGrossMargin < 0 ? "text-red-600" : "text-blue-700"}`}>
                             {idrCompact(routesQuery.data.summary.totalGrossMargin)}
                           </td>
@@ -844,20 +922,23 @@ export default function ProfitabilityAnalyticsPage() {
                         <th className={`${thCls} text-right`}>Vendor Cost</th>
                         <th className={`${thCls} text-right`}>Truck Cost</th>
                         <th className={`${thCls} text-right`}>Tax</th>
-                        <th className={`${thCls} text-right`}>Gross Margin</th>
+                        <th className={`${thCls} text-right bg-indigo-50`}>Shipment Margin</th>
+                        <th className={`${thCls} text-right`}>Order Gross Margin</th>
                         <th className={`${thCls} text-right`}>Margin %</th>
-                        <th className={thCls}>Bar Revenue</th>
+                        <th className={thCls}>Bar</th>
                       </tr>
                     </thead>
                     <tbody>
                       {commoditiesQuery.isLoading
-                        ? [...Array(6)].map((_, i) => <tr key={i}>{[...Array(10)].map((_, j) => <td key={j} className={tdCls}><Skeleton className="h-4 w-full" /></td>)}</tr>)
+                        ? [...Array(6)].map((_, i) => <tr key={i}>{[...Array(11)].map((_, j) => <td key={j} className={tdCls}><Skeleton className="h-4 w-full" /></td>)}</tr>)
                         : (commoditiesQuery.data?.items ?? []).length === 0
-                        ? <tr><td colSpan={10} className="text-center py-10 text-sm text-muted-foreground">Tidak ada data komoditi</td></tr>
+                        ? <tr><td colSpan={11} className="text-center py-10 text-sm text-muted-foreground">Tidak ada data komoditi</td></tr>
                         : (commoditiesQuery.data?.items ?? []).map((row, i) => {
                           const maxRev = commoditiesQuery.data!.items[0]?.revenue ?? 1;
                           const barW = Math.min(row.revenue / maxRev * 100, 100);
                           const barMarginW = Math.min(Math.max(row.marginPct, 0) / 60 * 100, 100);
+                          const shipMgn = row.shipmentMargin ?? row.grossMargin;
+                          const ogm = row.orderGrossMargin ?? row.grossMargin;
                           return (
                             <tr key={row.commodity} className="hover:bg-slate-50 transition-colors">
                               <td className={`${tdCls} text-xs font-bold text-muted-foreground w-8`}>{i + 1}</td>
@@ -880,7 +961,8 @@ export default function ProfitabilityAnalyticsPage() {
                               <td className={`${tdCls} text-right`}>
                                 {row.tax > 0 ? <span className="text-violet-600">{idrCompact(row.tax)}</span> : <span className="text-muted-foreground text-xs">—</span>}
                               </td>
-                              <td className={`${tdCls} text-right font-semibold ${row.grossMargin < 0 ? "text-red-600" : "text-blue-700"}`}>{idrCompact(row.grossMargin)}</td>
+                              <td className={`${tdCls} text-right bg-indigo-50/40 font-semibold ${shipMgn < 0 ? "text-red-600" : "text-indigo-700"}`}>{idrCompact(shipMgn)}</td>
+                              <td className={`${tdCls} text-right font-semibold ${ogm < 0 ? "text-red-600" : "text-blue-700"}`}>{idrCompact(ogm)}</td>
                               <td className={`${tdCls} text-right`}><MarginBadge pct={row.marginPct} /></td>
                               <td className={`${tdCls} w-32`}>
                                 <div className="space-y-0.5">
@@ -910,6 +992,9 @@ export default function ProfitabilityAnalyticsPage() {
                           <td className="px-3 py-2 text-right text-sm text-slate-700">{idrCompact(commoditiesQuery.data.summary.totalVendorCost)}</td>
                           <td className="px-3 py-2 text-right text-sm text-orange-700">{idrCompact(commoditiesQuery.data.summary.totalTruckCost)}</td>
                           <td className="px-3 py-2 text-right text-sm text-violet-700">{idrCompact(commoditiesQuery.data.summary.totalTax)}</td>
+                          <td className={`px-3 py-2 text-right text-sm font-bold bg-indigo-50/40 ${commoditiesQuery.data.summary.totalGrossMargin < 0 ? "text-red-600" : "text-indigo-700"}`}>
+                            {idrCompact(commoditiesQuery.data.summary.totalGrossMargin)}
+                          </td>
                           <td className={`px-3 py-2 text-right text-sm font-bold ${commoditiesQuery.data.summary.totalGrossMargin < 0 ? "text-red-600" : "text-blue-700"}`}>
                             {idrCompact(commoditiesQuery.data.summary.totalGrossMargin)}
                           </td>
