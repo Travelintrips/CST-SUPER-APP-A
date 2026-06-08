@@ -560,7 +560,6 @@ export default function ProductFirstAuditPage() {
               </div>
 
               <OverrideManualCards overrideLabels={overrideLabels} openOverride={openOverride} />
-              </div>
             </CardContent>
           </Card>
         </TabsContent>
