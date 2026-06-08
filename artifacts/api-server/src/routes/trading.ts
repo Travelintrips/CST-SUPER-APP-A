@@ -596,7 +596,9 @@ router.put("/suppliers/catalog/:itemId", async (req, res) => {
   if (isPublished !== undefined) patch["isPublished"] = Boolean(isPublished);
   if (sourceSubmissionId !== undefined) patch["sourceSubmissionId"] = sourceSubmissionId ? Number(sourceSubmissionId) : null;
 
-  // Status & urutan
+  // Featured + Status & urutan
+  if (req.body.isFeatured !== undefined) patch["isFeatured"] = Boolean(req.body.isFeatured);
+  if (req.body.featuredUntil !== undefined) patch["featuredUntil"] = req.body.featuredUntil ? new Date(req.body.featuredUntil as string) : null;
   if (isActive !== undefined) patch["isActive"] = Boolean(isActive);
   if (isCommodityTag !== undefined) patch["isCommodityTag"] = Boolean(isCommodityTag);
   if (sortOrder !== undefined) patch["sortOrder"] = Number(sortOrder);
@@ -784,7 +786,7 @@ router.patch("/suppliers/catalog/:itemId/status", async (req, res) => {
   if (Number.isNaN(itemId)) return res.status(400).json({ message: "Invalid id" });
 
   const { status } = req.body as { status: string };
-  const allowed = ["draft", "pending_review", "published", "archived"];
+  const allowed = ["draft", "pending_review", "approved", "rejected", "published", "archived"];
   if (!allowed.includes(status)) {
     return res.status(400).json({ message: `status harus salah satu dari: ${allowed.join(", ")}` });
   }

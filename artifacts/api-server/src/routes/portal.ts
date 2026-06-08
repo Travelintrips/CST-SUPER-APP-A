@@ -166,7 +166,10 @@ router.get("/marketplace", async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
   const { kind, category } = req.query as { kind?: string; category?: string };
 
-  const conditions: ReturnType<typeof eq>[] = [eq(vendorCatalogItemsTable.isPublished, true)];
+  const conditions: ReturnType<typeof eq>[] = [
+    eq(vendorCatalogItemsTable.isPublished, true),
+    or(isNull(vendorCatalogItemsTable.validityDate), gte(vendorCatalogItemsTable.validityDate, sql`CURRENT_DATE`)) as ReturnType<typeof eq>,
+  ];
 
   if (kind === "product" || kind === "service") {
     conditions.push(eq(vendorCatalogItemsTable.templateKind, kind));
@@ -206,6 +209,7 @@ router.get("/marketplace", async (req, res) => {
       id: vendorCatalogItemsTable.id,
       vendorId: vendorCatalogItemsTable.vendorId,
       vendorName: vendorCatalogItemsTable.vendorName,
+      supplierName: suppliersTable.name,
       templateKind: vendorCatalogItemsTable.templateKind,
       categoryKey: vendorCatalogItemsTable.categoryKey,
       serviceType: vendorCatalogItemsTable.serviceType,
@@ -226,6 +230,8 @@ router.get("/marketplace", async (req, res) => {
       location: vendorCatalogItemsTable.location,
       origin: vendorCatalogItemsTable.origin,
       publishedAt: vendorCatalogItemsTable.publishedAt,
+      validityDate: vendorCatalogItemsTable.validityDate,
+      isFeatured: vendorCatalogItemsTable.isFeatured,
       sortOrder: vendorCatalogItemsTable.sortOrder,
       primaryImageUrl: productMediaTable.fileUrl,
     })
@@ -239,8 +245,9 @@ router.get("/marketplace", async (req, res) => {
         eq(productMediaTable.mediaType, "image"),
       ),
     )
+    .leftJoin(suppliersTable, eq(vendorCatalogItemsTable.vendorId, suppliersTable.id))
     .where(and(...conditions))
-    .orderBy(vendorCatalogItemsTable.sortOrder, desc(vendorCatalogItemsTable.publishedAt));
+    .orderBy(desc(vendorCatalogItemsTable.isFeatured), vendorCatalogItemsTable.sortOrder, desc(vendorCatalogItemsTable.publishedAt));
 
   // Post-process: if no category filter, enrich each item with its resolved category label
   return res.json(
@@ -249,8 +256,12 @@ router.get("/marketplace", async (req, res) => {
       const resolvedCategory = normalizeServiceCategory(rawCat);
       return {
         ...r,
+        vendorName: r.vendorName || r.supplierName || null,
         priceSell: r.priceSell !== null ? Number(r.priceSell) : null,
+        stockStatus: normalizeMarketplaceStockStatus(r.stockStatus),
         primaryImageUrl: r.primaryImageUrl ?? null,
+        validityDate: r.validityDate ?? null,
+        isFeatured: r.isFeatured ?? false,
         resolvedCategory,
         resolvedCategoryLabel: resolvedCategory
           ? (SERVICE_CATEGORY_LABELS[resolvedCategory] ?? resolvedCategory)
@@ -259,6 +270,27 @@ router.get("/marketplace", async (req, res) => {
     }),
   );
 });
+
+// ── Marketplace rate limiting + bot protection ────────────────────────────────
+const marketplaceSubmitLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  keyGenerator: ipKeyGenerator,
+  message: { error: "Terlalu banyak permintaan. Coba lagi dalam 15 menit." },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+function normalizeMarketplaceStockStatus(raw: string | null): string | null {
+  if (!raw) return null;
+  const MAP: Record<string, string> = {
+    "ready stock": "available", "ready": "available", "in_stock": "available",
+    "indent": "limited",
+    "pre-order": "pre_order", "preorder": "pre_order", "pre order": "pre_order",
+    "out of stock": "out_of_stock", "kosong": "out_of_stock",
+  };
+  return MAP[raw.toLowerCase().trim()] ?? raw;
+}
 
 // ── Marketplace helpers ───────────────────────────────────────────────────────
 function mkMarketplaceOrderNumber(): string {
@@ -315,6 +347,7 @@ router.get("/marketplace/:id", async (req, res) => {
   if (isNaN(id)) return res.status(400).json({ error: "id tidak valid" });
   const item = await getCatalogItemPublic(id);
   if (!item) return res.status(404).json({ error: "Item tidak ditemukan atau belum dipublikasikan" });
+  db.execute(sql`UPDATE vendor_catalog_items SET view_count = view_count + 1 WHERE id = ${id}`).catch(() => {});
 
   let media: unknown[] = [];
   try {
@@ -348,12 +381,21 @@ router.get("/marketplace/:id", async (req, res) => {
 });
 
 // POST /api/portal/marketplace/:id/quote — buat Quote Request dari catalog item
-router.post("/marketplace/:id/quote", async (req, res) => {
+router.post("/marketplace/:id/quote", marketplaceSubmitLimiter, async (req, res) => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) return res.status(400).json({ error: "id tidak valid" });
 
+  const body = req.body as Record<string, unknown>;
+  if (body._hp && String(body._hp).trim() !== "") {
+    return res.status(400).json({ error: "Permintaan tidak valid" });
+  }
+
   const item = await getCatalogItemPublic(id);
   if (!item) return res.status(404).json({ error: "Item tidak ditemukan" });
+
+  if (item.validityDate && new Date(item.validityDate) < new Date(new Date().toDateString())) {
+    return res.status(400).json({ error: "Item ini sudah kedaluwarsa dan tidak dapat dipesan" });
+  }
 
   const { customerName, email, phone, qty = 1, unit, notes, includePpn = false } = req.body as {
     customerName?: string; email?: string; phone?: string;
@@ -411,16 +453,26 @@ router.post("/marketplace/:id/quote", async (req, res) => {
     subtotal: String(sellPrice * qtyNum),
   });
 
+  db.execute(sql`UPDATE vendor_catalog_items SET quote_count = quote_count + 1 WHERE id = ${id}`).catch(() => {});
   return res.status(201).json({ orderNumber, id: order.id, status: "Quote Request" });
 });
 
 // POST /api/portal/marketplace/:id/order — buat Order Now dari catalog item
-router.post("/marketplace/:id/order", async (req, res) => {
+router.post("/marketplace/:id/order", marketplaceSubmitLimiter, async (req, res) => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) return res.status(400).json({ error: "id tidak valid" });
 
+  const body = req.body as Record<string, unknown>;
+  if (body._hp && String(body._hp).trim() !== "") {
+    return res.status(400).json({ error: "Permintaan tidak valid" });
+  }
+
   const item = await getCatalogItemPublic(id);
   if (!item) return res.status(404).json({ error: "Item tidak ditemukan" });
+
+  if (item.validityDate && new Date(item.validityDate) < new Date(new Date().toDateString())) {
+    return res.status(400).json({ error: "Item ini sudah kedaluwarsa dan tidak dapat dipesan" });
+  }
 
   const { customerName, email, phone, shippingAddress, qty = 1, unit, notes, includePpn = false } = req.body as {
     customerName?: string; email?: string; phone?: string; shippingAddress?: string;
@@ -479,6 +531,7 @@ router.post("/marketplace/:id/order", async (req, res) => {
     subtotal: String(sellPrice * qtyNum),
   });
 
+  db.execute(sql`UPDATE vendor_catalog_items SET order_count = order_count + 1 WHERE id = ${id}`).catch(() => {});
   return res.status(201).json({ orderNumber, id: order.id, status: "New Order" });
 });
 

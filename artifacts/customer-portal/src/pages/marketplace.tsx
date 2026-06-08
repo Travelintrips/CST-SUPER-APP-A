@@ -82,16 +82,26 @@ function formatPrice(price: number, currency: string): string {
 }
 
 // ── Stock badge ───────────────────────────────────────────────────────────────
-function StockBadge({ status }: { status: string | null }) {
-  const MAP: Record<string, { label: string; cls: string }> = {
-    available:    { label: "Tersedia",      cls: "bg-emerald-100 text-emerald-700 border-emerald-200" },
-    limited:      { label: "Terbatas",      cls: "bg-amber-100 text-amber-700 border-amber-200" },
-    out_of_stock: { label: "Habis",         cls: "bg-red-100 text-red-700 border-red-200" },
-    "Ready Stock":{ label: "Ready Stock",  cls: "bg-emerald-100 text-emerald-700 border-emerald-200" },
-    "Indent":     { label: "Indent",       cls: "bg-amber-100 text-amber-700 border-amber-200" },
-    "Pre-order":  { label: "Pre-order",    cls: "bg-sky-100 text-sky-700 border-sky-200" },
+function normalizeStock(raw: string | null): string | null {
+  if (!raw) return null;
+  const N: Record<string, string> = {
+    "ready stock": "available", "ready": "available", "in_stock": "available",
+    "indent": "limited",
+    "pre-order": "pre_order", "preorder": "pre_order", "pre order": "pre_order",
+    "out of stock": "out_of_stock", "kosong": "out_of_stock",
   };
-  const info = (status ? MAP[status] : null) ?? { label: status ?? "—", cls: "bg-slate-100 text-slate-600 border-slate-200" };
+  return N[raw.toLowerCase().trim()] ?? raw;
+}
+
+function StockBadge({ status }: { status: string | null }) {
+  const key = normalizeStock(status);
+  const MAP: Record<string, { label: string; cls: string }> = {
+    available:    { label: "Tersedia",   cls: "bg-emerald-100 text-emerald-700 border-emerald-200" },
+    limited:      { label: "Terbatas",   cls: "bg-amber-100 text-amber-700 border-amber-200" },
+    out_of_stock: { label: "Habis",      cls: "bg-red-100 text-red-700 border-red-200" },
+    pre_order:    { label: "Pre-Order",  cls: "bg-sky-100 text-sky-700 border-sky-200" },
+  };
+  const info = (key ? MAP[key] : null) ?? { label: status ?? "—", cls: "bg-slate-100 text-slate-600 border-slate-200" };
   return <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${info.cls}`}>{info.label}</span>;
 }
 
@@ -138,6 +148,12 @@ function SpecChips({ specValues, templateSnapshot, limit = 3 }: {
 function ItemCard({ item, onClick }: { item: MarketplaceItem; onClick: () => void }) {
   const isProduct = item.templateKind === "product";
   const hasImage = !!item.primaryImageUrl;
+  const daysUntilExpiry = useMemo(() => {
+    if (!item.validityDate) return null;
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const expiry = new Date(item.validityDate); expiry.setHours(0, 0, 0, 0);
+    return Math.round((expiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  }, [item.validityDate]);
   return (
     <div
       className="bg-white rounded-2xl border border-slate-200 hover:border-sky-300 hover:shadow-md transition-all duration-200 cursor-pointer flex flex-col overflow-hidden"
@@ -187,6 +203,18 @@ function ItemCard({ item, onClick }: { item: MarketplaceItem; onClick: () => voi
           <div className="absolute top-2 right-2 bg-black/60 rounded-full px-2 py-0.5 flex items-center gap-1">
             <svg className="h-3 w-3 text-white fill-white" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
             <span className="text-[10px] text-white font-medium">Video</span>
+          </div>
+        )}
+        {(item.isFeatured || (daysUntilExpiry !== null && daysUntilExpiry <= 7)) && (
+          <div className="absolute top-2 left-2 flex flex-col gap-1 z-10">
+            {item.isFeatured && (
+              <span className="bg-amber-400 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-md leading-tight">⭐ Unggulan</span>
+            )}
+            {daysUntilExpiry !== null && daysUntilExpiry <= 7 && (
+              <span className="bg-orange-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-md leading-tight">
+                {daysUntilExpiry <= 0 ? "Berakhir hari ini" : `Berakhir ${daysUntilExpiry}h`}
+              </span>
+            )}
           </div>
         )}
       </div>
@@ -267,7 +295,7 @@ function ItemDetailModal({ item, onClose }: { item: MarketplaceItem; onClose: ()
   function handleRequestQuote() {
     onClose();
     if (item.templateKind === "service") {
-      setLocation(`/jasa/vendor/${item.id}`);
+      setLocation(`/jasa/vendor/${item.vendorId}`);
     } else {
       setLocation("/order-produk");
     }
@@ -555,6 +583,8 @@ export default function MarketplacePage() {
   const [activeFilters, setActiveFilters] = useState<ActiveFilters>({});
   const [searchQuery, setSearchQuery] = useState(urlQ);
   const [showMobileFilter, setShowMobileFilter] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const PAGE_SIZE = 24;
 
   // Sync state whenever URL search params change (navbar links, back/forward)
   useEffect(() => {
@@ -562,6 +592,7 @@ export default function MarketplacePage() {
     setActiveCategory(urlCategory);
     setSearchQuery(urlQ);
     setActiveFilters({});
+    setCurrentPage(1);
   }, [urlTab, urlCategory, urlQ]);
 
   const categories = activeTab === "product" ? PRODUCT_CATS : SERVICE_CATS;
@@ -609,6 +640,7 @@ export default function MarketplacePage() {
   const handleFilterChange = useCallback(
     (key: string, value: string | [number | null, number | null] | null) => {
       setActiveFilters((prev) => ({ ...prev, [key]: value }));
+      setCurrentPage(1);
     },
     [],
   );
@@ -616,9 +648,12 @@ export default function MarketplacePage() {
   const handleReset = useCallback(() => {
     setActiveFilters({});
     setSearchQuery("");
+    setCurrentPage(1);
   }, []);
 
   const activeFilterCount = Object.values(activeFilters).filter((v) => v !== null).length + (searchQuery.trim() ? 1 : 0);
+  const totalPages = Math.max(1, Math.ceil(visibleItems.length / PAGE_SIZE));
+  const pagedItems = visibleItems.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
   return (
     <div className="min-h-screen bg-[#F8FAFC]">
@@ -771,11 +806,35 @@ export default function MarketplacePage() {
 
             {/* Grid */}
             {!isLoading && visibleItems.length > 0 && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-                {visibleItems.map((item) => (
-                  <ItemCard key={item.id} item={item} onClick={() => setLocation(`/marketplace/${item.id}`)} />
-                ))}
-              </div>
+              <>
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                  {pagedItems.map((item) => (
+                    <ItemCard key={item.id} item={item} onClick={() => setLocation(`/marketplace/${item.id}`)} />
+                  ))}
+                </div>
+                {/* Pagination */}
+                {totalPages > 1 && (
+                  <div className="flex items-center justify-center gap-3 mt-8">
+                    <button
+                      onClick={() => { setCurrentPage((p) => Math.max(1, p - 1)); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+                      disabled={currentPage === 1}
+                      className="px-4 py-2 rounded-xl text-[13px] font-semibold border border-slate-200 bg-white text-slate-700 hover:border-sky-300 hover:text-sky-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                    >
+                      ← Sebelumnya
+                    </button>
+                    <span className="text-[13px] text-slate-600 font-medium px-3">
+                      Halaman <span className="text-sky-700 font-bold">{currentPage}</span> dari {totalPages}
+                    </span>
+                    <button
+                      onClick={() => { setCurrentPage((p) => Math.min(totalPages, p + 1)); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+                      disabled={currentPage === totalPages}
+                      className="px-4 py-2 rounded-xl text-[13px] font-semibold border border-slate-200 bg-white text-slate-700 hover:border-sky-300 hover:text-sky-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                    >
+                      Berikutnya →
+                    </button>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { vendorCatalogItemsTable, suppliersTable } from "@workspace/db";
-import { eq, and, ilike, or, sql, asc } from "drizzle-orm";
+import { eq, and, ilike, or, sql, asc, isNull, gte } from "drizzle-orm";
 
 export const marketplaceRouter = Router();
 
@@ -10,7 +10,10 @@ export const marketplaceRouter = Router();
 marketplaceRouter.get("/products", async (req, res) => {
   const { vendor, category, location, search } = req.query as Record<string, string>;
 
-  const conditions = [eq(vendorCatalogItemsTable.isActive, true)];
+  const conditions = [
+    eq(vendorCatalogItemsTable.isActive, true),
+    or(isNull(vendorCatalogItemsTable.validityDate), gte(vendorCatalogItemsTable.validityDate, sql`CURRENT_DATE`))!,
+  ];
 
   if (vendor && !isNaN(Number(vendor))) {
     conditions.push(eq(vendorCatalogItemsTable.vendorId, Number(vendor)));
