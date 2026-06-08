@@ -240,6 +240,7 @@ export default function VendorRecommendationPage() {
                   className="bg-slate-800 border-slate-700 text-white"
                 />
               </div>
+              <CompanySelect value={companyId} onChange={setCompanyId} />
               <div className="space-y-1">
                 <Label className="text-slate-400 text-xs">Komoditas</Label>
                 <Input
