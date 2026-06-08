@@ -2,7 +2,7 @@ import { Router, type Request, type Response, type NextFunction } from "express"
 import { LOGISTICS_SUBCATEGORIES as LOGISTICS_SUBCATEGORIES_FALLBACK } from "@workspace/logistics-constants";
 import { rateLimit, ipKeyGenerator } from "express-rate-limit";
 import { db, productsTable, productCategoryMapTable, productCategoriesTable, portalCustomersTable, portalCustomerServicesTable, portalContentTable, accountingSettingsTable, salesDocumentsTable, salesDocumentLinesTable, customersTable, logisticOrdersTable, suppliersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, quoteRequestsTable, userProfilesTable, identityDocumentsTable, ocrResultsTable, vendorProfilesTable, driverProfilesTable, employeeProfilesTable, onboardingApprovalsTable, waOtpCodesTable, trustedDevicesTable, vendorMiniFormLinksTable, vendorMiniFormSubmissionsTable, vendorCatalogItemsTable, productTemplatesTable, serviceTemplatesTable } from "@workspace/db";
-import { db, productsTable, productCategoryMapTable, productCategoriesTable, portalCustomersTable, portalCustomerServicesTable, portalContentTable, accountingSettingsTable, salesDocumentsTable, salesDocumentLinesTable, customersTable, logisticOrdersTable, suppliersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, quoteRequestsTable, userProfilesTable, identityDocumentsTable, ocrResultsTable, vendorProfilesTable, driverProfilesTable, employeeProfilesTable, onboardingApprovalsTable, waOtpCodesTable, trustedDevicesTable, vendorMiniFormLinksTable, vendorMiniFormSubmissionsTable, vendorCatalogItemsTable, portalProductOrdersTable, portalProductOrderItemsTable } from "@workspace/db";
+import { db, productsTable, productCategoryMapTable, productCategoriesTable, portalCustomersTable, portalCustomerServicesTable, portalContentTable, accountingSettingsTable, salesDocumentsTable, salesDocumentLinesTable, customersTable, logisticOrdersTable, suppliersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, quoteRequestsTable, userProfilesTable, identityDocumentsTable, ocrResultsTable, vendorProfilesTable, driverProfilesTable, employeeProfilesTable, onboardingApprovalsTable, waOtpCodesTable, trustedDevicesTable, vendorMiniFormLinksTable, vendorMiniFormSubmissionsTable, vendorCatalogItemsTable, portalProductOrdersTable, portalProductOrderItemsTable, vendorPerformanceTable } from "@workspace/db";
 import { deleteFromSupabase } from "../lib/supabaseStorage.js";
 import { invalidateTokenCache, SERVICE_SCHEMAS } from "./vendorMiniForm";
 import { eq, inArray, and, ne, isNull, sql, desc, gte, lte, ilike, or, asc } from "drizzle-orm";
@@ -3729,6 +3729,224 @@ router.post("/catalog-inquiry", catalogInquiryLimiter, async (req, res) => {
     req.log?.error({ err }, "catalog-inquiry error");
     return res.status(500).json({ message: "Gagal mengirim permintaan" });
   }
+});
+
+// ── Helper: primary image subquery ───────────────────────────────────────────
+const primaryImageSubquery = (itemIdRef: ReturnType<typeof sql>) =>
+  sql<string | null>`(
+    SELECT pm.file_url
+    FROM product_media pm
+    WHERE pm.vendor_catalog_item_id = ${itemIdRef}
+      AND pm.is_active = true
+      AND pm.media_type = 'image'
+    ORDER BY pm.is_primary DESC, pm.sort_order ASC
+    LIMIT 1
+  )`;
+
+const CATALOG_PUBLIC_COLS = {
+  id: vendorCatalogItemsTable.id,
+  vendorId: vendorCatalogItemsTable.vendorId,
+  vendorName: vendorCatalogItemsTable.vendorName,
+  templateKind: vendorCatalogItemsTable.templateKind,
+  categoryKey: vendorCatalogItemsTable.categoryKey,
+  serviceType: vendorCatalogItemsTable.serviceType,
+  name: vendorCatalogItemsTable.name,
+  description: vendorCatalogItemsTable.description,
+  kategori: vendorCatalogItemsTable.kategori,
+  specValues: vendorCatalogItemsTable.specValues,
+  priceSell: vendorCatalogItemsTable.priceSell,
+  currency: vendorCatalogItemsTable.currency,
+  unit: vendorCatalogItemsTable.unit,
+  moq: vendorCatalogItemsTable.moq,
+  stockStatus: vendorCatalogItemsTable.stockStatus,
+  leadTime: vendorCatalogItemsTable.leadTime,
+  location: vendorCatalogItemsTable.location,
+  origin: vendorCatalogItemsTable.origin,
+  publishedAt: vendorCatalogItemsTable.publishedAt,
+};
+
+// GET /api/portal/marketplace/:id/related — items from the same vendor
+router.get("/marketplace/:id/related", async (req, res) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: "id tidak valid" });
+
+  const item = await getCatalogItemPublic(id);
+  if (!item) return res.status(404).json({ error: "Item tidak ditemukan" });
+
+  try {
+    const vci = vendorCatalogItemsTable;
+
+    // Sort: same category first, then closest price, then most recent
+    const rows = await db
+      .select({
+        ...CATALOG_PUBLIC_COLS,
+        primaryImageUrl: sql<string | null>`(
+          SELECT pm.file_url FROM product_media pm
+          WHERE pm.vendor_catalog_item_id = ${vci.id}
+            AND pm.is_active = true AND pm.media_type = 'image'
+          ORDER BY pm.is_primary DESC, pm.sort_order ASC LIMIT 1
+        )`.as("primary_image_url"),
+      })
+      .from(vci)
+      .where(and(
+        eq(vci.vendorId, item.vendorId),
+        ne(vci.id, id),
+        eq(vci.isPublished, true),
+      ))
+      .orderBy(
+        sql`CASE WHEN ${vci.categoryKey} = ${item.categoryKey ?? ""} THEN 0 ELSE 1 END`,
+        sql`CASE WHEN ${vci.priceSell} IS NOT NULL AND ${item.priceSell != null ? String(item.priceSell) : "NULL"} IS NOT NULL
+              THEN ABS(${vci.priceSell}::numeric - ${item.priceSell != null ? String(item.priceSell) : "0"}::numeric)
+              ELSE 999999 END`,
+        desc(vci.publishedAt),
+      )
+      .limit(8);
+
+    return res.json(rows.map((r) => ({
+      ...r,
+      priceSell: r.priceSell !== null ? Number(r.priceSell) : null,
+    })));
+  } catch (err) {
+    req.log?.error({ err }, "related items error");
+    return res.status(500).json({ error: "Gagal memuat related items" });
+  }
+});
+
+// GET /api/portal/marketplace/:id/similar — "customers also viewed" (other vendors)
+router.get("/marketplace/:id/similar", async (req, res) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: "id tidak valid" });
+
+  const item = await getCatalogItemPublic(id);
+  if (!item) return res.status(404).json({ error: "Item tidak ditemukan" });
+
+  try {
+    const vci = vendorCatalogItemsTable;
+
+    // Match on category, serviceType, or commodity spec value
+    const commodityVal = item.specValues && typeof item.specValues === "object"
+      ? (item.specValues as Record<string, unknown>)["commodity"]
+        ?? (item.specValues as Record<string, unknown>)["komoditi"]
+        ?? null
+      : null;
+    const gradeVal = item.specValues && typeof item.specValues === "object"
+      ? (item.specValues as Record<string, unknown>)["grade"]
+        ?? (item.specValues as Record<string, unknown>)["kualitas"]
+        ?? null
+      : null;
+
+    const conditions = [
+      ne(vci.id, id),
+      eq(vci.isPublished, true),
+    ];
+
+    // Prefer same templateKind
+    if (item.templateKind) conditions.push(eq(vci.templateKind, item.templateKind));
+
+    // Match category OR serviceType
+    const matchConditions = [];
+    if (item.categoryKey)  matchConditions.push(eq(vci.categoryKey, item.categoryKey));
+    if (item.serviceType)  matchConditions.push(eq(vci.serviceType, item.serviceType));
+    if (item.kategori)     matchConditions.push(eq(vci.kategori, item.kategori));
+    if (matchConditions.length > 0) conditions.push(or(...matchConditions)!);
+
+    const rows = await db
+      .select({
+        ...CATALOG_PUBLIC_COLS,
+        primaryImageUrl: sql<string | null>`(
+          SELECT pm.file_url FROM product_media pm
+          WHERE pm.vendor_catalog_item_id = ${vci.id}
+            AND pm.is_active = true AND pm.media_type = 'image'
+          ORDER BY pm.is_primary DESC, pm.sort_order ASC LIMIT 1
+        )`.as("primary_image_url"),
+      })
+      .from(vci)
+      .where(and(...conditions))
+      .orderBy(
+        // boost same vendor items down (prefer other vendors)
+        sql`CASE WHEN ${vci.vendorId} = ${item.vendorId} THEN 1 ELSE 0 END`,
+        // boost same category
+        sql`CASE WHEN ${vci.categoryKey} = ${item.categoryKey ?? ""} THEN 0 ELSE 1 END`,
+        desc(vci.publishedAt),
+      )
+      .limit(8);
+
+    return res.json(rows.map((r) => ({
+      ...r,
+      priceSell: r.priceSell !== null ? Number(r.priceSell) : null,
+    })));
+  } catch (err) {
+    req.log?.error({ err }, "similar items error");
+    return res.status(500).json({ error: "Gagal memuat similar items" });
+  }
+});
+
+// GET /api/portal/vendors/:vendorId/public-profile — vendor mini profile
+router.get("/vendors/:vendorId/public-profile", async (req, res) => {
+  res.setHeader("Cache-Control", "public, max-age=300, stale-while-revalidate=60");
+  const vendorId = parseInt(req.params.vendorId);
+  if (isNaN(vendorId)) return res.status(400).json({ error: "vendorId tidak valid" });
+
+  const [vendor] = await db
+    .select({
+      id: suppliersTable.id,
+      name: suppliersTable.name,
+      logo: suppliersTable.logo,
+      location: suppliersTable.address,
+      serviceType: suppliersTable.serviceType,
+      country: suppliersTable.country,
+      createdAt: suppliersTable.createdAt,
+    })
+    .from(suppliersTable)
+    .where(eq(suppliersTable.id, vendorId));
+
+  if (!vendor) return res.status(404).json({ error: "Vendor tidak ditemukan" });
+
+  const [perf] = await db
+    .select({
+      totalOrders: vendorPerformanceTable.totalOrders,
+      completedOrders: vendorPerformanceTable.completedOrders,
+      ontimePercentage: vendorPerformanceTable.ontimePercentage,
+      avgResponseHours: vendorPerformanceTable.avgResponseHours,
+      averageResponseMinutes: vendorPerformanceTable.averageResponseMinutes,
+      customerRating: vendorPerformanceTable.customerRating,
+      vendorGrade: vendorPerformanceTable.vendorGrade,
+      score: vendorPerformanceTable.score,
+      lastCalculatedAt: vendorPerformanceTable.lastCalculatedAt,
+    })
+    .from(vendorPerformanceTable)
+    .where(eq(vendorPerformanceTable.vendorId, vendorId));
+
+  // Count published items
+  const [countResult] = await db
+    .select({
+      products: sql<number>`count(*) filter (where ${vendorCatalogItemsTable.templateKind} = 'product')`,
+      services: sql<number>`count(*) filter (where ${vendorCatalogItemsTable.templateKind} = 'service')`,
+    })
+    .from(vendorCatalogItemsTable)
+    .where(and(
+      eq(vendorCatalogItemsTable.vendorId, vendorId),
+      eq(vendorCatalogItemsTable.isPublished, true),
+    ));
+
+  return res.json({
+    vendor,
+    performance: perf
+      ? {
+          totalOrders: perf.totalOrders,
+          completedOrders: perf.completedOrders,
+          ontimePercentage: perf.ontimePercentage !== null ? Number(perf.ontimePercentage) : null,
+          avgResponseHours: perf.avgResponseHours !== null ? Number(perf.avgResponseHours) : null,
+          averageResponseMinutes: perf.averageResponseMinutes !== null ? Number(perf.averageResponseMinutes) : null,
+          customerRating: perf.customerRating !== null ? Number(perf.customerRating) : null,
+          vendorGrade: perf.vendorGrade,
+          score: perf.score !== null ? Number(perf.score) : null,
+          lastCalculatedAt: perf.lastCalculatedAt,
+        }
+      : null,
+    productCount: Number(countResult?.products ?? 0),
+    serviceCount: Number(countResult?.services ?? 0),
+  });
 });
 
 export default router;

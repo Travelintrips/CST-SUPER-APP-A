@@ -352,4 +352,269 @@ router.get("/all", async (req, res) => {
   }
 });
 
+// ── GET /funnel ───────────────────────────────────────────────────────────────
+// Product funnel: berapa order yang pernah mencapai setiap stage
+router.get("/funnel", async (req, res) => {
+  const { dateFrom, dateTo } = parseDateRange(req.query as Record<string, unknown>);
+  const df = dateFilter("lo", dateFrom, dateTo);
+
+  try {
+    const stages = [
+      "Order Received",
+      "Product RFQ Sent",
+      "Product Quote Received",
+      "Product Vendor Selected",
+      "Customer Product Approval",
+      "Shipment Selection Pending",
+      "RFQ Sent",
+      "Vendor Confirmed",
+      "Completed",
+    ];
+
+    // Count orders that have EVER been at each stage (via order_status_history)
+    const stageQueries = stages.map((s) =>
+      db.execute(sql.raw(`
+        SELECT COUNT(DISTINCT osh.order_id)::int AS cnt
+        FROM order_status_history osh
+        JOIN logistic_orders lo ON lo.id = osh.order_id
+        WHERE lo.order_type = 'product_first'
+          AND osh.new_status = '${s.replace(/'/g, "''")}' ${df}
+      `))
+    );
+
+    // Baseline: total product_first orders
+    const totalQ = db.execute(sql.raw(`
+      SELECT COUNT(*)::int AS cnt FROM logistic_orders lo
+      WHERE lo.order_type = 'product_first' ${df}
+    `));
+
+    const [totalResult, ...stageResults] = await Promise.all([totalQ, ...stageQueries]);
+    const total = Number((totalResult.rows[0] as any)?.cnt ?? 0);
+
+    const funnel = stages.map((stage, i) => {
+      const cnt = Number((stageResults[i].rows[0] as any)?.cnt ?? 0);
+      const conversionFromTotal = total > 0 ? Math.round(cnt / total * 1000) / 10 : 0;
+      const prevCnt = i === 0 ? total : Number((stageResults[i - 1].rows[0] as any)?.cnt ?? 0);
+      const dropOff = prevCnt > 0 ? Math.round((prevCnt - cnt) / prevCnt * 1000) / 10 : 0;
+      return { stage, count: cnt, conversionPct: conversionFromTotal, dropOffPct: dropOff };
+    });
+
+    res.json({ total, funnel });
+  } catch (err) {
+    res.status(500).json({ error: "Gagal mengambil data funnel" });
+  }
+});
+
+// ── GET /sla-detail ───────────────────────────────────────────────────────────
+// Avg time per phase transition (order_status_history pairwise)
+router.get("/sla-detail", async (req, res) => {
+  const { dateFrom, dateTo } = parseDateRange(req.query as Record<string, unknown>);
+  const df = dateFilter("lo", dateFrom, dateTo);
+
+  try {
+    const phases = [
+      { label: "Product RFQ", from: "Product RFQ Sent",          to: "Product Quote Received",    targetHours: 48 },
+      { label: "Vendor Response", from: "Product Quote Received", to: "Product Vendor Selected",   targetHours: 24 },
+      { label: "Customer Approval", from: "Customer Product Approval", to: "Shipment Selection Pending", targetHours: 72 },
+      { label: "Shipment Selection", from: "Shipment Selection Pending", to: "RFQ Sent",          targetHours: 24 },
+      { label: "Shipment RFQ", from: "RFQ Sent",                 to: "Vendor Confirmed",           targetHours: 72 },
+      { label: "Delivery", from: "Vendor Confirmed",              to: "Completed",                 targetHours: null },
+    ];
+
+    const results = await Promise.all(
+      phases.map(({ from, to }) =>
+        db.execute(sql.raw(`
+          SELECT
+            COUNT(DISTINCT lo.id)::int AS orders_measured,
+            ROUND(AVG(EXTRACT(EPOCH FROM (t2.first_ts - t1.first_ts)) / 3600)::numeric, 1) AS avg_hours,
+            ROUND(MIN(EXTRACT(EPOCH FROM (t2.first_ts - t1.first_ts)) / 3600)::numeric, 1) AS min_hours,
+            ROUND(MAX(EXTRACT(EPOCH FROM (t2.first_ts - t1.first_ts)) / 3600)::numeric, 1) AS max_hours,
+            ROUND(PERCENTILE_CONT(0.5) WITHIN GROUP (
+              ORDER BY EXTRACT(EPOCH FROM (t2.first_ts - t1.first_ts)) / 3600
+            )::numeric, 1) AS median_hours
+          FROM logistic_orders lo
+          JOIN (SELECT order_id, MIN(created_at) AS first_ts FROM order_status_history
+                WHERE new_status = '${from.replace(/'/g, "''")}' GROUP BY order_id) t1
+            ON t1.order_id = lo.id
+          JOIN (SELECT order_id, MIN(created_at) AS first_ts FROM order_status_history
+                WHERE new_status = '${to.replace(/'/g, "''")}' GROUP BY order_id) t2
+            ON t2.order_id = lo.id
+          WHERE lo.order_type = 'product_first' ${df}
+            AND t2.first_ts > t1.first_ts
+        `))
+      )
+    );
+
+    const sla = phases.map((p, i) => {
+      const r: any = results[i].rows[0] ?? {};
+      const avgH = Number(r.avg_hours ?? 0);
+      const target = p.targetHours;
+      const slaStatus = !target ? "no_target" : avgH <= target ? "on_time" : "breached";
+      return {
+        label: p.label,
+        from: p.from,
+        to: p.to,
+        targetHours: target,
+        avgHours: avgH,
+        minHours: Number(r.min_hours ?? 0),
+        maxHours: Number(r.max_hours ?? 0),
+        medianHours: Number(r.median_hours ?? 0),
+        ordersMeasured: Number(r.orders_measured ?? 0),
+        slaStatus,
+      };
+    });
+
+    res.json({ sla });
+  } catch (err) {
+    res.status(500).json({ error: "Gagal mengambil data SLA" });
+  }
+});
+
+// ── GET /blocked-by-exception ─────────────────────────────────────────────────
+// Blocked orders dikelompokkan per exception type
+router.get("/blocked-by-exception", async (req, res) => {
+  const { dateFrom, dateTo } = parseDateRange(req.query as Record<string, unknown>);
+  const df = dateFilter("lo", dateFrom, dateTo);
+
+  try {
+    const [byType, recentOpen, historySummary] = await Promise.all([
+      // Count open exceptions per type
+      db.execute(sql.raw(`
+        SELECT
+          e.exception_type::text,
+          e.severity,
+          COUNT(*)::int AS open_count,
+          MAX(e.created_at)::text AS latest_at
+        FROM exceptions e
+        JOIN logistic_orders lo ON lo.id = e.ref_id::int
+        WHERE e.ref_type = 'logistic_order'
+          AND lo.order_type = 'product_first'
+          AND e.status IN ('open','in_progress') ${df}
+        GROUP BY e.exception_type, e.severity
+        ORDER BY open_count DESC
+      `)),
+      // Recent open exceptions with order detail
+      db.execute(sql.raw(`
+        SELECT
+          e.id,
+          e.exception_type::text,
+          e.severity,
+          e.title,
+          e.status,
+          e.created_at::text,
+          lo.order_number,
+          lo.status AS order_status,
+          lo.customer_name,
+          EXTRACT(EPOCH FROM (NOW() - e.created_at)) / 3600 AS hours_open
+        FROM exceptions e
+        JOIN logistic_orders lo ON lo.id = e.ref_id::int
+        WHERE e.ref_type = 'logistic_order'
+          AND lo.order_type = 'product_first'
+          AND e.status IN ('open','in_progress') ${df}
+        ORDER BY
+          CASE e.severity WHEN 'critical' THEN 1 WHEN 'high' THEN 2
+            WHEN 'medium' THEN 3 ELSE 4 END,
+          e.created_at DESC
+        LIMIT 50
+      `)),
+      // Historical: total exceptions ever per type
+      db.execute(sql.raw(`
+        SELECT
+          e.exception_type::text,
+          COUNT(*)::int AS total_count,
+          COUNT(*) FILTER (WHERE e.status = 'resolved')::int AS resolved_count,
+          COUNT(*) FILTER (WHERE e.status IN ('open','in_progress'))::int AS open_count
+        FROM exceptions e
+        JOIN logistic_orders lo ON lo.id = e.ref_id::int
+        WHERE e.ref_type = 'logistic_order'
+          AND lo.order_type = 'product_first' ${df}
+        GROUP BY e.exception_type
+        ORDER BY total_count DESC
+      `)),
+    ]);
+
+    const totalOpen = (byType.rows as any[]).reduce((s: number, r: any) => s + r.open_count, 0);
+
+    res.json({
+      summary: { totalOpen },
+      byType: byType.rows,
+      recentOpen: recentOpen.rows,
+      historySummary: historySummary.rows,
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Gagal mengambil blocked exception data" });
+  }
+});
+
+// ── GET /vendor-ranking ───────────────────────────────────────────────────────
+// Product vendor ranking: response time, win rate, rejection rate, stock availability
+router.get("/vendor-ranking", async (req, res) => {
+  const { dateFrom, dateTo } = parseDateRange(req.query as Record<string, unknown>);
+  const df = dateFilter("lo", dateFrom, dateTo);
+
+  try {
+    const ranking = await db.execute(sql.raw(`
+      WITH vendor_orders AS (
+        SELECT
+          lo.id AS order_id,
+          lo.product_vendor_id,
+          s.name AS vendor_name,
+          lo.status,
+          lo.customer_product_approved_at,
+          lo.product_stock_unavailable_at,
+          lo.created_at
+        FROM logistic_orders lo
+        JOIN suppliers s ON s.id = lo.product_vendor_id
+        WHERE lo.order_type = 'product_first'
+          AND lo.product_vendor_id IS NOT NULL ${df}
+      ),
+      vendor_sla AS (
+        SELECT
+          lo.product_vendor_id,
+          ROUND(AVG(
+            EXTRACT(EPOCH FROM (t2.first_ts - t1.first_ts)) / 3600
+          )::numeric, 1) AS avg_response_hours
+        FROM logistic_orders lo
+        JOIN (SELECT order_id, MIN(created_at) AS first_ts FROM order_status_history
+              WHERE new_status = 'Product RFQ Sent' GROUP BY order_id) t1 ON t1.order_id = lo.id
+        JOIN (SELECT order_id, MIN(created_at) AS first_ts FROM order_status_history
+              WHERE new_status = 'Product Quote Received' GROUP BY order_id) t2 ON t2.order_id = lo.id
+        WHERE lo.order_type = 'product_first'
+          AND lo.product_vendor_id IS NOT NULL
+          AND t2.first_ts > t1.first_ts ${df}
+        GROUP BY lo.product_vendor_id
+      )
+      SELECT
+        vo.product_vendor_id,
+        vo.vendor_name,
+        COUNT(*)::int AS total_orders,
+        COUNT(*) FILTER (WHERE vo.customer_product_approved_at IS NOT NULL)::int AS approved_orders,
+        COUNT(*) FILTER (WHERE vo.status IN ('Completed','Invoice Issued','Payment Received'))::int AS completed_orders,
+        COUNT(*) FILTER (WHERE vo.product_stock_unavailable_at IS NOT NULL)::int AS stock_unavailable_count,
+        ROUND(
+          COUNT(*) FILTER (WHERE vo.customer_product_approved_at IS NOT NULL) * 100.0
+          / NULLIF(COUNT(*), 0), 1
+        ) AS win_rate_pct,
+        ROUND(
+          COUNT(*) FILTER (WHERE vo.product_stock_unavailable_at IS NOT NULL) * 100.0
+          / NULLIF(COUNT(*), 0), 1
+        ) AS stock_unavailable_pct,
+        ROUND(
+          (COUNT(*) - COUNT(*) FILTER (WHERE vo.customer_product_approved_at IS NOT NULL)) * 100.0
+          / NULLIF(COUNT(*), 0), 1
+        ) AS rejection_rate_pct,
+        vs.avg_response_hours
+      FROM vendor_orders vo
+      LEFT JOIN vendor_sla vs ON vs.product_vendor_id = vo.product_vendor_id
+      GROUP BY vo.product_vendor_id, vo.vendor_name, vs.avg_response_hours
+      ORDER BY win_rate_pct DESC NULLS LAST, total_orders DESC
+      LIMIT 20
+    `));
+
+    res.json({ vendors: ranking.rows });
+  } catch (err) {
+    res.status(500).json({ error: "Gagal mengambil vendor ranking" });
+  }
+});
+
 export default router;
