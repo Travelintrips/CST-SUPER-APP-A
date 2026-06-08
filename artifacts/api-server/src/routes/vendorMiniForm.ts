@@ -2259,6 +2259,7 @@ vendorMiniFormRouter.post("/admin/links", async (req: Request, res: Response) =>
     };
 
     if (!serviceType || !SERVICE_SCHEMAS[serviceType]) return res.status(400).json({ error: "serviceType tidak valid" });
+    if (reqCategoryKey && serviceType !== "product") return res.status(400).json({ error: "categoryKey hanya boleh digunakan dengan serviceType 'product'" });
 
     const token = randomBytes(24).toString("hex");
     const expiresAt = expiresInDays ? new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000) : null;
