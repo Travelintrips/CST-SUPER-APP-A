@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRoute, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -14,9 +14,11 @@ import {
 import {
   ArrowLeft, Building2, Package, Truck, MapPin, Clock,
   Tag, Box, FileText, CheckCircle2, AlertCircle, Info,
-  ShoppingCart, MessageSquare, Loader2, Calendar,
+  ShoppingCart, MessageSquare, Loader2, Calendar, Images, Play, Link2,
+  Share2, Copy, Check, Layers, Globe, Navigation, Weight,
+  Anchor, Wind, ClipboardList, Star, Mountain, Leaf,
 } from "lucide-react";
-import type { MarketplaceItem } from "@/lib/catalogFilters";
+import type { ProductMediaItem, MarketplaceItem } from "@/lib/catalogFilters";
 
 // ── Formatters ────────────────────────────────────────────────────────────────
 const idr = (n: number) =>
@@ -26,13 +28,18 @@ const idr = (n: number) =>
     maximumFractionDigits: 0,
   }).format(n);
 
+// ── Stock Badge ───────────────────────────────────────────────────────────────
 function StockBadge({ status }: { status?: string | null }) {
   if (!status) return null;
   const cfg: Record<string, { label: string; cls: string; icon: React.ReactNode }> = {
-    in_stock:     { label: "Stok Tersedia",  cls: "bg-emerald-50 text-emerald-700 border-emerald-200", icon: <CheckCircle2 className="h-3 w-3" /> },
-    limited:      { label: "Stok Terbatas",  cls: "bg-amber-50 text-amber-700 border-amber-200",   icon: <AlertCircle className="h-3 w-3" /> },
-    out_of_stock: { label: "Habis",          cls: "bg-red-50 text-red-600 border-red-200",          icon: <AlertCircle className="h-3 w-3" /> },
-    on_order:     { label: "Indent/On Order",cls: "bg-blue-50 text-blue-700 border-blue-200",       icon: <Info className="h-3 w-3" /> },
+    in_stock:     { label: "Stok Tersedia",   cls: "bg-emerald-50 text-emerald-700 border-emerald-200", icon: <CheckCircle2 className="h-3 w-3" /> },
+    available:    { label: "Tersedia",        cls: "bg-emerald-50 text-emerald-700 border-emerald-200", icon: <CheckCircle2 className="h-3 w-3" /> },
+    "Ready Stock":{ label: "Ready Stock",     cls: "bg-emerald-50 text-emerald-700 border-emerald-200", icon: <CheckCircle2 className="h-3 w-3" /> },
+    limited:      { label: "Stok Terbatas",   cls: "bg-amber-50 text-amber-700 border-amber-200",   icon: <AlertCircle className="h-3 w-3" /> },
+    "Indent":     { label: "Indent",          cls: "bg-amber-50 text-amber-700 border-amber-200",   icon: <AlertCircle className="h-3 w-3" /> },
+    "Pre-order":  { label: "Pre-order",       cls: "bg-sky-50 text-sky-700 border-sky-200",          icon: <Info className="h-3 w-3" /> },
+    out_of_stock: { label: "Habis",           cls: "bg-red-50 text-red-600 border-red-200",          icon: <AlertCircle className="h-3 w-3" /> },
+    on_order:     { label: "Indent/On Order", cls: "bg-blue-50 text-blue-700 border-blue-200",       icon: <Info className="h-3 w-3" /> },
   };
   const c = cfg[status] ?? { label: status, cls: "bg-slate-100 text-slate-600 border-slate-200", icon: null };
   return (
@@ -42,8 +49,297 @@ function StockBadge({ status }: { status?: string | null }) {
   );
 }
 
+// ── Image Placeholder ─────────────────────────────────────────────────────────
+function ImagePlaceholder({ isProduct }: { isProduct: boolean }) {
+  return (
+    <div className={`w-full h-full flex flex-col items-center justify-center gap-3 ${isProduct ? "bg-gradient-to-br from-emerald-50 to-teal-50" : "bg-gradient-to-br from-sky-50 to-blue-50"}`}>
+      {isProduct
+        ? <Package className="h-16 w-16 text-emerald-200" />
+        : <Truck className="h-16 w-16 text-sky-200" />
+      }
+      <span className="text-[12px] text-slate-400 font-medium">Belum ada foto</span>
+    </div>
+  );
+}
+
+// ── Media Gallery ─────────────────────────────────────────────────────────────
+function getYoutubeThumbnail(url: string): string | null {
+  const m = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&?/]+)/);
+  if (m) return `https://img.youtube.com/vi/${m[1]}/hqdefault.jpg`;
+  return null;
+}
+
+function MediaGallery({ media, isProduct }: { media: ProductMediaItem[]; isProduct: boolean }) {
+  const [selected, setSelected] = useState<ProductMediaItem | null>(null);
+
+  // Always show gallery section — with placeholder if empty
+  const hasMedia = media && media.length > 0;
+  const primaryIdx = hasMedia ? media.findIndex((m) => m.isPrimary) : -1;
+  const initialSelected = hasMedia ? media[primaryIdx !== -1 ? primaryIdx : 0] : null;
+  const current = selected ?? initialSelected;
+
+  function renderMain(m: ProductMediaItem | null) {
+    if (!m) return <ImagePlaceholder isProduct={isProduct} />;
+    if (m.mediaType === "image" && m.fileUrl) {
+      return (
+        <img
+          src={m.fileUrl}
+          alt={m.title ?? "foto produk"}
+          className="w-full h-full object-contain bg-slate-50"
+          onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+        />
+      );
+    }
+    if (m.mediaType === "video" && m.fileUrl) {
+      return <video src={m.fileUrl} controls className="w-full h-full object-contain bg-slate-900" />;
+    }
+    if (m.mediaType === "video_link" && m.externalUrl) {
+      const ytId = m.externalUrl.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&?/]+)/)?.[1];
+      if (ytId) {
+        return (
+          <iframe
+            src={`https://www.youtube.com/embed/${ytId}`}
+            className="w-full h-full"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+          />
+        );
+      }
+      return (
+        <div className="w-full h-full flex flex-col items-center justify-center gap-3 bg-slate-50">
+          <Link2 className="h-10 w-10 text-slate-300" />
+          <a href={m.externalUrl} target="_blank" rel="noopener noreferrer"
+            className="text-sky-600 hover:underline text-sm font-medium">
+            Buka Video Eksternal
+          </a>
+        </div>
+      );
+    }
+    return <ImagePlaceholder isProduct={isProduct} />;
+  }
+
+  function renderThumb(m: ProductMediaItem) {
+    if (m.mediaType === "image" && m.fileUrl) {
+      return <img src={m.fileUrl} alt="" className="w-full h-full object-cover" loading="lazy" />;
+    }
+    if (m.mediaType === "video" && m.fileUrl) {
+      return (
+        <div className="w-full h-full flex items-center justify-center bg-slate-200">
+          <Play className="h-5 w-5 text-slate-500 fill-slate-500" />
+        </div>
+      );
+    }
+    if (m.mediaType === "video_link" && m.externalUrl) {
+      const thumb = getYoutubeThumbnail(m.externalUrl);
+      if (thumb) return <img src={thumb} alt="" className="w-full h-full object-cover" />;
+      return (
+        <div className="w-full h-full flex items-center justify-center bg-slate-200">
+          <Play className="h-5 w-5 text-slate-500 fill-slate-500" />
+        </div>
+      );
+    }
+    return <div className="w-full h-full bg-slate-200" />;
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+      {hasMedia && (
+        <div className="bg-slate-50 px-4 py-2.5 border-b border-slate-200">
+          <p className="text-[12px] font-semibold text-slate-600 uppercase tracking-wide flex items-center gap-1.5">
+            <Images className="h-3.5 w-3.5" /> Foto & Video
+            <span className="normal-case font-normal text-slate-400">({media.length})</span>
+          </p>
+        </div>
+      )}
+
+      {/* Main viewer */}
+      <div className="relative w-full aspect-video bg-slate-100 overflow-hidden">
+        {renderMain(current)}
+      </div>
+
+      {/* Thumbnails */}
+      {hasMedia && media.length > 1 && (
+        <div className="flex gap-2 p-3 overflow-x-auto">
+          {media.map((m) => (
+            <button
+              key={m.id}
+              onClick={() => setSelected(m)}
+              className={`relative shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 transition-all ${
+                current?.id === m.id ? "border-sky-400 ring-1 ring-sky-200" : "border-transparent hover:border-slate-300"
+              }`}
+            >
+              {renderThumb(m)}
+              {(m.mediaType === "video" || m.mediaType === "video_link") && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                  <Play className="h-4 w-4 text-white fill-white" />
+                </div>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Service Info Card ──────────────────────────────────────────────────────────
+// Maps common service-related spec keys → labels + icons
+const SERVICE_FIELD_MAP: Array<{ keys: string[]; label: string; icon: React.ReactNode }> = [
+  { keys: ["serviceType","service_type","jenis_layanan","jenis"], label: "Jenis Layanan",   icon: <Layers className="h-3.5 w-3.5 text-sky-500" /> },
+  { keys: ["route","rute","lane","lane_rute"],                    label: "Rute",             icon: <Navigation className="h-3.5 w-3.5 text-sky-500" /> },
+  { keys: ["origin_port","pol","port_muat","port_of_loading"],   label: "Port of Loading",  icon: <Anchor className="h-3.5 w-3.5 text-sky-500" /> },
+  { keys: ["dest_port","pod","port_bongkar","port_of_discharge"], label: "Port of Discharge",icon: <Anchor className="h-3.5 w-3.5 text-sky-500" /> },
+  { keys: ["capacity","kapasitas","kapasitas_muat","volume"],     label: "Kapasitas",        icon: <Box className="h-3.5 w-3.5 text-sky-500" /> },
+  { keys: ["coverage","coverage_area","area_layanan","wilayah"],  label: "Coverage Area",    icon: <Globe className="h-3.5 w-3.5 text-sky-500" /> },
+  { keys: ["transit_time","estimasi_waktu","lead_time","tat"],   label: "Estimasi Waktu",   icon: <Clock className="h-3.5 w-3.5 text-sky-500" /> },
+  { keys: ["max_weight","berat_maks","max_cbm"],                  label: "Maks. Muatan",     icon: <Weight className="h-3.5 w-3.5 text-sky-500" /> },
+  { keys: ["vessel_type","tipe_kapal","mode","moda"],             label: "Moda Angkutan",    icon: <Wind className="h-3.5 w-3.5 text-sky-500" /> },
+  { keys: ["incoterm","syarat_pengiriman"],                       label: "Incoterm",         icon: <ClipboardList className="h-3.5 w-3.5 text-sky-500" /> },
+];
+
+function ServiceInfoCard({ item }: { item: MarketplaceItem }) {
+  const specs = item.specValues && typeof item.specValues === "object"
+    ? item.specValues as Record<string, unknown>
+    : {};
+
+  // Collect rows: top-level serviceType + matching specValues
+  const rows: Array<{ label: string; value: string; icon: React.ReactNode }> = [];
+
+  if (item.serviceType) {
+    rows.push({ label: "Jenis Layanan", value: item.serviceType, icon: <Layers className="h-3.5 w-3.5 text-sky-500" /> });
+  }
+
+  for (const { keys, label, icon } of SERVICE_FIELD_MAP) {
+    // Skip jenis_layanan if already added from top-level
+    if (item.serviceType && keys.includes("serviceType")) continue;
+    for (const k of keys) {
+      if (specs[k] !== undefined && specs[k] !== null && String(specs[k]).trim() !== "") {
+        // Avoid duplicate label
+        if (!rows.find((r) => r.label === label)) {
+          rows.push({ label, value: String(specs[k]), icon });
+        }
+        break;
+      }
+    }
+  }
+
+  if (rows.length === 0) return null;
+
+  return (
+    <div className="bg-white rounded-2xl border border-sky-200 overflow-hidden">
+      <div className="bg-sky-50 px-4 py-2.5 border-b border-sky-200">
+        <p className="text-[12px] font-semibold text-sky-700 uppercase tracking-wide flex items-center gap-1.5">
+          <Truck className="h-3.5 w-3.5" /> Info Layanan
+        </p>
+      </div>
+      <div className="divide-y divide-slate-100">
+        {rows.map((r, i) => (
+          <div key={i} className="flex items-center gap-3 px-4 py-2.5">
+            <span className="shrink-0">{r.icon}</span>
+            <span className="text-[12px] text-slate-500 min-w-[120px] shrink-0">{r.label}</span>
+            <span className="text-[13px] font-semibold text-slate-800">{r.value}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Product Info Card ──────────────────────────────────────────────────────────
+const PRODUCT_FIELD_MAP: Array<{ keys: string[]; label: string; icon: React.ReactNode }> = [
+  { keys: ["commodity","komoditi","komoditas","product_type"],      label: "Komoditi",         icon: <Leaf className="h-3.5 w-3.5 text-emerald-500" /> },
+  { keys: ["grade","kualitas","kelas"],                             label: "Grade / Kualitas", icon: <Star className="h-3.5 w-3.5 text-emerald-500" /> },
+  { keys: ["origin","asal","negara_asal","country_of_origin"],     label: "Asal / Origin",    icon: <Mountain className="h-3.5 w-3.5 text-emerald-500" /> },
+  { keys: ["size","ukuran","dimensi"],                              label: "Ukuran",           icon: <Layers className="h-3.5 w-3.5 text-emerald-500" /> },
+  { keys: ["moisture","kadar_air","water_content"],                 label: "Kadar Air",        icon: <Info className="h-3.5 w-3.5 text-emerald-500" /> },
+  { keys: ["calorific_value","kalori","kcal","ncv","gcv"],          label: "Kalori",           icon: <Info className="h-3.5 w-3.5 text-emerald-500" /> },
+  { keys: ["sulfur","kandungan_sulfur","sulphur"],                  label: "Sulfur",           icon: <Info className="h-3.5 w-3.5 text-emerald-500" /> },
+  { keys: ["ash","ash_content","kadar_abu"],                        label: "Abu",              icon: <Info className="h-3.5 w-3.5 text-emerald-500" /> },
+  { keys: ["packaging","kemasan","packing"],                        label: "Kemasan",          icon: <Package className="h-3.5 w-3.5 text-emerald-500" /> },
+  { keys: ["certification","sertifikasi","sertifikat"],             label: "Sertifikasi",      icon: <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> },
+];
+
+function ProductInfoCard({ item }: { item: MarketplaceItem }) {
+  const specs = item.specValues && typeof item.specValues === "object"
+    ? item.specValues as Record<string, unknown>
+    : {};
+
+  const rows: Array<{ label: string; value: string; icon: React.ReactNode }> = [];
+
+  for (const { keys, label, icon } of PRODUCT_FIELD_MAP) {
+    // Check top-level item field first (e.g. item.origin)
+    const topLevelKey = keys[0] as keyof MarketplaceItem;
+    const topLevelVal = item[topLevelKey];
+    if (topLevelVal && typeof topLevelVal === "string" && topLevelVal.trim()) {
+      if (!rows.find((r) => r.label === label)) {
+        rows.push({ label, value: topLevelVal, icon });
+        continue;
+      }
+    }
+    // Then check specValues
+    for (const k of keys) {
+      if (specs[k] !== undefined && specs[k] !== null && String(specs[k]).trim() !== "") {
+        if (!rows.find((r) => r.label === label)) {
+          rows.push({ label, value: String(specs[k]), icon });
+        }
+        break;
+      }
+    }
+  }
+
+  if (rows.length === 0) return null;
+
+  return (
+    <div className="bg-white rounded-2xl border border-emerald-200 overflow-hidden">
+      <div className="bg-emerald-50 px-4 py-2.5 border-b border-emerald-200">
+        <p className="text-[12px] font-semibold text-emerald-700 uppercase tracking-wide flex items-center gap-1.5">
+          <Package className="h-3.5 w-3.5" /> Info Produk
+        </p>
+      </div>
+      <div className="divide-y divide-slate-100">
+        {rows.map((r, i) => (
+          <div key={i} className="flex items-center gap-3 px-4 py-2.5">
+            <span className="shrink-0">{r.icon}</span>
+            <span className="text-[12px] text-slate-500 min-w-[120px] shrink-0">{r.label}</span>
+            <span className="text-[13px] font-semibold text-slate-800">{r.value}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── Spec Table ────────────────────────────────────────────────────────────────
+// Shows remaining spec fields that are NOT already highlighted in the info cards
+const HIGHLIGHTED_SERVICE_KEYS = new Set([
+  "serviceType","service_type","jenis_layanan","jenis",
+  "route","rute","lane","lane_rute",
+  "origin_port","pol","port_muat","port_of_loading",
+  "dest_port","pod","port_bongkar","port_of_discharge",
+  "capacity","kapasitas","kapasitas_muat","volume",
+  "coverage","coverage_area","area_layanan","wilayah",
+  "transit_time","estimasi_waktu","lead_time","tat",
+  "max_weight","berat_maks","max_cbm",
+  "vessel_type","tipe_kapal","mode","moda",
+  "incoterm","syarat_pengiriman",
+]);
+const HIGHLIGHTED_PRODUCT_KEYS = new Set([
+  "commodity","komoditi","komoditas","product_type",
+  "grade","kualitas","kelas",
+  "origin","asal","negara_asal","country_of_origin",
+  "size","ukuran","dimensi",
+  "moisture","kadar_air","water_content",
+  "calorific_value","kalori","kcal","ncv","gcv",
+  "sulfur","kandungan_sulfur","sulphur",
+  "ash","ash_content","kadar_abu",
+  "packaging","kemasan","packing",
+  "certification","sertifikasi","sertifikat",
+]);
+
 function SpecTable({ item }: { item: MarketplaceItem }) {
+  const isProduct = item.templateKind === "product";
+  const highlightedKeys = isProduct ? HIGHLIGHTED_PRODUCT_KEYS : HIGHLIGHTED_SERVICE_KEYS;
+
   const specs = item.specValues && typeof item.specValues === "object"
     ? item.specValues as Record<string, unknown>
     : {};
@@ -60,32 +356,55 @@ function SpecTable({ item }: { item: MarketplaceItem }) {
 
   const knownKeys = new Set(fields.map((f) => f.key));
   const extraKeys = Object.keys(specs).filter(
-    (k) => !knownKeys.has(k) && specs[k] !== null && specs[k] !== undefined && String(specs[k]).trim() !== "",
+    (k) => !knownKeys.has(k) && !highlightedKeys.has(k) && specs[k] !== null && specs[k] !== undefined && String(specs[k]).trim() !== "",
   );
 
   const rows: Array<{ label: string; value: string }> = [];
 
   fields
-    .filter((f) => f.type !== "textarea" && specs[f.key] !== undefined && specs[f.key] !== null && String(specs[f.key]).trim() !== "")
+    .filter((f) =>
+      f.type !== "textarea" &&
+      !highlightedKeys.has(f.key) &&
+      specs[f.key] !== undefined && specs[f.key] !== null &&
+      String(specs[f.key]).trim() !== ""
+    )
     .forEach((f) => rows.push({ label: f.label, value: String(specs[f.key]) }));
 
   extraKeys.forEach((k) => rows.push({ label: k, value: String(specs[k]) }));
 
-  if (rows.length === 0) return null;
+  // Textarea fields shown as description
+  const textareaRows: Array<{ label: string; value: string }> = [];
+  fields
+    .filter((f) => f.type === "textarea" && specs[f.key] !== undefined && specs[f.key] !== null && String(specs[f.key]).trim() !== "")
+    .forEach((f) => textareaRows.push({ label: f.label, value: String(specs[f.key]) }));
+
+  if (rows.length === 0 && textareaRows.length === 0) return null;
 
   return (
-    <div className="border border-slate-200 rounded-xl overflow-hidden">
+    <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
       <div className="bg-slate-50 px-4 py-2.5 border-b border-slate-200">
         <p className="text-[12px] font-semibold text-slate-600 uppercase tracking-wide">Spesifikasi Teknis</p>
       </div>
-      <div className="divide-y divide-slate-100">
-        {rows.map((r, i) => (
-          <div key={i} className="flex gap-4 px-4 py-2.5">
-            <span className="text-[12px] text-slate-500 min-w-[120px] shrink-0">{r.label}</span>
-            <span className="text-[12px] font-medium text-slate-800">{r.value}</span>
-          </div>
-        ))}
-      </div>
+      {rows.length > 0 && (
+        <div className="divide-y divide-slate-100">
+          {rows.map((r, i) => (
+            <div key={i} className="flex gap-4 px-4 py-2.5">
+              <span className="text-[12px] text-slate-500 min-w-[120px] shrink-0">{r.label}</span>
+              <span className="text-[13px] font-medium text-slate-800">{r.value}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {textareaRows.length > 0 && (
+        <div className="divide-y divide-slate-100 border-t border-slate-100">
+          {textareaRows.map((r, i) => (
+            <div key={i} className="px-4 py-3 space-y-1">
+              <p className="text-[12px] font-semibold text-slate-500">{r.label}</p>
+              <p className="text-[13px] text-slate-700 leading-relaxed whitespace-pre-wrap">{r.value}</p>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -96,7 +415,7 @@ function DocumentList({ docs }: { docs: unknown }) {
   const public_ = (docs as Array<Record<string, unknown>>).filter((d) => d["visibility"] === "public" || !d["visibility"]);
   if (public_.length === 0) return null;
   return (
-    <div className="border border-slate-200 rounded-xl overflow-hidden">
+    <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
       <div className="bg-slate-50 px-4 py-2.5 border-b border-slate-200">
         <p className="text-[12px] font-semibold text-slate-600 uppercase tracking-wide flex items-center gap-1.5">
           <FileText className="h-3.5 w-3.5" /> Dokumen
@@ -105,15 +424,52 @@ function DocumentList({ docs }: { docs: unknown }) {
       <div className="divide-y divide-slate-100">
         {public_.map((d, i) => (
           <div key={i} className="flex items-center justify-between px-4 py-2.5 gap-2">
-            <span className="text-[13px] text-slate-700">{String(d["label"] ?? d["name"] ?? `Dokumen ${i + 1}`)}</span>
+            <div className="flex items-center gap-2 min-w-0">
+              <FileText className="h-4 w-4 text-slate-400 shrink-0" />
+              <span className="text-[13px] text-slate-700 truncate">{String(d["label"] ?? d["name"] ?? `Dokumen ${i + 1}`)}</span>
+            </div>
             {d["url"] ? (
-              <a href={String(d["url"])} target="_blank" rel="noopener noreferrer"
-                className="text-[12px] text-sky-600 hover:underline font-medium shrink-0">Lihat</a>
+              <a
+                href={String(d["url"])}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[12px] text-sky-600 hover:underline font-semibold shrink-0"
+              >
+                Unduh
+              </a>
             ) : null}
           </div>
         ))}
       </div>
     </div>
+  );
+}
+
+// ── Share Button ──────────────────────────────────────────────────────────────
+function ShareButton({ id }: { id: string }) {
+  const [copied, setCopied] = useState(false);
+
+  async function handleCopy() {
+    const url = `${window.location.origin}${window.location.pathname.replace(/\/marketplace\/.*/, "")}/marketplace/${id}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Fallback: show the URL via prompt
+      window.prompt("Salin link ini:", url);
+    }
+  }
+
+  return (
+    <button
+      onClick={handleCopy}
+      className="flex items-center gap-1.5 text-[12px] text-slate-500 hover:text-sky-600 font-medium transition-colors px-2.5 py-1.5 rounded-lg hover:bg-sky-50"
+      title="Salin link"
+    >
+      {copied ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
+      {copied ? "Tersalin!" : "Salin Link"}
+    </button>
   );
 }
 
@@ -141,10 +497,9 @@ function PriceCalculator({
   const hasPriceSell = item.priceSell != null;
 
   return (
-    <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-4">
+    <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-4">
       <p className="text-[12px] font-semibold text-slate-600 uppercase tracking-wide">Kalkulator Harga</p>
 
-      {/* Qty */}
       <div className="space-y-1">
         <Label className="text-[12px] text-slate-600">Jumlah / Quantity</Label>
         <div className="flex items-center gap-2">
@@ -173,7 +528,6 @@ function PriceCalculator({
         )}
       </div>
 
-      {/* Unit */}
       {item.unit && (
         <div className="space-y-1">
           <Label className="text-[12px] text-slate-600">Satuan</Label>
@@ -185,7 +539,6 @@ function PriceCalculator({
         </div>
       )}
 
-      {/* PPN toggle */}
       <div className="flex items-center justify-between">
         <div>
           <p className="text-[12px] font-medium text-slate-700">Termasuk PPN 11%</p>
@@ -197,7 +550,6 @@ function PriceCalculator({
         />
       </div>
 
-      {/* Price breakdown */}
       {hasPriceSell && (
         <>
           <Separator />
@@ -325,7 +677,7 @@ function SubmitDialog({ mode, item, calc, onClose }: SubmitDialogProps) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-base">
             {isOrder ? <ShoppingCart className="h-4 w-4 text-sky-600" /> : <MessageSquare className="h-4 w-4 text-sky-600" />}
-            {isOrder ? "Order Sekarang" : "Request Quote"}
+            {isOrder ? "Order Sekarang" : "Request Quote / Inquiry"}
           </DialogTitle>
         </DialogHeader>
 
@@ -351,7 +703,7 @@ function SubmitDialog({ mode, item, calc, onClose }: SubmitDialogProps) {
             <Input
               value={form.customerName}
               onChange={(e) => setForm({ ...form, customerName: e.target.value })}
-              placeholder="Nama Anda"
+              placeholder="Nama Anda / Perusahaan"
               className="h-9 text-sm"
               required
             />
@@ -440,18 +792,20 @@ export default function MarketplaceDetailPage() {
     staleTime: 60_000,
   });
 
-  // Sync MOQ and unit from fetched item
-  const [synced, setSynced] = useState(false);
-  if (item && !synced) {
-    const moq = Number(item.moq) || 1;
-    setCalc({ qty: moq, unit: item.unit || "unit", includePpn: false });
-    setSynced(true);
-  }
+  useEffect(() => {
+    if (item) {
+      const moq = Number(item.moq) || 1;
+      setCalc({ qty: moq, unit: item.unit || "unit", includePpn: false });
+    }
+  }, [item?.id]);
 
   if (isLoading) {
     return (
       <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-sky-500" />
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="h-8 w-8 animate-spin text-sky-500" />
+          <p className="text-[13px] text-slate-500">Memuat detail item…</p>
+        </div>
       </div>
     );
   }
@@ -474,35 +828,40 @@ export default function MarketplaceDetailPage() {
   const subtotal = priceSell * calc.qty;
   const ppnAmount = calc.includePpn ? subtotal * 0.11 : 0;
   const grandTotal = subtotal + ppnAmount;
+  const mediaList = Array.isArray((item as any).media) ? (item as any).media as ProductMediaItem[] : [];
 
   return (
     <div className="min-h-screen bg-[#F8FAFC]">
-      {/* Header bar */}
+      {/* ── Breadcrumb bar ────────────────────────────────────────────────── */}
       <div className="bg-white border-b border-slate-200 sticky top-[64px] z-20">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center gap-3">
-          <button
-            onClick={() => setLocation("/marketplace")}
-            className="flex items-center gap-1.5 text-[13px] text-slate-500 hover:text-sky-600 font-medium transition-colors"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Marketplace
-          </button>
-          <span className="text-slate-300">/</span>
-          <span className="text-[13px] text-slate-700 font-semibold truncate max-w-[300px]">{item.name}</span>
+        <div className="max-w-6xl mx-auto px-4 py-2.5 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <button
+              onClick={() => setLocation("/marketplace")}
+              className="flex items-center gap-1.5 text-[13px] text-slate-500 hover:text-sky-600 font-medium transition-colors shrink-0"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Marketplace
+            </button>
+            <span className="text-slate-300">/</span>
+            <span className="text-[13px] text-slate-700 font-semibold truncate">{item.name}</span>
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            <Share2 className="h-3.5 w-3.5 text-slate-400" />
+            <ShareButton id={String(item.id)} />
+          </div>
         </div>
       </div>
 
       <div className="max-w-6xl mx-auto px-4 py-6 md:py-8">
         <div className="flex flex-col lg:flex-row gap-6">
 
-          {/* ── Left column — main info ─────────────────────────────────────── */}
+          {/* ── Left column ─────────────────────────────────────────────────── */}
           <div className="flex-1 min-w-0 space-y-5">
 
-            {/* Item Header */}
+            {/* Item Header card */}
             <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-              {/* Top accent */}
               <div className={`h-1.5 w-full ${isProduct ? "bg-gradient-to-r from-emerald-400 to-teal-400" : "bg-gradient-to-r from-sky-400 to-blue-500"}`} />
-
               <div className="p-5 space-y-3">
                 {/* Vendor + type */}
                 <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -529,7 +888,7 @@ export default function MarketplaceDetailPage() {
                   <p className="text-[14px] text-slate-600 leading-relaxed">{item.description}</p>
                 )}
 
-                {/* Price display */}
+                {/* Price */}
                 <div className="pt-2 border-t border-slate-100">
                   {hasPriceSell
                     ? (
@@ -581,15 +940,24 @@ export default function MarketplaceDetailPage() {
               </div>
             </div>
 
-            {/* Specs */}
+            {/* Media Gallery — always shown (shows placeholder if no media) */}
+            <MediaGallery media={mediaList} isProduct={isProduct} />
+
+            {/* Specific info cards */}
+            {isProduct
+              ? <ProductInfoCard item={item} />
+              : <ServiceInfoCard item={item} />
+            }
+
+            {/* Remaining spec table */}
             <SpecTable item={item} />
 
-            {/* Documents */}
+            {/* Documents (products only) */}
             <DocumentList docs={(item as any).documents} />
 
           </div>
 
-          {/* ── Right column — calculator & CTA ────────────────────────────── */}
+          {/* ── Right column ─────────────────────────────────────────────────── */}
           <div className="lg:w-80 xl:w-96 shrink-0 space-y-4">
 
             <PriceCalculator item={item} calc={calc} onChange={setCalc} />
@@ -597,23 +965,23 @@ export default function MarketplaceDetailPage() {
             {/* CTA Buttons */}
             <div className="space-y-2">
               <Button
-                className="w-full h-11 rounded-xl font-semibold text-[14px] gap-2"
+                className="w-full h-11 rounded-xl font-semibold text-[14px] gap-2 bg-sky-600 hover:bg-sky-700"
+                onClick={() => setDialog("quote")}
+              >
+                <MessageSquare className="h-4 w-4" />
+                Inquiry / Request Quote
+              </Button>
+              <Button
+                variant="outline"
+                className="w-full h-11 rounded-xl font-semibold text-[14px] gap-2 border-slate-300 text-slate-700 hover:bg-slate-50"
                 onClick={() => setDialog("order")}
               >
                 <ShoppingCart className="h-4 w-4" />
                 Order Sekarang
               </Button>
-              <Button
-                variant="outline"
-                className="w-full h-11 rounded-xl font-semibold text-[14px] gap-2 border-sky-300 text-sky-700 hover:bg-sky-50"
-                onClick={() => setDialog("quote")}
-              >
-                <MessageSquare className="h-4 w-4" />
-                Request Quote / Penawaran
-              </Button>
             </div>
 
-            {/* Grand total badge */}
+            {/* Estimasi total */}
             {hasPriceSell && (
               <div className="text-center text-[11px] text-slate-400">
                 Estimasi: <span className="font-semibold text-slate-700">{idr(grandTotal)}</span>
@@ -621,8 +989,8 @@ export default function MarketplaceDetailPage() {
               </div>
             )}
 
-            {/* Vendor info card */}
-            <div className="border border-slate-200 rounded-xl p-4 bg-white space-y-2">
+            {/* Vendor card */}
+            <div className="border border-slate-200 rounded-2xl p-4 bg-white space-y-2">
               <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Tentang Vendor</p>
               <div className="flex items-center gap-2">
                 <Building2 className="h-4 w-4 text-slate-400 shrink-0" />
@@ -634,15 +1002,19 @@ export default function MarketplaceDetailPage() {
                   {item.location}
                 </div>
               )}
-              <p className="text-[11px] text-slate-400 pt-1">
+              <p className="text-[11px] text-slate-400 pt-1 leading-relaxed">
                 Vendor terverifikasi dalam sistem kami. Hubungi via tombol di atas untuk mendapatkan penawaran resmi.
               </p>
             </div>
+
+            {/* Item ID for reference */}
+            <p className="text-center text-[10px] text-slate-300 font-mono">ID: {item.id}</p>
+
           </div>
         </div>
       </div>
 
-      {/* Submit dialogs */}
+      {/* Dialogs */}
       {dialog && (
         <SubmitDialog
           mode={dialog}

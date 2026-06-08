@@ -110,6 +110,70 @@ async function nextPaymentNumber(companyId?: number): Promise<string> {
   return `PAY/${new Date().getFullYear()}/${pad(Number((res.rows[0] as any).cnt) + 1)}`;
 }
 
+// Pastikan booking yang sudah 'paid' punya record di sport_payments (+ jurnal akuntansi).
+// Dipakai oleh PATCH /bookings/:id dan legacy sync push-bookings agar booking lunas
+// selalu muncul di daftar Pembayaran. Idempoten: skip jika payment sudah ada.
+async function ensurePaymentForPaidBooking(
+  row: Record<string, unknown>,
+  createdById: string | null,
+): Promise<void> {
+  const id = Number(row.id);
+  if (!id) return;
+  const existingPayment = await db.execute(sql`
+    SELECT id FROM sport_payments WHERE booking_id = ${id} LIMIT 1
+  `);
+  if (existingPayment.rows.length) return;
+
+  const bCompanyId = row.company_id != null ? Number(row.company_id) : null;
+  const bTaxAmount = Number(row.tax_amount ?? 0);
+  const bTotalAmount = Number(row.total_amount ?? 0);
+  const paymentNumber = await nextPaymentNumber(bCompanyId ?? undefined);
+  const payR = await db.execute(sql`
+    INSERT INTO sport_payments
+      (company_id, booking_id, payment_number, amount, method, status,
+       paid_at, notes, source, payment_type)
+    VALUES
+      (${bCompanyId}, ${id}, ${paymentNumber}, ${bTotalAmount}, 'cash', 'paid',
+       NOW(), 'Auto-created (paid booking)', 'SPORT_CENTER', 'booking')
+    RETURNING *
+  `);
+
+  if (bTaxAmount > 0) {
+    postSportCenterBookingWithTax({
+      bookingId: id,
+      bookingCode: String(row.booking_number ?? paymentNumber),
+      customerName: String(row.customer_name ?? ""),
+      facilityName: String(row.facility_name ?? ""),
+      date: String(row.booking_date ?? new Date().toISOString().slice(0, 10)),
+      baseAmount: bTotalAmount,
+      taxAmount: bTaxAmount,
+      createdById,
+      companyId: bCompanyId,
+    }).catch((err: unknown) => console.error('[sport-center] postSportCenterBookingWithTax (ensurePayment) failed:', err));
+  } else {
+    postSportCenterBooking({
+      bookingId: id,
+      bookingCode: String(row.booking_number ?? paymentNumber),
+      customerName: String(row.customer_name ?? ""),
+      facilityName: String(row.facility_name ?? ""),
+      date: String(row.booking_date ?? new Date().toISOString().slice(0, 10)),
+      totalPrice: bTotalAmount,
+      createdById,
+      companyId: bCompanyId,
+    }).catch((err: unknown) => console.error('[sport-center] postSportCenterBooking (ensurePayment) failed:', err));
+  }
+
+  await db.execute(sql`
+    INSERT INTO sport_audit_logs (company_id, entity_type, entity_id, action, actor, new_data)
+    VALUES (
+      ${bCompanyId}, 'payment', ${(payR.rows[0] as Record<string, unknown>)?.id ?? null},
+      'PAYMENT_AUTO_CREATED', ${createdById},
+      ${JSON.stringify(payR.rows[0])}::jsonb
+    )
+  `);
+  broadcastSportCenterEvent({ module: "sport-center", entity: "payment", action: "created", data: payR.rows[0] as Record<string, unknown>, timestamp: new Date().toISOString() }, bCompanyId as number | undefined);
+}
+
 async function nextPrSeq(): Promise<string> {
   const year = new Date().getFullYear();
   const pattern = `PR/${year}/%`;
@@ -606,6 +670,18 @@ router.post("/sync/push-bookings", async (req, res) => {
                ${row.created_at ?? new Date().toISOString()}::TIMESTAMPTZ, NOW())
           `);
         }
+        // Legacy booking yang sudah lunas harus tetap muncul di daftar Pembayaran:
+        // buat sport_payments + jurnal jika belum ada (idempoten).
+        if (paymentStatus === 'paid') {
+          const br = await db.execute(sql`
+            SELECT id, company_id, total_amount, tax_amount, booking_number,
+                   customer_name, facility_name, booking_date
+            FROM sport_bookings WHERE booking_number = ${bookingNumber} LIMIT 1
+          `);
+          if (br.rows.length) {
+            await ensurePaymentForPaidBooking(br.rows[0] as Record<string, unknown>, null);
+          }
+        }
         pushed++;
       } catch (err) {
         console.error("[sport-center] push-bookings row error:", err);
@@ -833,55 +909,8 @@ router.patch("/bookings/:id", async (req, res) => {
     // Safety net: jika payment_status di-set ke 'paid' lewat PATCH (bukan POST /payments),
     // pastikan sport_payment record dan jurnal akuntansi tetap dibuat
     if (payment_status === 'paid') {
-      const existingPayment = await db.execute(sql`
-        SELECT id FROM sport_payments WHERE booking_id = ${id} LIMIT 1
-      `);
-      if (!existingPayment.rows.length) {
-        const createdById = (req.user as { id: string } | undefined)?.id ?? null;
-        const paymentNumber = await nextPaymentNumber(Number(row.company_id ?? null));
-        const payR = await db.execute(sql`
-          INSERT INTO sport_payments (company_id, booking_id, payment_number, amount, method, status, paid_at, notes)
-          VALUES (${row.company_id ?? null}, ${id}, ${paymentNumber}, ${row.total_amount}, 'cash', 'paid', NOW(), 'Auto-created via PATCH')
-          RETURNING *
-        `);
-        const bTaxAmount = Number(row.tax_amount ?? 0);
-        const bTotalAmount = Number(row.total_amount ?? 0);
-        const bCompanyId = row.company_id != null ? Number(row.company_id) : null;
-        if (bTaxAmount > 0) {
-          postSportCenterBookingWithTax({
-            bookingId: id,
-            bookingCode: String(row.booking_number ?? paymentNumber),
-            customerName: String(row.customer_name ?? ""),
-            facilityName: String(row.facility_name ?? ""),
-            date: String(row.booking_date ?? new Date().toISOString().slice(0, 10)),
-            baseAmount: bTotalAmount,
-            taxAmount: bTaxAmount,
-            createdById,
-            companyId: bCompanyId,
-          }).catch((err: unknown) => console.error('[sport-center] postSportCenterBookingWithTax (PATCH safety net) failed:', err));
-        } else {
-          postSportCenterBooking({
-            bookingId: id,
-            bookingCode: String(row.booking_number ?? paymentNumber),
-            customerName: String(row.customer_name ?? ""),
-            facilityName: String(row.facility_name ?? ""),
-            date: String(row.booking_date ?? new Date().toISOString().slice(0, 10)),
-            totalPrice: bTotalAmount,
-            createdById,
-            companyId: bCompanyId,
-          }).catch((err: unknown) => console.error('[sport-center] postSportCenterBooking (PATCH safety net) failed:', err));
-        }
-        // Audit log untuk auto-payment
-        await db.execute(sql`
-          INSERT INTO sport_audit_logs (company_id, entity_type, entity_id, action, actor, new_data)
-          VALUES (
-            ${bCompanyId}, 'payment', ${(payR.rows[0] as Record<string, unknown>)?.id ?? null},
-            'PAYMENT_AUTO_CREATED_VIA_PATCH', ${createdById},
-            ${JSON.stringify(payR.rows[0])}::jsonb
-          )
-        `);
-        broadcastSportCenterEvent({ module: "sport-center", entity: "payment", action: "created", data: payR.rows[0] as Record<string, unknown>, timestamp: new Date().toISOString() }, bCompanyId as number | undefined);
-      }
+      const createdById = (req.user as { id: string } | undefined)?.id ?? null;
+      await ensurePaymentForPaidBooking(row, createdById);
     }
 
     broadcastSportCenterEvent({ module: "sport-center", entity: "booking", action: "updated", data: row, timestamp: new Date().toISOString() });
@@ -2392,6 +2421,19 @@ router.get("/purchase-requests", async (req, res) => {
   }
 });
 
+// Inline migrations: add reminder_days + wa_template columns if not exists
+(async () => {
+  try {
+    await db.execute(sql`ALTER TABLE sport_settings ADD COLUMN IF NOT EXISTS reminder_days TEXT NOT NULL DEFAULT '4,1'`);
+  } catch {}
+  try {
+    await db.execute(sql`
+      ALTER TABLE sport_settings ADD COLUMN IF NOT EXISTS wa_template TEXT NOT NULL DEFAULT
+        E'Halo *{{name}}*! 👋\n\nKami ingin menginformasikan bahwa masa keanggotaan Anda di *{{center_name}}* akan berakhir *{{days_label}}* ({{end_date}}).\n\nSegera perpanjang keanggotaan Anda agar tetap dapat menikmati fasilitas kami tanpa gangguan.\n\nUntuk informasi perpanjangan, silakan hubungi kami atau kunjungi langsung Sport Center.\n\nTerima kasih atas kepercayaan Anda! 🏆'
+    `);
+  } catch {}
+})();
+
 router.get("/settings", async (req, res) => {
   if (!await requireAdmin(req, res)) return;
   try {
@@ -2403,27 +2445,59 @@ router.get("/settings", async (req, res) => {
   }
 });
 
+const DEFAULT_WA_TEMPLATE =
+  "Halo *{{name}}*! 👋\n\n" +
+  "Kami ingin menginformasikan bahwa masa keanggotaan Anda di *{{center_name}}* akan berakhir *{{days_label}}* ({{end_date}}).\n\n" +
+  "Segera perpanjang keanggotaan Anda agar tetap dapat menikmati fasilitas kami tanpa gangguan.\n\n" +
+  "Untuk informasi perpanjangan, silakan hubungi kami atau kunjungi langsung Sport Center.\n\n" +
+  "Terima kasih atas kepercayaan Anda! 🏆";
+
+async function upsertSettings(body: Record<string, unknown>) {
+  const { company_id, center_name, address, phone, open_time, close_time,
+          booking_advance_days, min_booking_hours, cancellation_hours, reminder_days, wa_template } = body;
+  const reminderDaysStr = Array.isArray(reminder_days)
+    ? (reminder_days as number[]).filter((d) => Number.isInteger(d) && d >= 1 && d <= 90).join(",")
+    : typeof reminder_days === "string" ? reminder_days : "4,1";
+  const waTemplateStr = typeof wa_template === "string" && wa_template.trim()
+    ? wa_template.trim()
+    : DEFAULT_WA_TEMPLATE;
+  return db.execute(sql`
+    INSERT INTO sport_settings (company_id, center_name, address, phone, open_time, close_time,
+      booking_advance_days, min_booking_hours, cancellation_hours, reminder_days, wa_template)
+    VALUES (${company_id ?? null}, ${center_name ?? "Sport Center"}, ${address ?? null}, ${phone ?? null},
+            ${open_time ?? "06:00"}::time, ${close_time ?? "22:00"}::time,
+            ${booking_advance_days ?? 30}, ${min_booking_hours ?? 1}, ${cancellation_hours ?? 2},
+            ${reminderDaysStr}, ${waTemplateStr})
+    ON CONFLICT (company_id) DO UPDATE SET
+      center_name = EXCLUDED.center_name,
+      address = EXCLUDED.address,
+      phone = EXCLUDED.phone,
+      open_time = EXCLUDED.open_time,
+      close_time = EXCLUDED.close_time,
+      booking_advance_days = EXCLUDED.booking_advance_days,
+      min_booking_hours = EXCLUDED.min_booking_hours,
+      cancellation_hours = EXCLUDED.cancellation_hours,
+      reminder_days = EXCLUDED.reminder_days,
+      wa_template = EXCLUDED.wa_template,
+      updated_at = NOW()
+    RETURNING *
+  `);
+}
+
 router.post("/settings", async (req, res) => {
   if (!await requireAdmin(req, res)) return;
   try {
-    const { company_id, center_name, address, phone, open_time, close_time, booking_advance_days, min_booking_hours, cancellation_hours } = req.body;
-    const r = await db.execute(sql`
-      INSERT INTO sport_settings (company_id, center_name, address, phone, open_time, close_time, booking_advance_days, min_booking_hours, cancellation_hours)
-      VALUES (${company_id ?? null}, ${center_name ?? "Sport Center"}, ${address ?? null}, ${phone ?? null},
-              ${open_time ?? "06:00"}::time, ${close_time ?? "22:00"}::time,
-              ${booking_advance_days ?? 30}, ${min_booking_hours ?? 1}, ${cancellation_hours ?? 2})
-      ON CONFLICT (company_id) DO UPDATE SET
-        center_name = EXCLUDED.center_name,
-        address = EXCLUDED.address,
-        phone = EXCLUDED.phone,
-        open_time = EXCLUDED.open_time,
-        close_time = EXCLUDED.close_time,
-        booking_advance_days = EXCLUDED.booking_advance_days,
-        min_booking_hours = EXCLUDED.min_booking_hours,
-        cancellation_hours = EXCLUDED.cancellation_hours,
-        updated_at = NOW()
-      RETURNING *
-    `);
+    const r = await upsertSettings(req.body);
+    res.json(r.rows[0]);
+  } catch {
+    res.status(500).json({ error: "Gagal menyimpan settings" });
+  }
+});
+
+router.put("/settings", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  try {
+    const r = await upsertSettings(req.body);
     res.json(r.rows[0]);
   } catch {
     res.status(500).json({ error: "Gagal menyimpan settings" });
@@ -2881,6 +2955,50 @@ router.post("/member-reminders/run", async (req, res) => {
   } catch (err) {
     console.error("[sport-center] POST /member-reminders/run error:", err);
     res.status(500).json({ error: "Gagal menjalankan reminder" });
+  }
+});
+
+/**
+ * POST /api/sport-center/member-reminders/test-wa
+ * Kirim test WA ke nomor HP tertentu menggunakan template yang sedang aktif.
+ */
+router.post("/member-reminders/test-wa", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  try {
+    const { phone, template, center_name, days_label, end_date, company_id } = req.body as Record<string, string | undefined>;
+    if (!phone?.trim()) {
+      return res.status(400).json({ error: "Nomor HP wajib diisi" });
+    }
+
+    const { getWaTemplate } = await import("./memberReminderWorker.js");
+    const cId = company_id ? Number(company_id) : null;
+    const { template: dbTemplate, centerName: dbCenterName } = await getWaTemplate(cId);
+
+    const useTemplate   = template?.trim()     || dbTemplate;
+    const useCenterName = center_name?.trim()  || dbCenterName;
+    const useDaysLabel  = days_label?.trim()   || "4 hari lagi";
+    const useEndDate    = end_date?.trim()      || new Intl.DateTimeFormat("id-ID", {
+      day: "2-digit", month: "long", year: "numeric", timeZone: "Asia/Jakarta",
+    }).format(new Date(Date.now() + 4 * 86400_000));
+
+    const message = useTemplate
+      .replace(/\{\{name\}\}/g,        "Test Member")
+      .replace(/\{\{end_date\}\}/g,    useEndDate)
+      .replace(/\{\{days_label\}\}/g,  useDaysLabel)
+      .replace(/\{\{center_name\}\}/g, useCenterName);
+
+    const { sendViaService } = await import("../../lib/waTransport.js");
+    await sendViaService(phone.trim(), message, {
+      context: "sport_member_reminder_test",
+      refType:  "test",
+      refId:    `test_${Date.now()}`,
+    });
+
+    res.json({ ok: true, phone: phone.trim(), message });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[sport-center] POST /member-reminders/test-wa error:", err);
+    res.status(500).json({ error: msg || "Gagal kirim test WA" });
   }
 });
 

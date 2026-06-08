@@ -92,6 +92,8 @@ import { exceptionsRouter } from "./exceptions.js";
 import { orderExceptionsRouter } from "./orderExceptions.js";
 import { waNotificationLogsRouter } from "./waNotificationLogs.js";
 import analyticsProfitRouter from "./analyticsProfit.js";
+import { vendorRecommendationRouter } from "./vendorRecommendation.js";
+import { vendorCommodityIntelligenceRouter } from "./vendorCommodityIntelligence.js";
 import productFirstAnalyticsRouter from "./productFirstAnalytics.js";
 import productFirstAuditDashboardRouter from "./productFirstAuditDashboard.js";
 import { productFirstOverrideRouter } from "./productFirstOverride.js";
@@ -101,6 +103,7 @@ import importAdvisorRouter from "./importAdvisor.js";
 import { handleAlertSse } from "../lib/alertsBroadcast.js";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import sportCenterRouter from "../modules/sport-center/routes.js";
+import tenantRouter from "../modules/tenant/routes.js";
 import executiveRouter from "./executive.js";
 import cashAdvancesRouter from "./cashAdvances.js";
 import vendorPaymentsRouter from "./vendorPayments.js";
@@ -112,8 +115,10 @@ import expenseDashboardRouter from "./expenseDashboard.js";
 import expenseTemplatesRouter from "./expenseTemplates.js";
 import expenseBudgetsRouter from "./expenseBudgets.js";
 import { watiRouter } from "./wati.js";
+import { marketplaceRouter } from "./marketplace.js";
 import { escrowAdminRouter, escrowPublicRouter } from "./escrow.js";
 import orderCostsRouter from "./orderCosts.js";
+import productMediaRouter from "./productMedia.js";
 
 import type { Request, Response } from "express";
 
@@ -142,6 +147,7 @@ router.use("/email-correspondences", emailCorrespondencesRouter);
 router.use("/scan-document", scanDocumentRouter);
 router.use("/expenses", expensesRouter);
 router.use("/portal", portalRouter);
+router.use("/marketplace", marketplaceRouter);
 // PERHATIAN: logisticRfqRouter dan logisticOrdersRouter keduanya di-mount di /logistic/orders.
 // Express akan mencoba logisticRfqRouter dulu; jika tidak ada handler yang cocok, baru logisticOrdersRouter.
 // Risiko: jika keduanya mendefinisikan path yang sama (misal GET /), hanya yang pertama yang merespons.
@@ -162,6 +168,7 @@ router.use(geocodeRouter);
 router.use("/whatsapp", whatsappRouter);
 router.use("/vendor-response", vendorResponseRouter);
 router.use("/media", mediaRouter);
+router.use("/product-media", productMediaRouter);
 
 router.use("/warehouse", warehouseRouter);
 router.use("/inventory", inventoryMainRouter);
@@ -245,11 +252,14 @@ router.use("/logistic/product-first/audit", productFirstAuditDashboardRouter);
 router.use("/exceptions", exceptionsRouter);
 router.use("/wa-notification-logs", waNotificationLogsRouter);
 router.use("/analytics/profitability", analyticsProfitRouter);
+router.use("/vendor-recommendation", vendorRecommendationRouter);
+router.use("/vendor-intelligence", vendorCommodityIntelligenceRouter);
 router.use("/order-costs", orderCostsRouter);
 router.use("/system", systemRouter);
 router.use("/rbac", rbacRouter);
 router.use("/import-advisor", importAdvisorRouter);
 router.use("/sport-center", sportCenterRouter);
+router.use("/tenant", tenantRouter);
 router.use("/executive", executiveRouter);
 router.use("/cash-advances", cashAdvancesRouter);
 router.use("/vendor-payments", vendorPaymentsRouter);

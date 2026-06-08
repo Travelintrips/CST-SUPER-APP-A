@@ -10,7 +10,7 @@ import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+  Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -20,7 +20,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCompany } from "@/contexts/CompanyContext";
 import {
-  Copy, ExternalLink, Link2, Plus, Trash2, Eye, ToggleLeft, ToggleRight,
+  Copy, CopyPlus, ExternalLink, Link2, Plus, Trash2, Eye, ToggleLeft, ToggleRight,
   Loader2, RotateCcw, CalendarDays, User, Phone, MessageCircle, XCircle,
   Clock, SendHorizonal, Pencil, CheckCircle, Package, Star, Building2, FileText,
   BarChart2, TrendingDown, TrendingUp, Minus, Award,
@@ -137,6 +137,7 @@ const SERVICE_META: Record<string, { label: string; emoji: string }> = {
   exim_service: { label: "Exim Service", emoji: "🌐" },
 };
 const SERVICE_TYPES = Object.keys(SERVICE_META);
+const SERVICE_TYPES_ONLY = SERVICE_TYPES.filter(k => k !== "product");
 
 const ITEM_STATUS_META: Record<string, { label: string; color: string }> = {
   waiting_vendor: { label: "Menunggu Vendor", color: "bg-yellow-100 text-yellow-700 border-yellow-200" },
@@ -471,7 +472,6 @@ function WaTemplateDialog({
 
 // ── Create Link Dialog ─────────────────────────────────────────────────────────
 
-type CommodityTemplateItem = { id: number; key: string; name: string; icon: string | null };
 
 function CreateLinkDialog({ onCreated }: { onCreated: () => void }) {
   const [open, setOpen] = useState(false);
@@ -485,7 +485,7 @@ function CreateLinkDialog({ onCreated }: { onCreated: () => void }) {
   const [orderId, setOrderId] = useState<string>("");
   const [orderItemId, setOrderItemId] = useState<string>("");
   const [maxSubmissions, setMaxSubmissions] = useState("");
-  const [commodityTemplateId, setCommodityTemplateId] = useState<string>("");
+  const [selectedCategoryKey, setSelectedCategoryKey] = useState<string>("");
   const [vendorPickerOpen, setVendorPickerOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
@@ -513,18 +513,16 @@ function CreateLinkDialog({ onCreated }: { onCreated: () => void }) {
     enabled: !!orderId && mode === "order_based",
   });
 
-  const { data: commodityTemplates } = useQuery<CommodityTemplateItem[]>({
-    queryKey: ["commodity-templates-list"],
-    queryFn: () => apiFetch<CommodityTemplateItem[]>("/api/commodity-templates"),
-    enabled: open,
-  });
+  const allCommodityTemplates = Object.entries(inCodeTemplates).sort(([, a], [, b]) =>
+    a.label.localeCompare(b.label, "id")
+  );
 
   const selectedOrder = orders?.find(o => String(o.id) === orderId);
 
   const reset = () => {
     setMode("rate_collection"); setServiceType(""); setSupplierId(""); setVendorName("");
     setTitle(""); setNotes(""); setExpiresInDays(""); setOrderId(""); setOrderItemId("");
-    setMaxSubmissions(""); setCommodityTemplateId(""); setVendorPickerOpen(false);
+    setMaxSubmissions(""); setSelectedCategoryKey(""); setVendorPickerOpen(false);
   };
 
   const handleCreate = async () => {
@@ -541,7 +539,7 @@ function CreateLinkDialog({ onCreated }: { onCreated: () => void }) {
           mode, orderId: orderId ? Number(orderId) : undefined,
           orderNumber: selectedOrder?.orderNumber, orderItemId: orderItemId ? Number(orderItemId) : undefined,
           maxSubmissions: maxSubmissions ? Number(maxSubmissions) : undefined,
-          commodityTemplateId: commodityTemplateId ? Number(commodityTemplateId) : undefined,
+          categoryKey: selectedCategoryKey || undefined,
         }),
       });
       const deactivated = result?.deactivatedCount ?? 0;
@@ -618,13 +616,20 @@ function CreateLinkDialog({ onCreated }: { onCreated: () => void }) {
 
           {/* Service type */}
           <div className="space-y-1.5">
-            <Label>Service Type <span className="text-red-500">*</span></Label>
-            <Select value={serviceType} onValueChange={v => { setServiceType(v); setSupplierId(""); }}>
-              <SelectTrigger><SelectValue placeholder="Pilih tipe layanan" /></SelectTrigger>
+            <Label>Jenis Form <span className="text-red-500">*</span></Label>
+            <Select value={serviceType} onValueChange={v => { setServiceType(v); setSupplierId(""); if (v !== "product") setSelectedCategoryKey(""); }}>
+              <SelectTrigger><SelectValue placeholder="Pilih jenis form" /></SelectTrigger>
               <SelectContent>
-                {SERVICE_TYPES.map(k => (
-                  <SelectItem key={k} value={k}>{SERVICE_META[k]!.emoji} {SERVICE_META[k]!.label}</SelectItem>
-                ))}
+                <SelectGroup>
+                  <SelectLabel className="text-xs text-slate-400">Pembelian Produk</SelectLabel>
+                  <SelectItem value="product">📦 Produk</SelectItem>
+                </SelectGroup>
+                <SelectGroup>
+                  <SelectLabel className="text-xs text-slate-400">Layanan Logistik</SelectLabel>
+                  {SERVICE_TYPES_ONLY.map(k => (
+                    <SelectItem key={k} value={k}>{SERVICE_META[k]!.emoji} {SERVICE_META[k]!.label}</SelectItem>
+                  ))}
+                </SelectGroup>
               </SelectContent>
             </Select>
           </div>
@@ -693,26 +698,30 @@ function CreateLinkDialog({ onCreated }: { onCreated: () => void }) {
             )}
           </div>
 
-          {/* Commodity Template */}
-          <div className="space-y-1.5">
+          {/* Commodity Template — hanya muncul jika jenis form = produk */}
+          {serviceType === "product" && <div className="space-y-1.5">
             <Label>Template Komoditas (opsional)</Label>
-            <Select value={commodityTemplateId || "__none__"} onValueChange={v => setCommodityTemplateId(v === "__none__" ? "" : v)}>
+            <Select value={selectedCategoryKey || "__none__"} onValueChange={v => {
+              const key = v === "__none__" ? "" : v;
+              setSelectedCategoryKey(key);
+              if (key) setServiceType("product");
+            }}>
               <SelectTrigger><SelectValue placeholder="Tanpa template komoditas" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="__none__">— Tanpa template —</SelectItem>
-                {commodityTemplates?.map(t => (
-                  <SelectItem key={t.id} value={String(t.id)}>
-                    {t.icon ?? "📦"} {t.name}
+                {allCommodityTemplates.map(([key, tpl]) => (
+                  <SelectItem key={key} value={key}>
+                    📦 {tpl.label}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            {commodityTemplateId && (
+            {selectedCategoryKey && (
               <p className="text-xs text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-1.5">
                 ✅ Vendor akan melihat custom fields, dokumen wajib, & checklist dari template ini.
               </p>
             )}
-          </div>
+          </div>}
 
           {/* Vendor name override */}
           <div className="space-y-1.5">
@@ -1035,13 +1044,20 @@ function CreateOpConfirmDialog({ suppliers, onCreated }: { suppliers: Supplier[]
             <Input value={orderNumber} onChange={e => setOrderNumber(e.target.value)} placeholder="ORD/..." />
           </div>
           <div className="space-y-1.5">
-            <Label>Service Type <span className="text-red-500">*</span></Label>
+            <Label>Jenis Form <span className="text-red-500">*</span></Label>
             <Select value={serviceType} onValueChange={setServiceType}>
-              <SelectTrigger><SelectValue placeholder="Pilih layanan" /></SelectTrigger>
+              <SelectTrigger><SelectValue placeholder="Pilih jenis form" /></SelectTrigger>
               <SelectContent>
-                {SERVICE_TYPES.map(k => (
-                  <SelectItem key={k} value={k}>{SERVICE_META[k]!.emoji} {SERVICE_META[k]!.label}</SelectItem>
-                ))}
+                <SelectGroup>
+                  <SelectLabel className="text-xs text-slate-400">Pembelian Produk</SelectLabel>
+                  <SelectItem value="product">📦 Produk</SelectItem>
+                </SelectGroup>
+                <SelectGroup>
+                  <SelectLabel className="text-xs text-slate-400">Layanan Logistik</SelectLabel>
+                  {SERVICE_TYPES_ONLY.map(k => (
+                    <SelectItem key={k} value={k}>{SERVICE_META[k]!.emoji} {SERVICE_META[k]!.label}</SelectItem>
+                  ))}
+                </SelectGroup>
               </SelectContent>
             </Select>
           </div>
@@ -1914,11 +1930,11 @@ function CreateLinkFromTemplateDialog({
           </div>
 
           <div className="space-y-1.5">
-            <Label>Service Type <span className="text-red-500">*</span></Label>
+            <Label>Jenis Layanan <span className="text-red-500">*</span></Label>
             <Select value={serviceType} onValueChange={setServiceType}>
-              <SelectTrigger><SelectValue placeholder="Pilih tipe layanan logistik" /></SelectTrigger>
+              <SelectTrigger><SelectValue placeholder="Pilih layanan logistik" /></SelectTrigger>
               <SelectContent>
-                {SERVICE_TYPES.map(k => (
+                {SERVICE_TYPES_ONLY.map(k => (
                   <SelectItem key={k} value={k}>{SERVICE_META[k]!.emoji} {SERVICE_META[k]!.label}</SelectItem>
                 ))}
               </SelectContent>
@@ -2591,6 +2607,7 @@ export default function VendorFormsPage() {
   const [compareOpen, setCompareOpen] = useState(false);
   const [searchLinks, setSearchLinks] = useState("");
   const [filterMode, setFilterMode] = useState("all");
+  const [filterCategoryKey, setFilterCategoryKey] = useState("all");
   const [approvalSearch, setApprovalSearch] = useState("");
   const [approvalStatusFilter, setApprovalStatusFilter] = useState("all");
   const [invoiceSearch, setInvoiceSearch] = useState("");
@@ -2724,6 +2741,15 @@ export default function VendorFormsPage() {
     onError: (e: Error) => toast({ title: "Gagal", description: e.message, variant: "destructive" }),
   });
 
+  const cloneLinkMut = useMutation({
+    mutationFn: (id: number) => apiFetch<{ id: number; token: string }>(`/api/vendor-form/admin/links/${id}/clone`, { method: "POST" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["vmf-links"] });
+      toast({ title: "Link berhasil diklon!", description: "Link baru sudah dibuat dengan konfigurasi yang sama." });
+    },
+    onError: (e: Error) => toast({ title: "Gagal klon link", description: e.message, variant: "destructive" }),
+  });
+
   const retrySoMut = useMutation({
     mutationFn: (id: number) => apiFetch<{ ok: boolean; docNumber: string; already?: boolean }>(`/api/vendor-form/admin/customer-approvals/${id}/retry-so`, { method: "POST" }),
     onSuccess: (data) => {
@@ -2734,9 +2760,23 @@ export default function VendorFormsPage() {
   });
 
   // ── Filtered links ──
+  const activeCategoryKeys = useMemo(() => {
+    const keys = new Set(links.map(l => l.categoryKey).filter(Boolean) as string[]);
+    return Array.from(keys).sort((a, b) =>
+      (inCodeTemplates[a]?.label ?? a).localeCompare(inCodeTemplates[b]?.label ?? b, "id")
+    );
+  }, [links]);
+
   const filteredLinks = useMemo(() => {
     let list = links;
     if (filterMode !== "all") list = list.filter(l => l.mode === filterMode);
+    if (filterCategoryKey !== "all") {
+      if (filterCategoryKey === "__none__") {
+        list = list.filter(l => !l.categoryKey);
+      } else {
+        list = list.filter(l => l.categoryKey === filterCategoryKey);
+      }
+    }
     if (searchLinks.trim()) {
       const q = searchLinks.toLowerCase();
       list = list.filter(l =>
@@ -2748,7 +2788,7 @@ export default function VendorFormsPage() {
       );
     }
     return list;
-  }, [links, filterMode, searchLinks]);
+  }, [links, filterMode, filterCategoryKey, searchLinks]);
 
   const rateCollectionLinks = links.filter(l => l.mode === "rate_collection");
   const orderBasedLinks = links.filter(l => l.mode === "order_based");
@@ -2818,6 +2858,20 @@ export default function VendorFormsPage() {
                   <SelectItem value="order_based">📦 Order-Based</SelectItem>
                 </SelectContent>
               </Select>
+              {activeCategoryKeys.length > 0 && (
+                <Select value={filterCategoryKey} onValueChange={setFilterCategoryKey}>
+                  <SelectTrigger className="w-48 h-9 text-sm"><SelectValue placeholder="Semua Komoditas" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">📦 Semua Komoditas</SelectItem>
+                    <SelectItem value="__none__">— Tanpa template —</SelectItem>
+                    {activeCategoryKeys.map(k => (
+                      <SelectItem key={k} value={k}>
+                        {inCodeTemplates[k]?.label ?? k}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
               <div className="ml-auto">
                 <CreateLinkDialog onCreated={() => queryClient.invalidateQueries({ queryKey: ["vmf-links"] })} />
               </div>
@@ -2953,6 +3007,13 @@ export default function VendorFormsPage() {
                                     <Link2 className="h-3.5 w-3.5" />
                                   </Button>
                                 )}
+                                <Button
+                                  variant="ghost" size="icon" className="h-7 w-7 text-blue-400 hover:text-blue-600" title="Klon link (duplikat konfigurasi)"
+                                  disabled={cloneLinkMut.isPending}
+                                  onClick={() => cloneLinkMut.mutate(link.id)}
+                                >
+                                  <CopyPlus className="h-3.5 w-3.5" />
+                                </Button>
                                 <Button
                                   variant="ghost" size="icon" className="h-7 w-7 text-red-400 hover:text-red-600" title="Hapus link"
                                   onClick={() => { if (confirm("Hapus link ini? Semua submission akan dibebaskan dari link ini.")) deleteLinkMut.mutate(link.id); }}

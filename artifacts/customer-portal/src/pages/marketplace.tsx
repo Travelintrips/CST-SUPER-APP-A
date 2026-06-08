@@ -1,6 +1,6 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -111,6 +111,7 @@ function SpecChips({ specValues, templateSnapshot, limit = 3 }: {
 // ── Item Card ─────────────────────────────────────────────────────────────────
 function ItemCard({ item, onClick }: { item: MarketplaceItem; onClick: () => void }) {
   const isProduct = item.templateKind === "product";
+  const hasImage = !!item.primaryImageUrl;
   return (
     <div
       className="bg-white rounded-2xl border border-slate-200 hover:border-sky-300 hover:shadow-md transition-all duration-200 cursor-pointer flex flex-col overflow-hidden"
@@ -118,6 +119,44 @@ function ItemCard({ item, onClick }: { item: MarketplaceItem; onClick: () => voi
     >
       {/* Header band */}
       <div className={`h-1.5 w-full ${isProduct ? "bg-gradient-to-r from-emerald-400 to-teal-400" : "bg-gradient-to-r from-sky-400 to-blue-500"}`} />
+
+      {/* Primary image — always shown, placeholder if no photo */}
+      <div className="relative w-full h-[140px] overflow-hidden bg-slate-100">
+        {hasImage ? (
+          <img
+            src={item.primaryImageUrl!}
+            alt={item.name}
+            className="w-full h-full object-cover"
+            loading="lazy"
+            onError={(e) => {
+              const el = e.currentTarget;
+              el.style.display = "none";
+              const parent = el.parentElement;
+              if (parent) {
+                parent.classList.add("flex", "items-center", "justify-center");
+                const ph = document.createElement("div");
+                ph.className = "flex flex-col items-center gap-1.5";
+                ph.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="20" height="20" rx="2"/><path d="M2 14l5-5 4 4 4-5 7 7"/><circle cx="8.5" cy="8.5" r="1.5"/></svg>`;
+                parent.appendChild(ph);
+              }
+            }}
+          />
+        ) : (
+          <div className={`w-full h-full flex flex-col items-center justify-center gap-2 ${isProduct ? "bg-gradient-to-br from-emerald-50 to-teal-50" : "bg-gradient-to-br from-sky-50 to-blue-50"}`}>
+            {isProduct
+              ? <Package className="h-10 w-10 text-emerald-200" />
+              : <Truck className="h-10 w-10 text-sky-200" />
+            }
+            <span className="text-[10px] text-slate-300 font-medium">Belum ada foto</span>
+          </div>
+        )}
+        {item.hasVideo && (
+          <div className="absolute top-2 right-2 bg-black/60 rounded-full px-2 py-0.5 flex items-center gap-1">
+            <svg className="h-3 w-3 text-white fill-white" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+            <span className="text-[10px] text-white font-medium">Video</span>
+          </div>
+        )}
+      </div>
 
       <div className="p-4 flex flex-col flex-1 gap-2">
         {/* Vendor + category */}
@@ -173,7 +212,6 @@ function ItemCard({ item, onClick }: { item: MarketplaceItem; onClick: () => voi
     </div>
   );
 }
-
 // ── Detail Modal ──────────────────────────────────────────────────────────────
 function ItemDetailModal({ item, onClose }: { item: MarketplaceItem; onClose: () => void }) {
   const [, setLocation] = useLocation();
@@ -403,29 +441,112 @@ function FilterSidebar({
   );
 }
 
+// ── Smart keyword → type/category detection ───────────────────────────────────
+const SERVICE_KEYWORD_MAP: Array<{ terms: string[]; category: string }> = [
+  { terms: ["trucking", "truck", "truk", "angkutan", "darat"],              category: "trucking"      },
+  { terms: ["ppjk", "customs", "kepabeanan", "bea cukai", "pabean"],        category: "ppjk"          },
+  { terms: ["sea freight", "seafreight", "fcl", "lcl", "kapal", "laut"],    category: "sea_freight"   },
+  { terms: ["air freight", "airfreight", "udara", "pesawat"],               category: "air_freight"   },
+  { terms: ["freight", "forwarding", "ekspedisi"],                          category: "sea_freight"   },
+  { terms: ["handling", "cargo handling", "bongkar muat"],                  category: "handling"      },
+  { terms: ["document", "dokumen", "surat", "perizinan"],                   category: "document"      },
+  { terms: ["exim", "ekspor", "impor", "export", "import"],                 category: "exim_service"  },
+];
+
+const PRODUCT_KEYWORDS = [
+  "kopi", "coffee", "batubara", "coal", "sawit", "palm", "nikel", "nickel",
+  "tembaga", "copper", "beras", "rice", "gula", "sugar", "seafood", "ikan",
+  "frozen", "furniture", "kimia", "chemical", "tekstil", "textile",
+  "besi", "baja", "iron", "steel",
+];
+
+function detectTypeFromQ(q: string): { tab: "product" | "service"; category: string } | null {
+  if (!q.trim()) return null;
+  const lower = q.toLowerCase();
+
+  for (const { terms, category } of SERVICE_KEYWORD_MAP) {
+    if (terms.some((t) => lower.includes(t))) {
+      return { tab: "service", category };
+    }
+  }
+  if (PRODUCT_KEYWORDS.some((k) => lower.includes(k))) {
+    return { tab: "product", category: "all" };
+  }
+  return null;
+}
+
 // ── Main Page ──────────────────────────────────────────────────────────────────
 export default function MarketplacePage() {
   const [, setLocation] = useLocation();
-  const [activeTab, setActiveTab] = useState<"product" | "service">("product");
-  const [activeCategory, setActiveCategory] = useState("all");
+  const search = useSearch(); // e.g. "type=service&category=trucking&q=foo"
+
+  // Derive tab/category/q from URL search string — reactive to navigation
+  // If `type` is explicit in URL → honour it.
+  // If only `q` is present → auto-detect tab/category from keyword.
+  const { urlTab, urlCategory, urlQ } = useMemo(() => {
+    const sp = new URLSearchParams(search);
+    const explicitType = sp.get("type");
+    const rawQ        = sp.get("q") ?? "";
+    const rawCat      = sp.get("category") ?? "all";
+
+    if (explicitType === "service" || explicitType === "product") {
+      return {
+        urlTab:      explicitType as "product" | "service",
+        urlCategory: rawCat,
+        urlQ:        rawQ,
+      };
+    }
+
+    // No explicit type — try to detect from keyword
+    if (rawQ) {
+      const detected = detectTypeFromQ(rawQ);
+      if (detected) {
+        return {
+          urlTab:      detected.tab,
+          urlCategory: rawCat !== "all" ? rawCat : detected.category,
+          urlQ:        rawQ,
+        };
+      }
+    }
+
+    // Fallback: product tab (or keep current default)
+    return {
+      urlTab:      "product" as const,
+      urlCategory: rawCat,
+      urlQ:        rawQ,
+    };
+  }, [search]);
+
+  const [activeTab, setActiveTab] = useState<"product" | "service">(urlTab);
+  const [activeCategory, setActiveCategory] = useState(urlCategory);
   const [activeFilters, setActiveFilters] = useState<ActiveFilters>({});
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState(urlQ);
   const [showMobileFilter, setShowMobileFilter] = useState(false);
+
+  // Sync state whenever URL search params change (navbar links, back/forward)
+  useEffect(() => {
+    setActiveTab(urlTab);
+    setActiveCategory(urlCategory);
+    setSearchQuery(urlQ);
+    setActiveFilters({});
+  }, [urlTab, urlCategory, urlQ]);
 
   const categories = activeTab === "product" ? PRODUCT_CATS : SERVICE_CATS;
 
-  // Reset category when tab changes
+  // Reset category when tab changes — also update URL
   function handleTabChange(tab: "product" | "service") {
-    setActiveTab(tab);
-    setActiveCategory("all");
-    setActiveFilters({});
-    setSearchQuery("");
+    const sp = new URLSearchParams(search);
+    sp.set("type", tab);
+    sp.delete("category");
+    sp.delete("q");
+    setLocation(`/marketplace?${sp.toString()}`);
   }
 
   function handleCategoryChange(cat: string) {
-    setActiveCategory(cat);
-    setActiveFilters({});
-    setSearchQuery("");
+    const sp = new URLSearchParams(search);
+    if (cat === "all") sp.delete("category"); else sp.set("category", cat);
+    sp.delete("q");
+    setLocation(`/marketplace?${sp.toString()}`);
   }
 
   // ── Fetch all published items for current tab + category ──────────────────
@@ -597,13 +718,17 @@ export default function MarketplacePage() {
             {!isLoading && visibleItems.length === 0 && (
               <div className="flex flex-col items-center justify-center py-20 text-center">
                 <Store className="h-12 w-12 text-slate-300 mb-3" />
-                <p className="text-[16px] font-semibold text-slate-500">Belum ada item tersedia</p>
+                <p className="text-[16px] font-semibold text-slate-500">
+                  {activeFilterCount > 0 || searchQuery.trim()
+                    ? "Tidak ada produk atau layanan yang cocok."
+                    : "Belum ada item tersedia"}
+                </p>
                 <p className="text-[13px] text-slate-400 mt-1 max-w-xs">
-                  {activeFilterCount > 0
+                  {activeFilterCount > 0 || searchQuery.trim()
                     ? "Coba ubah atau hapus filter untuk melihat lebih banyak item."
                     : "Item akan muncul di sini setelah vendor mempublikasikan katalognya."}
                 </p>
-                {activeFilterCount > 0 && (
+                {(activeFilterCount > 0 || searchQuery.trim()) && (
                   <button onClick={handleReset} className="mt-4 text-[13px] text-sky-600 font-semibold hover:underline">
                     Hapus semua filter
                   </button>

@@ -1,3 +1,18 @@
+export interface ProductMediaItem {
+  id: number;
+  vendorCatalogItemId: number | null;
+  vendorId: number | null;
+  mediaType: string;
+  fileUrl: string | null;
+  thumbnailUrl: string | null;
+  externalUrl: string | null;
+  title: string | null;
+  description: string | null;
+  sortOrder: number;
+  isPrimary: boolean;
+  isActive: boolean;
+}
+
 export interface MarketplaceItem {
   id: number;
   vendorId: number;
@@ -25,6 +40,9 @@ export interface MarketplaceItem {
   documents: unknown;
   publishedAt: string | null;
   sortOrder: number;
+  media?: ProductMediaItem[];
+  primaryImageUrl?: string | null;
+  hasVideo?: boolean;
 }
 
 export type FilterType = "select" | "number-range" | "text-search";

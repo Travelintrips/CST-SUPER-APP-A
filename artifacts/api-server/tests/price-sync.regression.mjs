@@ -295,12 +295,17 @@ async function testOrderPriceSnapshot() {
   const orderPrice = origPrice; // harga yang akan di-snapshot ke order
 
   // 1. Buat order baru via endpoint publik (tidak perlu auth)
+  // customFieldValues wajib diisi untuk template "general" (description + quantity)
   const created = await httpJson("POST", "/api/portal-product/orders", {
     customerName: "Regression Test",
     email: "regression@test.local",
     phone: "08000000000",
     shippingAddress: "Jl. Test No. 1",
     notes: "Regression test — hapus jika perlu",
+    customFieldValues: {
+      description: "Regression test item — auto-generated",
+      quantity: 1,
+    },
     items: [
       {
         productId: product.id,

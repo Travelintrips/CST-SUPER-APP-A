@@ -1,0 +1,103 @@
+IMPLEMENT VENDOR PERFORMANCE FOUNDATION.
+
+Tujuan:
+Membuat fondasi vendor performance agar Vendor Scorecard dan Executive Dashboard tidak memakai data 0/hardcode.
+
+Scope:
+
+1. Audit live DB dan schema
+
+Cek:
+- apakah vendor_performance table ada di live DB
+- apakah schema file ada
+- apakah route vendorPerformance.ts memakai table tersebut
+- apakah analyticsProfit.ts pernah butuh data ini
+
+2. Jika table belum ada, buat migration additive:
+
+vendor_performance:
+- id
+- vendor_id integer nullable references suppliers(id)
+- total_rfq_invites integer default 0
+- total_selected integer default 0
+- total_rejected integer default 0
+- total_submitted integer default 0
+- avg_response_hours numeric default 0
+- completed_orders integer default 0
+- on_time_orders integer default 0
+- late_orders integer default 0
+- pod_complete_orders integer default 0
+- score numeric default 0
+- last_calculated_at timestamptz
+- created_at timestamptz default now()
+- updated_at timestamptz default now()
+
+3. Backfill vendor performance dari data historis:
+
+Sumber:
+- rfq_vendor_links
+- vendor_mini_form_submissions
+- logistic_orders
+- driver_progress_events jika relevan
+- order_status_history jika relevan
+
+Hitung:
+
+- total RFQ invites
+- submitted count
+- selected count
+- rejected / not selected count
+- win rate
+- avg response hours
+- completed orders
+- on-time delivery jika data tersedia
+- POD completeness jika data tersedia
+- score
+
+4. Buat service:
+
+vendorPerformanceService.ts
+
+Function:
+- recalculateVendorPerformance(vendorId)
+- recalculateAllVendorPerformance()
+- getVendorPerformanceHealth()
+
+5. Update endpoint:
+
+GET /api/system/vendor-performance-health
+
+Output:
+- tableExists
+- rowCount
+- lastCalculatedAt
+- vendorsWithScore
+- vendorsWithoutScore
+
+6. Update analyticsProfit.ts /vendors
+
+Jika vendor_performance table tersedia:
+- gunakan score
+- avg_response_hours
+- on_time_orders
+- pod_complete_orders
+
+Jika tidak tersedia:
+- fallback aman, jangan 500
+
+7. Test:
+
+A. Table created
+B. Backfill menghasilkan rows
+C. /api/system/vendor-performance-health 200 admin
+D. /api/analytics/profitability/vendors tetap 200
+E. Vendor score tidak hardcode 0 lagi jika data tersedia
+F. Tidak ada TypeScript error baru
+
+Output:
+A. File yang diubah
+B. Migration SQL
+C. Backfill result
+D. Endpoint result
+E. Test result
+F. Risiko tersisa

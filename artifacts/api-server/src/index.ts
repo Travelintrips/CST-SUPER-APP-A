@@ -67,6 +67,7 @@ import { startDbBackupScheduler } from "./lib/dbBackup.js";
 import { initAlertsBroadcast } from "./lib/alertsBroadcast.js";
 import { warmupMailer } from "./lib/mailer.js";
 import { runSportCenterMigration, runSportCenterAccountCorrection } from "./modules/sport-center/migration.js";
+import { runTenantMigration } from "./modules/tenant/migration.js";
 import { startRecurringExpenseWorker } from "./modules/sport-center/recurringExpenseWorker.js";
 import { startMemberReminderWorker } from "./modules/sport-center/memberReminderWorker.js";
 import { startExpenseReminderWorker } from "./lib/expenseReminderWorker.js";
@@ -78,6 +79,9 @@ import { runDriverPodMigration, runDriverAssignmentMigration } from "./routes/dr
 import { runProductVolumeCbmMigration } from "./routes/ecommerce.js";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
+import { runStartupValidation } from "./lib/startupValidator.js";
+import { backfillVendorPerformance } from "./routes/vendorPerformance.js";
+import { runProductMediaMigration } from "./lib/productMediaMigration.js";
 
 
 // REPLIT_API_PORT overrides PORT so the server listens on the local port
@@ -507,6 +511,11 @@ async function startServer() {
   initAlertsBroadcast(server);
   warmupMailer().catch(() => {});
 
+  // Startup dependency validation — non-blocking, results cached for /api/system/runtime-check
+  runStartupValidation().catch((err) => {
+    logger.warn({ err }, "[startupValidator] validation error (non-fatal)");
+  });
+
   // Also bind on secondary gateway port if REPLIT_API_GATEWAY_PORT is set.
   // Set SKIP_GATEWAY=1 to disable this secondary binding.
   const GATEWAY_PORT = process.env.REPLIT_API_GATEWAY_PORT ? Number(process.env.REPLIT_API_GATEWAY_PORT) : null;
@@ -606,10 +615,12 @@ async function startServer() {
     .then(() => runWithRetry("Cost Center migration", runCostCenterMigration))
     .then(() => runWithRetry("Sport Center migration", runSportCenterMigration))
     .then(() => runWithRetry("Sport Center account correction", runSportCenterAccountCorrection))
+    .then(() => runWithRetry("Tenant migration", runTenantMigration))
     .then(() => runWithRetry("Driver POD migration", runDriverPodMigration))
     .then(() => runWithRetry("Driver assignment migration", runDriverAssignmentMigration))
     .then(() => runWithRetry("Vendor company assignments migration", runVendorCompanyAssignmentsMigration))
     .then(() => runWithRetry("Vendor catalog schema migration", runVendorCatalogSchemaMigration))
+    .then(() => runWithRetry("Product media migration", runProductMediaMigration))
     .then(() => enableRealtimeTables().catch((err) => {
       logger.warn({ err }, "Supabase Realtime table enable failed (non-fatal)");
     }))
@@ -634,6 +645,11 @@ async function startServer() {
         .catch((seedErr) => {
           logger.error({ err: seedErr }, "Logistics/demo seed failed");
         })
+    )
+    .then(() =>
+      backfillVendorPerformance().catch((err) => {
+        logger.warn({ err }, "Vendor performance backfill failed (non-fatal)");
+      })
     )
     .then(() => {
       migrationsComplete = true;
