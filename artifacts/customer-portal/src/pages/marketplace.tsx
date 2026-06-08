@@ -626,29 +626,50 @@ function detectTypeFromQ(q: string): { tab: "product" | "service"; category: str
   return null;
 }
 
-// ── Realtime: vendor_catalog_items (service items from vendor etalase) ─────────
+// ── Realtime: vendor_catalog_items (INSERT/UPDATE/DELETE) ────────────────────
+// Deteksi service item: templateKind=service, kind=service, serviceType ada, atau category jasa
+function isServiceCatalogItem(row: Record<string, unknown>): boolean {
+  return row["template_kind"] === "service"
+    || row["templateKind"] === "service"
+    || row["kind"] === "service"
+    || !!row["service_type"]
+    || !!row["serviceType"];
+}
+
 function useMarketplaceCatalogRealtime() {
   const qc = useQueryClient();
 
   const handleCatalogChange = useCallback((payload: { eventType: string; new: Record<string, unknown>; old: Record<string, unknown> }) => {
     const row = (payload.new ?? payload.old ?? {}) as Record<string, unknown>;
-    if (row["template_kind"] !== "service" && row["templateKind"] !== "service") return;
+    const isService = isServiceCatalogItem(row);
+
     if (import.meta.env.DEV) {
-      console.log("[Realtime] vendor_catalog_items service changed, refetch marketplace", payload.eventType, row["id"]);
+      console.log("[Realtime] vendor_catalog_items changed", payload.eventType, row["id"], isService ? "service" : "product");
     }
-    // Invalidate semua query marketplace tab service (semua kategori)
-    qc.invalidateQueries({
-      predicate: (q) => {
-        const k = q.queryKey as unknown[];
-        return k[0] === "marketplace" && k[1] === "service";
-      },
-    });
+
+    if (isService) {
+      // Refetch semua query marketplace tab service
+      qc.invalidateQueries({
+        predicate: (q) => {
+          const k = q.queryKey as unknown[];
+          return k[0] === "marketplace" && k[1] === "service";
+        },
+      });
+    } else {
+      // Refetch semua query marketplace tab product
+      qc.invalidateQueries({
+        predicate: (q) => {
+          const k = q.queryKey as unknown[];
+          return k[0] === "marketplace" && k[1] === "product";
+        },
+      });
+    }
   }, [qc]);
 
   useEffect(() => {
     if (!supabase) return;
     const channel = supabase
-      .channel("marketplace-catalog-service-realtime")
+      .channel("marketplace-catalog-realtime")
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "vendor_catalog_items" },

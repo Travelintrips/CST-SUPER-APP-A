@@ -616,6 +616,9 @@ export default function JasaVendorDetail() {
 
   const qc = useQueryClient();
   const queryKey = ["jasa-vendor-detail", id];
+  const itemIdNum = Number(id);
+
+  const [isUnavailable, setIsUnavailable] = useState(false);
 
   const { data: item, isLoading, isError } = useQuery<CatalogDetail>({
     queryKey,
@@ -628,25 +631,52 @@ export default function JasaVendorDetail() {
     retry: false,
   });
 
-  // Realtime: watch vendor_catalog_items untuk item ini (dan semua item vendor yg sama)
+  // Realtime: watch UPDATE/DELETE pada vendor_catalog_items untuk item ini
   const handleCatalogChange = useCallback((payload: { eventType: string; new: Record<string, unknown>; old: Record<string, unknown> }) => {
-    const row = (payload.new ?? payload.old ?? {}) as Record<string, unknown>;
-    if (row["template_kind"] !== "service" && row["templateKind"] !== "service") return;
-    if (import.meta.env.DEV) {
-      console.log("[Realtime] vendor_catalog_items service changed, refetch marketplace", payload.eventType, row["id"]);
+    const isDelete = payload.eventType === "DELETE";
+    const row = (isDelete ? payload.old : payload.new) as Record<string, unknown> ?? {};
+    const rowId = Number(row["id"]);
+
+    // Jika ada id dari event, hanya tangani item yang sedang ditampilkan
+    if (rowId && rowId !== itemIdNum) return;
+
+    // Tanpa id (replica identity DEFAULT), fallback: cek template_kind
+    if (!rowId) {
+      const anyRow = (payload.new ?? payload.old ?? {}) as Record<string, unknown>;
+      const isService = anyRow["template_kind"] === "service"
+        || anyRow["templateKind"] === "service"
+        || anyRow["kind"] === "service"
+        || !!anyRow["service_type"]
+        || !!anyRow["serviceType"];
+      if (!isService) return;
     }
-    qc.invalidateQueries({ queryKey });
-  }, [qc, id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    if (import.meta.env.DEV) {
+      console.log("[Realtime] jasa-vendor-detail catalog change", payload.eventType, rowId || "unknown-id");
+    }
+
+    if (isDelete) {
+      setIsUnavailable(true);
+      return;
+    }
+
+    // UPDATE: cek apakah item menjadi tidak aktif / tidak dipublikasikan
+    const newRow = payload.new ?? {};
+    const published = newRow["is_published"] ?? newRow["isPublished"];
+    const active = newRow["is_active"] ?? newRow["isActive"];
+    if (published === false || active === false) {
+      setIsUnavailable(true);
+      return;
+    }
+
+    // Masih aktif — refetch detail
+    qc.invalidateQueries({ queryKey: ["jasa-vendor-detail", id] });
+  }, [qc, itemIdNum, id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!supabase || !id) return;
     const channel = supabase
       .channel(`jasa-vendor-detail-catalog-${id}`)
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "vendor_catalog_items" },
-        handleCatalogChange,
-      )
       .on(
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "vendor_catalog_items" },
@@ -756,6 +786,24 @@ export default function JasaVendorDetail() {
     );
   }
 
+  // Realtime: item di-unpublish atau dihapus saat halaman terbuka
+  if (isUnavailable) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-5 bg-slate-50 px-4">
+        <div className="w-16 h-16 rounded-2xl bg-amber-100 flex items-center justify-center">
+          <Truck className="h-8 w-8 text-amber-400" />
+        </div>
+        <div className="text-center">
+          <h2 className="text-xl font-bold text-slate-800 mb-1">Layanan Tidak Tersedia</h2>
+          <p className="text-[13px] text-slate-500">Layanan ini telah dihapus atau tidak lagi dipublikasikan oleh vendor.</p>
+        </div>
+        <Button variant="outline" className="rounded-xl" onClick={() => setLocation("/marketplace?type=service")}>
+          <ArrowLeft className="h-4 w-4 mr-2" />Kembali ke Marketplace
+        </Button>
+      </div>
+    );
+  }
+
   if (isError || !item || item.templateKind !== "service") {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-5 bg-slate-50 px-4">
@@ -766,7 +814,7 @@ export default function JasaVendorDetail() {
           <h2 className="text-xl font-bold text-slate-800 mb-1">Layanan tidak ditemukan</h2>
           <p className="text-[13px] text-slate-500">Item ini tidak tersedia atau belum dipublikasikan.</p>
         </div>
-        <Button variant="outline" className="rounded-xl" onClick={() => setLocation("/marketplace?kind=service")}>
+        <Button variant="outline" className="rounded-xl" onClick={() => setLocation("/marketplace?type=service")}>
           <ArrowLeft className="h-4 w-4 mr-2" />Kembali ke Marketplace
         </Button>
       </div>

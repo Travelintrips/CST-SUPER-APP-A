@@ -103,9 +103,15 @@ function useServicesRealtime(queryKey: string) {
 
   const handleCatalogChange = useCallback((payload: { eventType: string; new: Record<string, unknown>; old: Record<string, unknown> }) => {
     const row = (payload.new ?? payload.old ?? {}) as Record<string, unknown>;
-    if (row["template_kind"] !== "service" && row["templateKind"] !== "service") return;
+    // Deteksi service item: templateKind=service, kind=service, serviceType ada, atau category jasa
+    const isService = row["template_kind"] === "service"
+      || row["templateKind"] === "service"
+      || row["kind"] === "service"
+      || !!row["service_type"]
+      || !!row["serviceType"];
+    if (!isService) return;
     if (import.meta.env.DEV) {
-      console.log("[Realtime] vendor_catalog_items service changed, refetch marketplace", payload.eventType, row["id"]);
+      console.log("[Realtime] vendor_catalog_items service changed, refetch jasa", payload.eventType, row["id"]);
     }
     qc.invalidateQueries({ queryKey: [queryKey] });
     setJustUpdated(true);
