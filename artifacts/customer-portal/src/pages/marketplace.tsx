@@ -15,8 +15,8 @@ import {
   Store, Search, SlidersHorizontal, X, Building2, Package, Truck,
   Tag, MapPin, Clock, ChevronRight, Filter, RefreshCw,
 } from "lucide-react";
-import type { MarketplaceItem, FilterFieldDef, ActiveFilters } from "@/lib/catalogFilters";
-import { buildCatalogFilters, matchVendorCatalog } from "@/lib/catalogFilters";
+import type { MarketplaceItem, FilterFieldDef, ActiveFilters, ServiceCategoryOption } from "@/lib/catalogFilters";
+import { buildCatalogFilters, matchVendorCatalog, buildServiceCategories } from "@/lib/catalogFilters";
 
 // ── Category placeholder config (emoji + gradient) ───────────────────────────
 const CATEGORY_PLACEHOLDER: Record<string, { emoji: string; from: string; to: string; label: string }> = {
@@ -382,6 +382,10 @@ function FilterSidebar({
   onReset,
   searchQuery,
   onSearchChange,
+  isService,
+  serviceCategories,
+  activeCategory,
+  onCategoryChange,
 }: {
   filters: FilterFieldDef[];
   active: ActiveFilters;
@@ -389,6 +393,10 @@ function FilterSidebar({
   onReset: () => void;
   searchQuery: string;
   onSearchChange: (v: string) => void;
+  isService?: boolean;
+  serviceCategories?: ServiceCategoryOption[];
+  activeCategory?: string;
+  onCategoryChange?: (key: string) => void;
 }) {
   const hasActive = Object.values(active).some((v) => v !== null) || searchQuery.trim() !== "";
 
@@ -424,7 +432,42 @@ function FilterSidebar({
         </button>
       )}
 
-      {/* Filter cards */}
+      {/* ── Kategori Layanan (service only, driven from actual item data) ── */}
+      {isService && serviceCategories && serviceCategories.length > 0 && (
+        <div className="bg-white rounded-xl border border-slate-200 p-3">
+          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-2">
+            Kategori Layanan
+          </div>
+          <div className="space-y-0.5">
+            {/* "Semua" option */}
+            <button
+              onClick={() => onCategoryChange?.("all")}
+              className={`w-full text-left px-3 py-2 rounded-lg text-[12px] font-semibold transition-all duration-150 ${
+                !activeCategory || activeCategory === "all"
+                  ? "bg-sky-600 text-white"
+                  : "text-slate-600 hover:bg-slate-50 hover:text-slate-800"
+              }`}
+            >
+              Semua Jasa
+            </button>
+            {serviceCategories.map((cat) => (
+              <button
+                key={cat.key}
+                onClick={() => onCategoryChange?.(cat.key)}
+                className={`w-full text-left px-3 py-2 rounded-lg text-[12px] font-semibold transition-all duration-150 ${
+                  activeCategory === cat.key
+                    ? "bg-sky-600 text-white"
+                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-800"
+                }`}
+              >
+                {cat.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Filter cards (template-derived + standard) */}
       {filters.map((f) => (
         <div key={f.key} className="bg-white rounded-xl border border-slate-200 p-3 space-y-2">
           <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">{f.label}</div>
@@ -464,7 +507,13 @@ function FilterSidebar({
         </div>
       ))}
 
-      {filters.length === 0 && (
+      {isService && (!serviceCategories || serviceCategories.length === 0) && filters.length === 0 && (
+        <div className="bg-slate-50 rounded-xl border border-slate-200 p-4 text-center text-[12px] text-slate-400">
+          <Filter className="h-4 w-4 mx-auto mb-1 opacity-40" />
+          Filter tersedia setelah ada item
+        </div>
+      )}
+      {!isService && filters.length === 0 && (
         <div className="bg-slate-50 rounded-xl border border-slate-200 p-4 text-center text-[12px] text-slate-400">
           <Filter className="h-4 w-4 mx-auto mb-1 opacity-40" />
           Filter tersedia setelah ada item
@@ -599,6 +648,12 @@ export default function MarketplacePage() {
   // ── Build filters from fetched items ──────────────────────────────────────
   const filters = useMemo(() => buildCatalogFilters(items), [items]);
 
+  // ── Build service category list from actual item data (service tab only) ──
+  const serviceCategories = useMemo(
+    () => (activeTab === "service" ? buildServiceCategories(items) : []),
+    [activeTab, items],
+  );
+
   // ── Apply active filters + search ─────────────────────────────────────────
   const visibleItems = useMemo(() => {
     const merged: ActiveFilters = { ...activeFilters };
@@ -720,6 +775,10 @@ export default function MarketplacePage() {
               onReset={handleReset}
               searchQuery={searchQuery}
               onSearchChange={setSearchQuery}
+              isService={activeTab === "service"}
+              serviceCategories={serviceCategories}
+              activeCategory={activeCategory}
+              onCategoryChange={handleCategoryChange}
             />
           </div>
 
