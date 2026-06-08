@@ -48,7 +48,7 @@ import {
 } from "@workspace/api-client-react";
 import type { Supplier, VendorCatalogItem } from "@workspace/api-client-react";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
-import { ArrowLeft, Car, CheckSquare, Globe, Images, Link2, Pencil, Plus, Power, PowerOff, RotateCcw, Search, Tag, Trash2, Upload, X } from "lucide-react";
+import { ArrowLeft, Car, CheckSquare, Globe, Images, Link2, Pencil, Plus, Power, PowerOff, RotateCcw, Search, Star, Tag, Trash2, Upload, X } from "lucide-react";
 import { useUpload } from "@workspace/object-storage-web";
 import { ProductMediaManager } from "@/components/catalog/ProductMediaManager";
 
@@ -186,6 +186,24 @@ export default function VendorDetailPage() {
       queryClient.invalidateQueries({ queryKey: getListVendorCatalogQueryKey(vendorId) });
     },
     onError: () => toast({ variant: "destructive", title: "Gagal mengubah status publikasi" }),
+  });
+
+  const featuredMutation = useMutation({
+    mutationFn: async ({ itemId, isFeatured }: { itemId: number; isFeatured: boolean }) => {
+      const r = await fetch(`/api/trading/suppliers/catalog/${itemId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ isFeatured }),
+      });
+      if (!r.ok) throw new Error("Gagal mengubah status unggulan");
+      return r.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: getListVendorCatalogQueryKey(vendorId) });
+      toast({ title: "Status unggulan berhasil diubah" });
+    },
+    onError: () => toast({ variant: "destructive", title: "Gagal mengubah status unggulan" }),
   });
 
   const purchaseTaxes = (taxes ?? []).filter((t) => t.kind === "purchase" && t.isActive);
@@ -906,10 +924,28 @@ export default function VendorDetailPage() {
                           )}
                         </TableCell>
                         <TableCell>
-                          <p className="font-medium">{item.name}</p>
-                          {item.description && (
-                            <p className="text-xs text-muted-foreground">{item.description}</p>
-                          )}
+                          <div className="flex items-start gap-1.5">
+                            {(item as any).isFeatured && (
+                              <Star className="h-3.5 w-3.5 text-amber-500 fill-amber-500 mt-0.5 shrink-0" />
+                            )}
+                            <div>
+                              <p className="font-medium">{item.name}</p>
+                              {item.description && (
+                                <p className="text-xs text-muted-foreground">{item.description}</p>
+                              )}
+                              <div className="flex gap-2 mt-0.5">
+                                {((item as any).viewCount ?? 0) > 0 && (
+                                  <span className="text-[10px] text-slate-400">👁 {(item as any).viewCount}</span>
+                                )}
+                                {((item as any).quoteCount ?? 0) > 0 && (
+                                  <span className="text-[10px] text-slate-400">📋 {(item as any).quoteCount}</span>
+                                )}
+                                {((item as any).orderCount ?? 0) > 0 && (
+                                  <span className="text-[10px] text-slate-400">🛒 {(item as any).orderCount}</span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
                         </TableCell>
                         <TableCell className="text-sm">
                           {(item as any).kategori
@@ -999,7 +1035,9 @@ export default function VendorDetailPage() {
                             {(() => {
                               const st = (item as any).status as string | undefined;
                               if (!st || st === "draft") return <Badge variant="outline" className="text-xs text-slate-500">Draft</Badge>;
-                              if (st === "pending_review") return <Badge className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100 text-xs">Pending</Badge>;
+                              if (st === "pending_review") return <Badge className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100 text-xs">⏳ Review</Badge>;
+                              if (st === "approved") return <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 text-xs">✅ Approved</Badge>;
+                              if (st === "rejected") return <Badge className="bg-red-100 text-red-800 hover:bg-red-100 text-xs">❌ Rejected</Badge>;
                               if (st === "published") return <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100 text-xs flex items-center gap-1"><Globe className="h-2.5 w-2.5" />Published</Badge>;
                               if (st === "archived") return <Badge variant="outline" className="text-xs text-red-500">Archived</Badge>;
                               return null;
@@ -1061,6 +1099,15 @@ export default function VendorDetailPage() {
                             onClick={() => setMediaItem({ id: item.id, name: item.name })}
                           >
                             <Images className="h-4 w-4 text-sky-500" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            title={(item as any).isFeatured ? "Hapus dari Unggulan" : "Jadikan Unggulan"}
+                            onClick={() => featuredMutation.mutate({ itemId: item.id, isFeatured: !(item as any).isFeatured })}
+                            disabled={featuredMutation.isPending}
+                          >
+                            <Star className={`h-4 w-4 ${(item as any).isFeatured ? "text-amber-500 fill-amber-500" : "text-slate-300 hover:text-amber-400"}`} />
                           </Button>
                           <Button size="icon" variant="ghost" onClick={() => openEditItem(item)}>
                             <Pencil className="h-4 w-4" />

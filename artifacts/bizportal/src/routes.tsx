@@ -59,6 +59,7 @@ import PurchaseReceivePage from "@/pages/purchase/receive";
 import VendorCatalogPage from "@/pages/purchase/vendor-catalog";
 import VendorCatalogEnginePage from "@/pages/purchase/vendor-catalog-engine";
 import MarketplaceAiImagesPage from "@/pages/marketplace-ai-images";
+import MarketplaceAnalyticsPage from "@/pages/purchase/marketplace-analytics";
 // Reports
 import ReportsIndexPage from "@/pages/reports/index";
 import ReportsSalesPage from "@/pages/reports/sales";
@@ -311,6 +312,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/purchase/receive" component={PR(PurchaseReceivePage)} />
       <Route path="/purchase/vendor-catalog" component={PR(VendorCatalogPage)} />
       <Route path="/purchase/vendor-catalog-engine" component={PR(VendorCatalogEnginePage)} />
+      <Route path="/purchase/marketplace-analytics" component={PR(MarketplaceAnalyticsPage)} />
       <Route path="/marketplace/ai-images" component={PR(MarketplaceAiImagesPage)} />
       <Route path="/purchase" component={PR(PurchaseDashboardPage)} />
 

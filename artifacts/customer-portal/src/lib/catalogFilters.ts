@@ -170,6 +170,7 @@ export interface MarketplaceItem {
   location: string | null;
   origin: string | null;
   validityDate: string | null;
+  isFeatured?: boolean;
   documents: unknown;
   publishedAt: string | null;
   sortOrder: number;
