@@ -38,9 +38,6 @@ const API_PORT            = Number(process.env.API_PORT            ?? 8080);
 const BIZPORTAL_PORT      = Number(process.env.BIZPORTAL_PORT      ?? 3000);
 const CUSTOMER_PORT       = Number(process.env.CUSTOMER_PORT       ?? 5173);
 const LOGISTIC_ORDER_PORT = Number(process.env.LOGISTIC_ORDER_PORT ?? 3001);
-const BIZPORTAL_PORT      = Number(process.env.BIZPORTAL_PORT      ?? 6800);
-const CUSTOMER_PORT       = Number(process.env.CUSTOMER_PORT       ?? 6000);
-const LOGISTIC_ORDER_PORT = Number(process.env.LOGISTIC_ORDER_PORT ?? 3002);
 
 const ROUTES = [
   { prefix: "/api",             upstream: { host: "localhost", port: API_PORT } },
