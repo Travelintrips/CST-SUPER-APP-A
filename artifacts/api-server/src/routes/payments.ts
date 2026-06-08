@@ -4,6 +4,7 @@ import {
   paymentsTable,
   salesDocumentsTable,
   logisticOrdersTable,
+  customersTable,
 } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
 import crypto from "node:crypto";
@@ -18,8 +19,30 @@ const router = Router();
 const PAYLABS_MERCHANT_ID = process.env["PAYLABS_MERCHANT_ID"] ?? "";
 const PAYLABS_API_URL =
   process.env["PAYLABS_API_URL"] ?? "https://sit-pay.paylabs.co.id/payment/v2.1/h5/createLink";
-const PAYLABS_PRIVATE_KEY = process.env["PAYLABS_PRIVATE_KEY"] ?? "";
 const PAYLABS_PUBLIC_KEY = process.env["PAYLABS_PUBLIC_KEY"] ?? "";
+
+/**
+ * Normalise a PEM key that was stored with spaces instead of newlines
+ * (common when environment variables are set without escaping \n).
+ */
+function normalizePemKey(raw: string): string {
+  if (!raw) return raw;
+  // If already has real newlines, return as-is
+  if (raw.includes("\n")) return raw;
+  // Replace header/footer space separators, then chunk body into 64-char lines
+  return raw
+    .replace(/-----BEGIN RSA PRIVATE KEY-----\s+/, "-----BEGIN RSA PRIVATE KEY-----\n")
+    .replace(/\s+-----END RSA PRIVATE KEY-----/, "\n-----END RSA PRIVATE KEY-----")
+    .split("\n")
+    .map((line) =>
+      line.startsWith("-----")
+        ? line
+        : (line.replace(/ /g, "").match(/.{1,64}/g) ?? [line]).join("\n"),
+    )
+    .join("\n");
+}
+
+const PAYLABS_PRIVATE_KEY = normalizePemKey(process.env["PAYLABS_PRIVATE_KEY"] ?? "");
 
 function paylabsConfigured(): boolean {
   return !!PAYLABS_MERCHANT_ID && !!PAYLABS_PRIVATE_KEY;
@@ -97,6 +120,13 @@ router.post("/sales/:id/create-link", async (req, res) => {
     return res.status(400).json({ message: "Hanya sales order aktif yang bisa dibayar" });
   }
 
+  // Lookup customer phone number for Paylabs (required field)
+  let customerPhone = "081234567890"; // fallback
+  if (doc.customerId) {
+    const [cust] = await db.select({ phone: customersTable.phone }).from(customersTable).where(eq(customersTable.id, doc.customerId));
+    if (cust?.phone) customerPhone = cust.phone.replace(/\D/g, ""); // strip non-digits
+  }
+
   const merchantTradeNo = `BIZ-${doc.id}-${Date.now()}`;
   const amount = Number(doc.grandTotal ?? doc.totalAmount);
 
@@ -135,13 +165,11 @@ router.post("/sales/:id/create-link", async (req, res) => {
     merchantTradeNo,
     requestId,
     amount: amount.toFixed(2),
-    currency: "IDR",
     productName: `Pembayaran ${doc.docNumber}`,
-    paymentType: "ALL",
     notifyUrl,
     redirectUrl,
+    phoneNumber: customerPhone,
     expire: 86400,
-    payer: doc.customerName,
   };
   const bodyJson = JSON.stringify(body);
   const signaturePayload = buildSignaturePayload("POST", new URL(PAYLABS_API_URL).pathname, bodyJson, timestamp);

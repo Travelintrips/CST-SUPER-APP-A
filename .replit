@@ -96,6 +96,8 @@ WATI_BASE_URL = "https://live-mt-server.wati.io/10176503"
 SUPABASE_SERVICE_ROLE_KEY_DEV = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhzc3Jmc2hkcnRkZnVwZ3F3ZmR3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3ODg5NjcyOCwiZXhwIjoyMDk0NDcyNzI4fQ.VFPcBxsVJkYwNo3ojy3uOHglqUA9zILhjw4_0JAhZYI"
 GOOGLE_SERVICE_ACCOUNT_JSON = '{   "type": "service_account",   "project_id": "sheet-498707",   "private_key_id": "88357f13ad3a952faef471b812154c42e4d8333e",   "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDY1Drh/BjpvYCJ\nvQz+WMi6bSuA/hXkt1ppJyRqV1hI/A4+mxAKbRdPW2Z82Z0AWHKV20kKizf3hgeI\np+PgkLtJuGUQb3IJM0rGarD3md19xKlVvfwQZZk4gaH2rg1RIRK73lrS8so4GwKc\nviyPiDWedjdYZMYz5hM/rIyZ5Pf91ktrq8OxOMyy+G81/BKLrQsostXAgbSc6LmQ\n7y12P2mEp+JxmXn6B1uo7S4P9XqZ/T8vwTLcVaELJRtgkmvbF2+LYOmEFdtsthle\nQcMgSjVtyHXdT0nDmxiL+l/mCI8gmF2V90RphH1n8U3iKlD5rCyfeUts/qFC6dy/\nxjFOAoVLAgMBAAECggEAHAcnC2IyeDhqPqPE47XnUI3fE0AE5Xk8Ax6vqt1aiKio\nULhrlOVwH25xq47XqB1Gxo8/fFDtrZ3SKHyHTNZ4lzlyOvMk+wJ51nchJAhsJJ9A\nwlgaFqaDbVX4cTIjf4q2aLl/5QfEUwdOyaMdkHorcC3YzqDMLBZAA7mSvSvnUJTf\nZani/69FnxwMtM/xvDw6EN2Fv/9fs1vWyREyX6XRDGBEtra55zLgSxE1J4KzSJ41\nv9mDLd2r55OLrpcxkS3LnsMvAVOekM1yipa5fqZYwPVDLQnF0Sc2KQp4chlQaf+2\nZ1bq6xeWI1zM990hcL9xlooohNUOsZZvR16CGv5xkQKBgQDups6U5aEJWIUn8zkG\ngZdVG5YByTiE2bGKfELF1drukYf3O/EMJoXgx7+5Tm2UIG67FKwbONhaVde8xlny\nmyxSlrbNbkSlwZTxIqApTIvK1ZFxffKAr2VMb2X/hX9OPs8AbMkoKKwwOItwAGPY\n3AGytHnlg7kxaUCYt5ZR9demMQKBgQDol1DAFf+1BJuvytk2EYzPYxU5dKz+bE36\n0ePbv2QzzvVG8JgjMAcfpnZKzjJuocNjXJq0Y1qm9peBBIjhrNjKl5iTGjH5WpC6\n9cWmS9a6/4C7ce79PTdnkMSAJnZpWc//+qX3U07+oeogCpkdz2b8tMcB+jToBtWt\nMy4PYJy4OwKBgQDL3GQVnz57zEkawlMRMrxCMGlopyoHmipmIRWtB6yYJGsgD+0u\nMu4kAJ3PPqauZTIRz2vhaSKvsCq1ED8f1dv7xNDtFWfArGd9wNVN0hyMLPmsGCmC\nMdH3hCV+K9x+y3pqY4NGMdA89OBv0XV5dx5gOHj0TRxyj/VlP1ZCNx560QKBgDB2\nLq4HJ2M5FZM4Ka/ZUkR3uZliFRVhzZGgH+DObPtaeMKSKLDUNffDQExv0BQ7AjH2\nvoktVlsJcCHCpx6WXAlCMtkbkSQKWbOKt+bhUFlgGRt1Lr12/s9GW5rz6KIkw3Dr\ncZ8prYDijZyleKe8ahHnPLvNvS5HFkhjLIqpr523AoGBAIzNQC/pYW6THnRC5Hr1\nacm0iP0J5VPdI1XyPHvyqm33PMxtkw6lTva2kOIil7MbxZ/H8AVV+TP5jvKMPzCA\nsJiIIcjNUzSkDxx74GJrYXs6QUIdsf8zFFfqyJqX7hGR2XNv8C1R2F2tsnhcNKLO\nb4WpyDC4q/htJh6qEcv2lQxd\n-----END PRIVATE KEY-----\n",   "client_email": "dheet-286@sheet-498707.iam.gserviceaccount.com",   "client_id": "112370525621324127888",   "auth_uri": "https://accounts.google.com/o/oauth2/auth",   "token_uri": "https://oauth2.googleapis.com/token",   "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",   "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/dheet-286%40sheet-498707.iam.gserviceaccount.com",   "universe_domain": "googleapis.com" }'
 PAYLABS_MERCHANT_ID = "010370"
+PAYLABS_PRIVATE_KEY = "-----BEGIN RSA PRIVATE KEY----- MIIEoQIBAAKCAQBgklPCgfoS6rCdrFfm12Bbhyb8MT9F3VZs1e4xWjCyUIGVwjgc QNaFs++r10F9s4gynJ5TyyMCIk3PZXr2V3hxXjaejlHQ9PgTLK5WznChsL3EZzcq 1lNIoGpIAEaWGVSDfixtqtqu6c2Oz3wsRZ9TTQyn1+EpcwK6nIA9Rzxch59HKCD7 k2YcKNtm4mcVFIsTA053yUSM2ouiITxQWhLvJK8QEq16LrIXCXb+8QwCs8p4KyDc +PVq14hUXfgxe4netBAF2zK9IPEvXlWZ9TbYhqJxPgGcsCDjt27/vfpdNsNMrIkA tmoqgypIS827E0XtDrRwAzWq4zmYQkA444VDAgMBAAECggEAWU+6yw5t+oS2Jnw3 JzRU1xEdSus4uyJCRZFsIpRoqOCvl5LxVZ/ZRfntVB1VYi1hbn1OJ+ycSeLz1zTh DWZD64TYOrcgj4Ge1Azkhz+RBthwCG30pVdl2qsQ39nxbeurL5jG+f2jFVUBWGwn SMJy4RVG+Qs8H5tQEMmgCAwTlPZtoovx24yk5UAp3LaT1fLOFwizIr0fxXilb1G6 23c6wKl7iaPYzGhjjFGyJf/rY4iEEbKcqRSzDyI0N95XeQ+YZyAYdRmWPRyEA0QP A66E0UXby5t6R1sbn58YP/TagcsKOl++6Eh467Goy+sSYolCEJQtJFgoOlleyL7d KPJ+sQKBgQCi6am8UmlSwy4mV1gLgqDVqGV91pgR0jMM6vV0neY8Dx0FNUfxSb2T tgTXiRYNiNs+pOq6ezmr5up1f/Rt1S3/jNknK7UcbOCkw41u5s5PeN9+in3MRxyn YFHgzqw0QFpPJRRZvbzjl4hS7p1SuJH+vXbEJtVOZcvbiARZBycFhwKBgQCXwH/n UdUeIIDuvHdkDz5UPNhHb93Ngl39aRhB2+uw3K8KWoUeKWRFMShyUYf3dVxWKFtU Mh1f0TtXiFUIaFGwtdqbc5i2onvh0LQgwp8Ia8OAlKLe7iO+mhVhl9hLo4yZkiaW GcvHFAMgR2kIYSkCE/gl1yrCLvXtea8zYfSxZQKBgB6zyKBMK7tEO2tQZLBuot8B SHdJvQkGw0Y49Z9Prrc85ew4WWGY0xiGYi04kaZlV2Rb8jzIwlqqPx97yNX2KiAS LE6chxpfToreq8Xty43gqsYPVZvs/vJwTZ3/dSa3xg1KYKZ1AqclxLRUcePIEwOe M0bORr7qoluyK5eXqHv7AoGAaz0M5gItUfn0Q0GKOXqQOGU7Ddie7MDI/PCMxNXO DBEX3YA0fCkSA9eGVqsJI7WbCAPC7o/vtCue/O+J78QQnokUsDATZlUSqHSdJl2C lyfYY4AmTNYLCoHGxE3S+zjbfhcLD52xJMEeqGvubI6EtUQ5YzxXqhwXjLcmOXBq xAUCgYAMBx9E01NrLcq2eR1TbAhjl/wGuwhhF52eeXHnD6BKLVENBzqMdxuCsMPZ SSN/LTjcQFdZQ2NEN3B2fWZ0m/At+NuzPVG1lZLHjEeBseDxHnRgr2cWkrFUzUrY 4bC1iIXBepp2bdMX38Lf1jAYu+LTR2tVfB4b9YCzUbIJ2bFdrQ== -----END RSA PRIVATE KEY-----"
+PAYLABS_PUBLIC_KEY = "-----BEGIN PUBLIC KEY----- MIIBITANBgkqhkiG9w0BAQEFAAOCAQ4AMIIBCQKCAQBgklPCgfoS6rCdrFfm12Bb hyb8MT9F3VZs1e4xWjCyUIGVwjgcQNaFs++r10F9s4gynJ5TyyMCIk3PZXr2V3hx XjaejlHQ9PgTLK5WznChsL3EZzcq1lNIoGpIAEaWGVSDfixtqtqu6c2Oz3wsRZ9T TQyn1+EpcwK6nIA9Rzxch59HKCD7k2YcKNtm4mcVFIsTA053yUSM2ouiITxQWhLv JK8QEq16LrIXCXb+8QwCs8p4KyDc+PVq14hUXfgxe4netBAF2zK9IPEvXlWZ9TbY hqJxPgGcsCDjt27/vfpdNsNMrIkAtmoqgypIS827E0XtDrRwAzWq4zmYQkA444VD AgMBAAE= -----END PUBLIC KEY-----"
 
 [userenv.development]
 ADMIN_EMAIL_DOMAINS = "example.com"
@@ -117,18 +119,18 @@ externalPort = 3001
 
 [[ports]]
 localPort = 3002
-externalPort = 8008
+externalPort = 3002
 
 [[ports]]
 localPort = 5000
 externalPort = 80
 
 [[ports]]
-localPort = 6000
-externalPort = 6000
+localPort = 8080
+externalPort = 8008
 
 [[ports]]
-localPort = 8080
+localPort = 8082
 externalPort = 3002
 
 [[ports]]
