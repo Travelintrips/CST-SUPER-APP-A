@@ -214,8 +214,7 @@ router.get("/marketplace", async (req, res) => {
   const { kind, category } = req.query as { kind?: string; category?: string };
 
   const conditions: ReturnType<typeof eq>[] = [
-    eq(vendorCatalogItemsTable.isPublished, true),
-    eq(vendorCatalogItemsTable.isActive, true),
+    ...catalogPublicConditions(),
     or(isNull(vendorCatalogItemsTable.validityDate), gte(vendorCatalogItemsTable.validityDate, sql`CURRENT_DATE`)) as ReturnType<typeof eq>,
   ];
 
@@ -408,7 +407,7 @@ async function getCatalogItemPublic(id: number) {
       isPublished: vendorCatalogItemsTable.isPublished,
     })
     .from(vendorCatalogItemsTable)
-    // Publik: wajib isPublished = true DAN isActive = true
+    // Publik: isPublished=true && isActive!=false (via catalogPublicConditions)
     .where(and(eq(vendorCatalogItemsTable.id, id), ...catalogPublicConditions()));
   if (!row) return null;
   return { ...row, priceSell: row.priceSell !== null ? Number(row.priceSell) : null };

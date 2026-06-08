@@ -95,7 +95,7 @@ marketplaceRouter.get("/vendors", async (_req, res) => {
     FROM vendor_catalog_items vci
     LEFT JOIN suppliers s ON vci.vendor_id = s.id
     WHERE vci.is_published = true
-      AND vci.is_active = true
+      AND vci.is_active != false
     ORDER BY 2
   `);
   return res.json(rows.rows as { id: number; name: string }[]);
@@ -107,7 +107,7 @@ marketplaceRouter.get("/categories", async (_req, res) => {
     SELECT DISTINCT COALESCE(category_key, kategori) AS key
     FROM vendor_catalog_items
     WHERE is_published = true
-      AND is_active = true
+      AND is_active != false
       AND COALESCE(category_key, kategori) IS NOT NULL
       AND COALESCE(category_key, kategori) != ''
     ORDER BY 1
