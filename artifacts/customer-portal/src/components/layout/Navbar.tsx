@@ -754,9 +754,9 @@ export function Navbar() {
                 Cari
               </button>
             </form>
-            {filteredSuggestions.length > 0 && (
+            {autocompleteSuggestions.length > 0 && (
               <div className="mt-2 rounded-xl border border-slate-100 overflow-hidden bg-white">
-                {filteredSuggestions.map((s) => (
+                {autocompleteSuggestions.map((s) => (
                   <button
                     key={s.href}
                     type="button"
