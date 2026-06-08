@@ -1054,6 +1054,74 @@ export async function postSportCenterBooking(args: {
 }
 
 /**
+ * Auto-post saat pembayaran sewa Tenant dikonfirmasi.
+ * Debit  : Kas/Bank
+ * Credit : Pendapatan Sewa (fallback ke akun pendapatan penjualan)
+ */
+export async function postTenantRentPayment(args: {
+  paymentId: number;
+  paymentNumber: string;
+  orderNumber: string;
+  businessName: string;
+  date: string;
+  amount: number;
+  createdById?: string | null;
+  companyId?: number | null;
+}): Promise<void> {
+  try {
+    const [existingEntry] = await db
+      .select()
+      .from(accountingEntriesTable)
+      .where(sql`${accountingEntriesTable.source} = 'tenant_rent_payment' AND ${accountingEntriesTable.sourceId} = ${args.paymentId}`)
+      .limit(1);
+    if (existingEntry) {
+      logger.info({ paymentId: args.paymentId }, "Tenant rent payment journal already posted — skipping");
+      return;
+    }
+
+    const settings = await ensureAccountingSettings(args.companyId ?? 1);
+
+    const debitAccountId = settings.defaultCashAccountId ?? settings.defaultBankAccountId;
+    const creditAccountId = settings.salesIncomeAccountId;
+    const journalId = settings.cashJournalId ?? settings.bankJournalId;
+    const journalCode = settings.cashJournalId ? "CSH" : "BNK";
+
+    if (!debitAccountId || !creditAccountId || !journalId) {
+      logger.warn(
+        { paymentId: args.paymentId, companyId: args.companyId, debitAccountId, creditAccountId, journalId },
+        "Skipping tenant rent payment post: akun kas/pendapatan atau jurnal belum dikonfigurasi",
+      );
+      return;
+    }
+
+    const costCenterId = await resolveCostCenterId("SPORT_CENTER", args.companyId);
+    const amt = round2(args.amount);
+    await postEntry(
+      {
+        journalId,
+        date: new Date(args.date),
+        ref: args.paymentNumber,
+        description: `Pembayaran Sewa Tenant: ${args.businessName} (${args.orderNumber})`,
+        source: "tenant_rent_payment",
+        sourceId: args.paymentId,
+        createdById: args.createdById ?? null,
+        companyId: args.companyId ?? 1,
+        costCenterId,
+        lines: [
+          { accountId: debitAccountId, debit: amt, credit: 0, description: `Penerimaan sewa ${args.paymentNumber}` },
+          { accountId: creditAccountId, debit: 0, credit: amt, description: `Pendapatan Sewa Tenant: ${args.businessName}` },
+        ],
+      },
+      journalCode,
+    );
+
+    logger.info({ paymentId: args.paymentId, amt }, "Tenant rent payment journal entry posted");
+  } catch (err) {
+    logger.error({ err, paymentId: args.paymentId }, "Auto-post tenant rent payment failed");
+  }
+}
+
+/**
  * Post jurnal reversal saat booking Sport Center dibatalkan setelah pembayaran.
  * Membalik: Debit Pendapatan Sport Center, Credit Kas.
  */
