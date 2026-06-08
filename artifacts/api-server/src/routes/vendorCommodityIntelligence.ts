@@ -41,12 +41,12 @@ router.get("/commodities", async (req, res) => {
         COALESCE(vp.vendor_grade, 'D')                                    AS vendor_grade,
         COALESCE(NULLIF(TRIM(lo.commodity), ''), '(tidak diisi)')          AS commodity,
         COUNT(lo.id)::text                                                 AS order_count,
-        COALESCE(SUM(lo.final_price),   0)::text                          AS revenue,
-        COALESCE(SUM(lo.vendor_price),  0)::text                          AS vendor_cost,
-        COALESCE(SUM(lo.final_price - lo.vendor_price), 0)::text          AS margin,
+        COALESCE(SUM(lo.grand_total),                           0)::text  AS revenue,
+        COALESCE(SUM(COALESCE(lo.truck_price, 0)),              0)::text  AS vendor_cost,
+        COALESCE(SUM(lo.grand_total - COALESCE(lo.truck_price, 0)), 0)::text AS margin,
         ROUND(
-          CASE WHEN SUM(lo.final_price) > 0
-            THEN SUM(lo.final_price - lo.vendor_price) / SUM(lo.final_price) * 100
+          CASE WHEN SUM(lo.grand_total) > 0
+            THEN SUM(lo.grand_total - COALESCE(lo.truck_price, 0)) / SUM(lo.grand_total) * 100
             ELSE 0
           END, 1
         )::text                                                            AS margin_pct,
@@ -125,12 +125,12 @@ router.get("/commodities/:vendorId", async (req, res) => {
         SELECT
           COALESCE(NULLIF(TRIM(lo.commodity), ''), '(tidak diisi)')        AS commodity,
           COUNT(lo.id)::text                                               AS order_count,
-          COALESCE(SUM(lo.final_price),  0)::text                         AS revenue,
-          COALESCE(SUM(lo.vendor_price), 0)::text                         AS vendor_cost,
-          COALESCE(SUM(lo.final_price - lo.vendor_price), 0)::text        AS margin,
+          COALESCE(SUM(lo.grand_total),                         0)::text  AS revenue,
+          COALESCE(SUM(COALESCE(lo.truck_price, 0)),            0)::text  AS vendor_cost,
+          COALESCE(SUM(lo.grand_total - COALESCE(lo.truck_price, 0)), 0)::text AS margin,
           ROUND(
-            CASE WHEN SUM(lo.final_price) > 0
-              THEN SUM(lo.final_price - lo.vendor_price) / SUM(lo.final_price) * 100
+            CASE WHEN SUM(lo.grand_total) > 0
+              THEN SUM(lo.grand_total - COALESCE(lo.truck_price, 0)) / SUM(lo.grand_total) * 100
               ELSE 0
             END, 1
           )::text                                                          AS margin_pct,
@@ -200,8 +200,8 @@ router.get("/top-vendors-by-commodity", async (req, res) => {
           COALESCE(vp.vendor_grade, 'D')                               AS vendor_grade,
           COUNT(lo.id)                                                  AS order_count,
           ROUND(
-            CASE WHEN SUM(lo.final_price) > 0
-              THEN SUM(lo.final_price - lo.vendor_price) / SUM(lo.final_price) * 100
+            CASE WHEN SUM(lo.grand_total) > 0
+              THEN SUM(lo.grand_total - COALESCE(lo.truck_price, 0)) / SUM(lo.grand_total) * 100
               ELSE 0
             END, 1
           )                                                             AS margin_pct,

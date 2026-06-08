@@ -259,19 +259,19 @@ router.get("/logistics-summary", async (req, res) => {
         completed: string; cancelled: string;
       }>(sql`
         SELECT
-          COUNT(lo.id)::text                                             AS order_count,
-          COALESCE(SUM(lo.final_price),  0)::text                       AS revenue,
-          COALESCE(SUM(lo.vendor_price), 0)::text                       AS vendor_cost,
-          COALESCE(SUM(lo.final_price - lo.vendor_price), 0)::text      AS margin,
+          COUNT(lo.id)::text                                                       AS order_count,
+          COALESCE(SUM(lo.grand_total),                              0)::text      AS revenue,
+          COALESCE(SUM(COALESCE(lo.truck_price, 0)),                 0)::text      AS vendor_cost,
+          COALESCE(SUM(lo.grand_total - COALESCE(lo.truck_price, 0)), 0)::text     AS margin,
           ROUND(
-            CASE WHEN SUM(lo.final_price) > 0
-              THEN SUM(lo.final_price - lo.vendor_price) / SUM(lo.final_price) * 100
+            CASE WHEN SUM(lo.grand_total) > 0
+              THEN SUM(lo.grand_total - COALESCE(lo.truck_price, 0)) / SUM(lo.grand_total) * 100
               ELSE 0
             END, 1
-          )::text                                                        AS margin_pct,
-          COALESCE(AVG(lo.final_price), 0)::text                        AS avg_order_value,
+          )::text                                                                  AS margin_pct,
+          COALESCE(AVG(lo.grand_total), 0)::text                                  AS avg_order_value,
           COUNT(*) FILTER (WHERE lo.status ILIKE '%completed%' OR lo.status ILIKE '%delivered%')::text AS completed,
-          COUNT(*) FILTER (WHERE lo.status ILIKE '%cancel%')::text      AS cancelled
+          COUNT(*) FILTER (WHERE lo.status ILIKE '%cancel%')::text                AS cancelled
         FROM logistic_orders lo
         WHERE lo.status NOT IN ('Cancelled','cancelled')
           ${fromSql} ${toSql}
@@ -286,21 +286,21 @@ router.get("/logistics-summary", async (req, res) => {
           COALESCE(NULLIF(TRIM(lo.origin), ''), '?')        AS origin,
           COALESCE(NULLIF(TRIM(lo.destination), ''), '?')   AS destination,
           COUNT(lo.id)::text                                 AS order_count,
-          COALESCE(SUM(lo.final_price),  0)::text           AS revenue,
-          COALESCE(SUM(lo.final_price - lo.vendor_price), 0)::text AS margin,
+          COALESCE(SUM(lo.grand_total),                              0)::text  AS revenue,
+          COALESCE(SUM(lo.grand_total - COALESCE(lo.truck_price, 0)), 0)::text  AS margin,
           ROUND(
-            CASE WHEN SUM(lo.final_price) > 0
-              THEN SUM(lo.final_price - lo.vendor_price) / SUM(lo.final_price) * 100
+            CASE WHEN SUM(lo.grand_total) > 0
+              THEN SUM(lo.grand_total - COALESCE(lo.truck_price, 0)) / SUM(lo.grand_total) * 100
               ELSE 0
             END, 1
-          )::text                                            AS margin_pct
+          )::text                                                               AS margin_pct
         FROM logistic_orders lo
         WHERE lo.status NOT IN ('Cancelled','cancelled')
           AND NULLIF(TRIM(lo.origin), '') IS NOT NULL
           AND NULLIF(TRIM(lo.destination), '') IS NOT NULL
           ${fromSql} ${toSql}
         GROUP BY lo.origin, lo.destination
-        ORDER BY SUM(lo.final_price) DESC NULLS LAST
+        ORDER BY SUM(lo.grand_total) DESC NULLS LAST
         LIMIT 5
       `),
 
@@ -312,19 +312,19 @@ router.get("/logistics-summary", async (req, res) => {
         SELECT
           COALESCE(NULLIF(TRIM(lo.commodity), ''), '(tidak diisi)')  AS commodity,
           COUNT(lo.id)::text                                          AS order_count,
-          COALESCE(SUM(lo.final_price),  0)::text                    AS revenue,
-          COALESCE(SUM(lo.final_price - lo.vendor_price), 0)::text   AS margin,
+          COALESCE(SUM(lo.grand_total),                              0)::text  AS revenue,
+          COALESCE(SUM(lo.grand_total - COALESCE(lo.truck_price, 0)), 0)::text  AS margin,
           ROUND(
-            CASE WHEN SUM(lo.final_price) > 0
-              THEN SUM(lo.final_price - lo.vendor_price) / SUM(lo.final_price) * 100
+            CASE WHEN SUM(lo.grand_total) > 0
+              THEN SUM(lo.grand_total - COALESCE(lo.truck_price, 0)) / SUM(lo.grand_total) * 100
               ELSE 0
             END, 1
-          )::text                                                     AS margin_pct
+          )::text                                                               AS margin_pct
         FROM logistic_orders lo
         WHERE lo.status NOT IN ('Cancelled','cancelled')
           ${fromSql} ${toSql}
         GROUP BY lo.commodity
-        ORDER BY SUM(lo.final_price) DESC NULLS LAST
+        ORDER BY SUM(lo.grand_total) DESC NULLS LAST
         LIMIT 5
       `),
 
@@ -343,8 +343,8 @@ router.get("/logistics-summary", async (req, res) => {
         SELECT
           TO_CHAR(DATE_TRUNC('month', lo.created_at), 'YYYY-MM') AS month,
           COUNT(lo.id)::text                                       AS order_count,
-          COALESCE(SUM(lo.final_price), 0)::text                  AS revenue,
-          COALESCE(SUM(lo.final_price - lo.vendor_price), 0)::text AS margin
+          COALESCE(SUM(lo.grand_total), 0)::text                                    AS revenue,
+          COALESCE(SUM(lo.grand_total - COALESCE(lo.truck_price, 0)), 0)::text    AS margin
         FROM logistic_orders lo
         WHERE lo.status NOT IN ('Cancelled','cancelled')
           AND lo.created_at >= NOW() - INTERVAL '6 months'

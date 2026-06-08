@@ -90,7 +90,7 @@ async function scoreVendors(input: CandidateInput): Promise<VendorCandidate[]> {
       COUNT(*)::int                                                AS route_total,
       COUNT(*) FILTER (WHERE status ILIKE '%completed%' OR status ILIKE '%delivered%')::int AS route_completed
     FROM logistic_orders
-    WHERE approved_vendor_id = ANY(${vendorIds})
+    WHERE approved_vendor_id IN (${sql.raw(vendorIds.join(','))})
       AND status NOT IN ('Cancelled','cancelled')
       ${origin ? sql`AND origin ILIKE ${`%${origin}%`}` : sql``}
       ${destination ? sql`AND destination ILIKE ${`%${destination}%`}` : sql``}
@@ -113,7 +113,7 @@ async function scoreVendors(input: CandidateInput): Promise<VendorCandidate[]> {
           approved_vendor_id::text AS vendor_id,
           COUNT(*)::int            AS commodity_count
         FROM logistic_orders
-        WHERE approved_vendor_id = ANY(${vendorIds})
+        WHERE approved_vendor_id IN (${sql.raw(vendorIds.join(','))})
           AND commodity ILIKE ${`%${commodity}%`}
           AND status NOT IN ('Cancelled','cancelled')
         GROUP BY approved_vendor_id
