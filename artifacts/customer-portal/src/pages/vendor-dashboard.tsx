@@ -1,5 +1,5 @@
-import { useEffect, useState, useCallback } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useState, useCallback, useRef } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { getAuthToken, getAuthHeaders, removeAuthToken } from "@/lib/auth";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -10,7 +10,8 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Truck, FileText, CheckCircle2, Clock, AlertCircle,
   Building2, Phone, Mail, Package, LogOut, Send, Pencil, X,
-  ChevronDown, ChevronUp, RefreshCw,
+  ChevronDown, ChevronUp, RefreshCw, ImagePlus, Trash2, Star,
+  ShoppingBag, Wrench, ImageOff, Camera,
 } from "lucide-react";
 
 interface VendorProfile {
@@ -63,6 +64,286 @@ const QUOTE_STATUS: Record<string, { label: string; cls: string }> = {
   rejected: { label: "Ditolak",  cls: "bg-red-100 text-red-800" },
 };
 
+// ── Types ─────────────────────────────────────────────────────────────────────
+interface CatalogImage {
+  id: number;
+  fileUrl: string;
+  isPrimary: boolean;
+  mediaType: string;
+  imageSource: string;
+}
+
+interface CatalogItem {
+  id: number;
+  name: string;
+  templateKind: string;
+  kategori: string | null;
+  categoryKey: string | null;
+  isActive: boolean;
+  isPublished: boolean;
+  description: string | null;
+  mediaCount: number;
+  images: CatalogImage[];
+}
+
+interface VendorCatalog {
+  supplierId: number;
+  supplierName: string;
+  items: CatalogItem[];
+}
+
+// ── Vendor Etalase Section ────────────────────────────────────────────────────
+function VendorEtalaseSection({ headers }: { headers: Record<string, string> }) {
+  const qc = useQueryClient();
+  const fileInputRefs = useRef<Record<number, HTMLInputElement | null>>({});
+  const [uploading, setUploading] = useState<Record<number, boolean>>({});
+  const [deleting, setDeleting] = useState<Record<number, boolean>>({});
+  const [uploadError, setUploadError] = useState<Record<number, string>>({});
+  const [expanded, setExpanded] = useState<Record<number, boolean>>({});
+
+  const { data, isLoading, error } = useQuery<VendorCatalog>({
+    queryKey: ["vendor-catalog"],
+    queryFn: async () => {
+      const r = await fetch("/api/portal/vendor/catalog", { headers });
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({})) as { message?: string };
+        throw new Error(j.message ?? "Gagal memuat katalog");
+      }
+      return r.json() as Promise<VendorCatalog>;
+    },
+    staleTime: 30_000,
+  });
+
+  async function handleUpload(itemId: number, file: File) {
+    setUploadError((p) => { const n = { ...p }; delete n[itemId]; return n; });
+    setUploading((p) => ({ ...p, [itemId]: true }));
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const r = await fetch(`/api/portal/vendor/catalog/${itemId}/media/upload`, {
+        method: "POST",
+        headers: { Authorization: headers.Authorization },
+        body: fd,
+      });
+      const j = await r.json() as { error?: string };
+      if (!r.ok) throw new Error(j.error ?? "Upload gagal");
+      void qc.invalidateQueries({ queryKey: ["vendor-catalog"] });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Upload gagal";
+      setUploadError((p) => ({ ...p, [itemId]: msg }));
+    } finally {
+      setUploading((p) => ({ ...p, [itemId]: false }));
+      if (fileInputRefs.current[itemId]) fileInputRefs.current[itemId]!.value = "";
+    }
+  }
+
+  async function handleDelete(mediaId: number, itemId: number) {
+    setDeleting((p) => ({ ...p, [mediaId]: true }));
+    try {
+      const r = await fetch(`/api/portal/vendor/catalog/media/${mediaId}`, {
+        method: "DELETE",
+        headers,
+      });
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({})) as { error?: string };
+        throw new Error(j.error ?? "Hapus gagal");
+      }
+      void qc.invalidateQueries({ queryKey: ["vendor-catalog"] });
+    } catch {
+      // silent
+    } finally {
+      setDeleting((p) => ({ ...p, [mediaId]: false }));
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <Card className="border-none shadow-sm">
+        <CardContent className="py-10 text-center">
+          <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground mx-auto" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (error || !data) {
+    const msg = (error as Error)?.message ?? "";
+    if (msg.includes("terhubung") || msg.includes("403")) return null;
+    return null;
+  }
+
+  const { items } = data;
+
+  if (items.length === 0) {
+    return (
+      <Card className="border-none shadow-sm">
+        <CardHeader className="border-b border-border/40 pb-4">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Camera className="h-4 w-4" /> Etalase & Foto Produk
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="py-10 text-center">
+          <ImageOff className="h-10 w-10 text-muted-foreground/30 mx-auto mb-3" />
+          <p className="text-sm text-muted-foreground">Belum ada item katalog</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const products = items.filter((i) => i.templateKind === "product");
+  const services = items.filter((i) => i.templateKind === "service");
+
+  function renderItems(list: CatalogItem[]) {
+    return list.map((item) => {
+      const isExpanded = expanded[item.id] ?? true;
+      const isUploading = !!uploading[item.id];
+      const err = uploadError[item.id];
+
+      return (
+        <div key={item.id} className="border border-border/50 rounded-xl overflow-hidden">
+          {/* Item header */}
+          <button
+            className="w-full flex items-center justify-between gap-3 px-4 py-3 bg-slate-50 hover:bg-slate-100 transition-colors text-left"
+            onClick={() => setExpanded((p) => ({ ...p, [item.id]: !(p[item.id] ?? true) }))}
+          >
+            <div className="flex items-center gap-2.5 min-w-0">
+              {item.templateKind === "product"
+                ? <ShoppingBag className="h-4 w-4 text-emerald-500 shrink-0" />
+                : <Wrench className="h-4 w-4 text-sky-500 shrink-0" />}
+              <span className="font-semibold text-sm text-slate-800 truncate">{item.name}</span>
+              {!item.isPublished && (
+                <span className="text-[10px] bg-amber-100 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded-full shrink-0">Draft</span>
+              )}
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="text-xs text-muted-foreground">{item.images.length} foto</span>
+              {isExpanded ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
+            </div>
+          </button>
+
+          {/* Photos grid */}
+          {isExpanded && (
+            <div className="p-4 space-y-3">
+              {item.images.length > 0 ? (
+                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
+                  {item.images.map((img) => (
+                    <div key={img.id} className="relative group aspect-square rounded-xl overflow-hidden border border-border/50 bg-slate-100">
+                      <img
+                        src={img.fileUrl}
+                        alt=""
+                        className="w-full h-full object-cover"
+                        onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                      />
+                      {img.isPrimary && (
+                        <div className="absolute top-1 left-1 bg-amber-400 rounded-full p-0.5">
+                          <Star className="h-2.5 w-2.5 text-white fill-white" />
+                        </div>
+                      )}
+                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+                        <button
+                          onClick={() => void handleDelete(img.id, item.id)}
+                          disabled={!!deleting[img.id]}
+                          className="bg-red-500 hover:bg-red-600 text-white rounded-full p-1.5 transition-colors"
+                          title="Hapus foto"
+                        >
+                          {deleting[img.id]
+                            ? <RefreshCw className="h-3 w-3 animate-spin" />
+                            : <Trash2 className="h-3 w-3" />}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* Upload slot */}
+                  <button
+                    onClick={() => fileInputRefs.current[item.id]?.click()}
+                    disabled={isUploading}
+                    className="aspect-square rounded-xl border-2 border-dashed border-slate-300 hover:border-sky-400 hover:bg-sky-50 flex flex-col items-center justify-center gap-1 transition-colors disabled:opacity-50"
+                  >
+                    {isUploading
+                      ? <RefreshCw className="h-5 w-5 text-sky-500 animate-spin" />
+                      : <ImagePlus className="h-5 w-5 text-slate-400" />}
+                    <span className="text-[10px] text-slate-400">{isUploading ? "Mengunggah…" : "Tambah"}</span>
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => fileInputRefs.current[item.id]?.click()}
+                  disabled={isUploading}
+                  className="w-full border-2 border-dashed border-slate-200 hover:border-sky-400 hover:bg-sky-50 rounded-xl py-8 flex flex-col items-center gap-2 transition-colors disabled:opacity-50"
+                >
+                  {isUploading
+                    ? <RefreshCw className="h-7 w-7 text-sky-400 animate-spin" />
+                    : <ImagePlus className="h-7 w-7 text-slate-300" />}
+                  <span className="text-sm font-medium text-slate-500">
+                    {isUploading ? "Mengunggah foto…" : "Upload foto pertama"}
+                  </span>
+                  <span className="text-xs text-slate-400">JPG, PNG, WebP · Maks 5 MB</span>
+                </button>
+              )}
+
+              {err && (
+                <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                  {err}
+                </p>
+              )}
+
+              {item.images.length > 0 && (
+                <p className="text-[11px] text-slate-400">
+                  ⭐ = foto utama (ditampilkan di marketplace). Foto pertama yang diupload otomatis jadi utama.
+                </p>
+              )}
+
+              <input
+                type="file"
+                accept="image/jpeg,image/jpg,image/png,image/webp"
+                className="hidden"
+                ref={(el) => { fileInputRefs.current[item.id] = el; }}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) void handleUpload(item.id, file);
+                }}
+              />
+            </div>
+          )}
+        </div>
+      );
+    });
+  }
+
+  return (
+    <Card className="border-none shadow-sm">
+      <CardHeader className="border-b border-border/40 pb-4">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Camera className="h-4 w-4" /> Etalase & Foto Produk
+        </CardTitle>
+        <CardDescription>
+          Upload foto untuk setiap produk/layanan Anda agar tampil menarik di Marketplace
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="pt-5 space-y-6">
+        {products.length > 0 && (
+          <div className="space-y-3">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+              <ShoppingBag className="h-3.5 w-3.5 text-emerald-500" /> Produk ({products.length})
+            </p>
+            <div className="space-y-2">{renderItems(products)}</div>
+          </div>
+        )}
+        {services.length > 0 && (
+          <div className="space-y-3">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+              <Wrench className="h-3.5 w-3.5 text-sky-500" /> Layanan / Jasa ({services.length})
+            </p>
+            <div className="space-y-2">{renderItems(services)}</div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Main Dashboard ────────────────────────────────────────────────────────────
 export default function VendorDashboard() {
   const [, setLocation] = useLocation();
   const [profile, setProfile] = useState<VendorProfile | null>(null);
@@ -675,6 +956,12 @@ export default function VendorDashboard() {
             </Card>
           </div>
         </div>
+
+        {/* ── Etalase & Foto Produk ── */}
+        {supplier && (
+          <VendorEtalaseSection headers={headers} />
+        )}
+
       </div>
     </div>
   );
