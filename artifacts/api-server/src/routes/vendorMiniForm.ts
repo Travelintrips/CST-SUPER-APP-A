@@ -40,10 +40,10 @@ import { upsertCatalogDraftFromSubmission } from "../lib/vendorCatalogDraft.js";
 import type { SubmissionForCatalog, LinkForCatalog } from "../lib/vendorCatalogDraft.js";
 import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStatusService.js";
 import { deleteFromSupabase } from "../lib/supabaseStorage.js";
-import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
+import { sendViaService as sendWhatsApp, sendToAdminGroup } from "../lib/waTransport.js";
 import { getWaTemplateConfig, renderTemplate } from "../lib/orderNotification.js";
-import { getAdminGroupWa } from "../lib/adminWa.js";
-import { wasRecentlyNotified } from "../lib/notificationLog.js";
+import { getAdminWa, getAdminGroupWa } from "../lib/adminWa.js";
+import { wasRecentlyNotified, logNotification } from "../lib/notificationLog.js";
 import { createSalesOrderFromVmfApproval } from "../lib/vmfSoIntegration.js";
 import { updateOrderProgress } from "../lib/orderProgress.js";
 import {
@@ -1194,7 +1194,14 @@ vendorMiniFormRouter.post("/upload-media/:token", _vmfMediaRateLimit, _vmfMediaU
   const { token } = req.params as { token: string };
   if (token === "admin") return res.status(404).json({ error: "Not found" });
   try {
-    const [link] = await db.select({ id: vendorMiniFormLinksTable.id, isActive: vendorMiniFormLinksTable.isActive, expiresAt: vendorMiniFormLinksTable.expiresAt })
+    const [link] = await db.select({
+      id: vendorMiniFormLinksTable.id,
+      isActive: vendorMiniFormLinksTable.isActive,
+      expiresAt: vendorMiniFormLinksTable.expiresAt,
+      vendorName: vendorMiniFormLinksTable.vendorName,
+      serviceType: vendorMiniFormLinksTable.serviceType,
+      orderNumber: vendorMiniFormLinksTable.orderNumber,
+    })
       .from(vendorMiniFormLinksTable)
       .where(eq(vendorMiniFormLinksTable.token, token));
     if (!link) return res.status(404).json({ error: "Link tidak ditemukan" });
@@ -1219,13 +1226,53 @@ vendorMiniFormRouter.post("/upload-media/:token", _vmfMediaRateLimit, _vmfMediaU
       return res.status(503).json({ error: "Storage sedang tidak tersedia, silakan coba lagi." });
     }
 
-    return res.json({
-      objectPath,
-      filename: req.file.originalname,
-      mimeType: req.file.mimetype,
-      size: req.file.size,
-      role,
+    const uploadResult = { objectPath, filename: req.file.originalname, mimeType: req.file.mimetype, size: req.file.size, role };
+
+    // ── Fire-and-forget WA notification ke admin ─────────────────────────────
+    const _linkId = String(link.id);
+    const _vendorName = link.vendorName ?? "Vendor";
+    const _serviceType = link.serviceType;
+    const _orderNumber = link.orderNumber;
+    const _filename = req.file.originalname;
+    const _role = role;
+    setImmediate(async () => {
+      try {
+        const dedupCtx = "vmf_media_upload";
+        const alreadyNotified = await wasRecentlyNotified(dedupCtx, _linkId, 30 * 60 * 1000);
+        if (alreadyNotified) return;
+
+        const ROLE_LABEL: Record<string, string> = {
+          cover: "Cover Image",
+          gallery: "Foto Gallery",
+          video: "Video",
+          brochure: "Brosur PDF",
+          certificate: "Sertifikat",
+        };
+        const msg =
+          `📷 *Media Vendor Diterima*\n\n` +
+          `Vendor *${_vendorName}* (${_serviceType})` +
+          (_orderNumber ? ` untuk order *${_orderNumber}*` : "") +
+          ` baru saja mengunggah media:\n` +
+          `• Jenis: ${ROLE_LABEL[_role] ?? _role}\n` +
+          `• File: ${_filename}\n\n` +
+          `Lihat di BizPortal → Vendor Forms → 📷 Media Submission.`;
+
+        const [adminGroupWa, adminWa] = await Promise.all([getAdminGroupWa(), getAdminWa()]);
+        const waOpts = { context: dedupCtx, refType: "vmf_link", refId: _linkId };
+
+        if (adminGroupWa) {
+          await sendToAdminGroup(adminGroupWa, msg, waOpts);
+          await logNotification({ channel: "wa", recipient: adminGroupWa, message: msg, status: "sent", context: dedupCtx, refType: "vmf_link", refId: _linkId });
+        } else if (adminWa) {
+          await sendWhatsApp(adminWa, msg, waOpts);
+          await logNotification({ channel: "wa", recipient: adminWa, message: msg, status: "sent", context: dedupCtx, refType: "vmf_link", refId: _linkId });
+        }
+      } catch (notifErr) {
+        req.log?.warn({ err: notifErr }, "vmf media upload — notifikasi WA gagal (non-fatal)");
+      }
     });
+
+    return res.json(uploadResult);
   } catch (err) {
     req.log?.error({ err }, "vmf media upload error");
     return res.status(500).json({ error: "Upload gagal" });
