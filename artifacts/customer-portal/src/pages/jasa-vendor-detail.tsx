@@ -724,6 +724,7 @@ export default function JasaVendorDetail() {
         priceSell: item.priceSell,
         currency: item.currency,
         unit: item.unit ?? "unit",
+        vendorName: item.vendorName ?? null,
         subtotal: calcResult.subtotal,
         tax: taxAmount,
         total,
