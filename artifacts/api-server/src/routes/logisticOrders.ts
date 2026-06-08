@@ -168,6 +168,12 @@ function toItem(row: typeof logisticOrderItemsTable.$inferSelect) {
     inputData: row.inputData,
     calculationResult: row.calculationResult,
     subtotal: parseFloat(row.subtotal),
+    itemSource: row.itemSource ?? "manual",
+    vendorCatalogItemId: row.vendorCatalogItemId ?? null,
+    vendorId: row.vendorId ?? null,
+    serviceType: row.serviceType ?? null,
+    priceSnapshot: row.priceSnapshot ?? null,
+    calculationInput: row.calculationInput ?? null,
     createdAt: row.createdAt.toISOString(),
   };
 }
