@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node ../api-server/kill-port.mjs ${PORT:-19368} 2>/dev/null; sleep 0.3 && vite --config vite.config.ts --host 0.0.0.0",
-    "build": "vite build --config vite.config.ts",
-    "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
+    "dev": "node ../api-server/kill-port.mjs ${PORT:-19368} 2>/dev/null; sleep 0.3 && pnpm exec vite --config vite.config.ts --host 0.0.0.0",
+    "build": "pnpm exec vite build --config vite.config.ts",
+    "serve": "pnpm exec vite preview --config vite.config.ts --host 0.0.0.0",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
