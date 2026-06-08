@@ -18,6 +18,32 @@ import {
 import type { MarketplaceItem, FilterFieldDef, ActiveFilters } from "@/lib/catalogFilters";
 import { buildCatalogFilters, matchVendorCatalog } from "@/lib/catalogFilters";
 
+// ── Category placeholder config (emoji + gradient) ───────────────────────────
+const CATEGORY_PLACEHOLDER: Record<string, { emoji: string; from: string; to: string; label: string }> = {
+  // Products
+  coffee:      { emoji: "☕", from: "#6F4E37", to: "#A0785A", label: "Kopi" },
+  coal:        { emoji: "⛏️", from: "#2d3748", to: "#4a5568", label: "Batubara" },
+  iron_steel:  { emoji: "🏗️", from: "#2b4162", to: "#546a8c", label: "Besi & Baja" },
+  palm_oil:    { emoji: "🌴", from: "#276221", to: "#4a9e41", label: "Sawit" },
+  nickel:      { emoji: "🔩", from: "#4a5568", to: "#718096", label: "Nikel" },
+  copper:      { emoji: "🔶", from: "#b05c1a", to: "#d4813a", label: "Tembaga" },
+  rice:        { emoji: "🌾", from: "#7c6d2a", to: "#b8a24a", label: "Beras" },
+  sugar:       { emoji: "🍬", from: "#c05080", to: "#e07095", label: "Gula" },
+  seafood:     { emoji: "🐟", from: "#1a6080", to: "#2a8aad", label: "Seafood" },
+  frozen_food: { emoji: "❄️", from: "#1e4a7a", to: "#2e6aaa", label: "Frozen Food" },
+  furniture:   { emoji: "🪑", from: "#7c4a1a", to: "#a8693a", label: "Furniture" },
+  chemical:    { emoji: "⚗️", from: "#3a1a7c", to: "#5a3aaa", label: "Kimia" },
+  textile:     { emoji: "🧵", from: "#7c1a4a", to: "#aa3a6a", label: "Tekstil" },
+  // Services
+  trucking:    { emoji: "🚛", from: "#1a3a6c", to: "#2a5aaa", label: "Trucking" },
+  sea_freight: { emoji: "🚢", from: "#0c3057", to: "#1a5080", label: "Sea Freight" },
+  air_freight: { emoji: "✈️", from: "#1a4060", to: "#2a6090", label: "Air Freight" },
+  ppjk:        { emoji: "📋", from: "#3a3060", to: "#5a4a90", label: "PPJK" },
+  handling:    { emoji: "🏭", from: "#2a4a2a", to: "#4a7a4a", label: "Handling" },
+  document:    { emoji: "📄", from: "#3a4a5a", to: "#5a6a7a", label: "Document" },
+  exim_service:{ emoji: "🌍", from: "#1a4a4a", to: "#2a7070", label: "Exim Service" },
+};
+
 // ── Category definitions ─────────────────────────────────────────────────────
 const PRODUCT_CATS = [
   { key: "all",        label: "Semua Produk",   emoji: "📦" },
@@ -120,7 +146,7 @@ function ItemCard({ item, onClick }: { item: MarketplaceItem; onClick: () => voi
       {/* Header band */}
       <div className={`h-1.5 w-full ${isProduct ? "bg-gradient-to-r from-emerald-400 to-teal-400" : "bg-gradient-to-r from-sky-400 to-blue-500"}`} />
 
-      {/* Primary image — always shown, placeholder if no photo */}
+      {/* Primary image — real photo if available, else category emoji placeholder */}
       <div className="relative w-full h-[140px] overflow-hidden bg-slate-100">
         {hasImage ? (
           <img
@@ -129,27 +155,34 @@ function ItemCard({ item, onClick }: { item: MarketplaceItem; onClick: () => voi
             className="w-full h-full object-cover"
             loading="lazy"
             onError={(e) => {
-              const el = e.currentTarget;
+              const el = e.currentTarget as HTMLImageElement;
               el.style.display = "none";
-              const parent = el.parentElement;
-              if (parent) {
-                parent.classList.add("flex", "items-center", "justify-center");
-                const ph = document.createElement("div");
-                ph.className = "flex flex-col items-center gap-1.5";
-                ph.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="20" height="20" rx="2"/><path d="M2 14l5-5 4 4 4-5 7 7"/><circle cx="8.5" cy="8.5" r="1.5"/></svg>`;
-                parent.appendChild(ph);
-              }
             }}
           />
-        ) : (
-          <div className={`w-full h-full flex flex-col items-center justify-center gap-2 ${isProduct ? "bg-gradient-to-br from-emerald-50 to-teal-50" : "bg-gradient-to-br from-sky-50 to-blue-50"}`}>
-            {isProduct
-              ? <Package className="h-10 w-10 text-emerald-200" />
-              : <Truck className="h-10 w-10 text-sky-200" />
-            }
-            <span className="text-[10px] text-slate-300 font-medium">Belum ada foto</span>
-          </div>
-        )}
+        ) : (() => {
+          const catKey = item.categoryKey ?? item.serviceType ?? "";
+          const cat = catKey ? CATEGORY_PLACEHOLDER[catKey] : undefined;
+          if (cat) {
+            return (
+              <div
+                className="w-full h-full flex flex-col items-center justify-center gap-2 select-none"
+                style={{ background: `linear-gradient(135deg, ${cat.from}, ${cat.to})` }}
+              >
+                <span className="text-5xl drop-shadow-sm" role="img" aria-label={cat.label}>{cat.emoji}</span>
+                <span className="text-[11px] font-semibold text-white/80 tracking-wide uppercase">{cat.label}</span>
+              </div>
+            );
+          }
+          return (
+            <div className={`w-full h-full flex flex-col items-center justify-center gap-2 ${isProduct ? "bg-gradient-to-br from-emerald-50 to-teal-50" : "bg-gradient-to-br from-sky-50 to-blue-50"}`}>
+              {isProduct
+                ? <Package className="h-10 w-10 text-emerald-200" />
+                : <Truck className="h-10 w-10 text-sky-200" />
+              }
+              <span className="text-[10px] text-slate-300 font-medium">Belum ada foto</span>
+            </div>
+          );
+        })()}
         {item.hasVideo && (
           <div className="absolute top-2 right-2 bg-black/60 rounded-full px-2 py-0.5 flex items-center gap-1">
             <svg className="h-3 w-3 text-white fill-white" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
