@@ -13,10 +13,11 @@ import {
 } from "@/components/ui/dialog";
 import {
   Store, Search, SlidersHorizontal, X, Building2, Package, Truck,
-  Tag, MapPin, Clock, ChevronRight, Filter, RefreshCw,
+  Tag, MapPin, Clock, ChevronRight, Filter, RefreshCw, GitCompareArrows,
 } from "lucide-react";
 import type { MarketplaceItem, FilterFieldDef, ActiveFilters } from "@/lib/catalogFilters";
 import { buildCatalogFilters, matchVendorCatalog } from "@/lib/catalogFilters";
+import { CompareTray, CompareModal } from "@/components/VendorComparison";
 
 // ── Category placeholder config (emoji + gradient) ───────────────────────────
 const CATEGORY_PLACEHOLDER: Record<string, { emoji: string; from: string; to: string; label: string }> = {
@@ -141,13 +142,29 @@ function SpecChips({ specValues, templateSnapshot, limit = 3 }: {
 }
 
 // ── Item Card ─────────────────────────────────────────────────────────────────
-function ItemCard({ item, onClick }: { item: MarketplaceItem; onClick: () => void }) {
+function ItemCard({
+  item,
+  onClick,
+  isCompared,
+  compareDisabled,
+  onToggleCompare,
+}: {
+  item: MarketplaceItem;
+  onClick: () => void;
+  isCompared: boolean;
+  compareDisabled: boolean;
+  onToggleCompare: (id: number) => void;
+}) {
   const isProduct = item.templateKind === "product";
   const hasImage = !!item.primaryImageUrl;
   return (
     <div
-      className="bg-white rounded-2xl border border-slate-200 hover:border-sky-300 hover:shadow-md transition-all duration-200 cursor-pointer flex flex-col overflow-hidden"
-      onClick={onClick}
+      className={`bg-white rounded-2xl border transition-all duration-200 flex flex-col overflow-hidden ${
+        isCompared
+          ? "border-sky-400 shadow-md ring-2 ring-sky-300/50"
+          : "border-slate-200 hover:border-sky-300 hover:shadow-md cursor-pointer"
+      }`}
+      onClick={isCompared ? undefined : onClick}
     >
       {/* Header band */}
       <div className={`h-1.5 w-full ${isProduct ? "bg-gradient-to-r from-emerald-400 to-teal-400" : "bg-gradient-to-r from-sky-400 to-blue-500"}`} />
@@ -236,16 +253,33 @@ function ItemCard({ item, onClick }: { item: MarketplaceItem; onClick: () => voi
           )}
         </div>
 
-        {/* Price */}
+        {/* Price + compare */}
         <div className="mt-auto pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
-          <div>
+          <div
+            className="flex-1 cursor-pointer"
+            onClick={(e) => { e.stopPropagation(); onClick(); }}
+          >
             {item.priceSell != null
               ? <span className="text-[16px] font-extrabold text-sky-700">{formatPrice(item.priceSell, item.currency)}</span>
               : <span className="text-[12px] text-slate-400 italic">Harga nego</span>
             }
             {item.unit && <span className="text-[11px] text-slate-400 ml-1">/ {item.unit}</span>}
           </div>
-          <ChevronRight className="h-4 w-4 text-slate-400 shrink-0" />
+          <button
+            onClick={(e) => { e.stopPropagation(); onToggleCompare(item.id); }}
+            disabled={!isCompared && compareDisabled}
+            title={isCompared ? "Hapus dari perbandingan" : compareDisabled ? "Maks. 4 item" : "Tambah ke perbandingan"}
+            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-[11px] font-bold transition-all duration-150 shrink-0 border ${
+              isCompared
+                ? "bg-sky-600 text-white border-sky-600 shadow-sm"
+                : compareDisabled
+                  ? "bg-slate-100 text-slate-300 border-slate-200 cursor-not-allowed"
+                  : "bg-white text-sky-600 border-sky-200 hover:bg-sky-50 hover:border-sky-400"
+            }`}
+          >
+            <GitCompareArrows className="h-3.5 w-3.5" />
+            {isCompared ? "✓" : "Banding"}
+          </button>
         </div>
       </div>
     </div>
@@ -562,6 +596,24 @@ export default function MarketplacePage() {
   const [searchQuery, setSearchQuery] = useState(urlQ);
   const [showMobileFilter, setShowMobileFilter] = useState(false);
 
+  // ── Compare state ────────────────────────────────────────────────────────
+  const [compareIds, setCompareIds] = useState<number[]>([]);
+  const [showCompareModal, setShowCompareModal] = useState(false);
+  const MAX_COMPARE = 4;
+
+  const handleToggleCompare = useCallback((id: number) => {
+    setCompareIds((prev) => {
+      if (prev.includes(id)) return prev.filter((x) => x !== id);
+      if (prev.length >= MAX_COMPARE) return prev;
+      return [...prev, id];
+    });
+  }, []);
+
+  const handleClearCompare = useCallback(() => {
+    setCompareIds([]);
+    setShowCompareModal(false);
+  }, []);
+
   // Sync state whenever URL search params change (navbar links, back/forward)
   useEffect(() => {
     setActiveTab(urlTab);
@@ -611,6 +663,12 @@ export default function MarketplacePage() {
     if (searchQuery.trim()) merged["__search"] = searchQuery.trim();
     return items.filter((item) => matchVendorCatalog(item, merged));
   }, [items, activeFilters, searchQuery]);
+
+  // ── Compare items (resolved from IDs → actual items) ─────────────────────
+  const compareItems = useMemo(
+    () => compareIds.map((id) => items.find((i) => i.id === id)).filter(Boolean) as MarketplaceItem[],
+    [compareIds, items],
+  );
 
   const handleFilterChange = useCallback(
     (key: string, value: string | [number | null, number | null] | null) => {
@@ -777,15 +835,52 @@ export default function MarketplacePage() {
 
             {/* Grid */}
             {!isLoading && visibleItems.length > 0 && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+              <div className={`grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 ${compareIds.length > 0 ? "pb-28" : ""}`}>
                 {visibleItems.map((item) => (
-                  <ItemCard key={item.id} item={item} onClick={() => setLocation(`/marketplace/${item.id}`)} />
+                  <ItemCard
+                    key={item.id}
+                    item={item}
+                    onClick={() => setLocation(`/marketplace/${item.id}`)}
+                    isCompared={compareIds.includes(item.id)}
+                    compareDisabled={compareIds.length >= MAX_COMPARE && !compareIds.includes(item.id)}
+                    onToggleCompare={handleToggleCompare}
+                  />
                 ))}
               </div>
             )}
           </div>
         </div>
       </div>
+
+      {/* ── Compare Tray (sticky bottom) ──────────────────────────────────── */}
+      <CompareTray
+        compareIds={compareIds}
+        allItems={items}
+        onRemove={handleToggleCompare}
+        onClear={handleClearCompare}
+        onOpen={() => setShowCompareModal(true)}
+      />
+
+      {/* ── Compare Modal ─────────────────────────────────────────────────── */}
+      {showCompareModal && compareItems.length >= 2 && (
+        <CompareModal
+          items={compareItems}
+          onClose={() => setShowCompareModal(false)}
+          onRemove={(id) => {
+            handleToggleCompare(id);
+            if (compareIds.length <= 2) setShowCompareModal(false);
+          }}
+          onRequestQuote={(item) => {
+            setShowCompareModal(false);
+            handleClearCompare();
+            if (item.templateKind === "service") {
+              setLocation(`/jasa/vendor/${item.id}`);
+            } else {
+              setLocation(`/marketplace/${item.id}`);
+            }
+          }}
+        />
+      )}
     </div>
   );
 }
