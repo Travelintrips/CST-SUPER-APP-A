@@ -1,8 +1,7 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 import { LOGISTICS_SUBCATEGORIES as LOGISTICS_SUBCATEGORIES_FALLBACK } from "@workspace/logistics-constants";
 import { rateLimit, ipKeyGenerator } from "express-rate-limit";
-import { db, productsTable, productCategoryMapTable, productCategoriesTable, portalCustomersTable, portalCustomerServicesTable, portalContentTable, accountingSettingsTable, salesDocumentsTable, salesDocumentLinesTable, customersTable, logisticOrdersTable, suppliersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, quoteRequestsTable, userProfilesTable, identityDocumentsTable, ocrResultsTable, vendorProfilesTable, driverProfilesTable, employeeProfilesTable, onboardingApprovalsTable, waOtpCodesTable, trustedDevicesTable, vendorMiniFormLinksTable, vendorMiniFormSubmissionsTable, vendorCatalogItemsTable, productTemplatesTable, serviceTemplatesTable } from "@workspace/db";
-import { db, productsTable, productCategoryMapTable, productCategoriesTable, portalCustomersTable, portalCustomerServicesTable, portalContentTable, accountingSettingsTable, salesDocumentsTable, salesDocumentLinesTable, customersTable, logisticOrdersTable, suppliersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, quoteRequestsTable, userProfilesTable, identityDocumentsTable, ocrResultsTable, vendorProfilesTable, driverProfilesTable, employeeProfilesTable, onboardingApprovalsTable, waOtpCodesTable, trustedDevicesTable, vendorMiniFormLinksTable, vendorMiniFormSubmissionsTable, vendorCatalogItemsTable, portalProductOrdersTable, portalProductOrderItemsTable, vendorPerformanceTable } from "@workspace/db";
+import { db, productsTable, productCategoryMapTable, productCategoriesTable, portalCustomersTable, portalCustomerServicesTable, portalContentTable, accountingSettingsTable, salesDocumentsTable, salesDocumentLinesTable, customersTable, logisticOrdersTable, suppliersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, quoteRequestsTable, userProfilesTable, identityDocumentsTable, ocrResultsTable, vendorProfilesTable, driverProfilesTable, employeeProfilesTable, onboardingApprovalsTable, waOtpCodesTable, trustedDevicesTable, vendorMiniFormLinksTable, vendorMiniFormSubmissionsTable, vendorCatalogItemsTable, productTemplatesTable, serviceTemplatesTable, portalProductOrdersTable, portalProductOrderItemsTable, vendorPerformanceTable } from "@workspace/db";
 import { deleteFromSupabase, uploadToSupabase } from "../lib/supabaseStorage.js";
 import { invalidateTokenCache, SERVICE_SCHEMAS } from "./vendorMiniForm";
 import { eq, inArray, and, ne, isNull, sql, desc, gte, lte, ilike, or, asc } from "drizzle-orm";
@@ -15,6 +14,7 @@ import { getWaTemplateConfig, renderTemplate } from "../lib/orderNotification.js
 import { sendMail, isSmtpConfigured } from "../lib/mailer";
 import { requirePortalAuth, requirePortalAdmin, type PortalAuthReq } from "../lib/supabaseAuth";
 import { requireClerkUser } from "../lib/requireAdmin";
+import { isCatalogItemPublic, catalogPublicConditions } from "../lib/catalogVisibility.js";
 import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStatusService.js";
 import { broadcastToAdmins, broadcastToPortal } from "../lib/sseManager";
 import { saveAndBroadcast } from "../lib/notificationStore";
@@ -358,12 +358,6 @@ function normalizeMarketplaceStockStatus(raw: string | null): string | null {
   };
   return MAP[raw.toLowerCase().trim()] ?? raw;
 }
-
-// ── Visibility helper — item katalog publik ───────────────────────────────────
-// Single source of truth ada di lib/catalogVisibility.ts
-// isCatalogItemPublic: isPublished=true && isActive!=false && !deletedAt
-// catalogPublicConditions: builder WHERE clause untuk Drizzle query
-export { isCatalogItemPublic, catalogPublicConditions } from "../lib/catalogVisibility.js";
 
 // ── Marketplace helpers ───────────────────────────────────────────────────────
 function mkMarketplaceOrderNumber(): string {
@@ -4024,9 +4018,9 @@ router.get("/marketplace/:id/related", async (req, res) => {
       ))
       .orderBy(
         sql`CASE WHEN ${vci.categoryKey} = ${item.categoryKey ?? ""} THEN 0 ELSE 1 END`,
-        sql`CASE WHEN ${vci.priceSell} IS NOT NULL AND ${item.priceSell != null ? String(item.priceSell) : "NULL"} IS NOT NULL
-              THEN ABS(${vci.priceSell}::numeric - ${item.priceSell != null ? String(item.priceSell) : "0"}::numeric)
-              ELSE 999999 END`,
+        item.priceSell != null
+          ? sql`CASE WHEN ${vci.priceSell} IS NOT NULL THEN ABS(${vci.priceSell}::numeric - ${String(item.priceSell)}::numeric) ELSE 999999 END`
+          : sql`999999`,
         desc(vci.publishedAt),
       )
       .limit(8);
