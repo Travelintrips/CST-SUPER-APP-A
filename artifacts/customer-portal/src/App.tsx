@@ -20,6 +20,7 @@ import { fetchAndStoreProfile } from "@/lib/auth";
 const Home                      = lazy(() => import("@/pages/home"));
 const Services                  = lazy(() => import("@/pages/services"));
 const Products                  = lazy(() => import("@/pages/products"));
+const Marketplace               = lazy(() => import("@/pages/marketplace"));
 const Jasa                      = lazy(() => import("@/pages/jasa"));
 const JasaDetail                = lazy(() => import("@/pages/jasa-detail"));
 const Login                     = lazy(() => import("@/pages/login"));
@@ -202,7 +203,8 @@ function AppShell() {
       <Switch>
         <Route path="/" component={Home} />
         <Route path="/services" component={Services} />
-        <Route path="/products" component={Products} />
+        <Route path="/marketplace" component={Marketplace} />
+        <Route path="/products">{() => { window.location.replace("/marketplace"); return null; }}</Route>
         <Route path="/jasa" component={Jasa} />
         <Route path="/jasa/:id" component={JasaDetail} />
         <Route path="/login" component={Login} />
