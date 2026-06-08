@@ -10,7 +10,7 @@ import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+  Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -137,6 +137,7 @@ const SERVICE_META: Record<string, { label: string; emoji: string }> = {
   exim_service: { label: "Exim Service", emoji: "🌐" },
 };
 const SERVICE_TYPES = Object.keys(SERVICE_META);
+const SERVICE_TYPES_ONLY = SERVICE_TYPES.filter(k => k !== "product");
 
 const ITEM_STATUS_META: Record<string, { label: string; color: string }> = {
   waiting_vendor: { label: "Menunggu Vendor", color: "bg-yellow-100 text-yellow-700 border-yellow-200" },
@@ -615,13 +616,20 @@ function CreateLinkDialog({ onCreated }: { onCreated: () => void }) {
 
           {/* Service type */}
           <div className="space-y-1.5">
-            <Label>Service Type <span className="text-red-500">*</span></Label>
+            <Label>Jenis Form <span className="text-red-500">*</span></Label>
             <Select value={serviceType} onValueChange={v => { setServiceType(v); setSupplierId(""); }}>
-              <SelectTrigger><SelectValue placeholder="Pilih tipe layanan" /></SelectTrigger>
+              <SelectTrigger><SelectValue placeholder="Pilih jenis form" /></SelectTrigger>
               <SelectContent>
-                {SERVICE_TYPES.map(k => (
-                  <SelectItem key={k} value={k}>{SERVICE_META[k]!.emoji} {SERVICE_META[k]!.label}</SelectItem>
-                ))}
+                <SelectGroup>
+                  <SelectLabel className="text-xs text-slate-400">Pembelian Produk</SelectLabel>
+                  <SelectItem value="product">📦 Produk</SelectItem>
+                </SelectGroup>
+                <SelectGroup>
+                  <SelectLabel className="text-xs text-slate-400">Layanan Logistik</SelectLabel>
+                  {SERVICE_TYPES_ONLY.map(k => (
+                    <SelectItem key={k} value={k}>{SERVICE_META[k]!.emoji} {SERVICE_META[k]!.label}</SelectItem>
+                  ))}
+                </SelectGroup>
               </SelectContent>
             </Select>
           </div>
@@ -1032,13 +1040,20 @@ function CreateOpConfirmDialog({ suppliers, onCreated }: { suppliers: Supplier[]
             <Input value={orderNumber} onChange={e => setOrderNumber(e.target.value)} placeholder="ORD/..." />
           </div>
           <div className="space-y-1.5">
-            <Label>Service Type <span className="text-red-500">*</span></Label>
+            <Label>Jenis Form <span className="text-red-500">*</span></Label>
             <Select value={serviceType} onValueChange={setServiceType}>
-              <SelectTrigger><SelectValue placeholder="Pilih layanan" /></SelectTrigger>
+              <SelectTrigger><SelectValue placeholder="Pilih jenis form" /></SelectTrigger>
               <SelectContent>
-                {SERVICE_TYPES.map(k => (
-                  <SelectItem key={k} value={k}>{SERVICE_META[k]!.emoji} {SERVICE_META[k]!.label}</SelectItem>
-                ))}
+                <SelectGroup>
+                  <SelectLabel className="text-xs text-slate-400">Pembelian Produk</SelectLabel>
+                  <SelectItem value="product">📦 Produk</SelectItem>
+                </SelectGroup>
+                <SelectGroup>
+                  <SelectLabel className="text-xs text-slate-400">Layanan Logistik</SelectLabel>
+                  {SERVICE_TYPES_ONLY.map(k => (
+                    <SelectItem key={k} value={k}>{SERVICE_META[k]!.emoji} {SERVICE_META[k]!.label}</SelectItem>
+                  ))}
+                </SelectGroup>
               </SelectContent>
             </Select>
           </div>
@@ -1911,11 +1926,11 @@ function CreateLinkFromTemplateDialog({
           </div>
 
           <div className="space-y-1.5">
-            <Label>Service Type <span className="text-red-500">*</span></Label>
+            <Label>Jenis Layanan <span className="text-red-500">*</span></Label>
             <Select value={serviceType} onValueChange={setServiceType}>
-              <SelectTrigger><SelectValue placeholder="Pilih tipe layanan logistik" /></SelectTrigger>
+              <SelectTrigger><SelectValue placeholder="Pilih layanan logistik" /></SelectTrigger>
               <SelectContent>
-                {SERVICE_TYPES.map(k => (
+                {SERVICE_TYPES_ONLY.map(k => (
                   <SelectItem key={k} value={k}>{SERVICE_META[k]!.emoji} {SERVICE_META[k]!.label}</SelectItem>
                 ))}
               </SelectContent>
