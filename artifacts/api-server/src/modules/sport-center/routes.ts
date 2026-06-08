@@ -110,6 +110,70 @@ async function nextPaymentNumber(companyId?: number): Promise<string> {
   return `PAY/${new Date().getFullYear()}/${pad(Number((res.rows[0] as any).cnt) + 1)}`;
 }
 
+// Pastikan booking yang sudah 'paid' punya record di sport_payments (+ jurnal akuntansi).
+// Dipakai oleh PATCH /bookings/:id dan legacy sync push-bookings agar booking lunas
+// selalu muncul di daftar Pembayaran. Idempoten: skip jika payment sudah ada.
+async function ensurePaymentForPaidBooking(
+  row: Record<string, unknown>,
+  createdById: string | null,
+): Promise<void> {
+  const id = Number(row.id);
+  if (!id) return;
+  const existingPayment = await db.execute(sql`
+    SELECT id FROM sport_payments WHERE booking_id = ${id} LIMIT 1
+  `);
+  if (existingPayment.rows.length) return;
+
+  const bCompanyId = row.company_id != null ? Number(row.company_id) : null;
+  const bTaxAmount = Number(row.tax_amount ?? 0);
+  const bTotalAmount = Number(row.total_amount ?? 0);
+  const paymentNumber = await nextPaymentNumber(bCompanyId ?? undefined);
+  const payR = await db.execute(sql`
+    INSERT INTO sport_payments
+      (company_id, booking_id, payment_number, amount, method, status,
+       paid_at, notes, source, payment_type)
+    VALUES
+      (${bCompanyId}, ${id}, ${paymentNumber}, ${bTotalAmount}, 'cash', 'paid',
+       NOW(), 'Auto-created (paid booking)', 'SPORT_CENTER', 'booking')
+    RETURNING *
+  `);
+
+  if (bTaxAmount > 0) {
+    postSportCenterBookingWithTax({
+      bookingId: id,
+      bookingCode: String(row.booking_number ?? paymentNumber),
+      customerName: String(row.customer_name ?? ""),
+      facilityName: String(row.facility_name ?? ""),
+      date: String(row.booking_date ?? new Date().toISOString().slice(0, 10)),
+      baseAmount: bTotalAmount,
+      taxAmount: bTaxAmount,
+      createdById,
+      companyId: bCompanyId,
+    }).catch((err: unknown) => console.error('[sport-center] postSportCenterBookingWithTax (ensurePayment) failed:', err));
+  } else {
+    postSportCenterBooking({
+      bookingId: id,
+      bookingCode: String(row.booking_number ?? paymentNumber),
+      customerName: String(row.customer_name ?? ""),
+      facilityName: String(row.facility_name ?? ""),
+      date: String(row.booking_date ?? new Date().toISOString().slice(0, 10)),
+      totalPrice: bTotalAmount,
+      createdById,
+      companyId: bCompanyId,
+    }).catch((err: unknown) => console.error('[sport-center] postSportCenterBooking (ensurePayment) failed:', err));
+  }
+
+  await db.execute(sql`
+    INSERT INTO sport_audit_logs (company_id, entity_type, entity_id, action, actor, new_data)
+    VALUES (
+      ${bCompanyId}, 'payment', ${(payR.rows[0] as Record<string, unknown>)?.id ?? null},
+      'PAYMENT_AUTO_CREATED', ${createdById},
+      ${JSON.stringify(payR.rows[0])}::jsonb
+    )
+  `);
+  broadcastSportCenterEvent({ module: "sport-center", entity: "payment", action: "created", data: payR.rows[0] as Record<string, unknown>, timestamp: new Date().toISOString() }, bCompanyId as number | undefined);
+}
+
 async function nextPrSeq(): Promise<string> {
   const year = new Date().getFullYear();
   const pattern = `PR/${year}/%`;
@@ -606,6 +670,18 @@ router.post("/sync/push-bookings", async (req, res) => {
                ${row.created_at ?? new Date().toISOString()}::TIMESTAMPTZ, NOW())
           `);
         }
+        // Legacy booking yang sudah lunas harus tetap muncul di daftar Pembayaran:
+        // buat sport_payments + jurnal jika belum ada (idempoten).
+        if (paymentStatus === 'paid') {
+          const br = await db.execute(sql`
+            SELECT id, company_id, total_amount, tax_amount, booking_number,
+                   customer_name, facility_name, booking_date
+            FROM sport_bookings WHERE booking_number = ${bookingNumber} LIMIT 1
+          `);
+          if (br.rows.length) {
+            await ensurePaymentForPaidBooking(br.rows[0] as Record<string, unknown>, null);
+          }
+        }
         pushed++;
       } catch (err) {
         console.error("[sport-center] push-bookings row error:", err);
@@ -833,55 +909,8 @@ router.patch("/bookings/:id", async (req, res) => {
     // Safety net: jika payment_status di-set ke 'paid' lewat PATCH (bukan POST /payments),
     // pastikan sport_payment record dan jurnal akuntansi tetap dibuat
     if (payment_status === 'paid') {
-      const existingPayment = await db.execute(sql`
-        SELECT id FROM sport_payments WHERE booking_id = ${id} LIMIT 1
-      `);
-      if (!existingPayment.rows.length) {
-        const createdById = (req.user as { id: string } | undefined)?.id ?? null;
-        const paymentNumber = await nextPaymentNumber(Number(row.company_id ?? null));
-        const payR = await db.execute(sql`
-          INSERT INTO sport_payments (company_id, booking_id, payment_number, amount, method, status, paid_at, notes)
-          VALUES (${row.company_id ?? null}, ${id}, ${paymentNumber}, ${row.total_amount}, 'cash', 'paid', NOW(), 'Auto-created via PATCH')
-          RETURNING *
-        `);
-        const bTaxAmount = Number(row.tax_amount ?? 0);
-        const bTotalAmount = Number(row.total_amount ?? 0);
-        const bCompanyId = row.company_id != null ? Number(row.company_id) : null;
-        if (bTaxAmount > 0) {
-          postSportCenterBookingWithTax({
-            bookingId: id,
-            bookingCode: String(row.booking_number ?? paymentNumber),
-            customerName: String(row.customer_name ?? ""),
-            facilityName: String(row.facility_name ?? ""),
-            date: String(row.booking_date ?? new Date().toISOString().slice(0, 10)),
-            baseAmount: bTotalAmount,
-            taxAmount: bTaxAmount,
-            createdById,
-            companyId: bCompanyId,
-          }).catch((err: unknown) => console.error('[sport-center] postSportCenterBookingWithTax (PATCH safety net) failed:', err));
-        } else {
-          postSportCenterBooking({
-            bookingId: id,
-            bookingCode: String(row.booking_number ?? paymentNumber),
-            customerName: String(row.customer_name ?? ""),
-            facilityName: String(row.facility_name ?? ""),
-            date: String(row.booking_date ?? new Date().toISOString().slice(0, 10)),
-            totalPrice: bTotalAmount,
-            createdById,
-            companyId: bCompanyId,
-          }).catch((err: unknown) => console.error('[sport-center] postSportCenterBooking (PATCH safety net) failed:', err));
-        }
-        // Audit log untuk auto-payment
-        await db.execute(sql`
-          INSERT INTO sport_audit_logs (company_id, entity_type, entity_id, action, actor, new_data)
-          VALUES (
-            ${bCompanyId}, 'payment', ${(payR.rows[0] as Record<string, unknown>)?.id ?? null},
-            'PAYMENT_AUTO_CREATED_VIA_PATCH', ${createdById},
-            ${JSON.stringify(payR.rows[0])}::jsonb
-          )
-        `);
-        broadcastSportCenterEvent({ module: "sport-center", entity: "payment", action: "created", data: payR.rows[0] as Record<string, unknown>, timestamp: new Date().toISOString() }, bCompanyId as number | undefined);
-      }
+      const createdById = (req.user as { id: string } | undefined)?.id ?? null;
+      await ensurePaymentForPaidBooking(row, createdById);
     }
 
     broadcastSportCenterEvent({ module: "sport-center", entity: "booking", action: "updated", data: row, timestamp: new Date().toISOString() });
