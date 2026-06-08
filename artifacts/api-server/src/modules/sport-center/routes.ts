@@ -2421,6 +2421,16 @@ router.get("/purchase-requests", async (req, res) => {
   }
 });
 
+// Inline migration: add reminder_days column if not exists
+(async () => {
+  try {
+    await db.execute(sql`
+      ALTER TABLE sport_settings
+        ADD COLUMN IF NOT EXISTS reminder_days TEXT NOT NULL DEFAULT '4,1'
+    `);
+  } catch {}
+})();
+
 router.get("/settings", async (req, res) => {
   if (!await requireAdmin(req, res)) return;
   try {
@@ -2432,27 +2442,48 @@ router.get("/settings", async (req, res) => {
   }
 });
 
+async function upsertSettings(body: Record<string, unknown>) {
+  const { company_id, center_name, address, phone, open_time, close_time,
+          booking_advance_days, min_booking_hours, cancellation_hours, reminder_days } = body;
+  const reminderDaysStr = Array.isArray(reminder_days)
+    ? (reminder_days as number[]).filter((d) => Number.isInteger(d) && d >= 1 && d <= 90).join(",")
+    : typeof reminder_days === "string" ? reminder_days : "4,1";
+  return db.execute(sql`
+    INSERT INTO sport_settings (company_id, center_name, address, phone, open_time, close_time,
+      booking_advance_days, min_booking_hours, cancellation_hours, reminder_days)
+    VALUES (${company_id ?? null}, ${center_name ?? "Sport Center"}, ${address ?? null}, ${phone ?? null},
+            ${open_time ?? "06:00"}::time, ${close_time ?? "22:00"}::time,
+            ${booking_advance_days ?? 30}, ${min_booking_hours ?? 1}, ${cancellation_hours ?? 2},
+            ${reminderDaysStr})
+    ON CONFLICT (company_id) DO UPDATE SET
+      center_name = EXCLUDED.center_name,
+      address = EXCLUDED.address,
+      phone = EXCLUDED.phone,
+      open_time = EXCLUDED.open_time,
+      close_time = EXCLUDED.close_time,
+      booking_advance_days = EXCLUDED.booking_advance_days,
+      min_booking_hours = EXCLUDED.min_booking_hours,
+      cancellation_hours = EXCLUDED.cancellation_hours,
+      reminder_days = EXCLUDED.reminder_days,
+      updated_at = NOW()
+    RETURNING *
+  `);
+}
+
 router.post("/settings", async (req, res) => {
   if (!await requireAdmin(req, res)) return;
   try {
-    const { company_id, center_name, address, phone, open_time, close_time, booking_advance_days, min_booking_hours, cancellation_hours } = req.body;
-    const r = await db.execute(sql`
-      INSERT INTO sport_settings (company_id, center_name, address, phone, open_time, close_time, booking_advance_days, min_booking_hours, cancellation_hours)
-      VALUES (${company_id ?? null}, ${center_name ?? "Sport Center"}, ${address ?? null}, ${phone ?? null},
-              ${open_time ?? "06:00"}::time, ${close_time ?? "22:00"}::time,
-              ${booking_advance_days ?? 30}, ${min_booking_hours ?? 1}, ${cancellation_hours ?? 2})
-      ON CONFLICT (company_id) DO UPDATE SET
-        center_name = EXCLUDED.center_name,
-        address = EXCLUDED.address,
-        phone = EXCLUDED.phone,
-        open_time = EXCLUDED.open_time,
-        close_time = EXCLUDED.close_time,
-        booking_advance_days = EXCLUDED.booking_advance_days,
-        min_booking_hours = EXCLUDED.min_booking_hours,
-        cancellation_hours = EXCLUDED.cancellation_hours,
-        updated_at = NOW()
-      RETURNING *
-    `);
+    const r = await upsertSettings(req.body);
+    res.json(r.rows[0]);
+  } catch {
+    res.status(500).json({ error: "Gagal menyimpan settings" });
+  }
+});
+
+router.put("/settings", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  try {
+    const r = await upsertSettings(req.body);
     res.json(r.rows[0]);
   } catch {
     res.status(500).json({ error: "Gagal menyimpan settings" });

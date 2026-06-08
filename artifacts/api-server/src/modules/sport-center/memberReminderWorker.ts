@@ -32,6 +32,35 @@ const DEFAULT_REMINDERS: ReminderConfig[] = [
   { daysAhead: 1, reminderType: "1day",  label: "1 hari lagi" },
 ];
 
+/**
+ * Baca konfigurasi reminder_days dari sport_settings.
+ * Fallback ke DEFAULT_REMINDERS jika belum dikonfigurasi atau gagal.
+ */
+export async function getReminderConfig(companyId?: number | null): Promise<ReminderConfig[]> {
+  try {
+    const r = await db.execute(sql`
+      SELECT reminder_days FROM sport_settings
+      WHERE (${companyId ?? null}::int IS NULL OR company_id = ${companyId ?? null})
+      LIMIT 1
+    `);
+    const row = r.rows[0] as { reminder_days?: string } | undefined;
+    if (!row?.reminder_days) return DEFAULT_REMINDERS;
+    const days = row.reminder_days
+      .split(",")
+      .map((s) => parseInt(s.trim(), 10))
+      .filter((d) => !isNaN(d) && d >= 1 && d <= 90)
+      .sort((a, b) => b - a);
+    if (days.length === 0) return DEFAULT_REMINDERS;
+    return days.map((d) => ({
+      daysAhead: d,
+      reminderType: d === 1 ? "1day" : `${d}days`,
+      label: d === 1 ? "1 hari lagi" : `${d} hari lagi`,
+    }));
+  } catch {
+    return DEFAULT_REMINDERS;
+  }
+}
+
 export interface ReminderResult {
   sent: number;
   skipped: number;
@@ -174,11 +203,16 @@ async function processReminder(
 /**
  * Jalankan semua reminder config sekarang. Dipanggil oleh worker interval
  * dan oleh endpoint manual trigger di routes.ts.
+ *
+ * Jika `reminders` tidak diberikan, baca konfigurasi dari sport_settings.
  */
 export async function runMemberReminders(
-  reminders: ReminderConfig[] = DEFAULT_REMINDERS,
+  reminders?: ReminderConfig[],
 ): Promise<ReminderResult> {
   await ensureLogTable();
+  if (!reminders) {
+    reminders = await getReminderConfig();
+  }
 
   let totalSent = 0;
   let totalSkipped = 0;
