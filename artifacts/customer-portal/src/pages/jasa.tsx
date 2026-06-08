@@ -101,11 +101,54 @@ function useServicesRealtime(queryKey: string) {
     setTimeout(() => setJustUpdated(false), 3000);
   }, [qc, queryKey]);
 
+  const handleCatalogChange = useCallback((payload: { eventType: string; new: Record<string, unknown>; old: Record<string, unknown> }) => {
+    const row = (payload.new ?? payload.old ?? {}) as Record<string, unknown>;
+    if (row["template_kind"] !== "service" && row["templateKind"] !== "service") return;
+    if (import.meta.env.DEV) {
+      console.log("[Realtime] vendor_catalog_items service changed, refetch marketplace", payload.eventType, row["id"]);
+    }
+    qc.invalidateQueries({ queryKey: [queryKey] });
+    setJustUpdated(true);
+    setTimeout(() => setJustUpdated(false), 3000);
+  }, [qc, queryKey]);
+
   useEffect(() => {
     if (!supabase) return;
+
+    // Legacy: watch products table (dipertahankan untuk kompatibilitas)
     const channel = supabase
       .channel("portal-services-jasa-realtime")
       .on("postgres_changes", { event: "*", schema: "public", table: "products" }, handleChange)
+      .subscribe((status) => {
+        setConnected(status === "SUBSCRIBED");
+      });
+
+    // Tambahan: watch vendor_catalog_items untuk item service dari etalase vendor
+    const catalogChannel = supabase
+      .channel("portal-services-jasa-catalog-realtime")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "vendor_catalog_items" },
+        handleCatalogChange,
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "vendor_catalog_items" },
+        handleCatalogChange,
+      )
+      .on(
+        "postgres_changes",
+        { event: "DELETE", schema: "public", table: "vendor_catalog_items" },
+        handleCatalogChange,
+      )
+      .subscribe();
+
+    return () => {
+      supabase!.removeChannel(channel);
+      supabase!.removeChannel(catalogChannel);
+      setConnected(false);
+    };
+  }, [handleChange, handleCatalogChange]);
       .subscribe((status) => setConnected(status === "SUBSCRIBED"));
     return () => { supabase!.removeChannel(channel); setConnected(false); };
   }, [handleChange]);
