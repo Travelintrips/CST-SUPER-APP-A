@@ -2252,6 +2252,12 @@ export interface CreateLogisticOrderItemBody {
   inputData: unknown;
   calculationResult: unknown;
   subtotal: number;
+  itemSource?: string | null;
+  vendorCatalogItemId?: number | null;
+  vendorId?: number | null;
+  serviceType?: string | null;
+  priceSnapshot?: unknown | null;
+  calculationInput?: unknown | null;
 }
 
 export interface CreateLogisticOrderBody {

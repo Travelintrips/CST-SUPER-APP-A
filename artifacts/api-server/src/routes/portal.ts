@@ -117,7 +117,51 @@ router.get("/products", async (_req, res) => {
   return res.json(await listByType("barang"));
 });
 
-// GET /api/portal/marketplace — public vendor catalog (published only, NO priceBase)
+// ── Service category normalisation ───────────────────────────────────────────
+
+const SERVICE_CATEGORY_ALIASES: Record<string, string> = {
+  trucking: "trucking",
+  truck: "trucking",
+  "land freight": "trucking",
+  land_freight: "trucking",
+  darat: "trucking",
+  "sea freight": "sea_freight",
+  sea_freight: "sea_freight",
+  fcl: "sea_freight",
+  lcl: "sea_freight",
+  laut: "sea_freight",
+  "air freight": "air_freight",
+  air_freight: "air_freight",
+  udara: "air_freight",
+  customs: "ppjk",
+  pabean: "ppjk",
+  ppjk: "ppjk",
+  handling: "handling",
+  warehouse: "handling",
+  gudang: "handling",
+  document: "document",
+  dokumen: "document",
+};
+
+export function normalizeServiceCategory(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const normalized = value.toLowerCase().trim().replace(/\s+/g, "_");
+  return SERVICE_CATEGORY_ALIASES[normalized.replace(/_/g, " ")] ??
+    SERVICE_CATEGORY_ALIASES[normalized] ??
+    normalized;
+}
+
+export const SERVICE_CATEGORY_LABELS: Record<string, string> = {
+  trucking: "Trucking",
+  sea_freight: "Sea Freight",
+  air_freight: "Air Freight",
+  ppjk: "PPJK / Customs",
+  handling: "Handling",
+  document: "Document",
+};
+
+// ── GET /api/portal/marketplace ───────────────────────────────────────────────
+// public vendor catalog (published only, NO priceBase)
 router.get("/marketplace", async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
   const { kind, category } = req.query as { kind?: string; category?: string };
@@ -127,14 +171,34 @@ router.get("/marketplace", async (req, res) => {
   if (kind === "product" || kind === "service") {
     conditions.push(eq(vendorCatalogItemsTable.templateKind, kind));
   }
+
   if (category && category !== "all") {
-    // match categoryKey (products) OR serviceType (services)
-    conditions.push(
-      or(
-        eq(vendorCatalogItemsTable.categoryKey, category),
-        eq(vendorCatalogItemsTable.serviceType, category),
-      ) as ReturnType<typeof eq>,
-    );
+    const normCategory = normalizeServiceCategory(category);
+    if (normCategory) {
+      // Collect all alias keys that map to the same canonical value
+      const matchKeys = Object.entries(SERVICE_CATEGORY_ALIASES)
+        .filter(([, v]) => v === normCategory)
+        .map(([k]) => k);
+      // Always include the canonical value itself and the raw query value
+      const allVariants = Array.from(new Set([
+        normCategory,
+        category.toLowerCase().trim(),
+        category.toLowerCase().trim().replace(/\s+/g, "_"),
+        ...matchKeys,
+        ...matchKeys.map((k) => k.replace(/\s+/g, "_")),
+      ]));
+
+      // Build OR across: serviceType, categoryKey, kategori, templateSnapshot fields
+      const variantConditions = allVariants.flatMap((v) => [
+        sql`lower(trim(${vendorCatalogItemsTable.serviceType})) = ${v}`,
+        sql`lower(trim(${vendorCatalogItemsTable.categoryKey})) = ${v}`,
+        sql`lower(trim(${vendorCatalogItemsTable.kategori})) = ${v}`,
+        sql`lower(trim(${vendorCatalogItemsTable.templateSnapshot}::text::jsonb->>'serviceType')) = ${v}`,
+        sql`lower(trim(${vendorCatalogItemsTable.templateSnapshot}::text::jsonb->>'category')) = ${v}`,
+      ]);
+
+      conditions.push(or(...variantConditions) as ReturnType<typeof eq>);
+    }
   }
 
   const rows = await db
@@ -178,12 +242,21 @@ router.get("/marketplace", async (req, res) => {
     .where(and(...conditions))
     .orderBy(vendorCatalogItemsTable.sortOrder, desc(vendorCatalogItemsTable.publishedAt));
 
+  // Post-process: if no category filter, enrich each item with its resolved category label
   return res.json(
-    rows.map((r) => ({
-      ...r,
-      priceSell: r.priceSell !== null ? Number(r.priceSell) : null,
-      primaryImageUrl: r.primaryImageUrl ?? null,
-    })),
+    rows.map((r) => {
+      const rawCat = r.serviceType || r.kategori || r.categoryKey;
+      const resolvedCategory = normalizeServiceCategory(rawCat);
+      return {
+        ...r,
+        priceSell: r.priceSell !== null ? Number(r.priceSell) : null,
+        primaryImageUrl: r.primaryImageUrl ?? null,
+        resolvedCategory,
+        resolvedCategoryLabel: resolvedCategory
+          ? (SERVICE_CATEGORY_LABELS[resolvedCategory] ?? resolvedCategory)
+          : null,
+      };
+    }),
   );
 });
 
@@ -245,13 +318,14 @@ router.get("/marketplace/:id", async (req, res) => {
 
   let media: unknown[] = [];
   try {
-    media = (await db.execute(sql`
+    const mediaResult = await db.execute(sql`
       SELECT * FROM product_media
       WHERE vendor_catalog_item_id = ${id}
         AND is_active = true
         AND (image_source IS NULL OR image_source != 'ai' OR ai_image_status = 'approved')
       ORDER BY sort_order ASC, created_at ASC
-    `)) as unknown[];
+    `);
+    media = Array.isArray(mediaResult) ? mediaResult : ((mediaResult as any).rows ?? []);
   } catch {
     // non-fatal jika tabel belum ada
   }

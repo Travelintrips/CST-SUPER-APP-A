@@ -4786,6 +4786,12 @@ export const CreateLogisticOrderBody = zod.object({
       inputData: zod.unknown(),
       calculationResult: zod.unknown(),
       subtotal: zod.number(),
+      itemSource: zod.string().nullish(),
+      vendorCatalogItemId: zod.number().int().nullish(),
+      vendorId: zod.number().int().nullish(),
+      serviceType: zod.string().nullish(),
+      priceSnapshot: zod.unknown().nullish(),
+      calculationInput: zod.unknown().nullish(),
     }),
   ),
 });
