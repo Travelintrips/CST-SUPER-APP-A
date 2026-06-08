@@ -5,3 +5,4 @@
 - [Paylabs integration quirks](paylabs-integration.md) — Paylabs "Conflict" usually = wrong X-TIMESTAMP (UTC mislabeled +07:00, 7h off), NOT id length; body needs productName+payer, no expire/goodsInfo.
 - [API Server rebuild gotcha](api-server-rebuild-gotcha.md) — before manual `node build.mjs`, always run `pnpm install` inside artifacts/api-server first; googleapis is an external dep that must be present in node_modules.
 - [Portal product order template validation](portal-product-template-validation.md) — POST /api/portal-product/orders defaults to "general" template which requires customFieldValues.description + customFieldValues.quantity; tests must include both.
+- [ESM external lazy import pattern](esm-external-lazy-import.md) — esbuild externals leave static imports as top-level ESM → runtime _link fails if package absent; use createRequire for true call-time resolution.

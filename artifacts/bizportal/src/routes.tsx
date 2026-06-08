@@ -312,6 +312,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/purchase/receive" component={PR(PurchaseReceivePage)} />
       <Route path="/purchase/vendor-catalog" component={PR(VendorCatalogPage)} />
       <Route path="/purchase/vendor-catalog-engine" component={PR(VendorCatalogEnginePage)} />
+      <Route path="/purchase/marketplace-analytics" component={PR(MarketplaceAnalyticsPage)} />
       <Route path="/marketplace/ai-images" component={PR(MarketplaceAiImagesPage)} />
       <Route path="/purchase" component={PR(PurchaseDashboardPage)} />
 
