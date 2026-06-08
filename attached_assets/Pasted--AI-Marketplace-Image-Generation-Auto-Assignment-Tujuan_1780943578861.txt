@@ -1,0 +1,238 @@
+# AI Marketplace Image Generation & Auto Assignment
+
+Tujuan:
+
+Pastikan setiap produk dan layanan di Marketplace memiliki gambar yang relevan, profesional, dan otomatis terpasang sebagai foto utama apabila belum memiliki gambar.
+
+## Tugas
+
+Implementasikan sistem AI Image Generation yang:
+
+1. Membuat gambar otomatis berdasarkan data produk atau layanan.
+2. Mengunggah hasil gambar ke Storage.
+3. Menyimpan metadata ke database.
+4. Menetapkan gambar sebagai foto utama.
+5. Memastikan gambar langsung tampil di Marketplace tanpa intervensi manual.
+
+---
+
+## Data Source
+
+Gunakan data berikut sebagai sumber prompt:
+
+### Produk
+
+* product_name
+* category
+* commodity
+* description
+* specifications
+* grade
+* origin
+* vendor_name
+
+### Layanan
+
+* service_name
+* service_type
+* description
+* coverage_area
+* vendor_name
+
+---
+
+## AI Prompt Generator
+
+Sistem wajib membuat prompt otomatis berdasarkan data produk.
+
+Contoh:
+
+Nama:
+Kopi Arabica Gayo Grade Specialty
+
+Prompt:
+
+"Ultra realistic professional marketplace product photography of premium Gayo Arabica Specialty Coffee Beans from Indonesia, export quality coffee, detailed bean texture, clean commercial background, premium B2B trading catalog image, realistic lighting, highly detailed, no text, no watermark, square format, marketplace ready."
+
+Contoh:
+
+Nama:
+Batubara Thermal GAR 4200
+
+Prompt:
+
+"Ultra realistic commercial commodity photography of Indonesian thermal coal GAR 4200, industrial stockpile, export trading environment, premium marketplace image, realistic lighting, highly detailed, clean background, professional B2B catalog photo, no text, no watermark."
+
+Contoh:
+
+Nama:
+Jasa Trucking Antar Kota
+
+Prompt:
+
+"Professional logistics trucking service, modern cargo trucks transporting goods on Indonesian highways, realistic logistics operation, premium business service image, commercial quality, clean composition, no text, no watermark."
+
+---
+
+## Generation Rules
+
+Wajib:
+
+* Resolusi tinggi
+* Rasio 1:1
+* Marketplace quality
+* Realistis
+* Profesional
+* Tidak ada teks
+* Tidak ada watermark
+* Tidak ada logo
+* Tidak ada placeholder
+* Fokus pada objek utama
+
+---
+
+## Storage
+
+Upload hasil ke:
+
+marketplace-media/
+
+Struktur:
+
+marketplace-media/
+├── products/
+├── services/
+└── vendors/
+
+Contoh:
+
+marketplace-media/products/{item_id}.jpg
+
+---
+
+## Database
+
+Tabel:
+
+marketplace_media
+
+Field yang wajib diisi:
+
+* item_id
+* item_type
+* media_type
+* image_url
+* thumbnail_url
+* is_primary
+* sort_order
+* created_at
+
+Nilai:
+
+* media_type = image
+* is_primary = true
+* sort_order = 1
+
+---
+
+## Auto Assignment
+
+Setelah gambar berhasil dibuat:
+
+1. Upload ke Storage
+2. Simpan ke marketplace_media
+3. Jadikan foto utama
+4. Hubungkan ke item terkait
+5. Refresh cache jika diperlukan
+
+---
+
+## Verification
+
+Setelah generate selesai, sistem WAJIB memverifikasi:
+
+### Storage
+
+Pastikan file benar-benar ada.
+
+### Database
+
+Pastikan record marketplace_media berhasil dibuat.
+
+### URL
+
+Pastikan image_url dapat diakses.
+
+### Frontend
+
+Pastikan Marketplace Card menampilkan gambar.
+
+### Detail Page
+
+Pastikan gambar tampil pada halaman detail.
+
+---
+
+## Fallback Logic
+
+Jika produk belum memiliki gambar:
+
+* Generate AI image otomatis.
+
+Jika generate gagal:
+
+* Retry hingga 3 kali.
+
+Jika masih gagal:
+
+* Masukkan ke queue retry.
+* Catat ke log.
+
+Jangan tampilkan placeholder jika gambar AI berhasil dibuat.
+
+---
+
+## Bulk Processing
+
+Tambahkan fungsi:
+
+Generate AI Images For Existing Marketplace Items
+
+Proses:
+
+* Cari semua produk tanpa foto.
+* Cari semua layanan tanpa foto.
+* Generate gambar satu per satu.
+* Upload ke Storage.
+* Simpan ke marketplace_media.
+* Set sebagai primary image.
+
+---
+
+## Acceptance Criteria
+
+Sistem dinyatakan selesai jika:
+
+✅ Semua produk tanpa foto memiliki gambar AI.
+
+✅ Semua layanan tanpa foto memiliki gambar AI.
+
+✅ Gambar tersimpan di Storage.
+
+✅ marketplace_media terisi otomatis.
+
+✅ Gambar langsung tampil di Marketplace Listing.
+
+✅ Gambar tampil di Product Detail.
+
+✅ Tidak ada card yang menampilkan "Belum ada foto".
+
+✅ Admin dapat melakukan Regenerate AI Image kapan saja.
+
+Sebelum selesai, tampilkan laporan:
+
+* Total item diproses
+* Total gambar berhasil dibuat
+* Total gambar gagal dibuat
+* URL gambar yang tersimpan
+* Contoh 5 item yang berhasil menampilkan gambar di Marketplace

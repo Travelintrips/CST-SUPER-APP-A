@@ -36,5 +36,8 @@ PROXY_PID=$!
 # Wait for proxy to be listening
 timeout 10 bash -c "while ! node -e \"const net=require('net');const s=net.connect($GW_PORT,'127.0.0.1');s.on('connect',()=>{s.destroy();process.exit(0)});s.on('error',()=>process.exit(1))\" 2>/dev/null; do sleep 0.2; done"
 
-# Start Vite as main process (cd already done above)
-exec pnpm exec vite --config vite.config.ts --host 0.0.0.0 --port "${VITE_PORT}"
+# Start Vite (NOT with exec so proxy keeps running alongside it)
+pnpm exec vite --config vite.config.ts --host 0.0.0.0 --port "${VITE_PORT}"
+
+# If vite exits, also kill the proxy
+kill $PROXY_PID 2>/dev/null
