@@ -1047,7 +1047,7 @@ function ItemMiniCard({ item, onNavigate }: { item: CatalogItemSummary; onNaviga
 function RelatedItemsSection({ itemId, onNavigate }: { itemId: number; onNavigate: (id: number) => void }) {
   const { data: items = [], isLoading } = useQuery<CatalogItemSummary[]>({
     queryKey: ["marketplace-related", itemId],
-    queryFn: () => fetch(`/api/portal/marketplace/${itemId}/related`).then((r) => r.json()),
+    queryFn: () => fetch(`/api/portal/marketplace/${itemId}/related`).then((r) => r.json()).then((d) => Array.isArray(d) ? d : []),
     staleTime: 120_000,
     enabled: !!itemId,
   });
@@ -1090,7 +1090,7 @@ function RelatedItemsSection({ itemId, onNavigate }: { itemId: number; onNavigat
 function SimilarItemsSection({ itemId, onNavigate }: { itemId: number; onNavigate: (id: number) => void }) {
   const { data: items = [], isLoading } = useQuery<CatalogItemSummary[]>({
     queryKey: ["marketplace-similar", itemId],
-    queryFn: () => fetch(`/api/portal/marketplace/${itemId}/similar`).then((r) => r.json()),
+    queryFn: () => fetch(`/api/portal/marketplace/${itemId}/similar`).then((r) => r.json()).then((d) => Array.isArray(d) ? d : []),
     staleTime: 120_000,
     enabled: !!itemId,
   });
