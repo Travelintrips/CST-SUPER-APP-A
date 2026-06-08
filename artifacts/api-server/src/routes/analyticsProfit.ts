@@ -3,6 +3,38 @@ import { sql } from "drizzle-orm";
 import { db } from "@workspace/db";
 import { requireAdmin } from "../lib/requireAdmin";
 
+// Lookup vendor_performance scores for a list of vendor IDs — graceful fallback if table absent
+async function fetchVendorPerfMap(vendorIds: number[]): Promise<Map<number, {
+  score: number; ontimePct: number; avgResponseMin: number; onTimeOrders: number; podCompleteOrders: number;
+}>> {
+  const map = new Map<number, { score: number; ontimePct: number; avgResponseMin: number; onTimeOrders: number; podCompleteOrders: number }>();
+  if (vendorIds.length === 0) return map;
+  try {
+    const rows = await db.execute<{
+      vendor_id: string; score: string; ontime_percentage: string;
+      average_response_minutes: string; on_time_orders: string; pod_complete_orders: string;
+    }>(sql`
+      SELECT vendor_id, COALESCE(score, recommendation_score, 0) AS score,
+             COALESCE(ontime_percentage, 0) AS ontime_percentage,
+             COALESCE(average_response_minutes, 0) AS average_response_minutes,
+             COALESCE(on_time_orders, 0) AS on_time_orders,
+             COALESCE(pod_complete_orders, 0) AS pod_complete_orders
+      FROM vendor_performance
+      WHERE vendor_id = ANY(${vendorIds})
+    `);
+    for (const r of rows.rows) {
+      map.set(Number(r.vendor_id), {
+        score:            Number(r.score                    ?? 0),
+        ontimePct:        Number(r.ontime_percentage        ?? 0),
+        avgResponseMin:   Number(r.average_response_minutes ?? 0),
+        onTimeOrders:     Number(r.on_time_orders           ?? 0),
+        podCompleteOrders: Number(r.pod_complete_orders     ?? 0),
+      });
+    }
+  } catch { /* vendor_performance table might not exist yet — safe fallback */ }
+  return map;
+}
+
 const router = Router();
 
 // ── Per Order ─────────────────────────────────────────────────────────────
@@ -411,25 +443,39 @@ router.get("/vendors", async (req, res) => {
       `),
     ]);
 
+    // Fetch vendor_performance data for all vendor IDs in results (safe fallback if table absent)
+    const allVendorIds = [
+      ...productRows.rows.map(r => Number(r.vendor_id)),
+      ...shipmentRows.rows.map(r => Number(r.vendor_id)),
+    ].filter(id => id > 0);
+    const perfMap = await fetchVendorPerfMap([...new Set(allVendorIds)]);
+
     const productVendors = productRows.rows.map(r => {
       const cost    = Number(r.total_cost);
       const revenue = Number(r.total_revenue);
       const margin  = Number(r.total_margin);
       const invites = Number(r.win_invites);
       const sel     = Number(r.win_selected);
+      const vId     = Number(r.vendor_id);
+      const perf    = perfMap.get(vId);
       return {
-        vendorId:       Number(r.vendor_id),
-        vendorName:     r.vendor_name || "Unknown Vendor",
-        vendorType:     "product" as const,
-        totalOrders:    Number(r.total_orders),
-        totalCost:      cost,
-        totalRevenue:   revenue,
-        totalMargin:    margin,
-        marginPct:      revenue > 0 ? Math.round(margin / revenue * 1000) / 10 : 0,
-        avgProductCost: Number(r.avg_product_cost) || 0,
-        winInvites:     invites,
-        winSelected:    sel,
-        winRate:        invites > 0 ? Math.round(sel / invites * 1000) / 10 : 0,
+        vendorId:            vId,
+        vendorName:          r.vendor_name || "Unknown Vendor",
+        vendorType:          "product" as const,
+        totalOrders:         Number(r.total_orders),
+        totalCost:           cost,
+        totalRevenue:        revenue,
+        totalMargin:         margin,
+        marginPct:           revenue > 0 ? Math.round(margin / revenue * 1000) / 10 : 0,
+        avgProductCost:      Number(r.avg_product_cost) || 0,
+        winInvites:          invites,
+        winSelected:         sel,
+        winRate:             invites > 0 ? Math.round(sel / invites * 1000) / 10 : 0,
+        ontimePct:           perf?.ontimePct           ?? 0,
+        recommendationScore: perf?.score               ?? 0,
+        avgResponseMin:      perf?.avgResponseMin       ?? 0,
+        onTimeOrders:        perf?.onTimeOrders         ?? 0,
+        podCompleteOrders:   perf?.podCompleteOrders    ?? 0,
       };
     });
 
@@ -439,8 +485,10 @@ router.get("/vendors", async (req, res) => {
       const margin  = Number(r.total_margin);
       const invites = Number(r.rfq_invites);
       const sel     = Number(r.selected_count);
+      const vId     = Number(r.vendor_id);
+      const perf    = perfMap.get(vId);
       return {
-        vendorId:              Number(r.vendor_id),
+        vendorId:              vId,
         vendorName:            r.vendor_name || "Unknown Vendor",
         vendorType:            "shipment" as const,
         totalOrders:           Number(r.total_orders),
@@ -451,12 +499,14 @@ router.get("/vendors", async (req, res) => {
         rfqInvites:            invites,
         selectedCount:         sel,
         winRate:               Number(r.win_rate),
-        avgResponseMin:        Number(r.avg_response_min),
+        avgResponseMin:        perf?.avgResponseMin     ?? Number(r.avg_response_min),
         totalSpend:            cost,
         totalInvites:          invites,
         totalWins:             sel,
-        ontimePct:             0,
-        recommendationScore:   0,
+        ontimePct:             perf?.ontimePct          ?? 0,
+        recommendationScore:   perf?.score              ?? 0,
+        onTimeOrders:          perf?.onTimeOrders       ?? 0,
+        podCompleteOrders:     perf?.podCompleteOrders  ?? 0,
       };
     });
 
@@ -470,9 +520,11 @@ router.get("/vendors", async (req, res) => {
         winRate:             v.winRate,
         totalInvites:        v.winInvites,
         totalWins:           v.winSelected,
-        ontimePct:           0,
-        recommendationScore: 0,
-        avgResponseMin:      0,
+        ontimePct:           v.ontimePct,
+        recommendationScore: v.recommendationScore,
+        avgResponseMin:      v.avgResponseMin,
+        onTimeOrders:        v.onTimeOrders,
+        podCompleteOrders:   v.podCompleteOrders,
       })),
       ...shipmentVendors.map(v => ({
         vendorId:            v.vendorId,
@@ -483,9 +535,11 @@ router.get("/vendors", async (req, res) => {
         winRate:             v.winRate,
         totalInvites:        v.rfqInvites,
         totalWins:           v.selectedCount,
-        ontimePct:           0,
-        recommendationScore: 0,
+        ontimePct:           v.ontimePct,
+        recommendationScore: v.recommendationScore,
         avgResponseMin:      v.avgResponseMin,
+        onTimeOrders:        v.onTimeOrders,
+        podCompleteOrders:   v.podCompleteOrders,
       })),
     ];
 

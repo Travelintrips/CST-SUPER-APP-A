@@ -246,116 +246,67 @@ router.get("/runtime-check", async (_req, res) => {
 
 // ── Vendor Performance Health ──────────────────────────────────────────────────
 router.get("/vendor-performance-health", async (_req, res) => {
-  const report: Record<string, unknown> = { generatedAt: new Date().toISOString() };
+  try {
+    const { getVendorPerformanceHealth } = await import("../lib/vendorPerformanceService.js");
+    const health = await getVendorPerformanceHealth();
 
-  // A. Migration status
-  const migrationChecks = await Promise.allSettled([
-    db.execute(sql`
-      SELECT EXISTS (
-        SELECT 1 FROM information_schema.tables
-        WHERE table_name = 'vendor_performance'
-      ) AS exists
-    `),
-    db.execute(sql`
-      SELECT column_name
-      FROM information_schema.columns
-      WHERE table_name = 'vendor_performance'
-      ORDER BY ordinal_position
-    `),
-  ]);
+    // Extended detail (columns, top vendors) for admin diagnostics
+    let columns: string[] = [];
+    let topVendors: unknown[] = [];
 
-  const tableExistsRow = migrationChecks[0].status === "fulfilled"
-    ? (migrationChecks[0].value.rows[0] as Record<string, unknown>)
-    : null;
-  const tableExists = tableExistsRow?.["exists"] === true || tableExistsRow?.["exists"] === "true";
-
-  const columns = migrationChecks[1].status === "fulfilled"
-    ? (migrationChecks[1].value.rows as Record<string, string>[]).map(r => r["column_name"])
-    : [];
-
-  const requiredColumns = [
-    "id", "vendor_id", "total_orders", "completed_orders", "cancelled_orders",
-    "ontime_percentage", "average_response_minutes", "pod_completeness_score",
-    "eta_accuracy_score", "customer_rating", "order_success_rate",
-    "cancel_rate", "total_complaints", "recommendation_score", "updated_at",
-  ];
-
-  const missingColumns = tableExists
-    ? requiredColumns.filter(c => !columns.includes(c))
-    : requiredColumns;
-
-  report["migration"] = {
-    tableExists,
-    columns,
-    missingColumns,
-    schemaOk: tableExists && missingColumns.length === 0,
-  };
-
-  // B. Backfill status
-  if (tableExists) {
-    try {
-      const [rowCount, vendorCount, rfqCount, orderCount] = await Promise.all([
-        db.execute(sql`SELECT COUNT(*) AS n FROM vendor_performance`),
-        db.execute(sql`SELECT COUNT(*) AS n FROM suppliers WHERE is_active = true`),
-        db.execute(sql`SELECT COUNT(DISTINCT vendor_id) AS n FROM rfq_vendor_links WHERE submitted_at IS NOT NULL`),
-        db.execute(sql`SELECT COUNT(DISTINCT approved_vendor_id) AS n FROM logistic_orders WHERE approved_vendor_id IS NOT NULL`),
-      ]);
-
-      const perfRows   = Number((rowCount.rows[0] as any)?.n ?? 0);
-      const activeVend = Number((vendorCount.rows[0] as any)?.n ?? 0);
-      const rfqVend    = Number((rfqCount.rows[0] as any)?.n ?? 0);
-      const orderVend  = Number((orderCount.rows[0] as any)?.n ?? 0);
-
-      report["backfill"] = {
-        currentRows: perfRows,
-        activeVendors: activeVend,
-        vendorsWithRfqHistory: rfqVend,
-        vendorsWithOrderHistory: orderVend,
-        backfillCoverage: activeVend > 0 ? `${Math.round((perfRows / activeVend) * 100)}%` : "0%",
-        needsBackfill: perfRows < activeVend,
-      };
-    } catch (err) {
-      report["backfill"] = { error: String(err) };
+    if (health.tableExists) {
+      try {
+        const [colRes, topRes] = await Promise.all([
+          db.execute(sql`
+            SELECT column_name FROM information_schema.columns
+            WHERE table_name = 'vendor_performance' ORDER BY ordinal_position
+          `),
+          db.execute(sql`
+            SELECT s.name AS vendor_name, vp.total_orders, vp.completed_orders,
+                   vp.score, vp.recommendation_score, vp.last_calculated_at
+            FROM vendor_performance vp
+            JOIN suppliers s ON s.id = vp.vendor_id
+            ORDER BY COALESCE(vp.score::numeric, vp.recommendation_score::numeric, 0) DESC NULLS LAST
+            LIMIT 10
+          `),
+        ]);
+        columns = (colRes.rows as Record<string, string>[]).map(r => r["column_name"]);
+        topVendors = topRes.rows;
+      } catch { /* non-fatal */ }
     }
-  } else {
-    report["backfill"] = { skipped: "Tabel belum ada" };
+
+    const requiredColumns = [
+      "id", "vendor_id", "total_orders", "completed_orders", "cancelled_orders",
+      "ontime_percentage", "average_response_minutes", "pod_completeness_score",
+      "recommendation_score", "updated_at",
+      "total_rfq_invites", "total_submitted", "total_selected", "total_rejected",
+      "avg_response_hours", "on_time_orders", "late_orders", "pod_complete_orders",
+      "score", "last_calculated_at",
+    ];
+    const missingColumns = health.tableExists
+      ? requiredColumns.filter(c => !columns.includes(c))
+      : requiredColumns;
+
+    res.json({
+      // Spec fields (top-level)
+      tableExists:         health.tableExists,
+      rowCount:            health.rowCount,
+      lastCalculatedAt:    health.lastCalculatedAt,
+      vendorsWithScore:    health.vendorsWithScore,
+      vendorsWithoutScore: health.vendorsWithoutScore,
+      // Extended diagnostics
+      activeVendors:     health.activeVendors,
+      backfillCoverage:  health.backfillCoverage,
+      schemaOk:          health.tableExists && missingColumns.length === 0,
+      missingColumns,
+      columns,
+      topVendors,
+      generatedAt: new Date().toISOString(),
+    });
+  } catch (err) {
+    logger.error({ err }, "vendor-performance-health error");
+    res.status(500).json({ error: "Gagal memuat vendor performance health" });
   }
-
-  // C. Row count per vendor (top 10 by recommendation_score)
-  if (tableExists && missingColumns.length === 0) {
-    try {
-      const top = await db.execute(sql`
-        SELECT s.name AS vendor_name, vp.total_orders, vp.completed_orders,
-               vp.recommendation_score, vp.updated_at
-        FROM vendor_performance vp
-        JOIN suppliers s ON s.id = vp.vendor_id
-        ORDER BY vp.recommendation_score DESC NULLS LAST
-        LIMIT 10
-      `);
-      report["topVendors"] = top.rows;
-    } catch (err) {
-      report["topVendors"] = { error: String(err) };
-    }
-  }
-
-  // D. Test result
-  const schemaOk = tableExists && missingColumns.length === 0;
-  report["testResult"] = {
-    status: schemaOk ? "ok" : (tableExists ? "schema_mismatch" : "table_missing"),
-    summary: schemaOk
-      ? "vendor_performance tabel OK, schema lengkap"
-      : tableExists
-        ? `Tabel ada tapi ${missingColumns.length} kolom kurang: ${missingColumns.join(", ")}`
-        : "Tabel vendor_performance BELUM ADA di live DB — jalankan migration",
-    action: schemaOk
-      ? null
-      : tableExists
-        ? "ALTER TABLE vendor_performance ADD COLUMN ... untuk tiap kolom yang missing"
-        : "POST /api/vendor-performance/recalculate-all setelah server start (migration otomatis saat startup)",
-  };
-
-  const hasError = !schemaOk;
-  res.status(hasError ? 200 : 200).json(report);
 });
 
 // ── Init Storage (existing) ────────────────────────────────────────────────────
