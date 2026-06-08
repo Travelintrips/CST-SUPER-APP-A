@@ -8,7 +8,7 @@ FORWARDER_PORT=${FORWARDER_PORT:-18444}
 node kill-port.mjs "$FORWARDER_PORT" "$API_PORT"
 sleep 0.5
 
-# Start watch-mode dev server (esbuild watch + auto-restart on rebuild)
+# Start the esbuild watcher — it handles building and running the server
 PORT=$API_PORT node dev.mjs &
 DEV_PID=$!
 
@@ -18,7 +18,7 @@ const net = require('net');
 const port = $API_PORT;
 function waitForPort(cb, retries) {
   retries = retries || 0;
-  if (retries > 100) { cb(); return; }
+  if (retries > 300) { cb(); return; }
   const s = net.connect(port, '127.0.0.1');
   s.on('connect', () => { s.destroy(); cb(); });
   s.on('error', () => setTimeout(() => waitForPort(cb, retries + 1), 200));
