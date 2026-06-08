@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation, useSearch } from "wouter";
+import { supabase } from "@/lib/supabase";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -475,6 +476,51 @@ function detectTypeFromQ(q: string): { tab: "product" | "service"; category: str
   return null;
 }
 
+// ── Realtime: vendor_catalog_items (service items from vendor etalase) ─────────
+function useMarketplaceCatalogRealtime() {
+  const qc = useQueryClient();
+
+  const handleCatalogChange = useCallback((payload: { eventType: string; new: Record<string, unknown>; old: Record<string, unknown> }) => {
+    const row = (payload.new ?? payload.old ?? {}) as Record<string, unknown>;
+    if (row["template_kind"] !== "service" && row["templateKind"] !== "service") return;
+    if (import.meta.env.DEV) {
+      console.log("[Realtime] vendor_catalog_items service changed, refetch marketplace", payload.eventType, row["id"]);
+    }
+    // Invalidate semua query marketplace tab service (semua kategori)
+    qc.invalidateQueries({
+      predicate: (q) => {
+        const k = q.queryKey as unknown[];
+        return k[0] === "marketplace" && k[1] === "service";
+      },
+    });
+  }, [qc]);
+
+  useEffect(() => {
+    if (!supabase) return;
+    const channel = supabase
+      .channel("marketplace-catalog-service-realtime")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "vendor_catalog_items" },
+        handleCatalogChange,
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "vendor_catalog_items" },
+        handleCatalogChange,
+      )
+      .on(
+        "postgres_changes",
+        { event: "DELETE", schema: "public", table: "vendor_catalog_items" },
+        handleCatalogChange,
+      )
+      .subscribe();
+    return () => {
+      supabase!.removeChannel(channel);
+    };
+  }, [handleCatalogChange]);
+}
+
 // ── Main Page ──────────────────────────────────────────────────────────────────
 export default function MarketplacePage() {
   const [, setLocation] = useLocation();
@@ -522,6 +568,9 @@ export default function MarketplacePage() {
   const [activeFilters, setActiveFilters] = useState<ActiveFilters>({});
   const [searchQuery, setSearchQuery] = useState(urlQ);
   const [showMobileFilter, setShowMobileFilter] = useState(false);
+
+  // Realtime: vendor_catalog_items untuk item service dari etalase vendor
+  useMarketplaceCatalogRealtime();
 
   // Sync state whenever URL search params change (navbar links, back/forward)
   useEffect(() => {

@@ -1,6 +1,7 @@
-import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useMemo, useEffect, useCallback } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useLocation } from "wouter";
+import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -459,8 +460,11 @@ export default function JasaVendorDetail() {
   const [added, setAdded] = useState(false);
   const [activeImage, setActiveImage] = useState<string | null>(null);
 
+  const qc = useQueryClient();
+  const queryKey = ["jasa-vendor-detail", id];
+
   const { data: item, isLoading, isError } = useQuery<CatalogDetail>({
-    queryKey: ["jasa-vendor-detail", id],
+    queryKey,
     queryFn: async () => {
       const r = await fetch(`/api/portal/marketplace/${id}`);
       if (!r.ok) throw new Error("not_found");
@@ -469,6 +473,41 @@ export default function JasaVendorDetail() {
     enabled: !!id && !isNaN(Number(id)),
     retry: false,
   });
+
+  // Realtime: watch vendor_catalog_items untuk item ini (dan semua item vendor yg sama)
+  const handleCatalogChange = useCallback((payload: { eventType: string; new: Record<string, unknown>; old: Record<string, unknown> }) => {
+    const row = (payload.new ?? payload.old ?? {}) as Record<string, unknown>;
+    if (row["template_kind"] !== "service" && row["templateKind"] !== "service") return;
+    if (import.meta.env.DEV) {
+      console.log("[Realtime] vendor_catalog_items service changed, refetch marketplace", payload.eventType, row["id"]);
+    }
+    qc.invalidateQueries({ queryKey });
+  }, [qc, id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!supabase || !id) return;
+    const channel = supabase
+      .channel(`jasa-vendor-detail-catalog-${id}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "vendor_catalog_items" },
+        handleCatalogChange,
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "vendor_catalog_items" },
+        handleCatalogChange,
+      )
+      .on(
+        "postgres_changes",
+        { event: "DELETE", schema: "public", table: "vendor_catalog_items" },
+        handleCatalogChange,
+      )
+      .subscribe();
+    return () => {
+      supabase!.removeChannel(channel);
+    };
+  }, [id, handleCatalogChange]);
 
   const serviceType = useMemo(() => item ? resolveServiceType(item) : "general", [item]);
   const categoryLabel = CATEGORY_LABELS[serviceType] ?? "Layanan";
