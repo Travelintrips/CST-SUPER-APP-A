@@ -24,6 +24,18 @@ args = "Gateway"
 task = "workflow.run"
 args = "Logistic Order"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "API Server"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "BizPortal"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Customer Portal"
+
 [[workflows.workflow]]
 name = "Gateway"
 author = "agent"
@@ -33,17 +45,53 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "fuser -k 5000/tcp 2>/dev/null; sleep 0.3; BIZPORTAL_PORT=18442 PORT=5000 node gateway.mjs"
+args = "PORT=5000 BIZPORTAL_PORT=6800 CUSTOMER_PORT=5173 LOGISTIC_ORDER_PORT=6000 node gateway.mjs"
 waitForPort = 5000
 
 [[workflows.workflow]]
 name = "Logistic Order"
 author = "agent"
 
+[workflows.workflow.metadata]
+outputType = "console"
+
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "cd artifacts/logistic-order && PORT=3002 pnpm run dev"
-waitForPort = 3002
+args = "cd artifacts/logistic-order && PORT=6000 pnpm run dev"
+waitForPort = 6000
+
+[[workflows.workflow]]
+name = "API Server"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd artifacts/api-server && bash start-dev.sh"
+waitForPort = 8080
+
+[[workflows.workflow]]
+name = "BizPortal"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd artifacts/bizportal && BIZPORTAL_PORT=6800 PORT=6800 bash start-dev.sh"
+waitForPort = 6800
+
+[[workflows.workflow]]
+name = "Customer Portal"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd artifacts/customer-portal && PORT=5173 bash start-dev.sh"
+waitForPort = 5173
 
 [workflows.workflow.metadata]
 outputType = "console"
@@ -126,14 +174,6 @@ localPort = 5000
 externalPort = 80
 
 [[ports]]
-localPort = 8082
-externalPort = 3002
-
-[[ports]]
-localPort = 8083
-externalPort = 3001
-
-[[ports]]
 localPort = 8084
 externalPort = 3003
 
@@ -176,3 +216,19 @@ externalPort = 5173
 [[ports]]
 localPort = 23435
 externalPort = 8081
+
+[[ports]]
+localPort = 8080
+externalPort = 8080
+
+[[ports]]
+localPort = 6800
+externalPort = 6800
+
+[[ports]]
+localPort = 5173
+externalPort = 5173
+
+[[ports]]
+localPort = 6000
+externalPort = 6000
