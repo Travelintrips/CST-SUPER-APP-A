@@ -120,23 +120,43 @@ function ItemCard({ item, onClick }: { item: MarketplaceItem; onClick: () => voi
       {/* Header band */}
       <div className={`h-1.5 w-full ${isProduct ? "bg-gradient-to-r from-emerald-400 to-teal-400" : "bg-gradient-to-r from-sky-400 to-blue-500"}`} />
 
-      {/* Primary image */}
-      {hasImage && (
-        <div className="relative w-full h-[140px] overflow-hidden bg-slate-100">
+      {/* Primary image — always shown, placeholder if no photo */}
+      <div className="relative w-full h-[140px] overflow-hidden bg-slate-100">
+        {hasImage ? (
           <img
             src={item.primaryImageUrl!}
             alt={item.name}
             className="w-full h-full object-cover"
             loading="lazy"
+            onError={(e) => {
+              const el = e.currentTarget;
+              el.style.display = "none";
+              const parent = el.parentElement;
+              if (parent) {
+                parent.classList.add("flex", "items-center", "justify-center");
+                const ph = document.createElement("div");
+                ph.className = "flex flex-col items-center gap-1.5";
+                ph.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="20" height="20" rx="2"/><path d="M2 14l5-5 4 4 4-5 7 7"/><circle cx="8.5" cy="8.5" r="1.5"/></svg>`;
+                parent.appendChild(ph);
+              }
+            }}
           />
-          {item.hasVideo && (
-            <div className="absolute top-2 right-2 bg-black/60 rounded-full px-2 py-0.5 flex items-center gap-1">
-              <svg className="h-3 w-3 text-white fill-white" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-              <span className="text-[10px] text-white font-medium">Video</span>
-            </div>
-          )}
-        </div>
-      )}
+        ) : (
+          <div className={`w-full h-full flex flex-col items-center justify-center gap-2 ${isProduct ? "bg-gradient-to-br from-emerald-50 to-teal-50" : "bg-gradient-to-br from-sky-50 to-blue-50"}`}>
+            {isProduct
+              ? <Package className="h-10 w-10 text-emerald-200" />
+              : <Truck className="h-10 w-10 text-sky-200" />
+            }
+            <span className="text-[10px] text-slate-300 font-medium">Belum ada foto</span>
+          </div>
+        )}
+        {item.hasVideo && (
+          <div className="absolute top-2 right-2 bg-black/60 rounded-full px-2 py-0.5 flex items-center gap-1">
+            <svg className="h-3 w-3 text-white fill-white" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+            <span className="text-[10px] text-white font-medium">Video</span>
+          </div>
+        )}
+      </div>
 
       <div className="p-4 flex flex-col flex-1 gap-2">
         {/* Vendor + category */}
