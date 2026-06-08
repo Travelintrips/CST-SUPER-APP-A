@@ -75,6 +75,7 @@ import AccountingEntriesPage from "@/pages/accounting/entries";
 import AccountingEntryDetailPage from "@/pages/accounting/entry-detail";
 import AccountingJournalItemsPage from "@/pages/accounting/journal-items";
 import AccountingPaymentsPage from "@/pages/accounting/payments";
+import AccountingPaylabsPage from "@/pages/accounting/paylabs";
 import AccountingOtherTransactionsPage from "@/pages/accounting/other-transactions";
 import AccountingSettingsPage from "@/pages/accounting/settings";
 import CostCentersPage from "@/pages/accounting/cost-centers";
@@ -313,6 +314,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/accounting/entries" component={PR(AccountingEntriesPage)} />
       <Route path="/accounting/journal-items" component={PR(AccountingJournalItemsPage)} />
       <Route path="/accounting/payments" component={PR(AccountingPaymentsPage)} />
+      <Route path="/accounting/paylabs" component={PR(AccountingPaylabsPage)} />
       <Route path="/accounting/other-transactions" component={PR(AccountingOtherTransactionsPage)} />
       <Route path="/accounting/settings" component={PR(AccountingSettingsPage)} />
       <Route path="/accounting/cost-centers" component={PR(CostCentersPage)} />
