@@ -1,0 +1,130 @@
+MEDIA SECURITY P0 — UPLOAD HARDENING BEFORE MARKETPLACE
+
+Tujuan:
+Menutup celah keamanan upload sebelum membangun marketplace media.
+
+Scope:
+Fix hanya security upload. Jangan ubah UI marketplace dulu.
+
+1. RFQ Attachment Security
+
+File:
+artifacts/api-server/src/routes/logisticRfqV2.ts
+
+Endpoint:
+POST /api/rfq/vendor-form/:token/upload
+
+Tambahkan:
+- MIME whitelist strict:
+  image/jpeg
+  image/png
+  image/webp
+  application/pdf
+  application/msword
+  application/vnd.openxmlformats-officedocument.wordprocessingml.document
+  application/vnd.ms-excel
+  application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+
+- Extension whitelist:
+  .jpg
+  .jpeg
+  .png
+  .webp
+  .pdf
+  .doc
+  .docx
+  .xls
+  .xlsx
+
+- Max size tetap 10 MB
+- Rate limit per IP + token:
+  max 10 upload / jam
+
+- Reject:
+  html
+  svg
+  js
+  exe
+  sh
+  bat
+  php
+  zip jika tidak diperlukan
+
+2. Remove /tmp fallback
+
+Files:
+- artifacts/api-server/src/routes/vendorMiniForm.ts
+- artifacts/api-server/src/routes/vendorFulfillment.ts
+
+Saat Supabase Storage gagal:
+- jangan simpan ke /tmp
+- return HTTP 503
+- message:
+  "Storage sedang tidak tersedia, silakan coba lagi."
+
+3. Customer Portal Upload Strict MIME
+
+File:
+artifacts/api-server/src/routes/portal.ts
+
+Cari logic:
+mime.startsWith("image/")
+
+Hapus wildcard tersebut.
+
+Gunakan whitelist strict:
+- image/jpeg
+- image/png
+- image/webp
+- image/heic
+- image/heif
+- application/pdf
+- application/msword
+- application/vnd.openxmlformats-officedocument.wordprocessingml.document
+
+Reject:
+- image/svg+xml
+- text/html
+- application/javascript
+
+4. Add helper reusable
+
+Jika belum ada, buat helper:
+validateUploadFile(file, options)
+
+Options:
+- allowedMime
+- allowedExt
+- maxSizeBytes
+- rejectSvg
+- rejectHtml
+- rejectExecutable
+
+Return:
+- ok true/false
+- errorMessage
+
+5. Jangan ubah:
+- productMedia.ts
+- marketplace UI
+- customer portal marketplace
+- vendor catalog
+
+6. Test:
+- upload jpg valid
+- upload pdf valid
+- upload svg ditolak
+- upload html ditolak
+- upload exe ditolak
+- upload file >10 MB ditolak
+- Supabase failure tidak membuat file /tmp
+
+7. Output:
+MEDIA SECURITY P0 REPORT
+
+Acceptance Criteria:
+- RFQ public upload aman.
+- Tidak ada fallback /tmp ephemeral.
+- Customer upload tidak menerima image/svg+xml.
+- File berbahaya ditolak.
+- Upload valid tetap jalan.
