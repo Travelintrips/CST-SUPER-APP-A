@@ -152,6 +152,7 @@ async function patchStatus(id: number, status: string) {
   const res = await fetch(`/api/trading/suppliers/catalog/${id}/status`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
+    credentials: "include",
     body: JSON.stringify({ status }),
   });
   if (!res.ok) throw new Error(await res.text());
@@ -162,6 +163,7 @@ async function patchFields(id: number, fields: Record<string, unknown>) {
   const res = await fetch(`/api/trading/suppliers/catalog/${id}/fields`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
+    credentials: "include",
     body: JSON.stringify(fields),
   });
   if (!res.ok) throw new Error(await res.text());
