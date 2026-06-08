@@ -82,7 +82,11 @@ Promise.all([
   db.execute(sql`DROP INDEX IF EXISTS service_templates_service_type_unique`).catch(() => {})
 ).then(() =>
   db.execute(sql`DROP INDEX IF EXISTS service_templates_service_type_key`).catch(() => {})
-).then(() =>
+).then(() => Promise.all([
+  // ── Media Foundation: idempotent ADD COLUMN IF NOT EXISTS ──────────────────
+  db.execute(sql`ALTER TABLE product_templates ADD COLUMN IF NOT EXISTS media_assets JSONB NOT NULL DEFAULT '[]'`).catch(() => {}),
+  db.execute(sql`ALTER TABLE service_templates ADD COLUMN IF NOT EXISTS media_assets JSONB NOT NULL DEFAULT '[]'`).catch(() => {}),
+])).then(() =>
   db.execute(sql`
     CREATE UNIQUE INDEX IF NOT EXISTS uq_service_tpl_company
     ON service_templates (COALESCE(company_id, 0), service_type)

@@ -18,8 +18,6 @@ import {
 } from "lucide-react";
 import type { MarketplaceItem, FilterFieldDef, ActiveFilters, ServiceCategoryOption } from "@/lib/catalogFilters";
 import { buildCatalogFilters, matchVendorCatalog, buildServiceCategories } from "@/lib/catalogFilters";
-import type { MarketplaceItem, FilterFieldDef, ActiveFilters } from "@/lib/catalogFilters";
-import { buildCatalogFilters, matchVendorCatalog } from "@/lib/catalogFilters";
 import { CompareTray, CompareModal } from "@/components/VendorComparison";
 
 // ── Category placeholder config (emoji + gradient) ───────────────────────────
