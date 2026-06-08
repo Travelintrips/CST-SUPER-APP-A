@@ -234,26 +234,31 @@ router.get("/marketplace/:id", async (req, res) => {
 
   let media: unknown[] = [];
   try {
-    media = await db
-      .select()
-      .from(productMediaTable)
-      .where(
-        and(
-          eq(productMediaTable.vendorCatalogItemId, id),
-          eq(productMediaTable.isActive, true),
-        ),
-      )
-      .orderBy(asc(productMediaTable.sortOrder), asc(productMediaTable.createdAt));
+    media = (await db.execute(sql`
+      SELECT * FROM product_media
+      WHERE vendor_catalog_item_id = ${id}
+        AND is_active = true
+        AND (image_source IS NULL OR image_source != 'ai' OR ai_image_status = 'approved')
+      ORDER BY sort_order ASC, created_at ASC
+    `)) as unknown[];
   } catch {
     // non-fatal jika tabel belum ada
   }
 
-  const primaryMedia = (media as Array<Record<string, unknown>>).find((m) => m.isPrimary) ?? (media.length > 0 ? media[0] : null);
+  const primaryMedia = (media as Array<Record<string, unknown>>).find((m) => m.is_primary) ?? (media.length > 0 ? media[0] : null);
+  const primaryImageUrl = (primaryMedia as any)?.media_type === "image" ? (primaryMedia as any)?.file_url ?? null : null;
   return res.json({
     ...item,
-    media,
-    primaryImageUrl: (primaryMedia as any)?.mediaType === "image" ? (primaryMedia as any)?.fileUrl ?? null : null,
-    hasVideo: media.some((m) => (m as any).mediaType === "video" || (m as any).mediaType === "video_link"),
+    media: (media as any[]).map((m) => ({
+      ...m,
+      imageSource: m.image_source,
+      aiImageStatus: m.ai_image_status,
+      isAiGenerated: m.image_source === "ai",
+      sourceLabel: m.image_source === "vendor" ? "Foto oleh Vendor" : m.image_source === "ai" ? "AI Generated Preview" : null,
+    })),
+    primaryImageUrl,
+    primaryImageSource: (primaryMedia as any)?.image_source ?? null,
+    hasVideo: media.some((m) => (m as any).media_type === "video" || (m as any).media_type === "video_link"),
   });
 });
 

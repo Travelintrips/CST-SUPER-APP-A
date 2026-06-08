@@ -5,6 +5,7 @@ import { resolveCompanyId, resolveCompanyScope } from "../lib/resolveCompany.js"
 import { postStockReceived } from "../lib/accounting.js";
 import { deleteFromSupabase } from "../lib/supabaseStorage.js";
 import { requireClerkUser, requireAdmin } from "../lib/requireAdmin.js";
+import { autoGenerateIfNeeded } from "../lib/aiImageGenerator.js";
 
 const router = Router();
 
@@ -801,6 +802,11 @@ router.patch("/suppliers/catalog/:itemId/status", async (req, res) => {
     .returning();
 
   if (!updated) return res.status(404).json({ message: "Item not found" });
+
+  if (status === "published") {
+    autoGenerateIfNeeded(itemId).catch(() => {});
+  }
+
   return res.json({ ...toItem(updated), priceSell: updated.priceSell != null ? Number(updated.priceSell) : null });
 });
 
