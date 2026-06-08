@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRoute, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -441,12 +441,12 @@ export default function MarketplaceDetailPage() {
   });
 
   // Sync MOQ and unit from fetched item
-  const [synced, setSynced] = useState(false);
-  if (item && !synced) {
-    const moq = Number(item.moq) || 1;
-    setCalc({ qty: moq, unit: item.unit || "unit", includePpn: false });
-    setSynced(true);
-  }
+  useEffect(() => {
+    if (item) {
+      const moq = Number(item.moq) || 1;
+      setCalc({ qty: moq, unit: item.unit || "unit", includePpn: false });
+    }
+  }, [item?.id]);
 
   if (isLoading) {
     return (

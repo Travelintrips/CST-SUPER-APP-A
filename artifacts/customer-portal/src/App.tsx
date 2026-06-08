@@ -278,7 +278,6 @@ function AppShell() {
         <Route path="/catalog" component={CatalogPage} />
         <Route path="/product-approve/:token" component={ProductApprovePage} />
         <Route path="/shipment-selection/:token" component={ShipmentSelectionPage} />
-        <Route path="/marketplace" component={Marketplace} />
         <Route path="/marketplace/:id" component={MarketplaceDetail} />
         <Route component={NotFound} />
       </Switch>
