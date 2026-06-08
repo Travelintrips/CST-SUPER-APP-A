@@ -617,7 +617,7 @@ function CreateLinkDialog({ onCreated }: { onCreated: () => void }) {
           {/* Service type */}
           <div className="space-y-1.5">
             <Label>Jenis Form <span className="text-red-500">*</span></Label>
-            <Select value={serviceType} onValueChange={v => { setServiceType(v); setSupplierId(""); }}>
+            <Select value={serviceType} onValueChange={v => { setServiceType(v); setSupplierId(""); if (v !== "product") setSelectedCategoryKey(""); }}>
               <SelectTrigger><SelectValue placeholder="Pilih jenis form" /></SelectTrigger>
               <SelectContent>
                 <SelectGroup>
@@ -701,7 +701,11 @@ function CreateLinkDialog({ onCreated }: { onCreated: () => void }) {
           {/* Commodity Template */}
           <div className="space-y-1.5">
             <Label>Template Komoditas (opsional)</Label>
-            <Select value={selectedCategoryKey || "__none__"} onValueChange={v => setSelectedCategoryKey(v === "__none__" ? "" : v)}>
+            <Select value={selectedCategoryKey || "__none__"} onValueChange={v => {
+              const key = v === "__none__" ? "" : v;
+              setSelectedCategoryKey(key);
+              if (key) setServiceType("product");
+            }}>
               <SelectTrigger><SelectValue placeholder="Tanpa template komoditas" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="__none__">— Tanpa template —</SelectItem>
