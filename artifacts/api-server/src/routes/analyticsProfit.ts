@@ -5,26 +5,14 @@ import { requireAdmin } from "../lib/requireAdmin";
 
 const router = Router();
 
-router.use(requireAdmin);
-
-// ── Shared UNION ALL helper SQL fragments ──────────────────────────────────
-//
-// Portal Product Order margin formula (per sprint spec):
-//   Product Revenue  = COALESCE(product_price, subtotal)
-//   Product Cost     = COALESCE(vendor_quoted_price, 0)
-//   Shipment Revenue = COALESCE(shipment_cost, 0)
-//   Shipment Cost    = COALESCE(truck_cost, 0)
-//   Order Gross Margin = (Product Revenue - Product Cost)
-//                      + (Shipment Revenue - Shipment Cost)
-//   Margin %         = Order Gross Margin / grand_total * 100
-//
-// Simplification: since grand_total ≈ product_revenue + shipment_revenue,
-//   gross_margin = grand_total - vendor_quoted_price - truck_cost
-//   which is the same pattern as logistic_orders.
-
 // ── Per Order ─────────────────────────────────────────────────────────────
 // GET /api/analytics/profitability/orders?limit=50&offset=0&search=&dateFrom=&dateTo=&companyId=
+//
+// Strategy: run logistic_orders and portal_product_orders as separate parallel
+// queries (no UNION ALL CTE) to avoid complex query plan on Supabase pooler.
+// Results are merged and sorted in JS.
 router.get("/orders", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
   const limit     = Math.min(Number(req.query.limit ?? 50), 200);
   const offset    = Number(req.query.offset ?? 0);
   const search    = String(req.query.search ?? "").trim();
@@ -34,157 +22,155 @@ router.get("/orders", async (req, res) => {
     ? Number(req.query.companyId) : null;
 
   try {
-    const rows = await db.execute<{
-      id: string; order_number: string; customer_name: string;
-      created_at: string; status: string; source_type: string;
-      origin: string; destination: string;
-      revenue: string; vendor_cost: string; truck_cost: string; tax: string;
-      gross_margin: string; margin_pct: string;
-      opex_cost: string; purchase_cost: string;
-      net_margin: string; net_margin_pct: string;
-      vendor_name: string | null;
-    }>(sql`
-      WITH src AS (
-        -- Logistic Orders
+    const [loResult, ppoResult] = await Promise.all([
+      db.execute<{
+        id: string; order_number: string; customer_name: string;
+        created_at: string; status: string;
+        origin: string; destination: string;
+        revenue: string; vendor_cost: string; truck_cost: string; tax: string;
+        gross_margin: string; opex_cost: string; purchase_cost: string;
+        vendor_name: string | null;
+      }>(sql`
         SELECT
-          lo.id::text                                                         AS id,
+          lo.id::text                                                    AS id,
           lo.order_number,
           lo.customer_name,
-          lo.created_at                                                       AS created_at_ts,
+          lo.created_at::text                                            AS created_at,
           lo.status,
-          'logistic_order'::text                                              AS source_type,
-          COALESCE(lo.origin, '')                                             AS origin,
-          COALESCE(lo.destination, '')                                        AS destination,
-          lo.grand_total::numeric                                             AS revenue,
-          COALESCE(loq_agg.vendor_cost, 0)::numeric                          AS vendor_cost,
-          COALESCE(lo.truck_price::numeric, 0)                               AS truck_cost,
-          COALESCE(lo.tax::numeric, 0)                                       AS tax,
+          COALESCE(lo.origin, '')                                        AS origin,
+          COALESCE(lo.destination, '')                                   AS destination,
+          lo.grand_total::numeric                                        AS revenue,
+          COALESCE(
+            (SELECT MAX(q.vendor_price::numeric)
+             FROM logistic_order_quotes q WHERE q.order_id = lo.id), 0) AS vendor_cost,
+          COALESCE(lo.truck_price::numeric, 0)                          AS truck_cost,
+          COALESCE(lo.tax::numeric, 0)                                  AS tax,
           (lo.grand_total::numeric
-            - COALESCE(loq_agg.vendor_cost, 0)
-            - COALESCE(lo.truck_price::numeric, 0))                          AS gross_margin,
-          COALESCE(opex_agg.opex_cost, 0)                                   AS opex_cost,
-          COALESCE(po_agg.purchase_cost, 0)                                  AS purchase_cost,
-          s.name                                                              AS vendor_name,
-          lo.company_id                                                       AS company_id
+            - COALESCE(
+                (SELECT MAX(q.vendor_price::numeric)
+                 FROM logistic_order_quotes q WHERE q.order_id = lo.id), 0)
+            - COALESCE(lo.truck_price::numeric, 0))                     AS gross_margin,
+          COALESCE(
+            (SELECT SUM(e.total::numeric) FROM expenses e
+             WHERE e.logistic_order_id = lo.id AND e.status = 'active'), 0) AS opex_cost,
+          COALESCE(
+            (SELECT SUM(pd.grand_total::numeric) FROM purchase_documents pd
+             WHERE pd.logistic_order_id = lo.id AND pd.kind = 'order'), 0) AS purchase_cost,
+          s.name                                                         AS vendor_name
         FROM logistic_orders lo
-        LEFT JOIN (
-          SELECT order_id, MAX(vendor_price::numeric) AS vendor_cost
-          FROM logistic_order_quotes GROUP BY order_id
-        ) loq_agg ON loq_agg.order_id = lo.id
-        LEFT JOIN (
-          SELECT logistic_order_id, SUM(total::numeric) AS opex_cost
-          FROM expenses WHERE status = 'active' AND logistic_order_id IS NOT NULL
-          GROUP BY logistic_order_id
-        ) opex_agg ON opex_agg.logistic_order_id = lo.id
-        LEFT JOIN (
-          SELECT logistic_order_id, SUM(grand_total::numeric) AS purchase_cost
-          FROM purchase_documents WHERE kind = 'order' AND logistic_order_id IS NOT NULL
-          GROUP BY logistic_order_id
-        ) po_agg ON po_agg.logistic_order_id = lo.id
         LEFT JOIN suppliers s ON s.id = lo.approved_vendor_id
         WHERE lo.status NOT IN ('Cancelled','cancelled')
-
-        UNION ALL
-
-        -- Portal Product Orders (MCT Orders)
+          ${companyId !== null ? sql`AND lo.company_id = ${companyId}` : sql``}
+          ${search ? sql`AND (lo.order_number ILIKE ${'%' + search + '%'} OR lo.customer_name ILIKE ${'%' + search + '%'})` : sql``}
+          ${dateFrom ? sql`AND lo.created_at >= ${dateFrom}` : sql``}
+          ${dateTo   ? sql`AND lo.created_at <= ${dateTo}`   : sql``}
+        ORDER BY lo.created_at DESC
+      `),
+      db.execute<{
+        id: string; order_number: string; customer_name: string;
+        created_at: string; status: string;
+        origin: string; destination: string;
+        revenue: string; vendor_cost: string; truck_cost: string;
+        gross_margin: string; vendor_name: string | null;
+      }>(sql`
         SELECT
-          ppo.id::text,
+          ppo.id::text                                                   AS id,
           ppo.order_number,
           ppo.customer_name,
-          ppo.created_at,
+          ppo.created_at::text                                           AS created_at,
           ppo.status,
-          'portal_product_order'::text,
-          COALESCE(ppo.pickup_location, '')                                   AS origin,
-          COALESCE(ppo.shipping_address, '')                                  AS destination,
-          ppo.grand_total::numeric                                            AS revenue,
-          COALESCE(ppo.vendor_quoted_price::numeric, 0)                      AS vendor_cost,
-          COALESCE(ppo.truck_cost::numeric, 0)                               AS truck_cost,
-          0::numeric                                                          AS tax,
+          COALESCE(ppo.pickup_location, '')                              AS origin,
+          COALESCE(ppo.shipping_address, '')                             AS destination,
+          ppo.grand_total::numeric                                       AS revenue,
+          COALESCE(ppo.vendor_quoted_price::numeric, 0)                 AS vendor_cost,
+          COALESCE(ppo.truck_cost::numeric, 0)                          AS truck_cost,
           (ppo.grand_total::numeric
             - COALESCE(ppo.vendor_quoted_price::numeric, 0)
-            - COALESCE(ppo.truck_cost::numeric, 0))                          AS gross_margin,
-          0::numeric                                                          AS opex_cost,
-          0::numeric                                                          AS purchase_cost,
-          ppo.vendor_name_selected                                            AS vendor_name,
-          ppo.company_id                                                      AS company_id
+            - COALESCE(ppo.truck_cost::numeric, 0))                     AS gross_margin,
+          ppo.vendor_name_selected                                       AS vendor_name
         FROM portal_product_orders ppo
         WHERE ppo.status NOT IN ('Cancelled','cancelled')
-      )
-      SELECT
-        id,
-        order_number,
-        customer_name,
-        created_at_ts::text                                                   AS created_at,
-        status,
-        source_type,
-        origin,
-        destination,
-        revenue,
-        vendor_cost,
-        truck_cost,
-        tax,
-        gross_margin,
-        CASE WHEN revenue > 0
-          THEN ROUND(gross_margin / revenue * 100, 1)
-          ELSE 0
-        END                                                                   AS margin_pct,
-        opex_cost,
-        purchase_cost,
-        (gross_margin - opex_cost)                                            AS net_margin,
-        CASE WHEN revenue > 0
-          THEN ROUND((gross_margin - opex_cost) / revenue * 100, 1)
-          ELSE 0
-        END                                                                   AS net_margin_pct,
-        vendor_name
-      FROM src
-      WHERE TRUE
-        ${companyId !== null ? sql`AND (company_id = ${companyId} OR (source_type = 'portal_product_order' AND company_id IS NULL))` : sql``}
-        ${search ? sql`AND (order_number ILIKE ${'%' + search + '%'} OR customer_name ILIKE ${'%' + search + '%'})` : sql``}
-        ${dateFrom ? sql`AND created_at_ts >= ${dateFrom}` : sql``}
-        ${dateTo   ? sql`AND created_at_ts <= ${dateTo}`   : sql``}
-      ORDER BY created_at_ts DESC
-      LIMIT ${limit} OFFSET ${offset}
-    `);
+          ${companyId !== null ? sql`AND (ppo.company_id = ${companyId} OR ppo.company_id IS NULL)` : sql``}
+          ${search ? sql`AND (ppo.order_number ILIKE ${'%' + search + '%'} OR ppo.customer_name ILIKE ${'%' + search + '%'})` : sql``}
+          ${dateFrom ? sql`AND ppo.created_at >= ${dateFrom}` : sql``}
+          ${dateTo   ? sql`AND ppo.created_at <= ${dateTo}`   : sql``}
+        ORDER BY ppo.created_at DESC
+      `),
+    ]);
 
-    const countRes = await db.execute<{ cnt: string }>(sql`
-      SELECT COUNT(*)::text AS cnt FROM (
-        SELECT lo.id, lo.company_id, 'logistic_order'::text AS source_type, lo.created_at AS ts, lo.order_number, lo.customer_name
-        FROM logistic_orders lo WHERE lo.status NOT IN ('Cancelled','cancelled')
-        UNION ALL
-        SELECT ppo.id, ppo.company_id, 'portal_product_order'::text, ppo.created_at, ppo.order_number, ppo.customer_name
-        FROM portal_product_orders ppo WHERE ppo.status NOT IN ('Cancelled','cancelled')
-      ) combined
-      WHERE TRUE
-        ${companyId !== null ? sql`AND (company_id = ${companyId} OR (source_type = 'portal_product_order' AND company_id IS NULL))` : sql``}
-        ${search ? sql`AND (order_number ILIKE ${'%' + search + '%'} OR customer_name ILIKE ${'%' + search + '%'})` : sql``}
-        ${dateFrom ? sql`AND ts >= ${dateFrom}` : sql``}
-        ${dateTo   ? sql`AND ts <= ${dateTo}`   : sql``}
-    `);
+    type MergedRow = {
+      id: number; orderNumber: string; customerName: string;
+      createdAt: string; status: string; sourceType: string;
+      origin: string; destination: string;
+      revenue: number; vendorCost: number; truckCost: number; tax: number;
+      grossMargin: number; margin: number; marginPct: number;
+      opexCost: number; purchaseCost: number;
+      netMargin: number; netMarginPct: number;
+      vendorName: string | null;
+    };
 
-    return res.json({
-      rows: rows.rows.map(r => ({
+    const loRows: MergedRow[] = loResult.rows.map(r => {
+      const revenue    = Number(r.revenue);
+      const gm         = Number(r.gross_margin);
+      const opex       = Number(r.opex_cost);
+      const netMargin  = gm - opex;
+      return {
         id:           Number(r.id),
         orderNumber:  r.order_number,
         customerName: r.customer_name,
         createdAt:    r.created_at,
         status:       r.status,
-        sourceType:   r.source_type,
+        sourceType:   "logistic_order",
         origin:       r.origin,
         destination:  r.destination,
-        revenue:      Number(r.revenue),
+        revenue,
         vendorCost:   Number(r.vendor_cost),
         truckCost:    Number(r.truck_cost),
         tax:          Number(r.tax),
-        grossMargin:  Number(r.gross_margin),
-        margin:       Number(r.gross_margin),
-        marginPct:    Number(r.margin_pct),
-        opexCost:     Number(r.opex_cost),
+        grossMargin:  gm,
+        margin:       gm,
+        marginPct:    revenue > 0 ? Math.round(gm / revenue * 1000) / 10 : 0,
+        opexCost:     opex,
         purchaseCost: Number(r.purchase_cost),
-        netMargin:    Number(r.net_margin),
-        netMarginPct: Number(r.net_margin_pct),
+        netMargin,
+        netMarginPct: revenue > 0 ? Math.round(netMargin / revenue * 1000) / 10 : 0,
         vendorName:   r.vendor_name ?? null,
-      })),
-      total:  Number((countRes.rows[0] as { cnt: string } | undefined)?.cnt ?? 0),
+      };
+    });
+
+    const ppoRows: MergedRow[] = ppoResult.rows.map(r => {
+      const revenue   = Number(r.revenue);
+      const gm        = Number(r.gross_margin);
+      return {
+        id:           Number(r.id),
+        orderNumber:  r.order_number,
+        customerName: r.customer_name,
+        createdAt:    r.created_at,
+        status:       r.status,
+        sourceType:   "portal_product_order",
+        origin:       r.origin,
+        destination:  r.destination,
+        revenue,
+        vendorCost:   Number(r.vendor_cost),
+        truckCost:    Number(r.truck_cost),
+        tax:          0,
+        grossMargin:  gm,
+        margin:       gm,
+        marginPct:    revenue > 0 ? Math.round(gm / revenue * 1000) / 10 : 0,
+        opexCost:     0,
+        purchaseCost: 0,
+        netMargin:    gm,
+        netMarginPct: revenue > 0 ? Math.round(gm / revenue * 1000) / 10 : 0,
+        vendorName:   r.vendor_name ?? null,
+      };
+    });
+
+    const merged = [...loRows, ...ppoRows]
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    return res.json({
+      rows:   merged.slice(offset, offset + limit),
+      total:  merged.length,
       limit,
       offset,
     });
@@ -197,6 +183,7 @@ router.get("/orders", async (req, res) => {
 // ── Per Customer ──────────────────────────────────────────────────────────
 // GET /api/analytics/profitability/customers?companyId=&dateFrom=&dateTo=
 router.get("/customers", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
   const dateFrom  = req.query.dateFrom ? new Date(String(req.query.dateFrom)) : null;
   const dateTo    = req.query.dateTo   ? new Date(String(req.query.dateTo))   : null;
   const companyId = req.query.companyId && req.query.companyId !== "all"
@@ -208,43 +195,6 @@ router.get("/customers", async (req, res) => {
       outstanding: string; vendor_cost: string; truck_cost: string; tax: string;
       profit: string; profitability_pct: string;
     }>(sql`
-      WITH src AS (
-        SELECT
-          lo.customer_name,
-          lo.grand_total::numeric                                             AS grand_total,
-          lo.status,
-          COALESCE(loq_agg.vendor_cost, 0)::numeric                          AS vendor_cost,
-          COALESCE(lo.truck_price::numeric, 0)                               AS truck_cost,
-          COALESCE(lo.tax::numeric, 0)                                       AS tax,
-          lo.company_id,
-          'logistic_order'::text                                              AS source_type
-        FROM logistic_orders lo
-        LEFT JOIN (
-          SELECT order_id, MAX(vendor_price::numeric) AS vendor_cost
-          FROM logistic_order_quotes GROUP BY order_id
-        ) loq_agg ON loq_agg.order_id = lo.id
-        WHERE lo.status NOT IN ('Cancelled','cancelled')
-          ${companyId !== null ? sql`AND lo.company_id = ${companyId}` : sql``}
-          ${dateFrom ? sql`AND lo.created_at >= ${dateFrom}` : sql``}
-          ${dateTo   ? sql`AND lo.created_at <= ${dateTo}`   : sql``}
-
-        UNION ALL
-
-        SELECT
-          ppo.customer_name,
-          ppo.grand_total::numeric,
-          ppo.status,
-          COALESCE(ppo.vendor_quoted_price::numeric, 0)                      AS vendor_cost,
-          COALESCE(ppo.truck_cost::numeric, 0)                               AS truck_cost,
-          0::numeric                                                          AS tax,
-          ppo.company_id,
-          'portal_product_order'::text
-        FROM portal_product_orders ppo
-        WHERE ppo.status NOT IN ('Cancelled','cancelled')
-          ${companyId !== null ? sql`AND (ppo.company_id = ${companyId} OR ppo.company_id IS NULL)` : sql``}
-          ${dateFrom ? sql`AND ppo.created_at >= ${dateFrom}` : sql``}
-          ${dateTo   ? sql`AND ppo.created_at <= ${dateTo}`   : sql``}
-      )
       SELECT
         customer_name,
         COUNT(*)::text                                                        AS order_count,
@@ -263,7 +213,37 @@ router.get("/customers", async (req, res) => {
             ELSE 0
           END, 1
         )::text                                                              AS profitability_pct
-      FROM src
+      FROM (
+        SELECT
+          lo.customer_name,
+          lo.grand_total::numeric                                             AS grand_total,
+          lo.status,
+          COALESCE(
+            (SELECT MAX(q.vendor_price::numeric)
+             FROM logistic_order_quotes q WHERE q.order_id = lo.id), 0)     AS vendor_cost,
+          COALESCE(lo.truck_price::numeric, 0)                               AS truck_cost,
+          COALESCE(lo.tax::numeric, 0)                                       AS tax
+        FROM logistic_orders lo
+        WHERE lo.status NOT IN ('Cancelled','cancelled')
+          ${companyId !== null ? sql`AND lo.company_id = ${companyId}` : sql``}
+          ${dateFrom ? sql`AND lo.created_at >= ${dateFrom}` : sql``}
+          ${dateTo   ? sql`AND lo.created_at <= ${dateTo}`   : sql``}
+
+        UNION ALL
+
+        SELECT
+          ppo.customer_name,
+          ppo.grand_total::numeric,
+          ppo.status,
+          COALESCE(ppo.vendor_quoted_price::numeric, 0)                      AS vendor_cost,
+          COALESCE(ppo.truck_cost::numeric, 0)                               AS truck_cost,
+          0::numeric                                                          AS tax
+        FROM portal_product_orders ppo
+        WHERE ppo.status NOT IN ('Cancelled','cancelled')
+          ${companyId !== null ? sql`AND (ppo.company_id = ${companyId} OR ppo.company_id IS NULL)` : sql``}
+          ${dateFrom ? sql`AND ppo.created_at >= ${dateFrom}` : sql``}
+          ${dateTo   ? sql`AND ppo.created_at <= ${dateTo}`   : sql``}
+      ) src
       GROUP BY customer_name
       ORDER BY SUM(grand_total) DESC NULLS LAST
       LIMIT 100
@@ -288,8 +268,8 @@ router.get("/customers", async (req, res) => {
 
 // ── Per Vendor ────────────────────────────────────────────────────────────
 // GET /api/analytics/profitability/vendors?companyId=&dateFrom=&dateTo=
-// (Vendor analytics: spend, win rate, performance — logistic_orders only)
 router.get("/vendors", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
   const dateFrom  = req.query.dateFrom ? new Date(String(req.query.dateFrom)) : null;
   const dateTo    = req.query.dateTo   ? new Date(String(req.query.dateTo))   : null;
   const companyId = req.query.companyId && req.query.companyId !== "all"
@@ -324,8 +304,9 @@ router.get("/vendors", async (req, res) => {
           COUNT(*)                                               AS total_invites,
           COUNT(*) FILTER (WHERE rvl.status = 'selected')       AS total_wins
         FROM rfq_vendor_links rvl
-        ${dateFrom ? sql`WHERE rvl.created_at >= ${dateFrom}` : sql`WHERE TRUE`}
-        ${dateTo ? sql`AND rvl.created_at <= ${dateTo}` : sql``}
+        WHERE TRUE
+          ${dateFrom ? sql`AND rvl.submitted_at >= ${dateFrom}` : sql``}
+          ${dateTo ? sql`AND rvl.submitted_at <= ${dateTo}` : sql``}
         GROUP BY rvl.vendor_id
       )
       SELECT
@@ -341,13 +322,12 @@ router.get("/vendors", async (req, res) => {
         )::text                                            AS win_rate,
         COALESCE(vw.total_invites, 0)::text                AS total_invites,
         COALESCE(vw.total_wins, 0)::text                   AS total_wins,
-        COALESCE(vp.ontime_percentage, 0)::text            AS ontime_pct,
-        COALESCE(vp.recommendation_score, 0)::text         AS recommendation_score,
-        COALESCE(vp.average_response_minutes, 0)::text     AS avg_response_min
+        '0'                                                AS ontime_pct,
+        '0'                                                AS recommendation_score,
+        '0'                                                AS avg_response_min
       FROM suppliers s
       LEFT JOIN vendor_orders vo ON vo.vendor_id = s.id
       LEFT JOIN vendor_win vw ON vw.vendor_id = s.id
-      LEFT JOIN vendor_performance vp ON vp.vendor_id = s.id
       WHERE s.is_active = true
         AND (vo.order_count > 0 OR vw.total_invites > 0)
       ORDER BY COALESCE(vo.total_spend, 0) DESC NULLS LAST
@@ -374,8 +354,8 @@ router.get("/vendors", async (req, res) => {
 
 // ── Per Commodity ─────────────────────────────────────────────────────────
 // GET /api/analytics/profitability/commodities?companyId=&dateFrom=&dateTo=
-// Portal orders use product_category as commodity
 router.get("/commodities", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
   const dateFrom  = req.query.dateFrom ? new Date(String(req.query.dateFrom)) : null;
   const dateTo    = req.query.dateTo   ? new Date(String(req.query.dateTo))   : null;
   const companyId = req.query.companyId && req.query.companyId !== "all"
@@ -387,41 +367,6 @@ router.get("/commodities", async (req, res) => {
       vendor_cost: string; truck_cost: string; tax: string;
       gross_margin: string; margin_pct: string;
     }>(sql`
-      WITH src AS (
-        SELECT
-          COALESCE(NULLIF(TRIM(lo.commodity), ''), '(tidak diisi)')          AS commodity,
-          lo.grand_total::numeric                                             AS grand_total,
-          COALESCE(loq_agg.vendor_cost, 0)::numeric                          AS vendor_cost,
-          COALESCE(lo.truck_price::numeric, 0)                               AS truck_cost,
-          COALESCE(lo.tax::numeric, 0)                                       AS tax,
-          lo.company_id,
-          'logistic_order'::text                                              AS source_type
-        FROM logistic_orders lo
-        LEFT JOIN (
-          SELECT order_id, MAX(vendor_price::numeric) AS vendor_cost
-          FROM logistic_order_quotes GROUP BY order_id
-        ) loq_agg ON loq_agg.order_id = lo.id
-        WHERE lo.status NOT IN ('Cancelled','cancelled')
-          ${companyId !== null ? sql`AND lo.company_id = ${companyId}` : sql``}
-          ${dateFrom ? sql`AND lo.created_at >= ${dateFrom}` : sql``}
-          ${dateTo   ? sql`AND lo.created_at <= ${dateTo}`   : sql``}
-
-        UNION ALL
-
-        SELECT
-          COALESCE(NULLIF(TRIM(ppo.product_category), ''), '(tidak diisi)') AS commodity,
-          ppo.grand_total::numeric,
-          COALESCE(ppo.vendor_quoted_price::numeric, 0),
-          COALESCE(ppo.truck_cost::numeric, 0),
-          0::numeric,
-          ppo.company_id,
-          'portal_product_order'::text
-        FROM portal_product_orders ppo
-        WHERE ppo.status NOT IN ('Cancelled','cancelled')
-          ${companyId !== null ? sql`AND (ppo.company_id = ${companyId} OR ppo.company_id IS NULL)` : sql``}
-          ${dateFrom ? sql`AND ppo.created_at >= ${dateFrom}` : sql``}
-          ${dateTo   ? sql`AND ppo.created_at <= ${dateTo}`   : sql``}
-      )
       SELECT
         commodity,
         COUNT(*)::text                                                        AS order_count,
@@ -436,7 +381,35 @@ router.get("/commodities", async (req, res) => {
             ELSE 0
           END, 1
         )::text                                                              AS margin_pct
-      FROM src
+      FROM (
+        SELECT
+          COALESCE(NULLIF(TRIM(lo.commodity), ''), '(tidak diisi)')          AS commodity,
+          lo.grand_total::numeric                                             AS grand_total,
+          COALESCE(
+            (SELECT MAX(q.vendor_price::numeric)
+             FROM logistic_order_quotes q WHERE q.order_id = lo.id), 0)     AS vendor_cost,
+          COALESCE(lo.truck_price::numeric, 0)                               AS truck_cost,
+          COALESCE(lo.tax::numeric, 0)                                       AS tax
+        FROM logistic_orders lo
+        WHERE lo.status NOT IN ('Cancelled','cancelled')
+          ${companyId !== null ? sql`AND lo.company_id = ${companyId}` : sql``}
+          ${dateFrom ? sql`AND lo.created_at >= ${dateFrom}` : sql``}
+          ${dateTo   ? sql`AND lo.created_at <= ${dateTo}`   : sql``}
+
+        UNION ALL
+
+        SELECT
+          COALESCE(NULLIF(TRIM(ppo.product_category), ''), '(tidak diisi)') AS commodity,
+          ppo.grand_total::numeric,
+          COALESCE(ppo.vendor_quoted_price::numeric, 0),
+          COALESCE(ppo.truck_cost::numeric, 0),
+          0::numeric
+        FROM portal_product_orders ppo
+        WHERE ppo.status NOT IN ('Cancelled','cancelled')
+          ${companyId !== null ? sql`AND (ppo.company_id = ${companyId} OR ppo.company_id IS NULL)` : sql``}
+          ${dateFrom ? sql`AND ppo.created_at >= ${dateFrom}` : sql``}
+          ${dateTo   ? sql`AND ppo.created_at <= ${dateTo}`   : sql``}
+      ) src
       GROUP BY commodity
       ORDER BY SUM(grand_total) DESC NULLS LAST
     `);
@@ -474,8 +447,8 @@ router.get("/commodities", async (req, res) => {
 
 // ── Per Route ─────────────────────────────────────────────────────────────
 // GET /api/analytics/profitability/routes?companyId=&dateFrom=&dateTo=&limit=50&offset=0
-// Portal orders use pickup_location as origin, shipping_address as destination
 router.get("/routes", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
   const dateFrom  = req.query.dateFrom ? new Date(String(req.query.dateFrom)) : null;
   const dateTo    = req.query.dateTo   ? new Date(String(req.query.dateTo))   : null;
   const companyId = req.query.companyId && req.query.companyId !== "all"
@@ -490,47 +463,6 @@ router.get("/routes", async (req, res) => {
       vendor_cost: string; truck_cost: string; tax: string;
       gross_margin: string; margin_pct: string;
     }>(sql`
-      WITH src AS (
-        SELECT
-          COALESCE(NULLIF(TRIM(lo.origin), ''), '(tidak diisi)')             AS origin,
-          COALESCE(NULLIF(TRIM(lo.destination), ''), '(tidak diisi)')        AS destination,
-          lo.grand_total::numeric                                             AS grand_total,
-          COALESCE(loq_agg.vendor_cost, 0)::numeric                          AS vendor_cost,
-          COALESCE(lo.truck_price::numeric, 0)                               AS truck_cost,
-          COALESCE(lo.tax::numeric, 0)                                       AS tax,
-          lo.company_id,
-          'logistic_order'::text                                              AS source_type
-        FROM logistic_orders lo
-        LEFT JOIN (
-          SELECT order_id, MAX(vendor_price::numeric) AS vendor_cost
-          FROM logistic_order_quotes GROUP BY order_id
-        ) loq_agg ON loq_agg.order_id = lo.id
-        WHERE lo.status NOT IN ('Cancelled','cancelled')
-          AND NULLIF(TRIM(lo.origin), '') IS NOT NULL
-          AND NULLIF(TRIM(lo.destination), '') IS NOT NULL
-          ${companyId !== null ? sql`AND lo.company_id = ${companyId}` : sql``}
-          ${dateFrom ? sql`AND lo.created_at >= ${dateFrom}` : sql``}
-          ${dateTo   ? sql`AND lo.created_at <= ${dateTo}`   : sql``}
-
-        UNION ALL
-
-        SELECT
-          COALESCE(NULLIF(TRIM(ppo.pickup_location), ''), '(tidak diisi)')   AS origin,
-          COALESCE(NULLIF(TRIM(ppo.shipping_address), ''), '(tidak diisi)')  AS destination,
-          ppo.grand_total::numeric,
-          COALESCE(ppo.vendor_quoted_price::numeric, 0),
-          COALESCE(ppo.truck_cost::numeric, 0),
-          0::numeric,
-          ppo.company_id,
-          'portal_product_order'::text
-        FROM portal_product_orders ppo
-        WHERE ppo.status NOT IN ('Cancelled','cancelled')
-          AND NULLIF(TRIM(ppo.pickup_location), '') IS NOT NULL
-          AND NULLIF(TRIM(ppo.shipping_address), '') IS NOT NULL
-          ${companyId !== null ? sql`AND (ppo.company_id = ${companyId} OR ppo.company_id IS NULL)` : sql``}
-          ${dateFrom ? sql`AND ppo.created_at >= ${dateFrom}` : sql``}
-          ${dateTo   ? sql`AND ppo.created_at <= ${dateTo}`   : sql``}
-      )
       SELECT
         origin,
         destination,
@@ -546,7 +478,41 @@ router.get("/routes", async (req, res) => {
             ELSE 0
           END, 1
         )::text                                                              AS margin_pct
-      FROM src
+      FROM (
+        SELECT
+          COALESCE(NULLIF(TRIM(lo.origin), ''), '(tidak diisi)')             AS origin,
+          COALESCE(NULLIF(TRIM(lo.destination), ''), '(tidak diisi)')        AS destination,
+          lo.grand_total::numeric                                             AS grand_total,
+          COALESCE(
+            (SELECT MAX(q.vendor_price::numeric)
+             FROM logistic_order_quotes q WHERE q.order_id = lo.id), 0)     AS vendor_cost,
+          COALESCE(lo.truck_price::numeric, 0)                               AS truck_cost,
+          COALESCE(lo.tax::numeric, 0)                                       AS tax
+        FROM logistic_orders lo
+        WHERE lo.status NOT IN ('Cancelled','cancelled')
+          AND NULLIF(TRIM(lo.origin), '') IS NOT NULL
+          AND NULLIF(TRIM(lo.destination), '') IS NOT NULL
+          ${companyId !== null ? sql`AND lo.company_id = ${companyId}` : sql``}
+          ${dateFrom ? sql`AND lo.created_at >= ${dateFrom}` : sql``}
+          ${dateTo   ? sql`AND lo.created_at <= ${dateTo}`   : sql``}
+
+        UNION ALL
+
+        SELECT
+          COALESCE(NULLIF(TRIM(ppo.pickup_location), ''), '(tidak diisi)')   AS origin,
+          COALESCE(NULLIF(TRIM(ppo.shipping_address), ''), '(tidak diisi)')  AS destination,
+          ppo.grand_total::numeric,
+          COALESCE(ppo.vendor_quoted_price::numeric, 0),
+          COALESCE(ppo.truck_cost::numeric, 0),
+          0::numeric
+        FROM portal_product_orders ppo
+        WHERE ppo.status NOT IN ('Cancelled','cancelled')
+          AND NULLIF(TRIM(ppo.pickup_location), '') IS NOT NULL
+          AND NULLIF(TRIM(ppo.shipping_address), '') IS NOT NULL
+          ${companyId !== null ? sql`AND (ppo.company_id = ${companyId} OR ppo.company_id IS NULL)` : sql``}
+          ${dateFrom ? sql`AND ppo.created_at >= ${dateFrom}` : sql``}
+          ${dateTo   ? sql`AND ppo.created_at <= ${dateTo}`   : sql``}
+      ) src
       GROUP BY origin, destination
       ORDER BY SUM(grand_total) DESC NULLS LAST
       LIMIT ${limit} OFFSET ${offset}
@@ -578,34 +544,21 @@ router.get("/routes", async (req, res) => {
       ) combined
     `);
 
-    const items = rows.rows.map(r => ({
-      origin:      r.origin,
-      destination: r.destination,
-      route:       `${r.origin} → ${r.destination}`,
-      orderCount:  Number(r.order_count),
-      revenue:     Number(r.revenue),
-      vendorCost:  Number(r.vendor_cost),
-      truckCost:   Number(r.truck_cost),
-      tax:         Number(r.tax),
-      grossMargin: Number(r.gross_margin),
-      marginPct:   Number(r.margin_pct),
-    }));
-
-    const totalRevenue     = items.reduce((s, r) => s + r.revenue,     0);
-    const totalVendorCost  = items.reduce((s, r) => s + r.vendorCost,  0);
-    const totalTruckCost   = items.reduce((s, r) => s + r.truckCost,   0);
-    const totalTax         = items.reduce((s, r) => s + r.tax,         0);
-    const totalGrossMargin = items.reduce((s, r) => s + r.grossMargin, 0);
-    const totalOrders      = items.reduce((s, r) => s + r.orderCount,  0);
-    const avgMarginPct     = totalRevenue > 0
-      ? Math.round(totalGrossMargin / totalRevenue * 1000) / 10 : 0;
-
     return res.json({
-      items,
-      total: Number((countRes.rows[0] as { cnt: string } | undefined)?.cnt ?? 0),
+      rows: rows.rows.map(r => ({
+        origin:      r.origin,
+        destination: r.destination,
+        orderCount:  Number(r.order_count),
+        revenue:     Number(r.revenue),
+        vendorCost:  Number(r.vendor_cost),
+        truckCost:   Number(r.truck_cost),
+        tax:         Number(r.tax),
+        grossMargin: Number(r.gross_margin),
+        marginPct:   Number(r.margin_pct),
+      })),
+      total:  Number((countRes.rows[0] as { cnt: string } | undefined)?.cnt ?? 0),
       limit,
       offset,
-      summary: { totalRevenue, totalVendorCost, totalTruckCost, totalTax, totalGrossMargin, totalOrders, avgMarginPct },
     });
   } catch (e) {
     console.error("[analytics/routes]", e);
