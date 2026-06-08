@@ -2451,6 +2451,55 @@ vendorMiniFormRouter.delete("/admin/links/:id", async (req: Request, res: Respon
   }
 });
 
+// ── ADMIN: POST /api/vendor-form/admin/links/:id/clone ───────────────────────
+
+vendorMiniFormRouter.post("/admin/links/:id/clone", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const id = Number(req.params["id"]);
+  if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+  try {
+    const [src] = await db.select().from(vendorMiniFormLinksTable).where(eq(vendorMiniFormLinksTable.id, id));
+    if (!src) return res.status(404).json({ error: "Link tidak ditemukan" });
+
+    const userId = (req.user as { id: string } | undefined)?.id ?? null;
+    const token = randomBytes(24).toString("hex");
+
+    const [cloned] = await db.insert(vendorMiniFormLinksTable).values({
+      token,
+      serviceType:       src.serviceType,
+      supplierId:        src.supplierId,
+      vendorName:        src.vendorName,
+      title:             src.title ? `[Klon] ${src.title}` : null,
+      notes:             src.notes,
+      mode:              src.mode,
+      orderId:           src.orderId,
+      orderNumber:       src.orderNumber,
+      orderItemId:       src.orderItemId,
+      maxSubmissions:    src.maxSubmissions,
+      adminNotes:        src.adminNotes,
+      commodityTemplateId: src.commodityTemplateId,
+      categoryKey:       src.categoryKey,
+      templateId:        src.templateId,
+      templateVersion:   src.templateVersion,
+      templateSnapshot:  src.templateSnapshot,
+      expiresAt:         src.expiresAt,
+      isActive:          true,
+      phase:             "quotation",
+      itemStatus:        src.mode === "order_based" ? "waiting_vendor" : null,
+      createdBy:         userId,
+    }).returning();
+
+    await logActivity("link", cloned.id, "created", userId,
+      `Link diklon dari link #${src.id} (${src.serviceType})`,
+      { clonedFrom: src.id });
+
+    return res.json({ id: cloned.id, token: cloned.token });
+  } catch (err) {
+    req.log?.error({ err }, "vendor-mini-form admin clone link error");
+    return res.status(500).json({ error: "Gagal mengklon link" });
+  }
+});
+
 // ── ADMIN: GET /api/vendor-form/admin/submissions ─────────────────────────────
 
 vendorMiniFormRouter.get("/admin/submissions", async (req: Request, res: Response) => {

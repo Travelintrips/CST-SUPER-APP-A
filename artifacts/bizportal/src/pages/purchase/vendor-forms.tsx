@@ -20,7 +20,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCompany } from "@/contexts/CompanyContext";
 import {
-  Copy, ExternalLink, Link2, Plus, Trash2, Eye, ToggleLeft, ToggleRight,
+  Copy, CopyPlus, ExternalLink, Link2, Plus, Trash2, Eye, ToggleLeft, ToggleRight,
   Loader2, RotateCcw, CalendarDays, User, Phone, MessageCircle, XCircle,
   Clock, SendHorizonal, Pencil, CheckCircle, Package, Star, Building2, FileText,
   BarChart2, TrendingDown, TrendingUp, Minus, Award,
@@ -2740,6 +2740,15 @@ export default function VendorFormsPage() {
     onError: (e: Error) => toast({ title: "Gagal", description: e.message, variant: "destructive" }),
   });
 
+  const cloneLinkMut = useMutation({
+    mutationFn: (id: number) => apiFetch<{ id: number; token: string }>(`/api/vendor-form/admin/links/${id}/clone`, { method: "POST" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["vmf-links"] });
+      toast({ title: "Link berhasil diklon!", description: "Link baru sudah dibuat dengan konfigurasi yang sama." });
+    },
+    onError: (e: Error) => toast({ title: "Gagal klon link", description: e.message, variant: "destructive" }),
+  });
+
   const retrySoMut = useMutation({
     mutationFn: (id: number) => apiFetch<{ ok: boolean; docNumber: string; already?: boolean }>(`/api/vendor-form/admin/customer-approvals/${id}/retry-so`, { method: "POST" }),
     onSuccess: (data) => {
@@ -2969,6 +2978,13 @@ export default function VendorFormsPage() {
                                     <Link2 className="h-3.5 w-3.5" />
                                   </Button>
                                 )}
+                                <Button
+                                  variant="ghost" size="icon" className="h-7 w-7 text-blue-400 hover:text-blue-600" title="Klon link (duplikat konfigurasi)"
+                                  disabled={cloneLinkMut.isPending}
+                                  onClick={() => cloneLinkMut.mutate(link.id)}
+                                >
+                                  <CopyPlus className="h-3.5 w-3.5" />
+                                </Button>
                                 <Button
                                   variant="ghost" size="icon" className="h-7 w-7 text-red-400 hover:text-red-600" title="Hapus link"
                                   onClick={() => { if (confirm("Hapus link ini? Semua submission akan dibebaskan dari link ini.")) deleteLinkMut.mutate(link.id); }}
