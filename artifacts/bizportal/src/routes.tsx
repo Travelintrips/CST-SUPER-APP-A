@@ -75,6 +75,7 @@ import AccountingEntriesPage from "@/pages/accounting/entries";
 import AccountingEntryDetailPage from "@/pages/accounting/entry-detail";
 import AccountingJournalItemsPage from "@/pages/accounting/journal-items";
 import AccountingPaymentsPage from "@/pages/accounting/payments";
+import AccountingPaylabsPage from "@/pages/accounting/paylabs";
 import AccountingOtherTransactionsPage from "@/pages/accounting/other-transactions";
 import AccountingSettingsPage from "@/pages/accounting/settings";
 import CostCentersPage from "@/pages/accounting/cost-centers";
@@ -153,6 +154,8 @@ import LogisticOrderDetailPage from "@/pages/logistics/order-detail";
 import OrderAuditTrailPage from "@/pages/logistics/order-audit-trail";
 import VendorPerformancePage from "@/pages/logistics/vendor-performance";
 import InternalTasksPage from "@/pages/logistics/internal-tasks";
+import ProductFirstAnalyticsPage from "@/pages/logistics/product-first-analytics";
+import ProductFirstAuditPage from "@/pages/logistics/product-first-audit";
 import LogisticsImportAssistantPage from "@/pages/logistics-import-assistant";
 import ExceptionsPage from "@/pages/exceptions/index";
 // Misc
@@ -230,6 +233,8 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/logistics/orders/:orderId" component={PR(LogisticOrderDetailPage)} />
       <Route path="/logistics/vendor-performance" component={PR(VendorPerformancePage)} />
       <Route path="/logistics/internal-tasks" component={PR(InternalTasksPage)} />
+      <Route path="/logistics/product-first/analytics" component={PR(ProductFirstAnalyticsPage)} />
+      <Route path="/logistics/product-first/audit" component={PR(ProductFirstAuditPage)} />
       <Route path="/logistics/import-assistant" component={PR(LogisticsImportAssistantPage)} />
       <Route path="/portal-product-orders" component={PR(PortalProductOrdersPage)} />
       <Route path="/portal/customers" component={PR(PortalCustomersPage)} />
@@ -313,6 +318,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/accounting/entries" component={PR(AccountingEntriesPage)} />
       <Route path="/accounting/journal-items" component={PR(AccountingJournalItemsPage)} />
       <Route path="/accounting/payments" component={PR(AccountingPaymentsPage)} />
+      <Route path="/accounting/paylabs" component={PR(AccountingPaylabsPage)} />
       <Route path="/accounting/other-transactions" component={PR(AccountingOtherTransactionsPage)} />
       <Route path="/accounting/settings" component={PR(AccountingSettingsPage)} />
       <Route path="/accounting/cost-centers" component={PR(CostCentersPage)} />

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { Router, Request, Response } from "express";
-import { randomBytes } from "crypto";
+import { randomBytes, createSign, createHash, randomUUID } from "crypto";
 import { db } from "@workspace/db";
 import {
   logisticOrdersTable,
@@ -22,7 +22,7 @@ import {
 import { resolveTemplate } from "@workspace/product-templates";
 import { deleteFromSupabase } from "../lib/supabaseStorage.js";
 import { eq, ilike, and, gte, lte, or, sql, desc, inArray, isNotNull } from "drizzle-orm";
-import { salesDocumentsTable, customerInvoiceLinksTable } from "@workspace/db";
+import { salesDocumentsTable, customerInvoiceLinksTable, paymentsTable } from "@workspace/db";
 import { requireClerkUser, requireRole } from "../lib/requireAdmin.js";
 import { calcTax, calcGrandTotal } from "../lib/taxHelper.js";
 import { resolveCompanyId } from "../lib/resolveCompany.js";
@@ -2123,6 +2123,163 @@ logisticOrdersRouter.post("/export-gsheet", async (req: Request, res: Response) 
   ]);
 
   return res.json({ ok: true, total: orders.length, ...result });
+});
+
+// ── Paylabs helpers ────────────────────────────────────────────────────────
+const _PAYLABS_MERCHANT_ID = process.env["PAYLABS_MERCHANT_ID"] ?? "";
+const _PAYLABS_API_URL =
+  process.env["PAYLABS_API_URL"] ?? "https://sit-pay.paylabs.co.id/payment/v2.1/h5/createLink";
+const _PAYLABS_PRIVATE_KEY = process.env["PAYLABS_PRIVATE_KEY"] ?? "";
+
+function _paylabsSign(payload: string): string {
+  const s = createSign("RSA-SHA256");
+  s.update(payload);
+  return s.sign(_PAYLABS_PRIVATE_KEY, "base64");
+}
+
+function _paylabsBuildSigPayload(method: string, endpoint: string, bodyJson: string, ts: string): string {
+  const bodyHash = createHash("sha256").update(bodyJson).digest("hex").toLowerCase();
+  return `${method}:${endpoint}:${bodyHash}:${ts}`;
+}
+
+// POST /api/logistic/orders/:orderNumber/create-paylabs-link — public, buat payment link Paylabs
+logisticOrdersRouter.post("/:orderNumber/create-paylabs-link", async (req: Request, res: Response) => {
+  const { orderNumber } = req.params;
+  const [order] = await db
+    .select({
+      id: logisticOrdersTable.id,
+      orderNumber: logisticOrdersTable.orderNumber,
+      customerName: logisticOrdersTable.customerName,
+      grandTotal: logisticOrdersTable.grandTotal,
+      status: logisticOrdersTable.status,
+    })
+    .from(logisticOrdersTable)
+    .where(eq(logisticOrdersTable.orderNumber, orderNumber))
+    .limit(1);
+  if (!order) return res.status(404).json({ message: "Pesanan tidak ditemukan" });
+  if (order.status === "Cancelled") {
+    return res.status(400).json({ message: "Order sudah dibatalkan" });
+  }
+
+  // Cek apakah sudah ada payment link pending — reuse jika masih aktif
+  const existing = await db
+    .select()
+    .from(paymentsTable)
+    .where(and(
+      eq(paymentsTable.refId, order.id),
+      eq(paymentsTable.refKind, "logistic"),
+      eq(paymentsTable.status, "pending"),
+      eq(paymentsTable.provider, "paylabs"),
+    ))
+    .orderBy(desc(paymentsTable.createdAt))
+    .limit(1);
+
+  if (existing.length > 0 && existing[0].paymentUrl) {
+    const notExpired = !existing[0].expiredAt || existing[0].expiredAt > new Date();
+    if (notExpired) {
+      return res.json({
+        reused: true,
+        paymentUrl: existing[0].paymentUrl,
+        amount: Number(existing[0].amount),
+        expiredAt: existing[0].expiredAt?.toISOString() ?? null,
+      });
+    }
+  }
+
+  const amount = Number(order.grandTotal ?? 0);
+  const merchantTradeNo = `LOG-${order.id}-${Date.now()}`;
+
+  if (!_PAYLABS_MERCHANT_ID || !_PAYLABS_PRIVATE_KEY) {
+    await db.insert(paymentsTable).values({
+      refKind: "logistic",
+      refId: order.id,
+      refDocNumber: orderNumber,
+      amount: String(amount),
+      status: "pending",
+      provider: "paylabs",
+      providerMerchantTradeNo: merchantTradeNo,
+      paymentUrl: null,
+      raw: { simulation: true, reason: "PAYLABS credentials not configured" },
+      expiredAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+    });
+    return res.status(202).json({
+      configured: false,
+      message: "Paylabs belum terkonfigurasi. Simulasi payment dibuat.",
+      paymentUrl: null,
+      amount,
+    });
+  }
+
+  const requestId = randomUUID();
+  const timestamp = new Date().toISOString().replace(/\.\d+Z$/, "+07:00");
+  const host = (req.headers["x-forwarded-proto"] ?? "https") + "://" + (req.headers.host ?? "");
+  const notifyUrl = `${host}/api/payments/paylabs/webhook`;
+  const redirectUrl = `${host}/track?order=${orderNumber}`;
+
+  const body = {
+    merchantId: _PAYLABS_MERCHANT_ID,
+    merchantTradeNo,
+    requestId,
+    amount: amount.toFixed(2),
+    currency: "IDR",
+    productName: `Pembayaran ${orderNumber}`,
+    paymentType: "ALL",
+    notifyUrl,
+    redirectUrl,
+    expire: 86400,
+    payer: order.customerName ?? "",
+  };
+  const bodyJson = JSON.stringify(body);
+  const sigPayload = _paylabsBuildSigPayload("POST", new URL(_PAYLABS_API_URL).pathname, bodyJson, timestamp);
+  let signature: string;
+  try {
+    signature = _paylabsSign(sigPayload);
+  } catch (err: unknown) {
+    return res.status(500).json({ message: "Paylabs signing gagal", error: (err as Error)?.message });
+  }
+
+  let paylabsResp: Record<string, unknown> = {};
+  try {
+    const r = await fetch(_PAYLABS_API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-TIMESTAMP": timestamp,
+        "X-SIGNATURE": signature,
+        "X-PARTNER-ID": _PAYLABS_MERCHANT_ID,
+        "X-REQUEST-ID": requestId,
+      },
+      body: bodyJson,
+    });
+    paylabsResp = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+    if (!r.ok || paylabsResp?.["errCode"] !== "0") {
+      return res.status(502).json({ message: "Paylabs error", response: paylabsResp });
+    }
+  } catch (err: unknown) {
+    return res.status(502).json({ message: "Paylabs request gagal", error: (err as Error)?.message });
+  }
+
+  const paymentUrl = (paylabsResp?.["url"] ?? paylabsResp?.["h5Url"] ?? null) as string | null;
+  const [created] = await db.insert(paymentsTable).values({
+    refKind: "logistic",
+    refId: order.id,
+    refDocNumber: orderNumber,
+    amount: String(amount),
+    status: "pending",
+    provider: "paylabs",
+    providerOrderId: (paylabsResp?.["platformTradeNo"] as string | undefined) ?? null,
+    providerMerchantTradeNo: merchantTradeNo,
+    paymentUrl,
+    raw: paylabsResp,
+    expiredAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+  }).returning();
+
+  return res.status(201).json({
+    configured: true,
+    paymentUrl,
+    amount,
+    expiredAt: created.expiredAt?.toISOString() ?? null,
+  });
 });
 
 // PATCH /api/logistic/orders/:orderNumber/payment-proof — public, simpan URL bukti bayar

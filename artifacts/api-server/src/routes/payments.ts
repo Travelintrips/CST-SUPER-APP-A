@@ -3,6 +3,7 @@ import {
   db,
   paymentsTable,
   salesDocumentsTable,
+  logisticOrdersTable,
 } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
 import crypto from "node:crypto";
@@ -247,11 +248,9 @@ router.post("/paylabs/webhook", async (req, res) => {
           taxAccountId: null,
         });
       }
-      // ── RECALCULATE PAYMENT STATUS (unpaid → partial → paid) ──────────────
       void recalculatePaymentStatus(payment.refId, "sales_order").catch(
         (e: unknown) => console.warn("[payments] recalculatePaymentStatus failed (paylabs webhook)", e)
       );
-      // ── AUTO STATUS: Payment Received ─────────────────────────────────────
       if (salesDoc?.logisticOrderId && Number(salesDoc.grandTotal) > 0 && Number(payment.amount) >= Number(salesDoc.grandTotal)) {
         void transitionLogisticOrderStatus(salesDoc.logisticOrderId, "Payment Received", {
           source: "paylabs:webhook",
@@ -259,12 +258,18 @@ router.post("/paylabs/webhook", async (req, res) => {
           notes: `Pembayaran lunas via Paylabs (merchantTradeNo: ${merchantTradeNo})`,
         }).catch((e: unknown) => console.warn("auto Payment Received transition failed (Paylabs webhook)", e));
       }
-      // ── SEND WA PROOF LINK TO CUSTOMER ────────────────────────────────────
       if (salesDoc) {
         void sendPaymentProofWaLink(salesDoc.id).catch(
           (e: unknown) => console.warn("[payments] sendPaymentProofWaLink failed (paylabs webhook)", e)
         );
       }
+    } else if (payment.refKind === "logistic") {
+      // Logistic order direct payment — transition to "Payment Received"
+      void transitionLogisticOrderStatus(payment.refId, "Payment Received", {
+        source: "paylabs:webhook",
+        actorType: "system",
+        notes: `Pembayaran lunas via Paylabs (merchantTradeNo: ${merchantTradeNo})`,
+      }).catch((e: unknown) => console.warn("auto Payment Received transition failed (Paylabs webhook/logistic)", e));
     }
     void postPaymentReceived({
       paymentId: payment.id,
@@ -287,36 +292,41 @@ router.post("/:id/simulate-paid", async (req, res) => {
     .update(paymentsTable)
     .set({ status: "paid", paidAt: new Date(), updatedAt: new Date() })
     .where(eq(paymentsTable.id, id));
-  if (payment.refKind === "sales" && payment.status !== "paid") {
-    const [salesDoc2] = await db.select().from(salesDocumentsTable).where(eq(salesDocumentsTable.id, payment.refId));
-    const invoiceResult2 = await markSalesInvoiced(payment.refId, "paylabs");
-    if (invoiceResult2.ok && !invoiceResult2.alreadySet && salesDoc2) {
-      void postSalesInvoice({
-        salesDocId: salesDoc2.id,
-        docNumber: salesDoc2.docNumber,
-        customerName: salesDoc2.customerName,
-        netAmount: Number(salesDoc2.totalAmount),
-        taxAmount: Number(salesDoc2.taxAmount ?? 0),
-        taxAccountId: null,
-      });
-    }
-    // ── RECALCULATE PAYMENT STATUS (unpaid → partial → paid) ──────────────
-    void recalculatePaymentStatus(payment.refId, "sales_order").catch(
-      (e: unknown) => console.warn("[payments] recalculatePaymentStatus failed (simulate-paid)", e)
-    );
-    // ── AUTO STATUS: Payment Received ─────────────────────────────────────
-    if (salesDoc2?.logisticOrderId && Number(salesDoc2.grandTotal) > 0 && Number(payment.amount) >= Number(salesDoc2.grandTotal)) {
-      void transitionLogisticOrderStatus(salesDoc2.logisticOrderId, "Payment Received", {
+  if (payment.status !== "paid") {
+    if (payment.refKind === "sales") {
+      const [salesDoc2] = await db.select().from(salesDocumentsTable).where(eq(salesDocumentsTable.id, payment.refId));
+      const invoiceResult2 = await markSalesInvoiced(payment.refId, "paylabs");
+      if (invoiceResult2.ok && !invoiceResult2.alreadySet && salesDoc2) {
+        void postSalesInvoice({
+          salesDocId: salesDoc2.id,
+          docNumber: salesDoc2.docNumber,
+          customerName: salesDoc2.customerName,
+          netAmount: Number(salesDoc2.totalAmount),
+          taxAmount: Number(salesDoc2.taxAmount ?? 0),
+          taxAccountId: null,
+        });
+      }
+      void recalculatePaymentStatus(payment.refId, "sales_order").catch(
+        (e: unknown) => console.warn("[payments] recalculatePaymentStatus failed (simulate-paid)", e)
+      );
+      if (salesDoc2?.logisticOrderId && Number(salesDoc2.grandTotal) > 0 && Number(payment.amount) >= Number(salesDoc2.grandTotal)) {
+        void transitionLogisticOrderStatus(salesDoc2.logisticOrderId, "Payment Received", {
+          source: "paylabs:simulate-paid",
+          actorType: "admin",
+          notes: `Simulasi pembayaran lunas via Paylabs (payment #${payment.id})`,
+        }).catch((e: unknown) => console.warn("auto Payment Received transition failed (simulate-paid)", e));
+      }
+      if (salesDoc2) {
+        void sendPaymentProofWaLink(salesDoc2.id).catch(
+          (e: unknown) => console.warn("[payments] sendPaymentProofWaLink failed (simulate-paid)", e)
+        );
+      }
+    } else if (payment.refKind === "logistic") {
+      void transitionLogisticOrderStatus(payment.refId, "Payment Received", {
         source: "paylabs:simulate-paid",
         actorType: "admin",
         notes: `Simulasi pembayaran lunas via Paylabs (payment #${payment.id})`,
-      }).catch((e: unknown) => console.warn("auto Payment Received transition failed (simulate-paid)", e));
-    }
-    // ── SEND WA PROOF LINK TO CUSTOMER ────────────────────────────────────
-    if (salesDoc2) {
-      void sendPaymentProofWaLink(salesDoc2.id).catch(
-        (e: unknown) => console.warn("[payments] sendPaymentProofWaLink failed (simulate-paid)", e)
-      );
+      }).catch((e: unknown) => console.warn("auto Payment Received transition failed (simulate-paid/logistic)", e));
     }
   }
   if (payment.status !== "paid") {
