@@ -74,6 +74,17 @@ export const logisticOrdersRouter = Router();
 db.execute(sql`ALTER TABLE logistic_orders ADD COLUMN IF NOT EXISTS payment_proof_url TEXT`)
   .catch(() => {});
 
+// Inline migration: vendor catalog reference columns on logistic_order_items
+db.execute(sql`
+  ALTER TABLE logistic_order_items
+    ADD COLUMN IF NOT EXISTS item_source TEXT DEFAULT 'manual',
+    ADD COLUMN IF NOT EXISTS vendor_catalog_item_id INTEGER,
+    ADD COLUMN IF NOT EXISTS vendor_id INTEGER REFERENCES suppliers(id) ON DELETE SET NULL,
+    ADD COLUMN IF NOT EXISTS service_type TEXT,
+    ADD COLUMN IF NOT EXISTS price_snapshot JSONB,
+    ADD COLUMN IF NOT EXISTS calculation_input JSONB
+`).catch(() => {});
+
 // [C4-FIX] IP-based rate limit for public order creation: max 10 orders per IP per hour
 const _publicOrderRateMap = new Map<string, { count: number; resetAt: number }>();
 function _checkPublicOrderRate(ip: string): boolean {
@@ -404,6 +415,12 @@ logisticOrdersRouter.post("/", async (req: Request, res: Response) => {
     inputData: item.inputData as Record<string, unknown>,
     calculationResult: item.calculationResult as Record<string, unknown>,
     subtotal: String(item.subtotal),
+    itemSource: item.itemSource ?? "manual",
+    vendorCatalogItemId: item.vendorCatalogItemId ?? null,
+    vendorId: item.vendorId ?? null,
+    serviceType: item.serviceType ?? null,
+    priceSnapshot: (item.priceSnapshot as Record<string, unknown> | null) ?? null,
+    calculationInput: (item.calculationInput as Record<string, unknown> | null) ?? null,
   }));
 
   const items =
