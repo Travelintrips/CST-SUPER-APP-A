@@ -246,7 +246,7 @@ export default function ProfitabilityAnalyticsPage() {
       if (!r.ok) throw new Error("Gagal memuat data order");
       return r.json() as Promise<OrdersData>;
     },
-    enabled: tab === "orders",
+    enabled: tab === "orders" || tab === "leakage",
   });
 
   const customersQuery = useQuery<CustomerRow[]>({
@@ -320,6 +320,95 @@ export default function ProfitabilityAnalyticsPage() {
   const totalOpex       = orderRows.reduce((s, r) => s + (r.opexCost ?? 0), 0);
   const totalNetMargin  = orderRows.reduce((s, r) => s + (r.netMargin ?? r.grossMargin ?? r.margin), 0);
   const avgNetMarginPct = totalRevenue > 0 ? (totalNetMargin / totalRevenue) * 100 : 0;
+
+  // ── Profitability 2.0 derived metrics ─────────────────────────────────────
+  const deriveProdCost   = (r: OrderRow) => r.productCost   ?? (r.purchaseCost ?? 0);
+  const deriveShipCost   = (r: OrderRow) => r.shipmentCost  ?? (r.vendorCost + (r.truckCost ?? 0));
+  const deriveShipMargin = (r: OrderRow) => r.shipmentMargin   ?? (r.grossMargin ?? r.margin);
+  const deriveOrderGM    = (r: OrderRow) => r.orderGrossMargin ?? (r.grossMargin ?? r.margin);
+
+  const totalProductCost    = orderRows.reduce((s, r) => s + deriveProdCost(r), 0);
+  const totalShipmentCost   = orderRows.reduce((s, r) => s + deriveShipCost(r), 0);
+  const totalShipmentMargin = orderRows.reduce((s, r) => s + deriveShipMargin(r), 0);
+  const totalOrderGM        = orderRows.reduce((s, r) => s + deriveOrderGM(r), 0);
+  const avgOrderMarginPct   = totalRevenue > 0 ? (totalOrderGM / totalRevenue) * 100 : 0;
+  const totalProductMargin  = orderRows.reduce((s, r) => {
+    const pc = deriveProdCost(r);
+    return s + (r.productMargin ?? (pc > 0 ? r.revenue - pc : 0));
+  }, 0);
+
+  // ── Sprint 5: Profit Leakage Analysis ─────────────────────────────────────
+  const negativeMarginOrders = orderRows.filter(r => (r.grossMargin ?? r.margin) < 0);
+  const lowMarginOrders      = orderRows.filter(r => r.marginPct > 0 && r.marginPct < 10);
+
+  const sortedRevs = [...orderRows].map(r => r.revenue).sort((a, b) => a - b);
+  const p75Rev = sortedRevs.length > 0
+    ? (sortedRevs[Math.floor(sortedRevs.length * 0.75)] ?? 0)
+    : 0;
+  const highRevLowMargin = p75Rev > 0
+    ? orderRows.filter(r => r.revenue >= p75Rev && r.marginPct < 15)
+    : [];
+
+  function classifyLeakageReason(r: OrderRow): string {
+    const gm = r.grossMargin ?? r.margin;
+    const pc = deriveProdCost(r);
+    const sc = deriveShipCost(r);
+    const sm = deriveShipMargin(r);
+    const pm = r.productMargin ?? (pc > 0 ? r.revenue - pc : null);
+    if (pc === 0 && sc === 0) return "Missing cost data";
+    if (gm < 0) return "Negative margin";
+    if (pm !== null && pm < 0) return "Product cost too high";
+    if (sm < 0) return "Shipment cost too high";
+    if ((r.truckCost ?? 0) > 0 && (r.truckCost ?? 0) > r.vendorCost * 0.5) return "Truck cost too high";
+    if ((r.tax ?? 0) > r.revenue * 0.1) return "Tax impact";
+    return "Unknown";
+  }
+
+  const problematicOrders = orderRows.filter(r =>
+    (r.grossMargin ?? r.margin) < 0 || r.marginPct < 10
+  );
+  const reasonCounts = problematicOrders.reduce<Record<string, number>>((acc, r) => {
+    const reason = classifyLeakageReason(r);
+    acc[reason] = (acc[reason] ?? 0) + 1;
+    return acc;
+  }, {});
+  const leakageReasonList = Object.entries(reasonCounts)
+    .sort(([, a], [, b]) => b - a)
+    .map(([reason, count]) => ({ reason, count }));
+
+  const totalLossAmount = negativeMarginOrders.reduce(
+    (s, r) => s + Math.abs(r.grossMargin ?? r.margin), 0
+  );
+  const estimatedLeakage = [...negativeMarginOrders, ...lowMarginOrders]
+    .filter((r, i, a) => a.findIndex(x => x.id === r.id) === i)
+    .reduce((s, r) => {
+      const gm = r.grossMargin ?? r.margin;
+      const targetGm = r.revenue * 0.1;
+      return s + Math.max(0, targetGm - gm);
+    }, 0);
+
+  function getLeakageSuggestions(r: OrderRow): string[] {
+    const suggestions: string[] = [];
+    const pc = deriveProdCost(r);
+    const sc = deriveShipCost(r);
+    const sm = deriveShipMargin(r);
+    const pm = r.productMargin ?? (pc > 0 ? r.revenue - pc : null);
+    if (pm !== null && pm < 0) suggestions.push("Review harga vendor produk atau markup produk.");
+    if (sm < 0) suggestions.push("Review biaya shipment/trucking.");
+    if (pc === 0 || sc === 0) suggestions.push("Lengkapi data cost agar margin akurat.");
+    if (r.marginPct < 10 && r.marginPct >= 0) suggestions.push("Pertimbangkan markup minimum 10%.");
+    return suggestions.length > 0 ? suggestions : ["Analisis lebih lanjut diperlukan."];
+  }
+
+  const REASON_COLOR: Record<string, string> = {
+    "Negative margin":        "bg-red-100 text-red-800 border-red-200",
+    "Product cost too high":  "bg-violet-100 text-violet-800 border-violet-200",
+    "Shipment cost too high": "bg-indigo-100 text-indigo-800 border-indigo-200",
+    "Truck cost too high":    "bg-orange-100 text-orange-800 border-orange-200",
+    "Tax impact":             "bg-purple-100 text-purple-800 border-purple-200",
+    "Missing cost data":      "bg-amber-100 text-amber-800 border-amber-200",
+    "Unknown":                "bg-slate-100 text-slate-800 border-slate-200",
+  };
 
   // filtered route rows for search
   const routeRows = (routesQuery.data?.items ?? []).filter(r =>
@@ -1347,6 +1436,316 @@ export default function ProfitabilityAnalyticsPage() {
               </TabsContent>
             </Tabs>
           </TabsContent>
+
+          {/* ─────────────────── PROFIT LEAKAGE TAB ─────────────────── */}
+          <TabsContent value="leakage" className="mt-4 space-y-4">
+            {/* Loading skeleton */}
+            {ordersQuery.isLoading && (
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                {[...Array(5)].map((_, i) => (
+                  <Card key={i}><CardContent className="p-3"><Skeleton className="h-14 w-full" /></CardContent></Card>
+                ))}
+              </div>
+            )}
+
+            {!ordersQuery.isLoading && orderRows.length === 0 && (
+              <Card>
+                <CardContent className="py-16 text-center">
+                  <AlertTriangle className="h-10 w-10 text-muted-foreground mx-auto mb-3 opacity-40" />
+                  <p className="text-sm text-muted-foreground">Tidak ada data order untuk periode ini.</p>
+                </CardContent>
+              </Card>
+            )}
+
+            {!ordersQuery.isLoading && orderRows.length > 0 && (
+              <>
+                {/* ── Summary Cards ── */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                  {[
+                    {
+                      label: "Order Margin Negatif",
+                      value: negativeMarginOrders.length,
+                      sub: `dari ${orderRows.length} order`,
+                      icon: <AlertTriangle className="h-4 w-4 text-red-500" />,
+                      color: "border-l-red-500",
+                      text: negativeMarginOrders.length > 0 ? "text-red-600" : "text-slate-700",
+                    },
+                    {
+                      label: "Total Kerugian",
+                      value: totalLossAmount > 0 ? idrCompact(totalLossAmount) : "—",
+                      sub: "dari order margin negatif",
+                      icon: <DollarSign className="h-4 w-4 text-red-400" />,
+                      color: "border-l-red-400",
+                      text: "text-red-600",
+                    },
+                    {
+                      label: "Order Margin Rendah",
+                      value: lowMarginOrders.length,
+                      sub: "margin 0–10%",
+                      icon: <TrendingUp className="h-4 w-4 text-amber-500" />,
+                      color: "border-l-amber-400",
+                      text: lowMarginOrders.length > 0 ? "text-amber-600" : "text-slate-700",
+                    },
+                    {
+                      label: "High-Rev Low-Margin",
+                      value: highRevLowMargin.length,
+                      sub: "revenue ≥ P75, margin < 15%",
+                      icon: <Target className="h-4 w-4 text-orange-500" />,
+                      color: "border-l-orange-400",
+                      text: highRevLowMargin.length > 0 ? "text-orange-600" : "text-slate-700",
+                    },
+                    {
+                      label: "Est. Leakage ke Tgt 10%",
+                      value: estimatedLeakage > 0 ? idrCompact(estimatedLeakage) : "—",
+                      sub: "potensi perbaikan margin",
+                      icon: <Receipt className="h-4 w-4 text-indigo-500" />,
+                      color: "border-l-indigo-400",
+                      text: "text-indigo-700",
+                    },
+                  ].map(card => (
+                    <Card key={card.label} className={`border-l-4 ${card.color}`}>
+                      <CardContent className="flex items-start gap-2 p-3">
+                        <div className="mt-0.5 shrink-0">{card.icon}</div>
+                        <div className="min-w-0">
+                          <div className="text-[10px] text-muted-foreground leading-none mb-1">{card.label}</div>
+                          <div className={`font-bold text-lg leading-none ${card.text}`}>{card.value}</div>
+                          <div className="text-[10px] text-muted-foreground mt-0.5">{card.sub}</div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+
+                {/* ── Top Leakage Reasons ── */}
+                {leakageReasonList.length > 0 && (
+                  <Card>
+                    <CardHeader className="py-3 px-4 border-b">
+                      <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                        <AlertTriangle className="h-4 w-4 text-amber-500" />
+                        Top Leakage Reasons
+                        <span className="text-[10px] font-normal text-muted-foreground ml-1">(order margin negatif atau &lt; 10%)</span>
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-4">
+                      <div className="flex flex-wrap gap-2">
+                        {leakageReasonList.map(({ reason, count }) => (
+                          <span
+                            key={reason}
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${REASON_COLOR[reason] ?? "bg-slate-100 text-slate-800 border-slate-200"}`}
+                          >
+                            {reason}
+                            <span className="bg-white/60 rounded-full px-1.5 py-0.5 text-[10px] font-bold">{count}</span>
+                          </span>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* ── Negative Margin Orders ── */}
+                {negativeMarginOrders.length > 0 && (
+                  <Card>
+                    <CardHeader className="py-3 px-4 border-b bg-red-50/60">
+                      <CardTitle className="text-sm font-semibold flex items-center gap-2 text-red-700">
+                        <AlertTriangle className="h-4 w-4" />
+                        Order Margin Negatif ({negativeMarginOrders.length})
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-0">
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr>
+                              <th className={thCls}>#</th>
+                              <th className={thCls}>No. Order</th>
+                              <th className={thCls}>Customer</th>
+                              <th className={`${thCls} text-right`}>Revenue</th>
+                              <th className={`${thCls} text-right`}>Gross Margin</th>
+                              <th className={`${thCls} text-right`}>Margin %</th>
+                              <th className={thCls}>Reason</th>
+                              <th className={thCls}>Saran Tindakan</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {negativeMarginOrders
+                              .sort((a, b) => (a.grossMargin ?? a.margin) - (b.grossMargin ?? b.margin))
+                              .map((row, i) => {
+                                const gm = row.grossMargin ?? row.margin;
+                                const reason = classifyLeakageReason(row);
+                                const suggestions = getLeakageSuggestions(row);
+                                return (
+                                  <tr key={row.id} className="hover:bg-red-50/40 transition-colors">
+                                    <td className={`${tdCls} text-xs font-bold text-muted-foreground w-8`}>{i + 1}</td>
+                                    <td className={tdCls}>
+                                      <Link href={`/logistic-orders/${row.id}`} className="font-medium text-blue-700 hover:underline text-xs">{row.orderNumber}</Link>
+                                    </td>
+                                    <td className={`${tdCls} text-xs text-muted-foreground`}>{row.customerName}</td>
+                                    <td className={`${tdCls} text-right font-semibold text-slate-700`}>{idrCompact(row.revenue)}</td>
+                                    <td className={`${tdCls} text-right font-bold text-red-600`}>{idrCompact(gm)}</td>
+                                    <td className={`${tdCls} text-right`}>
+                                      <span className="text-xs font-bold text-red-600">{row.marginPct.toFixed(1)}%</span>
+                                    </td>
+                                    <td className={tdCls}>
+                                      <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-medium border ${REASON_COLOR[reason] ?? "bg-slate-100 text-slate-800 border-slate-200"}`}>
+                                        {reason}
+                                      </span>
+                                    </td>
+                                    <td className={`${tdCls} text-xs text-slate-600 max-w-[200px]`}>
+                                      <ul className="list-disc list-inside space-y-0.5">
+                                        {suggestions.map((s, si) => <li key={si}>{s}</li>)}
+                                      </ul>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* ── Low Margin Orders (0–10%) ── */}
+                {lowMarginOrders.length > 0 && (
+                  <Card>
+                    <CardHeader className="py-3 px-4 border-b bg-amber-50/60">
+                      <CardTitle className="text-sm font-semibold flex items-center gap-2 text-amber-700">
+                        <TrendingUp className="h-4 w-4" />
+                        Order Margin Rendah 0–10% ({lowMarginOrders.length})
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-0">
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr>
+                              <th className={thCls}>#</th>
+                              <th className={thCls}>No. Order</th>
+                              <th className={thCls}>Customer</th>
+                              <th className={`${thCls} text-right`}>Revenue</th>
+                              <th className={`${thCls} text-right`}>Gross Margin</th>
+                              <th className={`${thCls} text-right`}>Margin %</th>
+                              <th className={thCls}>Reason</th>
+                              <th className={thCls}>Saran Tindakan</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {lowMarginOrders
+                              .sort((a, b) => a.marginPct - b.marginPct)
+                              .map((row, i) => {
+                                const gm = row.grossMargin ?? row.margin;
+                                const reason = classifyLeakageReason(row);
+                                const suggestions = getLeakageSuggestions(row);
+                                return (
+                                  <tr key={row.id} className="hover:bg-amber-50/40 transition-colors">
+                                    <td className={`${tdCls} text-xs font-bold text-muted-foreground w-8`}>{i + 1}</td>
+                                    <td className={tdCls}>
+                                      <Link href={`/logistic-orders/${row.id}`} className="font-medium text-blue-700 hover:underline text-xs">{row.orderNumber}</Link>
+                                    </td>
+                                    <td className={`${tdCls} text-xs text-muted-foreground`}>{row.customerName}</td>
+                                    <td className={`${tdCls} text-right font-semibold text-slate-700`}>{idrCompact(row.revenue)}</td>
+                                    <td className={`${tdCls} text-right font-bold`}><span className="text-amber-700">{idrCompact(gm)}</span></td>
+                                    <td className={`${tdCls} text-right`}>
+                                      <span className="text-xs font-bold text-amber-600">{row.marginPct.toFixed(1)}%</span>
+                                    </td>
+                                    <td className={tdCls}>
+                                      <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-medium border ${REASON_COLOR[reason] ?? "bg-slate-100 text-slate-800 border-slate-200"}`}>
+                                        {reason}
+                                      </span>
+                                    </td>
+                                    <td className={`${tdCls} text-xs text-slate-600 max-w-[200px]`}>
+                                      <ul className="list-disc list-inside space-y-0.5">
+                                        {suggestions.map((s, si) => <li key={si}>{s}</li>)}
+                                      </ul>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* ── High Revenue Low Margin ── */}
+                {highRevLowMargin.length > 0 && (
+                  <Card>
+                    <CardHeader className="py-3 px-4 border-b bg-orange-50/60">
+                      <CardTitle className="text-sm font-semibold flex items-center gap-2 text-orange-700">
+                        <Target className="h-4 w-4" />
+                        High Revenue, Low Margin ({highRevLowMargin.length})
+                        <span className="text-[10px] font-normal text-muted-foreground">Revenue ≥ P75 dan margin &lt; 15% — prioritas review</span>
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-0">
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr>
+                              <th className={thCls}>#</th>
+                              <th className={thCls}>No. Order</th>
+                              <th className={thCls}>Customer</th>
+                              <th className={`${thCls} text-right`}>Revenue</th>
+                              <th className={`${thCls} text-right`}>Gross Margin</th>
+                              <th className={`${thCls} text-right`}>Margin %</th>
+                              <th className={thCls}>Reason</th>
+                              <th className={thCls}>Saran Tindakan</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {highRevLowMargin
+                              .sort((a, b) => b.revenue - a.revenue)
+                              .map((row, i) => {
+                                const gm = row.grossMargin ?? row.margin;
+                                const reason = classifyLeakageReason(row);
+                                const suggestions = getLeakageSuggestions(row);
+                                return (
+                                  <tr key={row.id} className="hover:bg-orange-50/40 transition-colors">
+                                    <td className={`${tdCls} text-xs font-bold text-muted-foreground w-8`}>{i + 1}</td>
+                                    <td className={tdCls}>
+                                      <Link href={`/logistic-orders/${row.id}`} className="font-medium text-blue-700 hover:underline text-xs">{row.orderNumber}</Link>
+                                    </td>
+                                    <td className={`${tdCls} text-xs text-muted-foreground`}>{row.customerName}</td>
+                                    <td className={`${tdCls} text-right font-bold text-orange-700`}>{idrCompact(row.revenue)}</td>
+                                    <td className={`${tdCls} text-right`}><span className={gm < 0 ? "font-bold text-red-600" : "font-semibold text-slate-700"}>{idrCompact(gm)}</span></td>
+                                    <td className={`${tdCls} text-right`}>
+                                      <span className={`text-xs font-bold ${row.marginPct < 5 ? "text-red-600" : "text-orange-600"}`}>{row.marginPct.toFixed(1)}%</span>
+                                    </td>
+                                    <td className={tdCls}>
+                                      <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-medium border ${REASON_COLOR[reason] ?? "bg-slate-100 text-slate-800 border-slate-200"}`}>
+                                        {reason}
+                                      </span>
+                                    </td>
+                                    <td className={`${tdCls} text-xs text-slate-600 max-w-[200px]`}>
+                                      <ul className="list-disc list-inside space-y-0.5">
+                                        {suggestions.map((s, si) => <li key={si}>{s}</li>)}
+                                      </ul>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Empty state if no leakage detected */}
+                {negativeMarginOrders.length === 0 && lowMarginOrders.length === 0 && highRevLowMargin.length === 0 && (
+                  <Card>
+                    <CardContent className="py-16 text-center">
+                      <TrendingUp className="h-10 w-10 text-emerald-400 mx-auto mb-3" />
+                      <p className="font-semibold text-emerald-700 mb-1">Tidak ada profit leakage terdeteksi</p>
+                      <p className="text-sm text-muted-foreground">Semua order dalam periode ini memiliki margin ≥ 10%.</p>
+                    </CardContent>
+                  </Card>
+                )}
+              </>
+            )}
+          </TabsContent>
+
         </Tabs>
       </div>
     </AppShell>
