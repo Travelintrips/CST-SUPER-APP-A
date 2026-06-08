@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCompany } from "@/contexts/CompanyContext";
 import { useToast } from "@/hooks/use-toast";
-import { Settings2, RefreshCw, Save, ArrowLeft, Plus, X, Bell, MessageSquare, RotateCcw } from "lucide-react";
+import { Settings2, RefreshCw, Save, ArrowLeft, Plus, X, Bell, MessageSquare, RotateCcw, Send, CheckCircle2 } from "lucide-react";
 
 export default function SportCenterSettings() {
   const [, navigate] = useLocation();
@@ -108,6 +108,38 @@ export default function SportCenterSettings() {
     }
     setReminderDays((prev) => prev.filter((x) => x !== d));
   };
+
+  const [testPhone, setTestPhone] = useState("");
+  const [testResult, setTestResult] = useState<{ ok: boolean; message?: string; error?: string } | null>(null);
+
+  const testWaMutation = useMutation({
+    mutationFn: async () => {
+      if (!testPhone.trim()) throw new Error("Nomor HP wajib diisi");
+      const r = await fetch("/api/sport-center/member-reminders/test-wa", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phone: testPhone.trim(),
+          template: waTemplate,
+          center_name: form.center_name,
+          days_label: `${reminderDays[0] ?? 4} hari lagi`,
+          company_id: activeCompanyId ? String(activeCompanyId) : undefined,
+        }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error ?? "Gagal");
+      return data as { ok: boolean; message: string };
+    },
+    onSuccess: (data) => {
+      setTestResult({ ok: true, message: data.message });
+      toast({ title: "Test WA terkirim!" });
+    },
+    onError: (e: Error) => {
+      setTestResult({ ok: false, error: e.message });
+      toast({ title: e.message, variant: "destructive" });
+    },
+  });
 
   const handleSave = () => {
     saveMutation.mutate({
@@ -331,6 +363,60 @@ export default function SportCenterSettings() {
                         .replace(/\{\{days_label\}\}/g, `${reminderDays[0] ?? 4} hari lagi`)
                         .replace(/\{\{center_name\}\}/g, form.center_name || "Sport Center")}
                     </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Kirim Test WA */}
+            <Card className="border-border/60">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Send className="h-4 w-4 text-green-400" />
+                  Kirim Test WA
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <p className="text-xs text-muted-foreground">
+                  Kirim pesan percobaan ke nomor HP menggunakan template di atas (nama diganti "Test Member").
+                </p>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Nomor HP (contoh: 628123456789)"
+                    value={testPhone}
+                    onChange={(e) => { setTestPhone(e.target.value); setTestResult(null); }}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); testWaMutation.mutate(); } }}
+                    className="flex-1"
+                  />
+                  <Button
+                    variant="outline"
+                    className="gap-1.5 shrink-0 border-green-700 text-green-400 hover:bg-green-900/20"
+                    disabled={!testPhone.trim() || testWaMutation.isPending}
+                    onClick={() => testWaMutation.mutate()}
+                  >
+                    {testWaMutation.isPending
+                      ? <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                      : <Send className="h-3.5 w-3.5" />}
+                    Kirim Test
+                  </Button>
+                </div>
+
+                {testResult && (
+                  <div className={`rounded-md border p-3 space-y-1.5 ${testResult.ok ? "border-emerald-800/50 bg-emerald-950/20" : "border-red-800/50 bg-red-950/20"}`}>
+                    {testResult.ok ? (
+                      <>
+                        <p className="text-xs font-medium text-emerald-400 flex items-center gap-1.5">
+                          <CheckCircle2 className="h-3.5 w-3.5" /> Pesan berhasil dikirim ke {testPhone}
+                        </p>
+                        {testResult.message && (
+                          <p className="text-xs text-slate-300 whitespace-pre-wrap border-t border-emerald-800/30 pt-2 mt-1">
+                            {testResult.message}
+                          </p>
+                        )}
+                      </>
+                    ) : (
+                      <p className="text-xs text-red-400">{testResult.error}</p>
+                    )}
                   </div>
                 )}
               </CardContent>
