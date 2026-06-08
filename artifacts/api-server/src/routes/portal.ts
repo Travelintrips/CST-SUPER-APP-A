@@ -3197,6 +3197,80 @@ router.get("/me/dashboard-stats", requirePortalAuth, async (req, res) => {
   }
 });
 
+// ── GET /api/portal/vendor-catalog/compare — Perbandingan harga antar vendor ──
+router.get("/vendor-catalog/compare", async (req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  try {
+    const { type } = req.query as Record<string, string>;
+    const conditions = [eq(vendorCatalogItemsTable.isActive, true)];
+    if (type === "product" || type === "service") {
+      conditions.push(eq(vendorCatalogItemsTable.type, type));
+    }
+    const rows = await db
+      .select({
+        id: vendorCatalogItemsTable.id,
+        vendorId: vendorCatalogItemsTable.vendorId,
+        vendorName: suppliersTable.name,
+        vendorLogo: suppliersTable.logo,
+        type: vendorCatalogItemsTable.type,
+        name: vendorCatalogItemsTable.name,
+        description: vendorCatalogItemsTable.description,
+        unit: vendorCatalogItemsTable.unit,
+        kategori: vendorCatalogItemsTable.kategori,
+        subcategory: vendorCatalogItemsTable.subcategory,
+        priceBase: vendorCatalogItemsTable.priceBase,
+        markupPct: vendorCatalogItemsTable.markupPct,
+      })
+      .from(vendorCatalogItemsTable)
+      .innerJoin(suppliersTable, eq(vendorCatalogItemsTable.vendorId, suppliersTable.id))
+      .where(and(...conditions))
+      .orderBy(vendorCatalogItemsTable.name);
+
+    // Group by lowercase name
+    const groupMap = new Map<string, {
+      itemName: string; type: string; kategori: string | null;
+      vendors: { id: number; vendorId: number; vendorName: string; vendorLogo: string | null; sellPrice: number; unit: string | null; description: string | null }[];
+    }>();
+
+    for (const r of rows) {
+      const base = Number(r.priceBase);
+      const markup = Number(r.markupPct);
+      const sellPrice = base > 0 ? Math.ceil(base * (1 + markup / 100)) : 0;
+      const key = r.name.toLowerCase().trim();
+
+      if (!groupMap.has(key)) {
+        groupMap.set(key, { itemName: r.name, type: r.type, kategori: r.kategori ?? null, vendors: [] });
+      }
+      groupMap.get(key)!.vendors.push({
+        id: r.id, vendorId: r.vendorId, vendorName: r.vendorName,
+        vendorLogo: r.vendorLogo, sellPrice, unit: r.unit ?? null, description: r.description ?? null,
+      });
+    }
+
+    // Only return groups with 2+ vendors, sorted by group size desc
+    const groups = Array.from(groupMap.values())
+      .filter((g) => g.vendors.length >= 2)
+      .sort((a, b) => b.vendors.length - a.vendors.length)
+      .map((g) => {
+        const pricesWithValue = g.vendors.map((v) => v.sellPrice).filter((p) => p > 0);
+        const minPrice = pricesWithValue.length > 0 ? Math.min(...pricesWithValue) : 0;
+        const maxPrice = pricesWithValue.length > 0 ? Math.max(...pricesWithValue) : 0;
+        const vendorsSorted = [...g.vendors].sort((a, b) => {
+          if (a.sellPrice === 0 && b.sellPrice === 0) return 0;
+          if (a.sellPrice === 0) return 1;
+          if (b.sellPrice === 0) return -1;
+          return a.sellPrice - b.sellPrice;
+        });
+        return { ...g, vendors: vendorsSorted, minPrice, maxPrice, vendorCount: g.vendors.length };
+      });
+
+    return res.json({ groups, totalGroups: groups.length });
+  } catch (err) {
+    req.log?.error({ err }, "vendor-catalog/compare error");
+    return res.status(500).json({ message: "Gagal memuat perbandingan" });
+  }
+});
+
 // ── GET /api/portal/vendor-catalog — Etalase vendor publik ───────────────────
 router.get("/vendor-catalog", async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
