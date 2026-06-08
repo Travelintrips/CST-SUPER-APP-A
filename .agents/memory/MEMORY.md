@@ -1,3 +1,4 @@
 - [Logistic order lifecycle flow](logistic-order-e2e-flow.md) — non-obvious transition gaps: customer approval moves RFQ not order; driver steps are matrix-gated; invoice/payment auto-triggers.
 - [Sandbox background processes](sandbox-bg-processes.md) — bg servers die between bash calls; run server+test in one wrapper .sh; avoid raw-newline multi-line bash.
+- [Sport Center paid→payments invariant](sport-center-paid-payments.md) — any path setting booking payment_status='paid' must call ensurePaymentForPaidBooking or it vanishes from Pembayaran.
 - [Paylabs integration quirks](paylabs-integration.md) — Paylabs "Conflict" usually = wrong X-TIMESTAMP (UTC mislabeled +07:00, 7h off), NOT id length; body needs productName+payer, no expire/goodsInfo.
