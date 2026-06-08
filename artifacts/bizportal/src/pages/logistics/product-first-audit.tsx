@@ -32,7 +32,7 @@ const SEV_CLASS: Record<string, string> = {
 const SLA_CLASS = (s: string) =>
   s === "on_time" ? "text-emerald-400" : s === "breached" ? "text-red-400" : "text-slate-400";
 
-type OverrideType = "force-product-approve" | "change-shipment-mode" | "reset-shipment-selection" | "resend-product-approval";
+type OverrideType = "force-product-approve" | "change-shipment-mode" | "reset-shipment-selection" | "resend-product-approval" | "flag-stock-unavailable" | "clear-stock-unavailable";
 
 interface OverrideDialog {
   open: boolean;
@@ -84,6 +84,8 @@ const OVERRIDE_CARDS: { type: OverrideType; description: string }[] = [
   { type: "change-shipment-mode",     description: "Ubah mode pengiriman (trucking / pickup_self) tanpa mengubah status order." },
   { type: "reset-shipment-selection", description: "Reset order kembali ke Shipment Selection Pending, hapus mode yang sudah dipilih." },
   { type: "resend-product-approval",  description: "Kirim ulang link approval produk ke customer via WA." },
+  { type: "flag-stock-unavailable",   description: "Tandai stok produk tidak tersedia — reset ke Product RFQ Sent untuk cari vendor baru." },
+  { type: "clear-stock-unavailable",  description: "Hapus flag stok tidak tersedia (stok sudah tersedia kembali / vendor baru ditemukan)." },
 ];
 
 function OverrideManualCards({
@@ -175,6 +177,8 @@ export default function ProductFirstAuditPage() {
     "change-shipment-mode":     "Ubah Mode Pengiriman",
     "reset-shipment-selection": "Reset Shipment Selection",
     "resend-product-approval":  "Kirim Ulang Approval Link",
+    "flag-stock-unavailable":   "Flag Stok Tidak Tersedia",
+    "clear-stock-unavailable":  "Hapus Flag Stok Tidak Tersedia",
   };
 
   return (
@@ -398,6 +402,14 @@ export default function ProductFirstAuditPage() {
                           >
                             Reset Selection
                           </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-6 text-xs border-red-500/40 text-red-400 hover:text-red-300 hover:bg-red-500/10 px-2"
+                            onClick={() => openOverride("flag-stock-unavailable", r.id, r.order_number)}
+                          >
+                            Flag Stok
+                          </Button>
                         </div>
                       </div>
                     </div>
@@ -560,7 +572,6 @@ export default function ProductFirstAuditPage() {
               </div>
 
               <OverrideManualCards overrideLabels={overrideLabels} openOverride={openOverride} />
-              </div>
             </CardContent>
           </Card>
         </TabsContent>
