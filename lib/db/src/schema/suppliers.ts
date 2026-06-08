@@ -79,6 +79,8 @@ export const vendorCatalogItemsTable = pgTable("vendor_catalog_items", {
 
   // ── Attachments ───────────────────────────────────────────────────────────
   documents: jsonb("documents"),
+  // ── Media Foundation ──────────────────────────────────────────────────────
+  mediaAssets: jsonb("media_assets").$type<Record<string, unknown>[]>().notNull().default([]),
 
   // ── Publication state ─────────────────────────────────────────────────────
   status: text("status").notNull().default("draft"),
