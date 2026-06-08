@@ -153,6 +153,7 @@ export default function VendorCommodityIntelligencePage() {
 
         {/* Filter + Sort */}
         <div className="flex flex-wrap gap-4 items-end">
+          <CompanySelect value={companyId} onChange={setCompanyId} />
           <div className="relative flex-1 min-w-52">
             <Search className="absolute left-2 top-2.5 w-4 h-4 text-slate-500" />
             <Input value={search} onChange={e => setSearch(e.target.value)}

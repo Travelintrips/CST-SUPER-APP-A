@@ -115,7 +115,7 @@ export default function LogisticsDashboardPage() {
         {/* Date Filters */}
         <Card className="bg-slate-900 border-slate-800">
           <CardContent className="pt-4 pb-4">
-            <div className="flex gap-4 items-end">
+            <div className="flex flex-wrap gap-4 items-end">
               <div className="space-y-1">
                 <Label className="text-xs text-slate-400">Dari</Label>
                 <Input type="date" value={from} onChange={e => setFrom(e.target.value)}
@@ -126,6 +126,7 @@ export default function LogisticsDashboardPage() {
                 <Input type="date" value={to} onChange={e => setTo(e.target.value)}
                   className="bg-slate-800 border-slate-700 text-white w-36" />
               </div>
+              <CompanySelect value={companyId} onChange={setCompanyId} />
             </div>
           </CardContent>
         </Card>
