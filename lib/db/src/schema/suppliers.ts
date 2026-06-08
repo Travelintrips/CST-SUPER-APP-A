@@ -1,4 +1,4 @@
-import { pgTable, serial, text, integer, timestamp, boolean, numeric, index } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, timestamp, boolean, numeric, index, jsonb, date } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { companiesTable } from "./companies";
@@ -25,10 +25,8 @@ export const suppliersTable = pgTable("suppliers", {
   sortOrder: integer("sort_order").notNull().default(0),
   yearVehicle: integer("year_vehicle"),
   supportedModes: text("supported_modes").array(),
-  // ── Phase 1: Structured ETA (replaces free-text eta field) ────────────────
   etaDaysMin: integer("eta_days_min"),
   etaDaysMax: integer("eta_days_max"),
-  // ── Truck support fields ───────────────────────────────────────────────────
   hasInternalTruck: boolean("has_internal_truck").notNull().default(false),
   internalTruckPrice: numeric("internal_truck_price", { precision: 14, scale: 2 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -37,22 +35,67 @@ export const suppliersTable = pgTable("suppliers", {
 ]);
 
 export const vendorCatalogItemsTable = pgTable("vendor_catalog_items", {
+  // ── Core identity ──────────────────────────────────────────────────────────
   id: serial("id").primaryKey(),
   vendorId: integer("vendor_id").notNull().references(() => suppliersTable.id),
+  vendorName: text("vendor_name"),
   masterItemId: integer("master_item_id").references(() => productsTable.id, { onDelete: "set null" }),
+
+  // ── Legacy fields (backward compat) ───────────────────────────────────────
   type: text("type").notNull().default("service"),
   name: text("name").notNull(),
   description: text("description"),
   unit: text("unit"),
   kategori: text("kategori"),
   subcategory: text("subcategory"),
-  priceBase: numeric("price_base", { precision: 15, scale: 2 }).notNull().default("0"),
-  markupPct: numeric("markup_pct", { precision: 5, scale: 2 }).notNull().default("0"),
-  isActive: boolean("is_active").notNull().default(true),
   isCommodityTag: boolean("is_commodity_tag").notNull().default(false),
   sortOrder: integer("sort_order").notNull().default(0),
+
+  // ── Template engine ────────────────────────────────────────────────────────
+  templateKind: text("template_kind"),
+  categoryKey: text("category_key"),
+  serviceType: text("service_type"),
+  templateId: text("template_id"),
+  templateVersion: text("template_version"),
+  templateSnapshot: jsonb("template_snapshot"),
+  specValues: jsonb("spec_values"),
+
+  // ── Pricing (priceBase = internal cost, NEVER expose to customer) ──────────
+  priceBase: numeric("price_base", { precision: 15, scale: 2 }).notNull().default("0"),
+  markupPct: numeric("markup_pct", { precision: 5, scale: 2 }).notNull().default("0"),
+  priceSell: numeric("price_sell", { precision: 15, scale: 2 }),
+  currency: text("currency").notNull().default("IDR"),
+
+  // ── Availability ──────────────────────────────────────────────────────────
+  stockStatus: text("stock_status"),
+  stockQty: numeric("stock_qty", { precision: 15, scale: 3 }),
+  moq: numeric("moq", { precision: 15, scale: 3 }),
+  leadTime: text("lead_time"),
+  validityDate: date("validity_date"),
+
+  // ── Origin / location ─────────────────────────────────────────────────────
+  location: text("location"),
+  origin: text("origin"),
+
+  // ── Attachments ───────────────────────────────────────────────────────────
+  documents: jsonb("documents"),
+
+  // ── Publication state ─────────────────────────────────────────────────────
+  status: text("status").notNull().default("draft"),
+  isPublished: boolean("is_published").notNull().default(false),
+  isActive: boolean("is_active").notNull().default(true),
+  sourceSubmissionId: integer("source_submission_id"),
+  publishedAt: timestamp("published_at"),
+
+  // ── Timestamps ────────────────────────────────────────────────────────────
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (t) => [
+  index("vendor_catalog_vendor_idx").on(t.vendorId),
+  index("vendor_catalog_status_idx").on(t.status, t.isPublished),
+  index("vendor_catalog_category_idx").on(t.categoryKey),
+  index("vendor_catalog_service_type_idx").on(t.serviceType),
+]);
 
 export const insertSupplierSchema = createInsertSchema(suppliersTable).omit({ id: true, createdAt: true });
 export type InsertSupplier = z.infer<typeof insertSupplierSchema>;

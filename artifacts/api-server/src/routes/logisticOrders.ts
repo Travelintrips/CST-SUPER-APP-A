@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { Router, Request, Response } from "express";
-import { randomBytes } from "crypto";
+import { randomBytes, createSign, createHash, randomUUID } from "crypto";
 import { db } from "@workspace/db";
 import {
   logisticOrdersTable,
@@ -22,7 +22,7 @@ import {
 import { resolveTemplate } from "@workspace/product-templates";
 import { deleteFromSupabase } from "../lib/supabaseStorage.js";
 import { eq, ilike, and, gte, lte, or, sql, desc, inArray, isNotNull } from "drizzle-orm";
-import { salesDocumentsTable, customerInvoiceLinksTable } from "@workspace/db";
+import { salesDocumentsTable, customerInvoiceLinksTable, paymentsTable } from "@workspace/db";
 import { requireClerkUser, requireRole } from "../lib/requireAdmin.js";
 import { calcTax, calcGrandTotal } from "../lib/taxHelper.js";
 import { resolveCompanyId } from "../lib/resolveCompany.js";
@@ -684,6 +684,15 @@ logisticOrdersRouter.get(
           photoType: p.photoType,
           takenAt: p.takenAt.toISOString(),
         })),
+        truckPlate: driverJob.truckPlate ?? null,
+        driverNameOverride: driverJob.driverNameOverride ?? null,
+        podReceiverName: driverJob.podReceiverName ?? null,
+        podGeoLat: driverJob.podGeoLat ?? null,
+        podGeoLng: driverJob.podGeoLng ?? null,
+        podMapUrl: (driverJob as any).podMapUrl ?? null,
+        podStreetViewUrl: (driverJob as any).podStreetViewUrl ?? null,
+        podDeviceTimestamp: (driverJob as any).podDeviceTimestamp ? new Date((driverJob as any).podDeviceTimestamp).toISOString() : null,
+        podSubmittedAt: driverJob.podSubmittedAt?.toISOString() ?? null,
       };
     }
 
@@ -711,6 +720,14 @@ logisticOrdersRouter.get(
     const STEP_LABEL_MAP: Record<string, string> = {
       ORDER_RECEIVED:    "Order Diterima",
       ADMIN_REVIEW:      "Ditinjau Admin",
+      // ── Phase 2A: product-first status labels ─────────────────────────────
+      PRODUCT_RFQ_SENT:           "RFQ Produk Terkirim",
+      PRODUCT_QUOTE_RECEIVED:     "Penawaran Produk Masuk",
+      PRODUCT_VENDOR_SELECTED:    "Vendor Produk Dipilih",
+      CUSTOMER_PRODUCT_APPROVAL:  "Menunggu Persetujuan Produk",
+      SHIPMENT_SELECTION_PENDING: "Menunggu Pilihan Pengiriman",
+      READY_FOR_PICKUP:           "Siap Dijemput",
+      // ─────────────────────────────────────────────────────────────────────
       RFQ_SENT:          "RFQ ke Vendor",
       QUOTE_RECEIVED:    "Penawaran Masuk",
       CUSTOMER_APPROVAL: "Menunggu Persetujuan",
@@ -816,6 +833,201 @@ logisticOrdersRouter.get("/vendors", async (req: Request, res: Response) => {
   const offset = Math.max(Number(req.query["offset"] ?? 0), 0);
   const rows = await db.select().from(suppliersTable).orderBy(suppliersTable.sortOrder).limit(limit).offset(offset);
   return res.json(rows.map((v) => ({ ...v, fee: Number(v.fee ?? 0), email: v.contactEmail })));
+});
+
+// ── Paylabs helpers (PUBLIC) ──────────────────────────────────────────────────
+const _PAYLABS_MERCHANT_ID_2 = process.env["PAYLABS_MERCHANT_ID"] ?? "";
+const _PAYLABS_API_URL_2 =
+  process.env["PAYLABS_API_URL"] ?? "https://sit-pay.paylabs.co.id/payment/v2.1/h5/createLink";
+
+function _normalizePemKey2(raw: string): string {
+  if (!raw) return raw;
+  if (raw.includes("\n")) return raw;
+  const isRsa = raw.includes("RSA PRIVATE KEY");
+  const header = isRsa ? "RSA PRIVATE KEY" : "PRIVATE KEY";
+  const body = raw
+    .replace(/-----BEGIN [^-]+-----/g, "")
+    .replace(/-----END [^-]+-----/g, "")
+    .replace(/\s+/g, "");
+  const chunks = body.match(/.{1,64}/g) ?? [];
+  return `-----BEGIN ${header}-----\n${chunks.join("\n")}\n-----END ${header}-----`;
+}
+
+const _PAYLABS_PRIVATE_KEY_2 = _normalizePemKey2(process.env["PAYLABS_PRIVATE_KEY"] ?? "");
+
+function _paylabsSign2(payload: string): string {
+  const s = createSign("RSA-SHA256");
+  s.update(payload);
+  return s.sign(_PAYLABS_PRIVATE_KEY_2, "base64");
+}
+
+function _paylabsBuildSigPayload2(method: string, endpoint: string, bodyJson: string, ts: string): string {
+  const bodyHash = createHash("sha256").update(bodyJson).digest("hex").toLowerCase();
+  return `${method}:${endpoint}:${bodyHash}:${ts}`;
+}
+
+// POST /api/logistic/orders/:orderNumber/create-paylabs-link — PUBLIC
+logisticOrdersRouter.post("/:orderNumber/create-paylabs-link", async (req: Request, res: Response) => {
+  const { orderNumber } = req.params;
+  const [order] = await db
+    .select({
+      id: logisticOrdersTable.id,
+      orderNumber: logisticOrdersTable.orderNumber,
+      customerName: logisticOrdersTable.customerName,
+      phone: logisticOrdersTable.phone,
+      grandTotal: logisticOrdersTable.grandTotal,
+      status: logisticOrdersTable.status,
+    })
+    .from(logisticOrdersTable)
+    .where(eq(logisticOrdersTable.orderNumber, orderNumber))
+    .limit(1);
+  if (!order) return res.status(404).json({ message: "Pesanan tidak ditemukan" });
+  if (order.status === "Cancelled") {
+    return res.status(400).json({ message: "Order sudah dibatalkan" });
+  }
+
+  const existing = await db
+    .select()
+    .from(paymentsTable)
+    .where(and(
+      eq(paymentsTable.refId, order.id),
+      eq(paymentsTable.refKind, "logistic"),
+      eq(paymentsTable.status, "pending"),
+      eq(paymentsTable.provider, "paylabs"),
+    ))
+    .orderBy(desc(paymentsTable.createdAt))
+    .limit(1);
+
+  if (existing.length > 0 && existing[0].paymentUrl) {
+    const notExpired = !existing[0].expiredAt || existing[0].expiredAt > new Date();
+    if (notExpired) {
+      return res.json({
+        reused: true,
+        paymentUrl: existing[0].paymentUrl,
+        amount: Number(existing[0].amount),
+        expiredAt: existing[0].expiredAt?.toISOString() ?? null,
+      });
+    }
+  }
+
+  const amount = Number(order.grandTotal ?? 0);
+  const merchantTradeNo = `LOG-${order.id}-${Date.now()}`;
+
+  if (!_PAYLABS_MERCHANT_ID_2 || !_PAYLABS_PRIVATE_KEY_2) {
+    await db.insert(paymentsTable).values({
+      refKind: "logistic",
+      refId: order.id,
+      refDocNumber: orderNumber,
+      amount: String(amount),
+      status: "pending",
+      provider: "paylabs",
+      providerMerchantTradeNo: merchantTradeNo,
+      paymentUrl: null,
+      raw: { simulation: true, reason: "PAYLABS credentials not configured" },
+      expiredAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+    });
+    return res.status(202).json({
+      configured: false,
+      message: "Paylabs belum terkonfigurasi. Simulasi payment dibuat.",
+      paymentUrl: null,
+      amount,
+    });
+  }
+
+  const requestId = `${Date.now()}${Math.floor(Math.random() * 100000).toString().padStart(5, "0")}`;
+  const timestamp = new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().replace(/\.\d+Z$/, "+07:00");
+  const host = (req.headers["x-forwarded-proto"] ?? "https") + "://" + (req.headers.host ?? "");
+  const notifyUrl = `${host}/api/payments/paylabs/webhook`;
+  const redirectUrl = `${host}/track?order=${orderNumber}`;
+
+  const rawPhone = (order.phone ?? "").replace(/\D/g, "");
+  const phoneNumber = rawPhone.startsWith("62")
+    ? rawPhone
+    : rawPhone.startsWith("0")
+      ? "62" + rawPhone.slice(1)
+      : rawPhone ? "62" + rawPhone : "628000000000";
+
+  const body = {
+    merchantId: _PAYLABS_MERCHANT_ID_2,
+    merchantTradeNo,
+    requestId,
+    amount: amount.toFixed(2),
+    productName: `Pembayaran ${orderNumber}`,
+    payer: order.customerName,
+    phoneNumber,
+    notifyUrl,
+    redirectUrl,
+  };
+  const bodyJson = JSON.stringify(body);
+  const sigPayload = _paylabsBuildSigPayload2("POST", new URL(_PAYLABS_API_URL_2).pathname, bodyJson, timestamp);
+  let signature: string;
+  try {
+    signature = _paylabsSign2(sigPayload);
+  } catch (err: unknown) {
+    return res.status(500).json({ message: "Paylabs signing gagal", error: (err as Error)?.message });
+  }
+
+  let paylabsResp: Record<string, unknown> = {};
+  try {
+    const r = await fetch(_PAYLABS_API_URL_2, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-TIMESTAMP": timestamp,
+        "X-SIGNATURE": signature,
+        "X-PARTNER-ID": _PAYLABS_MERCHANT_ID_2,
+        "X-REQUEST-ID": requestId,
+      },
+      body: bodyJson,
+    });
+    paylabsResp = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+    if (!r.ok || paylabsResp?.["errCode"] !== "0") {
+      return res.status(502).json({ message: "Paylabs error", response: paylabsResp });
+    }
+  } catch (err: unknown) {
+    return res.status(502).json({ message: "Paylabs request gagal", error: (err as Error)?.message });
+  }
+
+  const paymentUrl = (paylabsResp?.["url"] ?? paylabsResp?.["h5Url"] ?? null) as string | null;
+  const [created] = await db.insert(paymentsTable).values({
+    refKind: "logistic",
+    refId: order.id,
+    refDocNumber: orderNumber,
+    amount: String(amount),
+    status: "pending",
+    provider: "paylabs",
+    providerOrderId: (paylabsResp?.["platformTradeNo"] as string | undefined) ?? null,
+    providerMerchantTradeNo: merchantTradeNo,
+    paymentUrl,
+    raw: paylabsResp,
+    expiredAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+  }).returning();
+
+  return res.status(201).json({
+    configured: true,
+    paymentUrl,
+    amount,
+    expiredAt: created.expiredAt?.toISOString() ?? null,
+  });
+});
+
+// PATCH /api/logistic/orders/:orderNumber/payment-proof — PUBLIC
+logisticOrdersRouter.patch("/:orderNumber/payment-proof", async (req: Request, res: Response) => {
+  const { orderNumber } = req.params;
+  const { proofUrl } = req.body as { proofUrl?: unknown };
+  if (!proofUrl || typeof proofUrl !== "string" || !proofUrl.trim()) {
+    return res.status(400).json({ message: "proofUrl wajib diisi" });
+  }
+  const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const [order] = await db
+    .select({ id: logisticOrdersTable.id, createdAt: logisticOrdersTable.createdAt })
+    .from(logisticOrdersTable)
+    .where(eq(logisticOrdersTable.orderNumber, orderNumber))
+    .limit(1);
+  if (!order) return res.status(404).json({ message: "Pesanan tidak ditemukan" });
+  if (order.createdAt < dayAgo) return res.status(403).json({ message: "Batas waktu upload bukti telah lewat (24 jam)" });
+  await db.execute(sql`UPDATE logistic_orders SET payment_proof_url = ${proofUrl.trim()} WHERE id = ${order.id}`);
+  return res.json({ ok: true });
 });
 
 // ─── AUTH WALL: all routes below require a valid session ─────────────────────
@@ -2042,22 +2254,70 @@ logisticOrdersRouter.post("/:id/delivery/:phase", async (req: Request, res: Resp
   return res.json({ ok: true, status: cfg.status, orderId: id, phase });
 });
 
-// PATCH /api/logistic/orders/:orderNumber/payment-proof — public, simpan URL bukti bayar
-// Guard: order harus dibuat dalam 24 jam terakhir agar tidak bisa di-spam ke order lama.
-logisticOrdersRouter.patch("/:orderNumber/payment-proof", async (req: Request, res: Response) => {
-  const { orderNumber } = req.params;
-  const { proofUrl } = req.body as { proofUrl?: unknown };
-  if (!proofUrl || typeof proofUrl !== "string" || !proofUrl.trim()) {
-    return res.status(400).json({ message: "proofUrl wajib diisi" });
+// POST /api/logistic/orders/export-gsheet — export semua order ke Google Sheets baru (admin only)
+logisticOrdersRouter.post("/export-gsheet", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  if (!(await requireRole(req, res, ["admin", "owner"]))) return;
+  const companyId = resolveCompanyId(req);
+  const { dateFrom, dateTo, status } = req.body as { dateFrom?: string; dateTo?: string; status?: string };
+
+  const { exportToNewSpreadsheet } = await import("../lib/googleSheets.js");
+
+  const conditions = [];
+  if (companyId) conditions.push(eq(logisticOrdersTable.companyId, companyId));
+  if (dateFrom) conditions.push(gte(logisticOrdersTable.createdAt, new Date(dateFrom)));
+  if (dateTo) {
+    const end = new Date(dateTo);
+    end.setHours(23, 59, 59, 999);
+    conditions.push(lte(logisticOrdersTable.createdAt, end));
   }
-  const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-  const [order] = await db
-    .select({ id: logisticOrdersTable.id, createdAt: logisticOrdersTable.createdAt })
+  if (status) conditions.push(eq(logisticOrdersTable.status, status as typeof logisticOrdersTable.$inferSelect["status"]));
+
+  const orders = await db
+    .select()
     .from(logisticOrdersTable)
-    .where(eq(logisticOrdersTable.orderNumber, orderNumber))
-    .limit(1);
-  if (!order) return res.status(404).json({ message: "Pesanan tidak ditemukan" });
-  if (order.createdAt < dayAgo) return res.status(403).json({ message: "Batas waktu upload bukti telah lewat (24 jam)" });
-  await db.execute(sql`UPDATE logistic_orders SET payment_proof_url = ${proofUrl.trim()} WHERE id = ${order.id}`);
-  return res.json({ ok: true });
+    .where(conditions.length ? and(...conditions) : undefined)
+    .orderBy(desc(logisticOrdersTable.createdAt))
+    .limit(5000);
+
+  const orderRows: unknown[][] = [
+    ["No. Order", "Tanggal", "Perusahaan", "Nama Customer", "Email", "No. HP",
+     "Tipe Shipment", "Asal", "Tujuan", "Komoditi", "Berat (kg)", "Volume (CBM)",
+     "Jml Koli", "Pembayaran", "Subtotal", "Pajak", "Grand Total", "Status", "Sumber", "Catatan"],
+    ...orders.map((o) => [
+      o.orderNumber,
+      o.createdAt.toISOString().slice(0, 10),
+      o.companyName ?? "",
+      o.customerName,
+      o.email ?? "",
+      o.phone ?? "",
+      o.shipmentType ?? "",
+      o.origin ?? "",
+      o.destination ?? "",
+      o.commodity ?? "",
+      o.grossWeight ? parseFloat(o.grossWeight) : "",
+      o.volumeCbm ? parseFloat(o.volumeCbm) : "",
+      o.jumlahKoli ?? "",
+      o.paymentType ?? "",
+      parseFloat(o.subtotal),
+      parseFloat(o.tax),
+      parseFloat(o.grandTotal),
+      o.status,
+      (o as unknown as { source?: string }).source ?? "manual",
+      o.notes ?? "",
+    ]),
+  ];
+
+  const now = new Date();
+  const titleDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const filterLabel = status ? ` [${status}]` : "";
+  const title = `Logistic Orders${filterLabel} — ${titleDate}`;
+
+  const result = await exportToNewSpreadsheet(title, [
+    { name: "Orders", rows: orderRows },
+  ]);
+
+  return res.json({ ok: true, total: orders.length, ...result });
 });
+
+// NOTE: create-paylabs-link & payment-proof endpoints are registered ABOVE the auth wall (public).

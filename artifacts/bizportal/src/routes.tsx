@@ -56,7 +56,9 @@ import { PaymentRequestsListPage, PaymentRequestEditorPage } from "@/pages/purch
 import { LandedCostsListPage, LandedCostEditorPage } from "@/pages/purchase/landed-costs";
 import VendorComparisonPage from "@/pages/purchase/vendor-comparison";
 import PurchaseReceivePage from "@/pages/purchase/receive";
+import VendorCatalogPage from "@/pages/purchase/vendor-catalog";
 // Reports
+import ReportsIndexPage from "@/pages/reports/index";
 import ReportsSalesPage from "@/pages/reports/sales";
 import ReportsPurchasePage from "@/pages/reports/purchase";
 import ReportsArAgingPage from "@/pages/reports/ar-aging";
@@ -65,6 +67,7 @@ import ReportsMainPage from "@/pages/reports/main";
 import AuditLogPage from "@/pages/reports/audit-log";
 import InventoryValuationPage from "@/pages/reports/inventory-valuation";
 // Accounting
+import AccountingDashboardPage from "@/pages/accounting/dashboard";
 import AccountingAccountsPage from "@/pages/accounting/accounts";
 import AccountingJournalsPage from "@/pages/accounting/journals";
 import AccountingTaxesPage from "@/pages/accounting/taxes";
@@ -72,6 +75,7 @@ import AccountingEntriesPage from "@/pages/accounting/entries";
 import AccountingEntryDetailPage from "@/pages/accounting/entry-detail";
 import AccountingJournalItemsPage from "@/pages/accounting/journal-items";
 import AccountingPaymentsPage from "@/pages/accounting/payments";
+import AccountingPaylabsPage from "@/pages/accounting/paylabs";
 import AccountingOtherTransactionsPage from "@/pages/accounting/other-transactions";
 import AccountingSettingsPage from "@/pages/accounting/settings";
 import CostCentersPage from "@/pages/accounting/cost-centers";
@@ -150,6 +154,8 @@ import LogisticOrderDetailPage from "@/pages/logistics/order-detail";
 import OrderAuditTrailPage from "@/pages/logistics/order-audit-trail";
 import VendorPerformancePage from "@/pages/logistics/vendor-performance";
 import InternalTasksPage from "@/pages/logistics/internal-tasks";
+import ProductFirstAnalyticsPage from "@/pages/logistics/product-first-analytics";
+import ProductFirstAuditPage from "@/pages/logistics/product-first-audit";
 import LogisticsImportAssistantPage from "@/pages/logistics-import-assistant";
 import ExceptionsPage from "@/pages/exceptions/index";
 // Misc
@@ -227,6 +233,8 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/logistics/orders/:orderId" component={PR(LogisticOrderDetailPage)} />
       <Route path="/logistics/vendor-performance" component={PR(VendorPerformancePage)} />
       <Route path="/logistics/internal-tasks" component={PR(InternalTasksPage)} />
+      <Route path="/logistics/product-first/analytics" component={PR(ProductFirstAnalyticsPage)} />
+      <Route path="/logistics/product-first/audit" component={PR(ProductFirstAuditPage)} />
       <Route path="/logistics/import-assistant" component={PR(LogisticsImportAssistantPage)} />
       <Route path="/portal-product-orders" component={PR(PortalProductOrdersPage)} />
       <Route path="/portal/customers" component={PR(PortalCustomersPage)} />
@@ -288,9 +296,11 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/purchase/landed-costs/:id" component={PR(LandedCostEditorPage)} />
       <Route path="/purchase/landed-costs" component={PR(LandedCostsListPage)} />
       <Route path="/purchase/receive" component={PR(PurchaseReceivePage)} />
+      <Route path="/purchase/vendor-catalog" component={PR(VendorCatalogPage)} />
       <Route path="/purchase" component={PR(PurchaseDashboardPage)} />
 
       {/* ── Reports ────────────────────────────────────────────────────── */}
+      <Route path="/reports" component={PR(ReportsIndexPage)} />
       <Route path="/reports/sales" component={PR(ReportsSalesPage)} />
       <Route path="/reports/purchase" component={PR(ReportsPurchasePage)} />
       <Route path="/reports/ar-aging" component={PR(ReportsArAgingPage)} />
@@ -300,6 +310,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/reports/inventory-valuation" component={PR(InventoryValuationPage)} />
 
       {/* ── Accounting ─────────────────────────────────────────────────── */}
+      <Route path="/accounting/dashboard" component={PR(AccountingDashboardPage)} />
       <Route path="/accounting/accounts" component={PR(AccountingAccountsPage)} />
       <Route path="/accounting/journals" component={PR(AccountingJournalsPage)} />
       <Route path="/accounting/taxes" component={PR(AccountingTaxesPage)} />
@@ -307,6 +318,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/accounting/entries" component={PR(AccountingEntriesPage)} />
       <Route path="/accounting/journal-items" component={PR(AccountingJournalItemsPage)} />
       <Route path="/accounting/payments" component={PR(AccountingPaymentsPage)} />
+      <Route path="/accounting/paylabs" component={PR(AccountingPaylabsPage)} />
       <Route path="/accounting/other-transactions" component={PR(AccountingOtherTransactionsPage)} />
       <Route path="/accounting/settings" component={PR(AccountingSettingsPage)} />
       <Route path="/accounting/cost-centers" component={PR(CostCentersPage)} />

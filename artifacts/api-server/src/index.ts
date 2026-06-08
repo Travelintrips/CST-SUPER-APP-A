@@ -58,6 +58,8 @@ import { runEnterpriseWorkflowMigration } from "./lib/enterpriseWorkflowTemplate
 import { runOrderProgressMigration } from "./lib/orderProgress.js";
 import { runExceptionEnumMigration, runOrderExceptionsMigration } from "./lib/services/exceptionService.js";
 import { runVendorCompanyAssignmentsMigration } from "./lib/vendorCompanyAssignmentsMigration.js";
+import { runVendorCatalogSchemaMigration } from "./lib/vendorCatalogSchemaMigration.js";
+import { runProductFirstFlowMigration } from "./lib/productFirstFlowMigration.js";
 import { runStep4TemplateMigration } from "./lib/step4TemplateMigration.js";
 import { runServiceTemplateMigration } from "./lib/serviceTemplateMigration.js";
 import { expireStaleApprovals } from "./lib/aiGovernance.js";
@@ -66,12 +68,18 @@ import { initAlertsBroadcast } from "./lib/alertsBroadcast.js";
 import { warmupMailer } from "./lib/mailer.js";
 import { runSportCenterMigration, runSportCenterAccountCorrection } from "./modules/sport-center/migration.js";
 import { startRecurringExpenseWorker } from "./modules/sport-center/recurringExpenseWorker.js";
+import { startMemberReminderWorker } from "./modules/sport-center/memberReminderWorker.js";
 import { startExpenseReminderWorker } from "./lib/expenseReminderWorker.js";
+import { startProductFirstReminderWorker } from "./lib/productFirstReminderWorker.js";
+import { startProductFirstExceptionWorker } from "./lib/productFirstExceptionWorker.js";
+import { startRekonsiliasiWorker } from "./lib/rekonsiliasiWorker.js";
 import { runCostCenterMigration } from "./lib/costCenterMigration.js";
 import { runDriverPodMigration, runDriverAssignmentMigration } from "./routes/driver.js";
 import { runProductVolumeCbmMigration } from "./routes/ecommerce.js";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
+import { runStartupValidation } from "./lib/startupValidator.js";
+import { backfillVendorPerformance } from "./routes/vendorPerformance.js";
 
 
 // REPLIT_API_PORT overrides PORT so the server listens on the local port
@@ -474,7 +482,18 @@ async function runCriticalPreStartMigrations() {
   `);
 }
 
+// Flag set to true once the full migration + seed chain completes.
+// Exposed via GET /api/health/ready so tests and clients can poll before
+// triggering write operations that touch migrating tables.
+let migrationsComplete = false;
+
 async function startServer() {
+  // Health-ready endpoint — must be registered before server.listen so it is
+  // available as soon as the socket is open.
+  app.get("/api/health/ready", (_req, res) => {
+    res.json({ ready: migrationsComplete });
+  });
+
   // Listen on port FIRST so Replit's startup health-check passes immediately.
   // All migrations & seeds run in the background after the server is ready.
   const server = app.listen(port, (err?: Error) => {
@@ -489,6 +508,11 @@ async function startServer() {
   // Attach WebSocket server for real-time Intelligence Alerts
   initAlertsBroadcast(server);
   warmupMailer().catch(() => {});
+
+  // Startup dependency validation — non-blocking, results cached for /api/system/runtime-check
+  runStartupValidation().catch((err) => {
+    logger.warn({ err }, "[startupValidator] validation error (non-fatal)");
+  });
 
   // Also bind on secondary gateway port if REPLIT_API_GATEWAY_PORT is set.
   // Set SKIP_GATEWAY=1 to disable this secondary binding.
@@ -517,7 +541,11 @@ async function startServer() {
   startWorkflowWorker();
   startDriverJobWorker();
   startRecurringExpenseWorker();
+  startMemberReminderWorker();
   startExpenseReminderWorker();
+  startProductFirstReminderWorker();
+  startProductFirstExceptionWorker();
+  startRekonsiliasiWorker();
   startDbBackupScheduler();
   startWaRetryWorker();
 
@@ -559,6 +587,7 @@ async function startServer() {
     .then(() => runWithRetry("Admin notifications migration", runAdminNotificationsMigration))
     .then(() => runWithRetry("Nav preferences migration", runNavPreferencesMigration))
     .then(() => runWithRetry("Vendor mini form migration", runVendorMiniFormMigration))
+    .then(() => runWithRetry("Product-first flow migration", runProductFirstFlowMigration))
     .then(() => runWithRetry("Customer quote flow migration", runCustomerQuoteFlowMigration))
     .then(() => runWithRetry("Enterprise migration", runEnterpriseMigration))
     .then(() => runWithRetry("Short links migration", runShortLinksMigration))
@@ -587,6 +616,7 @@ async function startServer() {
     .then(() => runWithRetry("Driver POD migration", runDriverPodMigration))
     .then(() => runWithRetry("Driver assignment migration", runDriverAssignmentMigration))
     .then(() => runWithRetry("Vendor company assignments migration", runVendorCompanyAssignmentsMigration))
+    .then(() => runWithRetry("Vendor catalog schema migration", runVendorCatalogSchemaMigration))
     .then(() => enableRealtimeTables().catch((err) => {
       logger.warn({ err }, "Supabase Realtime table enable failed (non-fatal)");
     }))
@@ -612,6 +642,15 @@ async function startServer() {
           logger.error({ err: seedErr }, "Logistics/demo seed failed");
         })
     )
+    .then(() =>
+      backfillVendorPerformance().catch((err) => {
+        logger.warn({ err }, "Vendor performance backfill failed (non-fatal)");
+      })
+    )
+    .then(() => {
+      migrationsComplete = true;
+      logger.info("All startup migrations complete — /api/health/ready → true");
+    })
     .catch((err) => {
       logger.error({ err }, "Startup migration/seed chain failed");
     });

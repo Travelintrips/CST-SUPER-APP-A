@@ -1,74 +1,107 @@
-// Google Sheets connector via Replit Connectors SDK
-// Uses @replit/connectors-sdk — do NOT cache the connector instance (tokens expire)
+// Google Sheets connector via googleapis (Service Account)
+// Env: GOOGLE_SERVICE_ACCOUNT_JSON  — isi JSON key file dari Google Cloud Console
 
-import { ReplitConnectors } from "@replit/connectors-sdk";
+import { google, type sheets_v4 } from "googleapis";
 
-function getConnectors() {
-  return new ReplitConnectors();
+interface ServiceAccountCreds {
+  client_email: string;
+  private_key: string;
+  project_id?: string;
 }
 
-async function proxyRequest(
-  path: string,
-  options: { method?: string; body?: unknown } = {},
-): Promise<unknown> {
-  const connectors = getConnectors();
-  const res = await connectors.proxy("google-sheet", path, {
-    method: options.method ?? "GET",
-    ...(options.body !== undefined
-      ? { body: JSON.stringify(options.body), headers: { "Content-Type": "application/json" } }
-      : {}),
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`Google Sheets API error ${res.status}: ${text}`);
+function parseCreds(): ServiceAccountCreds {
+  const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+  if (!raw) throw new Error("GOOGLE_SERVICE_ACCOUNT_JSON belum dikonfigurasi di Secrets.");
+  try {
+    return JSON.parse(raw) as ServiceAccountCreds;
+  } catch {
+    throw new Error("GOOGLE_SERVICE_ACCOUNT_JSON bukan JSON yang valid.");
   }
-  return res.json();
 }
 
-// Encode range sebagai path segment — nama sheet tanpa spasi aman langsung di-encode
-function rangeParam(sheetName: string, cols = "A:Z"): string {
-  return `${encodeURIComponent(sheetName)}!${cols}`;
+export function getServiceAccountEmail(): string | null {
+  try {
+    return parseCreds().client_email ?? null;
+  } catch {
+    return null;
+  }
 }
 
-export async function createSpreadsheet(title: string): Promise<{ spreadsheetId: string; spreadsheetUrl: string }> {
-  const data = await proxyRequest("/v4/spreadsheets", {
-    method: "POST",
-    body: {
+function getAuth() {
+  const creds = parseCreds();
+  return new google.auth.GoogleAuth({
+    credentials: creds,
+    scopes: [
+      "https://www.googleapis.com/auth/spreadsheets",
+      "https://www.googleapis.com/auth/drive.file",
+    ],
+  });
+}
+
+function getSheetsClient(): sheets_v4.Sheets {
+  return google.sheets({ version: "v4", auth: getAuth() });
+}
+
+function getDriveClient() {
+  return google.drive({ version: "v3", auth: getAuth() });
+}
+
+function rangeStr(sheetName: string, cols = "A:Z"): string {
+  return `'${sheetName}'!${cols}`;
+}
+
+export async function createSpreadsheet(
+  title: string,
+): Promise<{ spreadsheetId: string; spreadsheetUrl: string }> {
+  const sheets = getSheetsClient();
+  const res = await sheets.spreadsheets.create({
+    requestBody: {
       properties: { title },
       sheets: [
         { properties: { title: "CoA", index: 0 } },
         { properties: { title: "Jurnal", index: 1 } },
         { properties: { title: "Lines", index: 2 } },
         { properties: { title: "TrialBalance", index: 3 } },
+        { properties: { title: "GL", index: 4 } },
       ],
     },
-  }) as { spreadsheetId: string; spreadsheetUrl: string };
-  return data;
+  });
+  const spreadsheetId = res.data.spreadsheetId!;
+  const spreadsheetUrl = res.data.spreadsheetUrl ?? `https://docs.google.com/spreadsheets/d/${spreadsheetId}`;
+  return { spreadsheetId, spreadsheetUrl };
 }
 
-export async function getSpreadsheetMeta(spreadsheetId: string): Promise<{ title: string; sheets: string[] }> {
-  const data = await proxyRequest(`/v4/spreadsheets/${spreadsheetId}?fields=properties.title,sheets.properties.title`) as {
-    properties: { title: string };
-    sheets: Array<{ properties: { title: string } }>;
-  };
+export async function getSpreadsheetMeta(
+  spreadsheetId: string,
+): Promise<{ title: string; sheets: string[] }> {
+  const sheets = getSheetsClient();
+  const res = await sheets.spreadsheets.get({
+    spreadsheetId,
+    fields: "properties.title,sheets.properties.title",
+  });
   return {
-    title: data.properties.title,
-    sheets: data.sheets.map((s) => s.properties.title),
+    title: res.data.properties?.title ?? "",
+    sheets: (res.data.sheets ?? []).map((s) => s.properties?.title ?? ""),
   };
 }
 
-// Pastikan semua tab yang dibutuhkan ada di spreadsheet (buat jika belum ada)
-// Kirim satu batchUpdate per sheet agar tidak ada konflik index
-export async function ensureSheets(spreadsheetId: string, sheetNames: string[]): Promise<void> {
+export async function ensureSheets(
+  spreadsheetId: string,
+  sheetNames: string[],
+): Promise<void> {
   const meta = await getSpreadsheetMeta(spreadsheetId);
   const existing = new Set(meta.sheets);
   const toAdd = sheetNames.filter((n) => !existing.has(n));
-  for (const title of toAdd) {
-    await proxyRequest(`/v4/spreadsheets/${spreadsheetId}:batchUpdate`, {
-      method: "POST",
-      body: { requests: [{ addSheet: { properties: { title } } }] },
-    });
-  }
+  if (toAdd.length === 0) return;
+  const sheets = getSheetsClient();
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId,
+    requestBody: {
+      requests: toAdd.map((title) => ({
+        addSheet: { properties: { title } },
+      })),
+    },
+  });
 }
 
 export async function clearAndWriteSheet(
@@ -76,25 +109,81 @@ export async function clearAndWriteSheet(
   sheetName: string,
   rows: unknown[][],
 ): Promise<void> {
-  // Clear dulu — gunakan format 'Sheet Name'!A:Z
-  await proxyRequest(
-    `/v4/spreadsheets/${spreadsheetId}/values/${rangeParam(sheetName)}:clear`,
-    { method: "POST", body: {} },
-  );
+  const sheets = getSheetsClient();
+  const range = rangeStr(sheetName);
+  await sheets.spreadsheets.values.clear({ spreadsheetId, range });
   if (rows.length === 0) return;
-  // Tulis data
-  await proxyRequest(
-    `/v4/spreadsheets/${spreadsheetId}/values/${rangeParam(sheetName)}?valueInputOption=USER_ENTERED`,
-    { method: "PUT", body: { values: rows } },
-  );
+  await sheets.spreadsheets.values.update({
+    spreadsheetId,
+    range,
+    valueInputOption: "USER_ENTERED",
+    requestBody: { values: rows as string[][] },
+  });
 }
 
 export async function readSheet(
   spreadsheetId: string,
   sheetName: string,
 ): Promise<string[][]> {
-  const data = await proxyRequest(
-    `/v4/spreadsheets/${spreadsheetId}/values/${rangeParam(sheetName)}`,
-  ) as { values?: string[][] };
-  return data.values ?? [];
+  const sheets = getSheetsClient();
+  const range = rangeStr(sheetName);
+  const res = await sheets.spreadsheets.values.get({ spreadsheetId, range });
+  return (res.data.values ?? []) as string[][];
+}
+
+export async function batchUpdateSheet(
+  spreadsheetId: string,
+  updates: Array<{ range: string; values: string[][] }>,
+): Promise<void> {
+  if (updates.length === 0) return;
+  const sheets = getSheetsClient();
+  await sheets.spreadsheets.values.batchUpdate({
+    spreadsheetId,
+    requestBody: {
+      data: updates,
+      valueInputOption: "USER_ENTERED",
+    },
+  });
+}
+
+// Ekspor ke spreadsheet baru dan kembalikan URL-nya
+// Berguna untuk export sekali pakai (logistic orders, dll) tanpa setup permanen
+export async function exportToNewSpreadsheet(
+  title: string,
+  tabs: Array<{ name: string; rows: unknown[][] }>,
+): Promise<{ spreadsheetId: string; spreadsheetUrl: string }> {
+  const sheets = getSheetsClient();
+  const res = await sheets.spreadsheets.create({
+    requestBody: {
+      properties: { title },
+      sheets: tabs.map((t, i) => ({ properties: { title: t.name, index: i } })),
+    },
+  });
+  const spreadsheetId = res.data.spreadsheetId!;
+  const spreadsheetUrl =
+    res.data.spreadsheetUrl ??
+    `https://docs.google.com/spreadsheets/d/${spreadsheetId}`;
+
+  for (const tab of tabs) {
+    if (tab.rows.length === 0) continue;
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: rangeStr(tab.name),
+      valueInputOption: "USER_ENTERED",
+      requestBody: { values: tab.rows as string[][] },
+    });
+  }
+
+  // Jadikan spreadsheet ini bisa dibaca oleh siapa saja yang punya link
+  try {
+    const drive = getDriveClient();
+    await drive.permissions.create({
+      fileId: spreadsheetId,
+      requestBody: { role: "reader", type: "anyone" },
+    });
+  } catch {
+    // Jika gagal share, tetap kembalikan URL — user bisa buka via SA email
+  }
+
+  return { spreadsheetId, spreadsheetUrl };
 }

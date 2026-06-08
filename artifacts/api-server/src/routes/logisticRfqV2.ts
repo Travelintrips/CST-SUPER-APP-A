@@ -33,6 +33,7 @@ import {
   renderTemplate,
   sendVendorSelectedAdminWa,
   sendVendorAwardedWa,
+  sendVendorNotSelectedWa,
   sendTruckAssignedCustomerWa,
   sendOpRequestNotification,
   type LogisticOrderData,
@@ -487,6 +488,24 @@ logisticRfqV2Router.post("/rfq/create-from-order/:orderId", async (req: Request,
 
   const [order] = await db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
   if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
+
+  // ── C2 Guard: product_first wajib selesai product phase sebelum shipment RFQ ─
+  if ((order as any).orderType === "product_first") {
+    const o = order as any;
+    const missing: string[] = [];
+    if (!o.productVendorId)           missing.push("product_vendor_id (vendor produk belum dipilih)");
+    if (!o.customerProductApprovedAt) missing.push("customer_product_approved_at (customer belum approve produk)");
+    if (!o.productReadyDate)          missing.push("product_ready_date (tanggal siap produk belum diisi)");
+    if (!o.productPickupLocation)     missing.push("product_pickup_location (lokasi pickup belum diisi)");
+    if (!o.shipmentMode)              missing.push("shipment_mode (mode pengiriman belum dipilih)");
+    if (missing.length > 0) {
+      return res.status(422).json({
+        message: "Product phase belum selesai. Shipment RFQ hanya bisa dibuat setelah vendor produk confirmed, customer approve produk, ready date, pickup location, dan shipment mode tersedia.",
+        missingFields: missing,
+      });
+    }
+  }
+  // ────────────────────────────────────────────────────────────────────────────
 
   const { notes, responseDeadlineHours, basicPrice } = req.body as {
     notes?: string;
@@ -971,6 +990,24 @@ logisticRfqV2Router.post("/orders/:orderId/rfq-blast", async (req: Request, res:
 
   const [order] = await db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
   if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
+
+  // ── C2 Guard: product_first wajib selesai product phase sebelum shipment RFQ ─
+  if ((order as any).orderType === "product_first") {
+    const o = order as any;
+    const missing: string[] = [];
+    if (!o.productVendorId)           missing.push("product_vendor_id (vendor produk belum dipilih)");
+    if (!o.customerProductApprovedAt) missing.push("customer_product_approved_at (customer belum approve produk)");
+    if (!o.productReadyDate)          missing.push("product_ready_date (tanggal siap produk belum diisi)");
+    if (!o.productPickupLocation)     missing.push("product_pickup_location (lokasi pickup belum diisi)");
+    if (!o.shipmentMode)              missing.push("shipment_mode (mode pengiriman belum dipilih)");
+    if (missing.length > 0) {
+      return res.status(422).json({
+        message: "Product phase belum selesai. Shipment RFQ hanya bisa dibuat setelah vendor produk confirmed, customer approve produk, ready date, pickup location, dan shipment mode tersedia.",
+        missingFields: missing,
+      });
+    }
+  }
+  // ────────────────────────────────────────────────────────────────────────────
 
   // Reuse existing RFQ or create new one
   const existingRfqs = await db.select().from(logisticOrderRfqsTable)
@@ -1925,9 +1962,15 @@ logisticRfqV2Router.post("/rfq/:rfqId/select-vendor", async (req: Request, res: 
     force: true,
   });
 
-  const otherLinks = await db.select({ id: rfqVendorLinksTable.id, status: rfqVendorLinksTable.status })
-    .from(rfqVendorLinksTable)
+  const otherLinks = await db.select({
+    id: rfqVendorLinksTable.id,
+    status: rfqVendorLinksTable.status,
+    vendorId: rfqVendorLinksTable.vendorId,
+  }).from(rfqVendorLinksTable)
     .where(and(eq(rfqVendorLinksTable.rfqId, rfqId), sql`id != ${linkId}`));
+
+  // Status yang menandakan vendor sudah berikan penawaran (layak dapat notifikasi)
+  const RESPONDED_STATUSES = ["accepted_basic_price", "counter_offer", "late_response"];
 
   for (const other of otherLinks) {
     if (!["rejected", "expired", "late_response"].includes(other.status)) {
@@ -1937,6 +1980,24 @@ logisticRfqV2Router.post("/rfq/:rfqId/select-vendor", async (req: Request, res: 
         source: "select-vendor/deselect-others",
         force: true,
       });
+      // Kirim WA notif hanya ke vendor yang sudah merespons dengan penawaran
+      if (RESPONDED_STATUSES.includes(other.status) && other.vendorId) {
+        db.select({ name: suppliersTable.name, phone: suppliersTable.phone })
+          .from(suppliersTable)
+          .where(eq(suppliersTable.id, other.vendorId))
+          .then(([vRow]) => {
+            if (vRow?.phone) {
+              sendVendorNotSelectedWa({
+                vendorName: vRow.name ?? `Vendor #${other.vendorId}`,
+                vendorPhone: vRow.phone,
+                rfqNumber: rfqRow?.rfqNumber ?? `RFQ#${rfqId}`,
+                orderNumber: orderRow?.orderNumber ?? "",
+                route: `${orderRow?.origin ?? "—"} → ${orderRow?.destination ?? "—"}`,
+              }).catch(() => {});
+            }
+          })
+          .catch(() => {});
+      }
     }
   }
 
@@ -2035,6 +2096,22 @@ logisticRfqV2Router.post("/rfq/:rfqId/vendor-link/:linkId/action", async (req: R
     });
     await logActivity(rfqId, "admin", "Admin", "admin_reject_vendor",
       `Admin menolak vendor: ${vendorName}`);
+    // Kirim WA notifikasi ke vendor bahwa penawarannya tidak dipilih
+    if (vendor?.phone) {
+      const [rfqInfo] = await db.select({ rfqNumber: logisticOrderRfqsTable.rfqNumber, orderId: logisticOrderRfqsTable.orderId })
+        .from(logisticOrderRfqsTable).where(eq(logisticOrderRfqsTable.id, rfqId));
+      const orderRow = rfqInfo?.orderId
+        ? (await db.select({ orderNumber: logisticOrdersTable.orderNumber, origin: logisticOrdersTable.origin, destination: logisticOrdersTable.destination })
+            .from(logisticOrdersTable).where(eq(logisticOrdersTable.id, rfqInfo.orderId)))[0] ?? null
+        : null;
+      sendVendorNotSelectedWa({
+        vendorName,
+        vendorPhone: vendor.phone,
+        rfqNumber: rfqInfo?.rfqNumber ?? `RFQ#${rfqId}`,
+        orderNumber: orderRow?.orderNumber ?? "",
+        route: `${orderRow?.origin ?? "—"} → ${orderRow?.destination ?? "—"}`,
+      }).catch(() => {});
+    }
     return res.json({ ok: true });
   }
 

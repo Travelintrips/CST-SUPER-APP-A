@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { randomBytes } from "crypto";
+import { broadcastInvalidation } from "../lib/alertsBroadcast.js";
 import { eq, desc, inArray, sql, and } from "drizzle-orm";
 import {
   db,
@@ -24,7 +25,7 @@ import { TAX_RATE_DECIMAL as PPN_RATE, TAX_RATE_DECIMAL } from "../lib/taxHelper
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { normalizePhone } from "../lib/phoneUtils.js";
 import { getAdminWa, getAdminGroupWa } from "../lib/adminWa.js";
-import { sendVendorRequestNotification, sendVendorSelectedAdminWa, sendVendorAwardedWa, sendVendorAssignmentNotification, resolveTemplateSnapshot, sendCustomerApprovalNotification, type LogisticOrderData } from "../lib/orderNotification.js";
+import { sendVendorRequestNotification, sendVendorSelectedAdminWa, sendVendorAwardedWa, sendVendorNotSelectedWa, sendVendorAssignmentNotification, resolveTemplateSnapshot, sendCustomerApprovalNotification, type LogisticOrderData } from "../lib/orderNotification.js";
 import { generateShortLink } from "../lib/shortLink.js";
 import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStatusService.js";
 import { transitionRfqStatus, transitionVendorLinkStatus } from "../lib/services/rfqStatusService.js";
@@ -1000,6 +1001,8 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
       clearTimeout(blastTimer);
       blastInProgress.delete(order.id);
 
+      broadcastInvalidation("rfq", order.id);
+      broadcastInvalidation("logistic_orders", order.id);
       return res.json({ ok: true, rfqId: rfq.id, rfqNumber: rfq.rfqNumber, results, compareUrl: compareShort });
     }
 
@@ -1032,13 +1035,37 @@ adminActionPublicRouter.post("/:token", async (req: Request, res: Response) => {
       // Mark selected
       await transitionVendorLinkStatus(linkId, "selected", { source: "adminAction:compare_vendors_select", actorType: "admin", force: true });
 
-      const otherLinks = await db.select({ id: rfqVendorLinksTable.id, status: rfqVendorLinksTable.status })
-        .from(rfqVendorLinksTable)
+      const otherLinks = await db.select({
+        id: rfqVendorLinksTable.id,
+        status: rfqVendorLinksTable.status,
+        vendorId: rfqVendorLinksTable.vendorId,
+      }).from(rfqVendorLinksTable)
         .where(eq(rfqVendorLinksTable.rfqId, link.rfqId!));
+
+      // Status yang menandakan vendor sudah berikan penawaran (layak dapat notifikasi)
+      const RESPONDED_STATUSES = ["accepted_basic_price", "counter_offer", "late_response"];
 
       for (const other of otherLinks) {
         if (other.id !== linkId && !["rejected", "expired", "late_response"].includes(other.status)) {
           await transitionVendorLinkStatus(other.id, "not_selected", { source: "adminAction:compare_vendors_deselect", actorType: "admin", force: true });
+          // Kirim WA notif hanya ke vendor yang sudah merespons dengan penawaran
+          if (RESPONDED_STATUSES.includes(other.status) && other.vendorId) {
+            db.select({ name: suppliersTable.name, phone: suppliersTable.phone })
+              .from(suppliersTable)
+              .where(eq(suppliersTable.id, other.vendorId))
+              .then(([vRow]) => {
+                if (vRow?.phone) {
+                  sendVendorNotSelectedWa({
+                    vendorName: vRow.name ?? `Vendor #${other.vendorId}`,
+                    vendorPhone: vRow.phone,
+                    rfqNumber: rfq.rfqNumber,
+                    orderNumber: order.orderNumber,
+                    route: `${order.origin ?? "—"} → ${order.destination ?? "—"}`,
+                  }).catch(() => {});
+                }
+              })
+              .catch(() => {});
+          }
         }
       }
 

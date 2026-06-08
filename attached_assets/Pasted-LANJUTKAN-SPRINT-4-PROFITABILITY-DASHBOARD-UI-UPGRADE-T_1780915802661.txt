@@ -1,0 +1,118 @@
+LANJUTKAN SPRINT 4 — PROFITABILITY DASHBOARD UI UPGRADE.
+
+Tujuan:
+Menampilkan hasil Profitability 2.0 di BizPortal UI.
+
+Jangan ubah backend formula lagi.
+Jangan ubah DB schema.
+Fokus UI dan UX dashboard.
+
+Scope:
+
+1. Update halaman:
+artifacts/bizportal/src/pages/analytics/profitability.tsx
+
+2. Per Order Table
+
+Tambahkan kolom:
+
+- Product Revenue
+- Product Cost
+- Product Margin
+- Shipment Revenue
+- Shipment Cost
+- Shipment Margin
+- Order Gross Margin
+- Margin %
+
+Tetap tampilkan field lama untuk backward compatibility jika masih dipakai.
+
+3. Summary Cards
+
+Tambahkan card:
+
+- Total Product Revenue
+- Total Product Margin
+- Total Shipment Revenue
+- Total Shipment Margin
+- Total Order Gross Margin
+- Average Margin %
+
+4. Vendor Analytics UI
+
+Pisahkan vendor menjadi 2 tab:
+
+A. Product Vendors
+- Vendor Name
+- Total Orders
+- Product Revenue
+- Product Cost
+- Product Margin
+- Margin %
+- Win Rate
+
+B. Shipment Vendors
+- Vendor Name
+- Total Orders
+- Shipment Revenue
+- Shipment Cost
+- Shipment Margin
+- Margin %
+- RFQ Invites
+- Selected Count
+- Win Rate
+
+C. Combined / Legacy
+- tetap ada untuk backward compatibility
+
+5. Route Analytics UI
+
+Tambahkan field:
+
+- Product Margin
+- Shipment Margin
+- Order Gross Margin
+- Margin %
+
+6. Commodity Analytics UI
+
+Tambahkan field:
+
+- Product Margin
+- Shipment Margin
+- Order Gross Margin
+- Margin %
+
+7. Chart
+
+Tambahkan chart:
+
+- Product Margin vs Shipment Margin
+- Top 10 Orders by Margin
+- Top 10 Low Margin Orders
+- Top Product Vendors
+- Top Shipment Vendors
+
+8. Guard Empty State
+
+Jika productVendors kosong:
+Tampilkan:
+"Belum ada data Product Vendor. Data akan muncul setelah Product-First order memiliki product vendor terpilih."
+
+9. Test
+
+A. Page load tanpa error
+B. Orders tab menampilkan field baru
+C. Vendor tab split product/shipment
+D. Product vendor empty state muncul
+E. Shipment vendors tampil
+F. Route dan commodity tetap tampil
+G. Tidak ada TypeScript error baru
+H. API response lama tetap diterima
+
+Output wajib:
+A. File yang diubah
+B. Tab/komponen baru
+C. Screenshot/deskripsi UI
+D. Test result
+E. Risiko tersisa

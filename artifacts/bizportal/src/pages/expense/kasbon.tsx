@@ -128,8 +128,8 @@ export default function KasbonPage() {
     queryFn: () => apiFetch(`/api/cash-advances?type=kasbon${activeCompanyId ? `&company=${activeCompanyId}` : ""}`),
   });
   const { data: paymentAccounts = [] } = useQuery({
-    queryKey: ["expense-payment-accounts"],
-    queryFn: () => apiFetch("/api/expenses/payment-accounts"),
+    queryKey: ["expense-payment-accounts", activeCompanyId],
+    queryFn: () => apiFetch(`/api/expenses/payment-accounts${activeCompanyId ? `?company=${activeCompanyId}` : ""}`),
   });
   const { data: userList = [] } = useQuery<any[]>({
     queryKey: ["users-list"],
@@ -478,16 +478,29 @@ export default function KasbonPage() {
                     setSourceAccountId(val);
                     if (val) {
                       const acc = (paymentAccounts as any[]).find((a: any) => String(a.id) === val);
-                      if (acc) setPm((acc.name ?? "").toLowerCase().includes("kas") ? "cash" : "bank");
+                      if (acc) setPm(acc.account_class === "kas" ? "cash" : "bank");
                     }
                   }}
                 >
                   <SelectTrigger><SelectValue placeholder="Pilih akun kas/bank..." /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__none__">— Default —</SelectItem>
-                    {(paymentAccounts as any[]).map((a: any) => (
-                      <SelectItem key={a.id} value={String(a.id)}>{a.code} – {a.name}</SelectItem>
-                    ))}
+                    {(paymentAccounts as any[]).filter((a: any) => a.account_class === "kas").length > 0 && (
+                      <>
+                        <div className="px-2 py-1 text-xs font-semibold text-muted-foreground">💵 Kas</div>
+                        {(paymentAccounts as any[]).filter((a: any) => a.account_class === "kas").map((a: any) => (
+                          <SelectItem key={a.id} value={String(a.id)}>{a.code} – {a.name}</SelectItem>
+                        ))}
+                      </>
+                    )}
+                    {(paymentAccounts as any[]).filter((a: any) => a.account_class === "bank").length > 0 && (
+                      <>
+                        <div className="px-2 py-1 text-xs font-semibold text-muted-foreground">🏦 Bank</div>
+                        {(paymentAccounts as any[]).filter((a: any) => a.account_class === "bank").map((a: any) => (
+                          <SelectItem key={a.id} value={String(a.id)}>{a.code} – {a.name}</SelectItem>
+                        ))}
+                      </>
+                    )}
                   </SelectContent>
                 </Select>
               </div>

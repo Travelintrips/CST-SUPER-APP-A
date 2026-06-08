@@ -6,6 +6,11 @@ const FONNTE_URL = "https://api.fonnte.com/send";
 
 const DEDUP_WINDOW_MS = parseInt(process.env.WA_DEDUP_WINDOW_MS ?? "1800000", 10);
 
+/** E2E test mode — jangan kirim WA sungguhan, cukup catat ke notification_logs sebagai 'simulated'. */
+function isE2ETestMode(): boolean {
+  return process.env.E2E_TEST_MODE === "true";
+}
+
 function normalizePhoneID(raw: string): string {
   if (raw.includes("@")) return raw.trim();
   let digits = raw.replace(/[^\d+]/g, "");
@@ -31,6 +36,16 @@ export async function sendWhatsAppMedia(
 ): Promise<void> {
   if (!mediaUrl?.trim()) {
     return sendWhatsApp(target, message, opts);
+  }
+  if (isE2ETestMode()) {
+    logger.info({ target, mediaUrl, context: opts?.context, refId: opts?.refId }, "[E2E_TEST_MODE] WA media simulated — not sent");
+    await logNotification({
+      channel: "wa", recipient: target, message,
+      status: "simulated", errorMsg: "E2E_TEST_MODE — simulated, not sent",
+      context: opts?.context, refType: opts?.refType, refId: opts?.refId,
+      mediaUrl,
+    });
+    return;
   }
   const FONNTE_TOKEN = await getFonnteToken();
   if (!FONNTE_TOKEN) {
@@ -132,6 +147,15 @@ export async function sendWhatsApp(
   message: string,
   opts?: { context?: string; refType?: string; refId?: string },
 ): Promise<void> {
+  if (isE2ETestMode()) {
+    logger.info({ target, context: opts?.context, refId: opts?.refId }, "[E2E_TEST_MODE] WA simulated — not sent");
+    await logNotification({
+      channel: "wa", recipient: target, message,
+      status: "simulated", errorMsg: "E2E_TEST_MODE — simulated, not sent",
+      context: opts?.context, refType: opts?.refType, refId: opts?.refId,
+    });
+    return;
+  }
   const FONNTE_TOKEN = await getFonnteToken();
   if (!FONNTE_TOKEN) {
     logger.warn("FONNTE_TOKEN not set — skipping WhatsApp notification");

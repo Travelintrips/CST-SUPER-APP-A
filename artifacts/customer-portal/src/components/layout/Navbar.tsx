@@ -215,9 +215,14 @@ export function Navbar() {
               {t("nav.home")}
             </Link>
 
-            {/* Produk */}
-            <Link href="/products" className={navItemCls(location === "/products")}>
-              {t("nav.products")}
+            {/* Marketplace */}
+            <Link href="/marketplace" className={navItemCls(location === "/marketplace")}>
+              Marketplace
+            </Link>
+
+            {/* Marketplace */}
+            <Link href="/marketplace" className={navItemCls(location === "/marketplace")}>
+              Marketplace
             </Link>
 
             {/* Katalog Vendor */}
@@ -475,11 +480,19 @@ export function Navbar() {
               </div>
             </Link>
 
-            <Link href="/products" onClick={() => setIsOpen(false)}>
+            <Link href="/marketplace" onClick={() => setIsOpen(false)}>
               <div className={`flex items-center px-3 py-2.5 rounded-[14px] text-[15px] font-semibold cursor-pointer ${
-                location === "/products" ? "bg-[rgba(14,165,233,0.10)] text-[#0284C7]" : "text-slate-600 hover:bg-slate-50"
+                location === "/marketplace" ? "bg-[rgba(14,165,233,0.10)] text-[#0284C7]" : "text-slate-600 hover:bg-slate-50"
               }`}>
-                {t("nav.products")}
+                Marketplace
+              </div>
+            </Link>
+
+            <Link href="/marketplace" onClick={() => setIsOpen(false)}>
+              <div className={`flex items-center px-3 py-2.5 rounded-[14px] text-[15px] font-semibold cursor-pointer ${
+                location === "/marketplace" ? "bg-[rgba(14,165,233,0.10)] text-[#0284C7]" : "text-slate-600 hover:bg-slate-50"
+              }`}>
+                Marketplace
               </div>
             </Link>
 

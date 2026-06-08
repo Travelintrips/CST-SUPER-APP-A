@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { randomBytes } from "crypto";
+import { broadcastInvalidation } from "../lib/alertsBroadcast.js";
 import { eq, and, desc, sql } from "drizzle-orm";
 import {
   db, logisticOrdersTable, logisticOrderRfqsTable, rfqVendorLinksTable,
@@ -277,6 +278,8 @@ customerQuoteAdminRouter.post("/rfq/:rfqId/send-customer-quote", async (req: Req
     }
 
     logger.info({ rfqId, orderId: order.id, token }, "Customer quote sent");
+    broadcastInvalidation("rfq", order.id);
+    broadcastInvalidation("logistic_orders", order.id);
     return res.status(201).json({ ok: true, token, quoteUrl, link });
   } catch (err) {
     logger.error({ err }, "send-customer-quote error");
@@ -529,6 +532,7 @@ customerQuoteAdminRouter.patch("/orders/:orderId/status", async (req: Request, r
       orderId, actorType: "admin", actorName: actorName ?? "Admin",
       status, notes: notes ?? `Status diubah ke: ${status}`, isPublic: true,
     });
+    broadcastInvalidation("logistic_orders", orderId);
     return res.json({ ok: true });
   } catch (err) {
     logger.error({ err }, "update-order-status error");

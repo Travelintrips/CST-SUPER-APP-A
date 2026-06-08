@@ -9,6 +9,19 @@ import { requireAdmin } from "../lib/requireAdmin.js";
 
 const router = Router();
 
+// Inline migration: buat tabel vendor_performance jika belum ada
+db.execute(sql`
+  CREATE TABLE IF NOT EXISTS vendor_performance (
+    id SERIAL PRIMARY KEY,
+    supplier_id INTEGER REFERENCES suppliers(id) ON DELETE CASCADE,
+    score NUMERIC(5,2) DEFAULT 0,
+    completed_orders INTEGER DEFAULT 0,
+    on_time_rate NUMERIC(5,2) DEFAULT 0,
+    total_orders INTEGER DEFAULT 0,
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+  )
+`).catch(() => {});
+
 router.use(async (req, res, next) => {
   if (!(await requireAdmin(req, res))) return;
   next();
@@ -21,10 +34,13 @@ router.use(async (req, res, next) => {
 // non-holding user → always locked to user.companyId
 function parseCompanyParam(req: Request): { isConsolidated: boolean; companyId: number | null } {
   const user = req.user as { companyId?: number | null; role?: string | null } | undefined;
-  const isHolding = !user?.companyId || user.role === "owner";
-  if (!isHolding && user?.companyId) {
-    return { isConsolidated: false, companyId: user.companyId };
+  // Hanya non-admin & non-owner yang dikunci ke company mereka sendiri
+  // (konsisten dengan resolveCompanyScope di lib/resolveCompany.ts)
+  const isLocked = user?.companyId != null && user.role !== "admin" && user.role !== "owner";
+  if (isLocked) {
+    return { isConsolidated: false, companyId: user!.companyId! };
   }
+  // Admin / owner: gunakan query param atau consolidated view
   const raw = req.query.companyId;
   if (raw === "all" || raw === undefined || raw === "") {
     return { isConsolidated: true, companyId: null };
@@ -421,7 +437,7 @@ router.get("/response-time-stats", async (req, res) => {
 // GET /api/dashboard/analytics?period=30d&companyId=N
 router.get("/analytics", async (req, res) => {
   const period = String(req.query.period ?? "30d");
-  const { companyId } = parseCompanyParam(req.query.companyId);
+  const { companyId } = parseCompanyParam(req);
 
   const intervalMap: Record<string, string> = {
     "7d": "7 days", "30d": "30 days", "90d": "90 days", "1y": "1 year",
@@ -527,7 +543,7 @@ router.get("/analytics", async (req, res) => {
 // ── CEO / Director Dashboard ──────────────────────────────────────────────
 // GET /api/dashboard/ceo?companyId=N|all
 router.get("/ceo", async (req, res) => {
-  const { isConsolidated, companyId } = parseCompanyParam(req.query.companyId);
+  const { isConsolidated, companyId } = parseCompanyParam(req);
   const cf = (!isConsolidated && companyId !== null) ? sql` AND company_id = ${companyId}` : sql``;
   const cfSd = (!isConsolidated && companyId !== null) ? sql` AND (sd.company_id = ${companyId} OR sd.company_id IS NULL)` : sql``;
 
@@ -787,9 +803,9 @@ router.get("/ceo", async (req, res) => {
 // ── Enterprise Admin Dashboard ─────────────────────────────────────────────
 // GET /api/dashboard/enterprise?companyId=N|all
 router.get("/enterprise", async (req, res) => {
-  const { isConsolidated, companyId } = parseCompanyParam(req.query.companyId);
+  const { isConsolidated, companyId } = parseCompanyParam(req);
   const cf = (!isConsolidated && companyId !== null)
-    ? sql` AND company_id = ${companyId}`
+    ? sql` AND (company_id = ${companyId} OR company_id IS NULL)`
     : sql``;
 
   const now = new Date();
@@ -938,7 +954,7 @@ router.get("/enterprise", async (req, res) => {
 // ── GET /api/dashboard/operational ──────────────────────────────────────────
 // Real-time operational snapshot untuk tim operasional.
 router.get("/operational", async (req, res) => {
-  const { isConsolidated, companyId } = parseCompanyParam(req.query.companyId);
+  const { isConsolidated, companyId } = parseCompanyParam(req);
   const cf = (!isConsolidated && companyId !== null)
     ? sql` AND company_id = ${companyId}`
     : sql``;
@@ -1029,6 +1045,142 @@ router.get("/operational", async (req, res) => {
   } catch (e) {
     console.error("operational dashboard error", e);
     return res.status(500).json({ error: "Gagal memuat operational dashboard" });
+  }
+});
+
+// GET /api/dashboard/cross-module?companyId=N|all
+// Returns Sport Centre + Sales summary for the current & previous month
+router.get("/cross-module", async (req, res) => {
+  const { isConsolidated, companyId } = parseCompanyParam(req);
+  const cf = (!isConsolidated && companyId !== null)
+    ? sql` AND (company_id = ${companyId} OR company_id IS NULL)`
+    : sql``;
+
+  const now = new Date();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const endOfLastMonth = startOfMonth;
+
+  try {
+    const [
+      scBookingsThisRes,
+      scBookingsLastRes,
+      scRevenueThisRes,
+      scRevenueLastRes,
+      scTopFacilityRes,
+      salesCountThisRes,
+      salesCountLastRes,
+      salesRevenueThisRes,
+      salesRevenueLastRes,
+    ] = await Promise.all([
+      // Sport Centre – bookings count this month (pakai booking_date, konsisten dgn sport center module)
+      db.execute<{ cnt: string }>(sql`
+        SELECT count(*)::text AS cnt FROM sport_bookings
+        WHERE status NOT IN ('cancelled','Cancelled')
+          AND booking_date >= ${startOfMonth.toISOString().slice(0, 10)}::date ${cf}
+      `),
+      // Sport Centre – bookings count last month
+      db.execute<{ cnt: string }>(sql`
+        SELECT count(*)::text AS cnt FROM sport_bookings
+        WHERE status NOT IN ('cancelled','Cancelled')
+          AND booking_date >= ${startOfLastMonth.toISOString().slice(0, 10)}::date
+          AND booking_date < ${endOfLastMonth.toISOString().slice(0, 10)}::date ${cf}
+      `),
+      // Sport Centre – revenue this month dari sport_bookings.total_amount (paid)
+      db.execute<{ total: string }>(sql`
+        SELECT COALESCE(SUM(total_amount::numeric), 0)::text AS total
+        FROM sport_bookings
+        WHERE payment_status IN ('paid','Paid')
+          AND status NOT IN ('cancelled','Cancelled')
+          AND booking_date >= ${startOfMonth.toISOString().slice(0, 10)}::date ${cf}
+      `),
+      // Sport Centre – revenue last month
+      db.execute<{ total: string }>(sql`
+        SELECT COALESCE(SUM(total_amount::numeric), 0)::text AS total
+        FROM sport_bookings
+        WHERE payment_status IN ('paid','Paid')
+          AND status NOT IN ('cancelled','Cancelled')
+          AND booking_date >= ${startOfLastMonth.toISOString().slice(0, 10)}::date
+          AND booking_date < ${endOfLastMonth.toISOString().slice(0, 10)}::date ${cf}
+      `),
+      // Sport Centre – top facilities this month
+      db.execute<{ name: string; cnt: string; revenue: string }>(sql`
+        SELECT COALESCE(facility_name, '—') AS name,
+               count(id)::text AS cnt,
+               COALESCE(SUM(total_amount::numeric), 0)::text AS revenue
+        FROM sport_bookings
+        WHERE status NOT IN ('cancelled','Cancelled')
+          AND booking_date >= ${startOfMonth.toISOString().slice(0, 10)}::date ${cf}
+        GROUP BY facility_name
+        ORDER BY cnt::int DESC
+        LIMIT 5
+      `),
+      // Sales – confirmed docs count this month
+      db.execute<{ cnt: string }>(sql`
+        SELECT count(*)::text AS cnt FROM sales_documents
+        WHERE status NOT IN ('draft','cancelled')
+          AND created_at >= ${startOfMonth} ${cf}
+      `),
+      // Sales – confirmed docs count last month
+      db.execute<{ cnt: string }>(sql`
+        SELECT count(*)::text AS cnt FROM sales_documents
+        WHERE status NOT IN ('draft','cancelled')
+          AND created_at >= ${startOfLastMonth}
+          AND created_at < ${endOfLastMonth} ${cf}
+      `),
+      // Sales – revenue this month
+      db.execute<{ total: string }>(sql`
+        SELECT COALESCE(SUM(grand_total::numeric), 0)::text AS total
+        FROM sales_documents
+        WHERE status NOT IN ('draft','cancelled')
+          AND created_at >= ${startOfMonth} ${cf}
+      `),
+      // Sales – revenue last month
+      db.execute<{ total: string }>(sql`
+        SELECT COALESCE(SUM(grand_total::numeric), 0)::text AS total
+        FROM sales_documents
+        WHERE status NOT IN ('draft','cancelled')
+          AND created_at >= ${startOfLastMonth}
+          AND created_at < ${endOfLastMonth} ${cf}
+      `),
+    ]);
+
+    const scRevThis = Number(scRevenueThisRes.rows[0]?.total ?? 0);
+    const scRevLast = Number(scRevenueLastRes.rows[0]?.total ?? 0);
+    const scGrowth = scRevLast > 0
+      ? ((scRevThis - scRevLast) / scRevLast) * 100
+      : scRevThis > 0 ? 100 : 0;
+
+    const salesRevThis = Number(salesRevenueThisRes.rows[0]?.total ?? 0);
+    const salesRevLast = Number(salesRevenueLastRes.rows[0]?.total ?? 0);
+    const salesGrowth = salesRevLast > 0
+      ? ((salesRevThis - salesRevLast) / salesRevLast) * 100
+      : salesRevThis > 0 ? 100 : 0;
+
+    return res.json({
+      sportCenter: {
+        bookingsThisMonth: Number(scBookingsThisRes.rows[0]?.cnt ?? 0),
+        bookingsLastMonth: Number(scBookingsLastRes.rows[0]?.cnt ?? 0),
+        revenueThisMonth: scRevThis,
+        revenueLastMonth: scRevLast,
+        growthPct: Number(scGrowth.toFixed(1)),
+        topFacilities: scTopFacilityRes.rows.map((r) => ({
+          name: r.name ?? "—",
+          bookings: Number(r.cnt),
+          revenue: Number(r.revenue),
+        })),
+      },
+      sales: {
+        countThisMonth: Number(salesCountThisRes.rows[0]?.cnt ?? 0),
+        countLastMonth: Number(salesCountLastRes.rows[0]?.cnt ?? 0),
+        revenueThisMonth: salesRevThis,
+        revenueLastMonth: salesRevLast,
+        growthPct: Number(salesGrowth.toFixed(1)),
+      },
+    });
+  } catch (e) {
+    console.error("cross-module dashboard error", e);
+    return res.status(500).json({ error: "Gagal memuat cross-module dashboard" });
   }
 });
 

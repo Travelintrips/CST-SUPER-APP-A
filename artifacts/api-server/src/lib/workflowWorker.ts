@@ -35,6 +35,7 @@ import { sendMail, isSmtpConfigured } from "./mailer.js";
 import { notifyPaymentReminder } from "./enterpriseWorkflowNotify.js";
 import { markPaymentOverdue } from "./services/index.js";
 import { createExceptionIdempotent } from "./services/exceptionService.js";
+import { runInvoiceReminders, initInvoiceReminderTable } from "./invoiceReminderWorker.js";
 
 const POLL_INTERVAL_MS = 5 * 60 * 1000;  // 5 minutes
 const INITIAL_DELAY_MS = 3 * 60 * 1000;  // 3 min after boot
@@ -52,6 +53,7 @@ interface AlertSettings {
   marginMinPct: number;
   etaAlertEnabled: boolean;
   quoteExpiredAlertEnabled: boolean;
+  invoiceReminderEnabled: boolean;
   alertWindowStart: string; // "HH:MM"
   alertWindowEnd: string;   // "HH:MM"
 }
@@ -65,6 +67,7 @@ const DEFAULT_SETTINGS: AlertSettings = {
   marginMinPct: 5,
   etaAlertEnabled: true,
   quoteExpiredAlertEnabled: true,
+  invoiceReminderEnabled: true,
   alertWindowStart: "00:00",
   alertWindowEnd: "23:59",
 };
@@ -88,6 +91,7 @@ async function loadSettings(): Promise<AlertSettings> {
       marginMinPct: parseFloat(String(r.marginMinPct ?? "5")),
       etaAlertEnabled: r.etaAlertEnabled,
       quoteExpiredAlertEnabled: r.quoteExpiredAlertEnabled,
+      invoiceReminderEnabled: r.invoiceReminderEnabled ?? true,
       alertWindowStart: r.alertWindowStart,
       alertWindowEnd: r.alertWindowEnd,
     };
@@ -447,7 +451,8 @@ async function checkInvoiceOverdue(settings: AlertSettings): Promise<void> {
       await notifyPaymentReminder({
         invoiceNumber: invoiceRef,
         customerName: doc.customerName,
-        customerPhone: customerPhone ?? undefined,
+        // Jika invoiceReminderEnabled, customer WA ditangani oleh invoiceReminderWorker
+        customerPhone: settings.invoiceReminderEnabled ? undefined : (customerPhone ?? undefined),
         dueDate: dueDateStr,
         totalAmount,
         daysUntilDue: -daysOverdue,
@@ -716,6 +721,9 @@ async function runWorkflowWorker(): Promise<void> {
       checkLateOrders(settings),
       checkInvoiceOverdue(settings),
       checkBillOverdue(settings),
+      settings.invoiceReminderEnabled
+        ? runInvoiceReminders({ isWithinAlertWindow: isWithinAlertWindow(settings) })
+        : Promise.resolve(),
     ]);
   } catch (err) {
     logger.error({ err }, "WorkflowWorker: unexpected error");
@@ -725,6 +733,10 @@ async function runWorkflowWorker(): Promise<void> {
 // ── Scheduler ────────────────────────────────────────────────────────────────
 
 export function startWorkflowWorker(): void {
+  initInvoiceReminderTable().catch(err =>
+    logger.warn({ err }, "WorkflowWorker: gagal init invoice_reminder_logs table")
+  );
+
   const run = () =>
     runWorkflowWorker().catch(err =>
       logger.warn({ err }, "WorkflowWorker: uncaught error")

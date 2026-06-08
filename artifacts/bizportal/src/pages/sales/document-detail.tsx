@@ -14,6 +14,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import { TemplateSnapshotCard } from "@/components/TemplateSnapshotCard";
+import { EscrowPanel } from "@/components/sales/EscrowPanel";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -1250,7 +1251,10 @@ export default function SalesDocumentDetailPage() {
           </TabsContent>
 
           {/* ── Payment Tab ────────────────────────────────────────────────────── */}
-          <TabsContent value="pembayaran" className="mt-4">
+          <TabsContent value="pembayaran" className="mt-4 space-y-4">
+            {isOrder && (
+              <EscrowPanel docId={docId} grandTotal={grandTotal} />
+            )}
             <PaymentHistoryTab
               docId={docId}
               docNumber={doc.docNumber}

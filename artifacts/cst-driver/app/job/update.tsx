@@ -6,6 +6,7 @@ import {
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
+import * as Location from 'expo-location';
 import { useColors } from '@/hooks/useColors';
 import { useJobs } from '@/context/JobsContext';
 import { StatusBadge } from '@/components/StatusBadge';
@@ -27,11 +28,26 @@ export default function UpdateStatusScreen() {
     return <View style={{ flex: 1, backgroundColor: colors.background }} />;
   }
 
+  async function captureGeo(): Promise<{ lat: number; lng: number; deviceTimestamp: string } | undefined> {
+    if (Platform.OS === 'web') return undefined;
+    try {
+      const { status: permStatus } = await Location.requestForegroundPermissionsAsync();
+      if (permStatus !== 'granted') {
+        Alert.alert('Izin Lokasi', 'Izin GPS tidak diberikan. Status diupdate tanpa lokasi.');
+        return undefined;
+      }
+      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      return { lat: loc.coords.latitude, lng: loc.coords.longitude, deviceTimestamp: new Date().toISOString() };
+    } catch {
+      return undefined;
+    }
+  }
+
   async function handleConfirm() {
     setLoading(true);
     try {
-      await new Promise((r) => setTimeout(r, 500));
-      await updateJobStatus(jobId, status, note.trim() || undefined);
+      const geoLocation = await captureGeo();
+      await updateJobStatus(jobId, status, note.trim() || undefined, geoLocation);
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.back();
     } catch {

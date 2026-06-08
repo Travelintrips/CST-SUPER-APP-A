@@ -69,6 +69,8 @@ import {
   Brain,
   Trophy,
   KeyRound,
+  Store,
+  CreditCard,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -268,6 +270,7 @@ export function AppShell({ children, noPadding }: AppShellProps) {
         { titleKey: "rfq", href: "/purchase/rfq", icon: FileText },
         { titleKey: "purchaseOrders", href: "/purchase/orders", icon: ShoppingBag },
         { titleKey: "vendors", href: "/purchase/vendors", icon: UserCircle },
+        { titleKey: "Vendor Catalog", href: "/purchase/vendor-catalog", icon: Store },
         { titleKey: "Approvals Pembelian", href: "/purchase/payment-requests", icon: ClipboardCheck },
         { titleKey: "Terima Barang (GRN)", href: "/purchase/gr", icon: PackageCheck },
         { titleKey: "Terima Barang Cepat", href: "/purchase/receive", icon: PackageOpen },
@@ -354,10 +357,12 @@ export function AppShell({ children, noPadding }: AppShellProps) {
       icon: BookOpen,
       roles: ["admin", "owner"],
       children: [
+        { titleKey: "Dashboard Akuntansi", href: "/accounting/dashboard", icon: BarChart2 },
         { titleKey: "chartOfAccounts", href: "/accounting/accounts", icon: Landmark },
         { titleKey: "journals", href: "/accounting/journals", icon: BookOpen },
         { titleKey: "journalEntry", href: "/accounting/entries", icon: FileText },
         { titleKey: "payments", href: "/accounting/payments", icon: Wallet },
+        { titleKey: "Transaksi Paylabs", href: "/accounting/paylabs", icon: CreditCard },
         { titleKey: "Penerimaan & Pengeluaran Lain", href: "/accounting/other-transactions", icon: ArrowLeftRight },
         { titleKey: "taxes", href: "/accounting/taxes", icon: Receipt },
         { titleKey: "Cost Center", href: "/accounting/cost-centers", icon: Layers },
