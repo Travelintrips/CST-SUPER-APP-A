@@ -234,7 +234,7 @@ function ItemDetailModal({ item, onClose }: { item: MarketplaceItem; onClose: ()
   function handleRequestQuote() {
     onClose();
     if (item.templateKind === "service") {
-      setLocation("/jasa");
+      setLocation(`/jasa/vendor/${item.id}`);
     } else {
       setLocation("/order-produk");
     }

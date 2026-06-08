@@ -80,6 +80,7 @@ const PaymentProofPage          = lazy(() => import("@/pages/payment-proof"));
 const ProductOrderTrackPage     = lazy(() => import("@/pages/product-order-track"));
 const CatalogPage               = lazy(() => import("@/pages/catalog"));
 const MarketplaceDetail         = lazy(() => import("@/pages/marketplace-detail"));
+const JasaVendorDetail          = lazy(() => import("@/pages/jasa-vendor-detail"));
 const EscrowConfirmPage         = lazy(() => import("@/pages/escrow-confirm"));
 const ProductApprovePage        = lazy(() => import("@/pages/product-approve"));
 const ShipmentSelectionPage     = lazy(() => import("@/pages/shipment-selection"));
@@ -217,6 +218,7 @@ function AppShell() {
         <Route path="/marketplace" component={Marketplace} />
         <Route path="/products">{() => { window.location.replace("/marketplace"); return null; }}</Route>
         <Route path="/jasa" component={Jasa} />
+        <Route path="/jasa/vendor/:id" component={JasaVendorDetail} />
         <Route path="/jasa/:id" component={JasaDetail} />
         <Route path="/login" component={Login} />
         <Route path="/register" component={Register} />
