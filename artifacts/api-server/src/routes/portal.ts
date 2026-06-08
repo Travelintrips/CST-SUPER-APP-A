@@ -306,12 +306,7 @@ router.get("/marketplace", async (req, res) => {
     )
     .leftJoin(suppliersTable, eq(vendorCatalogItemsTable.vendorId, suppliersTable.id))
     .where(and(...conditions))
-    .orderBy(desc(vendorCatalogItemsTable.isFeatured), vendorCatalogItemsTable.sortOrder, desc(vendorCatalogItemsTable.publishedAt))
-    .catch((e: unknown) => {
-      const cause = (e as { cause?: Error })?.cause;
-      console.error("[marketplace] DB error cause:", cause?.message ?? cause, "original:", (e as Error)?.message);
-      throw e;
-    });
+    .orderBy(desc(vendorCatalogItemsTable.isFeatured), vendorCatalogItemsTable.sortOrder, desc(vendorCatalogItemsTable.publishedAt));
 
   // Post-process: if no category filter, enrich each item with its resolved category label
   return res.json(
