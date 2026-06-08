@@ -79,7 +79,6 @@ const DriverProgressPage        = lazy(() => import("@/pages/driver-progress"));
 const PaymentProofPage          = lazy(() => import("@/pages/payment-proof"));
 const ProductOrderTrackPage     = lazy(() => import("@/pages/product-order-track"));
 const CatalogPage               = lazy(() => import("@/pages/catalog"));
-const Marketplace               = lazy(() => import("@/pages/marketplace"));
 const MarketplaceDetail         = lazy(() => import("@/pages/marketplace-detail"));
 const EscrowConfirmPage         = lazy(() => import("@/pages/escrow-confirm"));
 const ProductApprovePage        = lazy(() => import("@/pages/product-approve"));

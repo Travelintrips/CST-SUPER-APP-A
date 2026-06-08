@@ -20,6 +20,22 @@ author = "agent"
 task = "workflow.run"
 args = "Gateway"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "API Server"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "BizPortal"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "CustomerPortal"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "LogisticOrder"
+
 [[workflows.workflow]]
 name = "Gateway"
 author = "agent"
@@ -31,6 +47,50 @@ waitForPort = 5000
 
 [workflows.workflow.metadata]
 outputType = "webview"
+
+[[workflows.workflow]]
+name = "API Server"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd artifacts/api-server && bash start-dev.sh"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow]]
+name = "BizPortal"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd artifacts/bizportal && BIZPORTAL_PORT=6800 bash start-dev.sh"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow]]
+name = "CustomerPortal"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd artifacts/customer-portal && PORT=3001 bash start-dev.sh"
+
+[[workflows.workflow]]
+name = "LogisticOrder"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd artifacts/logistic-order && node ../api-server/kill-port.mjs 19368 2>/dev/null; sleep 0.5 && PORT=19368 pnpm exec vite --config vite.config.ts --host 0.0.0.0 --port 19368"
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
