@@ -24,6 +24,18 @@ args = "Gateway"
 task = "workflow.run"
 args = "Logistic Order"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "API Server"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "BizPortal"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Customer Portal"
+
 [[workflows.workflow]]
 name = "Gateway"
 author = "agent"
@@ -44,6 +56,42 @@ author = "agent"
 task = "shell.exec"
 args = "cd artifacts/logistic-order && PORT=3002 pnpm run dev"
 waitForPort = 3002
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow]]
+name = "API Server"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd artifacts/api-server && pnpm run dev"
+waitForPort = 8080
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow]]
+name = "BizPortal"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd artifacts/bizportal && BIZPORTAL_PORT=6800 pnpm run dev"
+waitForPort = 6800
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow]]
+name = "Customer Portal"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd artifacts/customer-portal && PORT=3001 pnpm run dev"
+waitForPort = 3001
 
 [workflows.workflow.metadata]
 outputType = "console"
