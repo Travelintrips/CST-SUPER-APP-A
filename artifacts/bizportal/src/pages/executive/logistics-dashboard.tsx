@@ -14,6 +14,7 @@ import {
   Truck, TrendingUp, TrendingDown, DollarSign, Package,
   Map, Star, Lightbulb, ArrowRight, RefreshCw, CheckCircle2,
 } from "lucide-react";
+import { CompanySelect } from "@/components/CompanySelect";
 
 const idr = (v: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(v);
@@ -71,11 +72,15 @@ export default function LogisticsDashboardPage() {
   const firstOfYear = `${new Date().getFullYear()}-01-01`;
   const [from, setFrom] = useState(firstOfYear);
   const [to, setTo]     = useState(today);
+  const [companyId, setCompanyId] = useState("all");
+
+  const summaryParams = new URLSearchParams({ from, to });
+  if (companyId !== "all") summaryParams.set("companyId", companyId);
 
   const { data, isLoading, refetch } = useQuery<SummaryData>({
-    queryKey: ["executive-logistics", from, to],
+    queryKey: ["executive-logistics", from, to, companyId],
     queryFn: () =>
-      fetch(`/api/executive/logistics-summary?from=${from}&to=${to}`, { credentials: "include" })
+      fetch(`/api/executive/logistics-summary?${summaryParams}`, { credentials: "include" })
         .then(r => r.json()),
   });
 

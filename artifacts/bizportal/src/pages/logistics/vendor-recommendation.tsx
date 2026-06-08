@@ -11,6 +11,7 @@ import {
   Star, Search, Trophy, Shield, Zap, Package, TrendingUp,
   AlertCircle, CheckCircle2, ChevronDown, ChevronUp,
 } from "lucide-react";
+import { CompanySelect } from "@/components/CompanySelect";
 
 const idr = (v: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(v);
@@ -177,16 +178,18 @@ export default function VendorRecommendationPage() {
   const [commodity, setCommodity]     = useState("");
   const [shipmentType, setShipmentType] = useState("");
   const [submitted, setSubmitted]     = useState(false);
+  const [companyId, setCompanyId]     = useState("all");
 
   const params = new URLSearchParams();
-  if (origin)       params.set("origin", origin);
-  if (destination)  params.set("destination", destination);
-  if (commodity)    params.set("commodity", commodity);
-  if (shipmentType) params.set("shipmentType", shipmentType);
+  if (origin)           params.set("origin", origin);
+  if (destination)      params.set("destination", destination);
+  if (commodity)        params.set("commodity", commodity);
+  if (shipmentType)     params.set("shipmentType", shipmentType);
+  if (companyId !== "all") params.set("companyId", companyId);
 
   const { data, isLoading, refetch } = useQuery<{ candidates: Candidate[] }>({
-    queryKey: ["vendor-recommendation", origin, destination, commodity, shipmentType],
-    queryFn: () => fetch(`/api/vendor-recommendation/candidates?${params}`).then(r => r.json()),
+    queryKey: ["vendor-recommendation", origin, destination, commodity, shipmentType, companyId],
+    queryFn: () => fetch(`/api/vendor-recommendation/candidates?${params}`, { credentials: "include" }).then(r => r.json()),
     enabled: submitted,
   });
 

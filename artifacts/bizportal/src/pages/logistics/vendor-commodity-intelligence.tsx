@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ChevronDown, ChevronRight, Search, Layers, RefreshCw, Package } from "lucide-react";
+import { CompanySelect } from "@/components/CompanySelect";
 
 const idr = (v: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(v);
@@ -88,10 +89,14 @@ function VendorRow({ vendor }: { vendor: VendorEntry }) {
 export default function VendorCommodityIntelligencePage() {
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<"orders" | "revenue" | "commodities">("revenue");
+  const [companyId, setCompanyId] = useState("all");
+
+  const params = new URLSearchParams();
+  if (companyId !== "all") params.set("companyId", companyId);
 
   const { data, isLoading, refetch } = useQuery<{ vendors: VendorEntry[]; total: number }>({
-    queryKey: ["vendor-commodity-intelligence"],
-    queryFn: () => fetch("/api/vendor-intelligence/commodities", { credentials: "include" }).then(r => r.json()),
+    queryKey: ["vendor-commodity-intelligence", companyId],
+    queryFn: () => fetch(`/api/vendor-intelligence/commodities?${params}`, { credentials: "include" }).then(r => r.json()),
   });
 
   const vendors = (data?.vendors ?? [])
