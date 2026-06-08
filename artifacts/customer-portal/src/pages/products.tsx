@@ -608,7 +608,7 @@ export default function Products() {
           <div className="flex items-center gap-2.5 mb-5">
             <div className="h-px w-10 rounded-full" style={{ background: "rgba(255,255,255,0.45)" }} />
             <p className="font-bold uppercase text-white/80" style={{ fontSize: "11.5px", letterSpacing: "0.20em" }}>
-              {t("products.catalogLabel")}
+              Marketplace
             </p>
           </div>
 
@@ -622,7 +622,7 @@ export default function Products() {
               textShadow: "0 4px 28px rgba(7,17,36,0.32)",
             }}
           >
-            {t("products.title")}
+            Marketplace
           </h1>
 
           {/* Desc */}

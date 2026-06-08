@@ -202,6 +202,7 @@ function AppShell() {
       <Switch>
         <Route path="/" component={Home} />
         <Route path="/services" component={Services} />
+        <Route path="/marketplace" component={Products} />
         <Route path="/products" component={Products} />
         <Route path="/jasa" component={Jasa} />
         <Route path="/jasa/:id" component={JasaDetail} />
