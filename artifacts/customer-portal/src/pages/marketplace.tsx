@@ -421,18 +421,79 @@ function FilterSidebar({
   );
 }
 
+// ── Smart keyword → type/category detection ───────────────────────────────────
+const SERVICE_KEYWORD_MAP: Array<{ terms: string[]; category: string }> = [
+  { terms: ["trucking", "truck", "truk", "angkutan", "darat"],              category: "trucking"      },
+  { terms: ["ppjk", "customs", "kepabeanan", "bea cukai", "pabean"],        category: "ppjk"          },
+  { terms: ["sea freight", "seafreight", "fcl", "lcl", "kapal", "laut"],    category: "sea_freight"   },
+  { terms: ["air freight", "airfreight", "udara", "pesawat"],               category: "air_freight"   },
+  { terms: ["freight", "forwarding", "ekspedisi"],                          category: "sea_freight"   },
+  { terms: ["handling", "cargo handling", "bongkar muat"],                  category: "handling"      },
+  { terms: ["document", "dokumen", "surat", "perizinan"],                   category: "document"      },
+  { terms: ["exim", "ekspor", "impor", "export", "import"],                 category: "exim_service"  },
+];
+
+const PRODUCT_KEYWORDS = [
+  "kopi", "coffee", "batubara", "coal", "sawit", "palm", "nikel", "nickel",
+  "tembaga", "copper", "beras", "rice", "gula", "sugar", "seafood", "ikan",
+  "frozen", "furniture", "kimia", "chemical", "tekstil", "textile",
+  "besi", "baja", "iron", "steel",
+];
+
+function detectTypeFromQ(q: string): { tab: "product" | "service"; category: string } | null {
+  if (!q.trim()) return null;
+  const lower = q.toLowerCase();
+
+  for (const { terms, category } of SERVICE_KEYWORD_MAP) {
+    if (terms.some((t) => lower.includes(t))) {
+      return { tab: "service", category };
+    }
+  }
+  if (PRODUCT_KEYWORDS.some((k) => lower.includes(k))) {
+    return { tab: "product", category: "all" };
+  }
+  return null;
+}
+
 // ── Main Page ──────────────────────────────────────────────────────────────────
 export default function MarketplacePage() {
   const [, setLocation] = useLocation();
   const search = useSearch(); // e.g. "type=service&category=trucking&q=foo"
 
   // Derive tab/category/q from URL search string — reactive to navigation
+  // If `type` is explicit in URL → honour it.
+  // If only `q` is present → auto-detect tab/category from keyword.
   const { urlTab, urlCategory, urlQ } = useMemo(() => {
     const sp = new URLSearchParams(search);
+    const explicitType = sp.get("type");
+    const rawQ        = sp.get("q") ?? "";
+    const rawCat      = sp.get("category") ?? "all";
+
+    if (explicitType === "service" || explicitType === "product") {
+      return {
+        urlTab:      explicitType as "product" | "service",
+        urlCategory: rawCat,
+        urlQ:        rawQ,
+      };
+    }
+
+    // No explicit type — try to detect from keyword
+    if (rawQ) {
+      const detected = detectTypeFromQ(rawQ);
+      if (detected) {
+        return {
+          urlTab:      detected.tab,
+          urlCategory: rawCat !== "all" ? rawCat : detected.category,
+          urlQ:        rawQ,
+        };
+      }
+    }
+
+    // Fallback: product tab (or keep current default)
     return {
-      urlTab:     (sp.get("type") === "service" ? "service" : "product") as "product" | "service",
-      urlCategory: sp.get("category") ?? "all",
-      urlQ:        sp.get("q") ?? "",
+      urlTab:      "product" as const,
+      urlCategory: rawCat,
+      urlQ:        rawQ,
     };
   }, [search]);
 
