@@ -169,6 +169,38 @@ export async function runVendorCatalogSchemaMigration(): Promise<void> {
     `);
     await db.execute(sql`
       ALTER TABLE vendor_catalog_items
+        ADD COLUMN IF NOT EXISTS subcategory TEXT
+    `);
+    await db.execute(sql`
+      ALTER TABLE vendor_catalog_items
+        ADD COLUMN IF NOT EXISTS markup_pct NUMERIC(5,2) NOT NULL DEFAULT 0
+    `);
+    await db.execute(sql`
+      ALTER TABLE vendor_catalog_items
+        ADD COLUMN IF NOT EXISTS master_item_id INTEGER
+    `);
+    await db.execute(sql`
+      ALTER TABLE vendor_catalog_items
+        ADD COLUMN IF NOT EXISTS view_count INTEGER NOT NULL DEFAULT 0
+    `);
+    await db.execute(sql`
+      ALTER TABLE vendor_catalog_items
+        ADD COLUMN IF NOT EXISTS quote_count INTEGER NOT NULL DEFAULT 0
+    `);
+    await db.execute(sql`
+      ALTER TABLE vendor_catalog_items
+        ADD COLUMN IF NOT EXISTS order_count INTEGER NOT NULL DEFAULT 0
+    `);
+    await db.execute(sql`
+      ALTER TABLE vendor_catalog_items
+        ADD COLUMN IF NOT EXISTS is_featured BOOLEAN NOT NULL DEFAULT FALSE
+    `);
+    await db.execute(sql`
+      ALTER TABLE vendor_catalog_items
+        ADD COLUMN IF NOT EXISTS featured_until TIMESTAMP
+    `);
+    await db.execute(sql`
+      ALTER TABLE vendor_catalog_items
         ADD COLUMN IF NOT EXISTS price_base NUMERIC(15,2) NOT NULL DEFAULT 0
     `);
     await db.execute(sql`
