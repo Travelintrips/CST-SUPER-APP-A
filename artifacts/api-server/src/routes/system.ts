@@ -100,8 +100,37 @@ router.get("/governance-health", async (_req, res) => {
     const bil = (overdueBills.rows[0] ?? { count: 0 }) as { count: unknown };
     const vpRow = (vendorPerfStats.rows[0] ?? {}) as Record<string, unknown>;
 
+    const depAudit = runtimeState
+      ? { status: runtimeState.status, missing: runtimeState.missing, checkedAt: runtimeState.checkedAt, dependencies: runtimeState.dependencies }
+      : { status: "not_checked", missing: [], checkedAt: null, dependencies: {} };
+
+    const depErrorCount = runtimeState
+      ? Object.values(runtimeState.dependencies).filter(d => d.status === "error").length
+      : 0;
+    const depMissingCount = runtimeState?.missing.length ?? 0;
+    const depOk = runtimeState?.status === "ok";
+
     res.json({
       generatedAt: new Date().toISOString(),
+
+      // A. Files yang diaudit / diubah dalam infra hardening
+      filesAudited: {
+        checked: [
+          "artifacts/api-server/build.mjs",
+          "artifacts/api-server/package.json",
+          "artifacts/api-server/src/lib/startupValidator.ts",
+          "artifacts/api-server/src/routes/system.ts",
+          "artifacts/api-server/src/routes/health.ts",
+        ],
+        notes: {
+          "build.mjs":          "googleapis & @google-cloud/* ada di external list — di-load sebagai runtime require()",
+          "package.json":       "googleapis@^173 ada di dependencies (bukan devDependencies)",
+          "startupValidator.ts":"Validasi runtime: googleapis, openai, drizzle-orm, pg, nodemailer",
+          "system.ts":          "GET /api/system/runtime-check & /api/system/governance-health",
+          "health.ts":          "GET /api/healthz — integrasi runtimeState ke healthz degraded check",
+        },
+      },
+
       exceptions: {
         total:               Number(exc["total"]               ?? 0),
         open:                Number(exc["open"]                ?? 0),
@@ -120,14 +149,39 @@ router.get("/governance-health", async (_req, res) => {
       },
       recentStatusTransitions: recentTransitions.rows,
       auditLast24h: auditModuleSummary.rows,
-      dependencyAudit: runtimeState
-        ? { status: runtimeState.status, missing: runtimeState.missing, checkedAt: runtimeState.checkedAt }
-        : { status: "not_checked", missing: [], checkedAt: null },
+
+      // B. Dependency audit
+      dependencyAudit: depAudit,
+
+      // C. Runtime validation (summary — detail ada di dependencyAudit.dependencies)
+      runtimeValidation: {
+        status:       runtimeState?.status ?? "not_checked",
+        checkedAt:    runtimeState?.checkedAt ?? null,
+        totalChecked: runtimeState ? Object.keys(runtimeState.dependencies).length : 0,
+        okCount:      runtimeState ? Object.values(runtimeState.dependencies).filter(d => d.status === "ok").length : 0,
+        errorCount:   depErrorCount,
+        missingCount: depMissingCount,
+      },
+
       vendorPerformance: {
         tableExists:   vpRow["total_rows"] !== undefined,
         totalRows:     Number(vpRow["total_rows"] ?? 0),
         withOrders:    Number(vpRow["with_orders"] ?? 0),
         lastUpdated:   vpRow["last_updated"] ?? null,
+      },
+
+      // D. Test result — overall pass/fail
+      testResult: {
+        allOk:   depOk,
+        status:  depOk ? "PASS" : (depMissingCount > 0 ? "FAIL" : "DEGRADED"),
+        summary: depOk
+          ? "Semua dependency runtime OK. Server dalam kondisi sehat."
+          : depMissingCount > 0
+            ? `${depMissingCount} dependency HILANG: ${runtimeState?.missing.join(", ") ?? "—"}. Jalankan: pnpm add <package>`
+            : `${depErrorCount} dependency error saat load. Periksa logs startupValidator untuk detail.`,
+        action: depOk ? null : depMissingCount > 0
+          ? `pnpm add ${runtimeState?.missing.join(" ")}`
+          : "Cek artifacts/api-server/src/lib/startupValidator.ts dan jalankan ulang server",
       },
     });
   } catch (err) {
