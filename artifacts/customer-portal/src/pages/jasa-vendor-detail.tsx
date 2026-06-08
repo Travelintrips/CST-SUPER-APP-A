@@ -921,7 +921,7 @@ export default function JasaVendorDetail() {
             )}
 
             {/* Spec grid */}
-            {(item.specValues || item.templateSnapshot) && (
+            {!!(item.specValues || item.templateSnapshot) && (
               <div className="bg-white rounded-2xl border border-slate-200 px-5 py-4 shadow-sm">
                 <SpecGrid specValues={item.specValues} templateSnapshot={item.templateSnapshot} />
               </div>
