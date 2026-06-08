@@ -8,7 +8,7 @@
 
 import { Router, type Request } from "express";
 import { requireAdmin } from "../lib/requireAdmin.js";
-import { testWatiConnection, listWatiTemplates, sendWatiTemplate, sendWatiSession, isWatiConfigured, getWatiAccountInfo } from "../lib/wati.js";
+import { testWatiConnection, listWatiTemplates, sendWatiTemplate, sendWatiSession, isWatiConfigured, getWatiAccountInfo, validateWatiPhone } from "../lib/wati.js";
 import { logger } from "../lib/logger.js";
 import { setSetting, getSetting } from "../lib/appSecrets.js";
 
@@ -129,6 +129,56 @@ watiRouter.post("/test-send", async (req: Request, res) => {
     logger.error({ err }, "[wati] test-send error");
     return res.status(500).json({ message: err?.message ?? "Gagal kirim." });
   }
+});
+
+// ─── Validate phone ────────────────────────────────────────────────────────────
+watiRouter.post("/validate-phone", async (req: Request, res) => {
+  const { phone } = req.body ?? {};
+  if (!phone?.trim()) return res.status(400).json({ message: "phone wajib diisi." });
+  if (!(await isWatiConfigured())) {
+    return res.status(400).json({ message: "WATI belum dikonfigurasi." });
+  }
+  try {
+    const result = await validateWatiPhone(String(phone).trim());
+    return res.json(result);
+  } catch (err: any) {
+    logger.error({ err }, "[wati] validate-phone error");
+    return res.status(500).json({ valid: false, phone, error: err?.message ?? "Gagal validasi." });
+  }
+});
+
+// ─── Bulk validate phones ──────────────────────────────────────────────────────
+watiRouter.post("/validate-phones-bulk", async (req: Request, res) => {
+  const { phones } = req.body ?? {};
+  if (!Array.isArray(phones) || phones.length === 0) {
+    return res.status(400).json({ message: "phones harus berupa array tidak kosong." });
+  }
+  if (phones.length > 100) {
+    return res.status(400).json({ message: "Maksimal 100 nomor per request." });
+  }
+  if (!(await isWatiConfigured())) {
+    return res.status(400).json({ message: "WATI belum dikonfigurasi." });
+  }
+
+  const results: { phone: string; valid: boolean; name?: string; source?: string; error?: string }[] = [];
+  for (const raw of phones) {
+    const phone = String(raw).replace(/\D/g, "").replace(/^0/, "62").trim();
+    if (!phone) {
+      results.push({ phone: String(raw).trim(), valid: false, error: "Format tidak valid" });
+      continue;
+    }
+    try {
+      const r = await validateWatiPhone(phone);
+      results.push({ phone, valid: r.valid, name: r.name, source: r.source, error: r.error });
+    } catch (err: any) {
+      results.push({ phone, valid: false, error: err?.message ?? "Gagal" });
+    }
+    // small delay to avoid WATI rate limit
+    await new Promise((ok) => setTimeout(ok, 120));
+  }
+
+  const validCount = results.filter((r) => r.valid).length;
+  return res.json({ results, validCount, invalidCount: results.length - validCount });
 });
 
 // ─── Send template ────────────────────────────────────────────────────────────

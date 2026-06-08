@@ -48,7 +48,7 @@ import {
 } from "@workspace/api-client-react";
 import type { Supplier, VendorCatalogItem } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Car, Link2, Pencil, Plus, Power, PowerOff, Search, Tag, Trash2, Upload, X } from "lucide-react";
+import { ArrowLeft, Car, CheckSquare, Link2, Pencil, Plus, Power, PowerOff, RotateCcw, Search, Tag, Trash2, Upload, X } from "lucide-react";
 import { useUpload } from "@workspace/object-storage-web";
 
 const SERVICE_TYPES = [
@@ -95,6 +95,7 @@ type CatalogForm = {
   kategori: string;
   subcategory: string;
   priceBase: string;
+  priceSellOverride: string;
   isActive: boolean;
   isCommodityTag: boolean;
   sortOrder: string;
@@ -109,6 +110,7 @@ const emptyCatalogForm = (): CatalogForm => ({
   kategori: "",
   subcategory: "",
   priceBase: "0",
+  priceSellOverride: "",
   isActive: true,
   isCommodityTag: false,
   sortOrder: "0",
@@ -230,6 +232,13 @@ export default function VendorDetailPage() {
   const [editingItem, setEditingItem] = useState<VendorCatalogItem | null>(null);
   const [itemForm, setItemForm] = useState<CatalogForm>(emptyCatalogForm());
   const [masterItemSearch, setMasterItemSearch] = useState("");
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkResetting, setBulkResetting] = useState(false);
+  const [inlineEditId, setInlineEditId] = useState<number | null>(null);
+  const [inlineEditValue, setInlineEditValue] = useState("");
+  const [inlineSaving, setInlineSaving] = useState(false);
+  const inlineEditValueRef = useRef("");
+  const inlineSavingRef = useRef(false);
 
   const [linkOpen, setLinkOpen] = useState(false);
   const [linkingItem, setLinkingItem] = useState<VendorCatalogItem | null>(null);
@@ -302,6 +311,7 @@ export default function VendorDetailPage() {
       kategori: (item as any).kategori ?? "",
       subcategory: (item as any).subcategory ?? "",
       priceBase: String(Number(item.priceBase ?? 0)),
+      priceSellOverride: (item as any).priceSellOverride != null ? String((item as any).priceSellOverride) : "",
       isActive: item.isActive,
       isCommodityTag: (item as any).isCommodityTag ?? false,
       sortOrder: String(item.sortOrder),
@@ -322,6 +332,7 @@ export default function VendorDetailPage() {
     }
     const body: Record<string, unknown> = {
       priceBase: parseFloat(itemForm.priceBase) || 0,
+      priceSellOverride: itemForm.priceSellOverride.trim() !== "" ? parseFloat(itemForm.priceSellOverride) || 0 : null,
       isActive: itemForm.isActive,
       isCommodityTag: itemForm.isCommodityTag,
       sortOrder: parseInt(itemForm.sortOrder) || 0,
@@ -392,6 +403,82 @@ export default function VendorDetailPage() {
       toast({ title: t.common.success });
     } catch (e) {
       toast({ title: t.common.error, description: String(e), variant: "destructive" });
+    }
+  };
+
+  const resetOverride = async (item: VendorCatalogItem) => {
+    try {
+      const updated = await updateItem.mutateAsync({ itemId: item.id, data: { priceSellOverride: null } as any });
+      qc.setQueryData<VendorCatalogItem[]>(getListVendorCatalogQueryKey(vendorId), (old) =>
+        old ? old.map((i) => (i.id === updated.id ? { ...i, priceSellOverride: null, priceSell: (updated as any).priceSell } : i)) : [updated]
+      );
+      toast({ title: "Override harga jual dihapus" });
+    } catch (e) {
+      toast({ title: t.common.error, description: String(e), variant: "destructive" });
+    }
+  };
+
+  const bulkResetOverride = async () => {
+    const targets = (filteredCatalog as any[]).filter(
+      (i) => selectedIds.has(i.id) && i.priceSellOverride != null
+    );
+    if (targets.length === 0) return;
+    if (!confirm(`Reset override harga jual untuk ${targets.length} item?`)) return;
+    setBulkResetting(true);
+    try {
+      await Promise.all(
+        targets.map((i) =>
+          updateItem.mutateAsync({ itemId: i.id, data: { priceSellOverride: null } as any })
+        )
+      );
+      await qc.invalidateQueries({ queryKey: getListVendorCatalogQueryKey(vendorId) });
+      setSelectedIds(new Set());
+      toast({ title: `${targets.length} override berhasil dihapus` });
+    } catch (e) {
+      toast({ title: t.common.error, description: String(e), variant: "destructive" });
+    } finally {
+      setBulkResetting(false);
+    }
+  };
+
+  const saveInlineEdit = async (itemId: number) => {
+    if (inlineSavingRef.current) return;
+    const raw = inlineEditValueRef.current.replace(/[^0-9]/g, "");
+    const val = raw === "" ? NaN : parseFloat(raw);
+    if (isNaN(val) || val < 0) { setInlineEditId(null); return; }
+    inlineSavingRef.current = true;
+    setInlineSaving(true);
+    try {
+      await updateItem.mutateAsync({ itemId, data: { priceSellOverride: val } as any });
+      await qc.invalidateQueries({ queryKey: getListVendorCatalogQueryKey(vendorId) });
+      toast({ title: "Override harga jual disimpan" });
+    } catch (e) {
+      toast({ title: t.common.error, description: String(e), variant: "destructive" });
+    } finally {
+      inlineSavingRef.current = false;
+      setInlineSaving(false);
+      setInlineEditId(null);
+    }
+  };
+
+  const overrideItemsInView = (filteredCatalog as any[]).filter((i) => i.priceSellOverride != null);
+  const selectedOverrideIds = overrideItemsInView.filter((i) => selectedIds.has(i.id));
+  const allOverrideSelected = overrideItemsInView.length > 0 && selectedOverrideIds.length === overrideItemsInView.length;
+
+  const toggleSelectItem = (id: number, hasOverride: boolean) => {
+    if (!hasOverride) return;
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (allOverrideSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(overrideItemsInView.map((i) => i.id)));
     }
   };
 
@@ -723,9 +810,49 @@ export default function VendorDetailPage() {
             {catalogLoading ? (
               <p className="text-center text-muted-foreground py-8 text-sm">Memuat...</p>
             ) : (
+              <>
+                {/* ── Bulk action bar — muncul hanya jika ada yang dipilih ── */}
+                {selectedIds.size > 0 && (
+                  <div className="flex items-center gap-3 mb-3 px-3 py-2 rounded-md bg-blue-50 border border-blue-200">
+                    <CheckSquare className="h-4 w-4 text-blue-600 shrink-0" />
+                    <span className="text-sm text-blue-800 flex-1">
+                      <strong>{selectedIds.size}</strong> item dipilih
+                      {selectedOverrideIds.length > 0 && ` (${selectedOverrideIds.length} punya override)`}
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs border-blue-300 text-blue-700 hover:bg-blue-100"
+                      onClick={bulkResetOverride}
+                      disabled={bulkResetting || selectedOverrideIds.length === 0}
+                    >
+                      <RotateCcw className="h-3 w-3 mr-1" />
+                      {bulkResetting ? "Mereset..." : `Reset Override (${selectedOverrideIds.length})`}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 text-xs text-muted-foreground"
+                      onClick={() => setSelectedIds(new Set())}
+                    >
+                      <X className="h-3 w-3 mr-1" /> Batal
+                    </Button>
+                  </div>
+                )}
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-8">
+                      {overrideItemsInView.length > 0 && (
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 rounded border-gray-300 cursor-pointer accent-blue-600"
+                          checked={allOverrideSelected}
+                          onChange={toggleSelectAll}
+                          title="Pilih semua item dengan override"
+                        />
+                      )}
+                    </TableHead>
                     <TableHead>Nama</TableHead>
                     <TableHead>Kategori</TableHead>
                     <TableHead>Tipe</TableHead>
@@ -733,6 +860,7 @@ export default function VendorDetailPage() {
                     <TableHead className="text-right">Harga Dasar</TableHead>
                     <TableHead className="text-right">Harga Jual</TableHead>
                     <TableHead className="text-right">Profit</TableHead>
+                    <TableHead className="text-right">Margin %</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Tag</TableHead>
                     <TableHead className="w-[90px] text-right">Aksi</TableHead>
@@ -743,8 +871,21 @@ export default function VendorDetailPage() {
                     const priceBase = Number(item.priceBase ?? 0);
                     const priceSell = (item as any).priceSell as number | null;
                     const profit = (item as any).profit as number | null;
+                    const profitPct = (profit != null && priceBase > 0) ? (profit / priceBase) * 100 : null;
+                    const hasOverride = (item as any).priceSellOverride != null;
+                    const isSelected = selectedIds.has(item.id);
                     return (
-                      <TableRow key={item.id}>
+                      <TableRow key={item.id} className={isSelected ? "bg-blue-50/50" : undefined}>
+                        <TableCell className="w-8">
+                          {hasOverride && (
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 rounded border-gray-300 cursor-pointer accent-blue-600"
+                              checked={isSelected}
+                              onChange={() => toggleSelectItem(item.id, hasOverride)}
+                            />
+                          )}
+                        </TableCell>
                         <TableCell>
                           <p className="font-medium">{item.name}</p>
                           {item.description && (
@@ -766,15 +907,70 @@ export default function VendorDetailPage() {
                         <TableCell className="text-right font-mono text-sm text-muted-foreground">
                           {priceBase > 0 ? fmt(priceBase) : <span className="text-muted-foreground/50">—</span>}
                         </TableCell>
-                        <TableCell className="text-right font-mono text-sm font-semibold text-primary">
-                          {priceSell != null
-                            ? fmt(priceSell)
-                            : <span className="text-xs text-amber-500 font-normal">Belum linked</span>}
+                        <TableCell className="text-right font-mono text-sm font-semibold text-primary p-1">
+                          {inlineEditId === item.id ? (
+                            <div className="flex items-center justify-end gap-1">
+                              <input
+                                autoFocus
+                                type="text"
+                                inputMode="numeric"
+                                className="w-28 text-right border rounded px-1.5 py-0.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-primary"
+                                value={inlineEditValue}
+                                onChange={(e) => {
+                                  const v = e.target.value.replace(/[^0-9]/g, "");
+                                  inlineEditValueRef.current = v;
+                                  setInlineEditValue(v);
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); saveInlineEdit(item.id); }
+                                  if (e.key === "Escape") { e.preventDefault(); setInlineEditId(null); }
+                                }}
+                                onBlur={() => saveInlineEdit(item.id)}
+                                disabled={inlineSaving}
+                              />
+                            </div>
+                          ) : (
+                            <span
+                              className="flex flex-col items-end gap-0.5 cursor-pointer group"
+                              title="Klik untuk set override harga jual"
+                              onClick={() => {
+                                const cur = String((item as any).priceSellOverride ?? priceSell ?? "");
+                                inlineEditValueRef.current = cur;
+                                setInlineEditValue(cur);
+                                setInlineEditId(item.id);
+                              }}
+                            >
+                              {priceSell != null ? (
+                                <>
+                                  <span className="group-hover:underline group-hover:text-blue-600 transition-colors">{fmt(priceSell)}</span>
+                                  {(item as any).priceSellOverride != null && (
+                                    <span className="text-[10px] font-normal bg-blue-100 text-blue-700 rounded px-1 py-0">Override</span>
+                                  )}
+                                </>
+                              ) : (
+                                <span className="text-xs text-amber-500 font-normal group-hover:text-blue-600">+ Set harga</span>
+                              )}
+                            </span>
+                          )}
                         </TableCell>
                         <TableCell className="text-right font-mono text-sm font-semibold">
                           {profit != null
                             ? <span className={profit >= 0 ? "text-green-600" : "text-destructive"}>{fmt(profit)}</span>
                             : <span className="text-muted-foreground/40">—</span>}
+                        </TableCell>
+                        <TableCell className="text-right text-sm font-semibold">
+                          {profitPct != null ? (
+                            <span className={
+                              profitPct >= 20 ? "text-green-600" :
+                              profitPct >= 10 ? "text-amber-600" :
+                              profitPct >= 0  ? "text-orange-500" :
+                              "text-destructive"
+                            }>
+                              {profitPct.toFixed(1)}%
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground/40">—</span>
+                          )}
                         </TableCell>
                         <TableCell>
                           {item.isActive
@@ -797,6 +993,17 @@ export default function VendorDetailPage() {
                               <Link2 className="h-4 w-4 text-amber-500" />
                             </Button>
                           )}
+                          {(item as any).priceSellOverride != null && (
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              title="Reset override harga jual"
+                              onClick={() => resetOverride(item)}
+                              disabled={updateItem.isPending}
+                            >
+                              <RotateCcw className="h-4 w-4 text-blue-500" />
+                            </Button>
+                          )}
                           <Button size="icon" variant="ghost" onClick={() => openEditItem(item)}>
                             <Pencil className="h-4 w-4" />
                           </Button>
@@ -809,7 +1016,7 @@ export default function VendorDetailPage() {
                   })}
                   {filteredCatalog.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={10} className="text-center text-muted-foreground py-10">
+                      <TableCell colSpan={12} className="text-center text-muted-foreground py-10">
                         {(catalogSearch || filterKategoriCatalog !== "all" || filterSubcatCatalog !== "all")
                           ? "Tidak ada item yang cocok dengan filter."
                           : <>Belum ada item. Klik <strong>Tambah Item</strong> untuk mulai mengisi etalase.</>}
@@ -818,6 +1025,7 @@ export default function VendorDetailPage() {
                   )}
                 </TableBody>
               </Table>
+              </>
             )}
           </CardContent>
         </Card>
@@ -1051,7 +1259,28 @@ export default function VendorDetailPage() {
                 placeholder="Harga yang vendor charge ke kita"
               />
               <p className="text-xs text-muted-foreground">
-                Harga beli / biaya vendor. Dipakai untuk RFQ blast. Profit = Harga Jual (master) − Harga Dasar.
+                Harga beli / biaya vendor. Dipakai untuk RFQ blast.
+              </p>
+            </div>
+
+            {/* ── Override Harga Jual ── */}
+            <div className="grid gap-1.5">
+              <Label>Override Harga Jual (Rp) <span className="text-muted-foreground font-normal">— opsional</span></Label>
+              <Input
+                type="number"
+                min="0"
+                step="1000"
+                value={itemForm.priceSellOverride}
+                onChange={(e) => setI("priceSellOverride", e.target.value)}
+                placeholder="Kosongkan = pakai harga Master Item"
+              />
+              <p className="text-xs text-muted-foreground">
+                Jika diisi, harga ini menang atas harga Master Item. Kosongkan untuk kembali ke Master Item.
+                {itemForm.priceSellOverride.trim() !== "" && itemForm.priceBase.trim() !== "" && (
+                  <span className="ml-1 text-primary font-medium">
+                    Profit: {fmt((parseFloat(itemForm.priceSellOverride) || 0) - (parseFloat(itemForm.priceBase) || 0))}
+                  </span>
+                )}
               </p>
             </div>
 

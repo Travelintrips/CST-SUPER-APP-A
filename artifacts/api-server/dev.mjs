@@ -88,7 +88,7 @@ const external = [
   "piscina", "realm", "ref-napi", "rocksdb", "sass-embedded", "sequelize",
   "serialport", "snappy", "tinypool", "usb", "workerd", "wrangler",
   "zeromq", "zeromq-prebuilt", "playwright", "puppeteer", "puppeteer-core", "electron",
-  "ws", "web-push",
+  "ws", "web-push", "compression",
 ];
 
 const ctx = await esbuildContext({

@@ -1,0 +1,154 @@
+IMPLEMENT PRODUCT-FIRST SHIPMENT FLOW — PHASE 2A FOUNDATION ONLY.
+
+Jangan ubah UI besar.
+Jangan hapus flow lama.
+Jangan mengganggu order shipment/trucking yang sudah production-stable.
+Jangan auto-forward ke shipper sebelum product confirmed.
+
+Tujuan Phase 2A:
+Membuat fondasi backend untuk product-first flow secara backward compatible.
+
+Scope:
+
+1. Database / Schema
+
+Tambahkan field ke logistic_orders:
+
+- product_rfq_id
+- product_vendor_id
+- product_vendor_confirmed_at
+- product_ready_date
+- product_pickup_location
+- product_qty_confirmed
+- shipment_rfq_id
+- shipment_mode
+- shipment_mode_selected_at
+- customer_product_approval_token
+- customer_product_approved_at
+
+Tambahkan field ke logistic_order_rfqs:
+
+- rfq_type
+- phase
+
+Tambahkan field ke rfq_vendor_links:
+
+- rfq_type
+- pickup_address
+- ready_date
+- qty_confirmed
+- qty_unit
+
+Tambahkan mode baru untuk vendor mini form:
+
+- product_vendor
+
+2. Status Foundation
+
+Tambahkan status baru:
+
+- Product RFQ Sent
+- Product Quote Received
+- Product Vendor Selected
+- Customer Product Approval
+- Shipment Selection Pending
+- Ready for Pickup
+
+Pastikan semua masuk ke:
+
+- logisticStatusConstants.ts
+- STATUS_RANK
+- logisticOrderStatusService.ts
+- valid transitions
+- WA status mapping jika diperlukan
+- customer tracking mapping
+- BizPortal progress mapping
+
+Status baru hanya berlaku untuk:
+
+orderType = "product_first"
+
+Flow lama:
+
+orderType = "shipment"
+
+harus tetap berjalan tanpa perubahan.
+
+3. Backend Endpoint Minimal
+
+Buat endpoint backend baru, tapi belum perlu UI besar:
+
+- POST /api/logistic/orders/:id/product-rfq
+- POST /api/logistic/orders/:id/select-product-vendor
+- POST /api/logistic/orders/:id/send-product-approval
+- POST /api/logistic/orders/:token/customer-product-approve
+- POST /api/logistic/orders/:id/select-shipment-mode
+- POST /api/logistic/orders/:id/shipment-rfq
+
+Semua status update wajib melalui:
+
+transitionLogisticOrderStatus()
+
+Tidak boleh ada direct db.update status.
+
+4. Vendor Mini Form Product Mode
+
+Tambahkan mode:
+
+product_vendor
+
+Field wajib:
+
+- product_price
+- stock_status
+- available_qty
+- ready_date
+- pickup_location
+- warehouse_address
+- product_documents
+- notes
+
+Jangan rusak mode existing:
+- rate_collection
+- order_based
+- op_confirm
+
+5. Guard Utama
+
+Shipment RFQ tidak boleh dibuat jika:
+
+- product_vendor_id belum ada
+- customer_product_approved_at belum ada
+- product_ready_date belum ada
+- product_pickup_location belum ada
+
+Jika belum lengkap, return HTTP 422 dengan pesan field yang kurang.
+
+6. Test
+
+Buat backend-only test:
+
+Scenario A:
+Create product_first order
+→ Product RFQ Sent
+→ Product Quote Received
+→ Product Vendor Selected
+→ Customer Product Approval
+→ Shipment Selection Pending
+
+Scenario B:
+Shipment RFQ attempt sebelum product approved
+→ harus 422
+
+Scenario C:
+Legacy shipment order
+→ flow lama tetap PASS
+
+Output wajib:
+A. File yang diubah
+B. Migration yang dibuat
+C. Status baru
+D. Endpoint baru
+E. Backward compatibility test
+F. Direct status update audit
+G. Risk tersisa

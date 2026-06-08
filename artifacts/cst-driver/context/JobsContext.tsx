@@ -16,7 +16,7 @@ interface JobsContextType {
   pendingNewJob: Job | null;
   clearPendingNewJob: () => void;
   getJob: (id: string) => Job | undefined;
-  updateJobStatus: (id: string, status: ShipmentStatus, note?: string) => Promise<void>;
+  updateJobStatus: (id: string, status: ShipmentStatus, note?: string, geoLocation?: { lat: number; lng: number; deviceTimestamp?: string }) => Promise<void>;
   addJobPhoto: (id: string, uri: string, type?: string) => Promise<void>;
   submitPOD: (id: string, payload: PODPayload) => Promise<void>;
   rejectJob: (id: string) => Promise<void>;
@@ -187,9 +187,9 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
     };
   }, [isAuthenticated, token]);
 
-  async function updateJobStatus(id: string, status: ShipmentStatus, note?: string) {
+  async function updateJobStatus(id: string, status: ShipmentStatus, note?: string, geoLocation?: { lat: number; lng: number; deviceTimestamp?: string }) {
     if (!token) return;
-    const updated = await api.updateStatus(token, id, status, note);
+    const updated = await api.updateStatus(token, id, status, note, geoLocation);
     setJobs((prev) =>
       prev.map((j) => (j.id === id ? mergeJobUpdate(j, updated as Record<string, unknown>) : j))
     );

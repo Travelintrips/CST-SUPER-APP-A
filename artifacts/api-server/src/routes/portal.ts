@@ -1,7 +1,7 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 import { LOGISTICS_SUBCATEGORIES as LOGISTICS_SUBCATEGORIES_FALLBACK } from "@workspace/logistics-constants";
 import { rateLimit, ipKeyGenerator } from "express-rate-limit";
-import { db, productsTable, productCategoryMapTable, productCategoriesTable, portalCustomersTable, portalCustomerServicesTable, portalContentTable, accountingSettingsTable, salesDocumentsTable, salesDocumentLinesTable, customersTable, logisticOrdersTable, suppliersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, quoteRequestsTable, userProfilesTable, identityDocumentsTable, ocrResultsTable, vendorProfilesTable, driverProfilesTable, employeeProfilesTable, onboardingApprovalsTable, waOtpCodesTable, trustedDevicesTable, vendorMiniFormLinksTable, vendorMiniFormSubmissionsTable } from "@workspace/db";
+import { db, productsTable, productCategoryMapTable, productCategoriesTable, portalCustomersTable, portalCustomerServicesTable, portalContentTable, accountingSettingsTable, salesDocumentsTable, salesDocumentLinesTable, customersTable, logisticOrdersTable, suppliersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, quoteRequestsTable, userProfilesTable, identityDocumentsTable, ocrResultsTable, vendorProfilesTable, driverProfilesTable, employeeProfilesTable, onboardingApprovalsTable, waOtpCodesTable, trustedDevicesTable, vendorMiniFormLinksTable, vendorMiniFormSubmissionsTable, vendorCatalogItemsTable, portalProductOrdersTable, portalProductOrderItemsTable } from "@workspace/db";
 import { deleteFromSupabase } from "../lib/supabaseStorage.js";
 import { invalidateTokenCache, SERVICE_SCHEMAS } from "./vendorMiniForm";
 import { eq, inArray, and, ne, isNull, sql, desc, gte, lte, ilike, or } from "drizzle-orm";
@@ -113,6 +113,258 @@ router.get("/services", async (_req, res) => {
 router.get("/products", async (_req, res) => {
   res.setHeader("Cache-Control", "no-store");
   return res.json(await listByType("barang"));
+});
+
+// GET /api/portal/marketplace — public vendor catalog (published only, NO priceBase)
+router.get("/marketplace", async (req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  const { kind, category } = req.query as { kind?: string; category?: string };
+
+  const conditions: ReturnType<typeof eq>[] = [eq(vendorCatalogItemsTable.isPublished, true)];
+
+  if (kind === "product" || kind === "service") {
+    conditions.push(eq(vendorCatalogItemsTable.templateKind, kind));
+  }
+  if (category && category !== "all") {
+    // match categoryKey (products) OR serviceType (services)
+    conditions.push(
+      or(
+        eq(vendorCatalogItemsTable.categoryKey, category),
+        eq(vendorCatalogItemsTable.serviceType, category),
+      ) as ReturnType<typeof eq>,
+    );
+  }
+
+  const rows = await db
+    .select({
+      id: vendorCatalogItemsTable.id,
+      vendorId: vendorCatalogItemsTable.vendorId,
+      vendorName: vendorCatalogItemsTable.vendorName,
+      templateKind: vendorCatalogItemsTable.templateKind,
+      categoryKey: vendorCatalogItemsTable.categoryKey,
+      serviceType: vendorCatalogItemsTable.serviceType,
+      templateId: vendorCatalogItemsTable.templateId,
+      templateSnapshot: vendorCatalogItemsTable.templateSnapshot,
+      name: vendorCatalogItemsTable.name,
+      description: vendorCatalogItemsTable.description,
+      kategori: vendorCatalogItemsTable.kategori,
+      subcategory: vendorCatalogItemsTable.subcategory,
+      specValues: vendorCatalogItemsTable.specValues,
+      priceSell: vendorCatalogItemsTable.priceSell,
+      currency: vendorCatalogItemsTable.currency,
+      unit: vendorCatalogItemsTable.unit,
+      moq: vendorCatalogItemsTable.moq,
+      stockStatus: vendorCatalogItemsTable.stockStatus,
+      stockQty: vendorCatalogItemsTable.stockQty,
+      leadTime: vendorCatalogItemsTable.leadTime,
+      location: vendorCatalogItemsTable.location,
+      origin: vendorCatalogItemsTable.origin,
+      publishedAt: vendorCatalogItemsTable.publishedAt,
+      sortOrder: vendorCatalogItemsTable.sortOrder,
+    })
+    .from(vendorCatalogItemsTable)
+    .where(and(...conditions))
+    .orderBy(vendorCatalogItemsTable.sortOrder, desc(vendorCatalogItemsTable.publishedAt));
+
+  return res.json(
+    rows.map((r) => ({
+      ...r,
+      priceSell: r.priceSell !== null ? Number(r.priceSell) : null,
+    })),
+  );
+});
+
+// ── Marketplace helpers ───────────────────────────────────────────────────────
+function mkMarketplaceOrderNumber(): string {
+  const d = new Date();
+  const yy = String(d.getFullYear()).slice(-2);
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  const rand = Math.floor(Math.random() * 90000) + 10000;
+  return `MCT-${yy}${mm}${dd}-${rand}`;
+}
+
+// Shared select shape for catalog item (no priceBase)
+async function getCatalogItemPublic(id: number) {
+  const [row] = await db
+    .select({
+      id: vendorCatalogItemsTable.id,
+      vendorId: vendorCatalogItemsTable.vendorId,
+      vendorName: vendorCatalogItemsTable.vendorName,
+      templateKind: vendorCatalogItemsTable.templateKind,
+      categoryKey: vendorCatalogItemsTable.categoryKey,
+      serviceType: vendorCatalogItemsTable.serviceType,
+      templateId: vendorCatalogItemsTable.templateId,
+      templateVersion: vendorCatalogItemsTable.templateVersion,
+      templateSnapshot: vendorCatalogItemsTable.templateSnapshot,
+      name: vendorCatalogItemsTable.name,
+      description: vendorCatalogItemsTable.description,
+      kategori: vendorCatalogItemsTable.kategori,
+      subcategory: vendorCatalogItemsTable.subcategory,
+      specValues: vendorCatalogItemsTable.specValues,
+      priceSell: vendorCatalogItemsTable.priceSell,
+      currency: vendorCatalogItemsTable.currency,
+      unit: vendorCatalogItemsTable.unit,
+      moq: vendorCatalogItemsTable.moq,
+      stockStatus: vendorCatalogItemsTable.stockStatus,
+      stockQty: vendorCatalogItemsTable.stockQty,
+      leadTime: vendorCatalogItemsTable.leadTime,
+      validityDate: vendorCatalogItemsTable.validityDate,
+      location: vendorCatalogItemsTable.location,
+      origin: vendorCatalogItemsTable.origin,
+      documents: vendorCatalogItemsTable.documents,
+      publishedAt: vendorCatalogItemsTable.publishedAt,
+      isPublished: vendorCatalogItemsTable.isPublished,
+    })
+    .from(vendorCatalogItemsTable)
+    .where(and(eq(vendorCatalogItemsTable.id, id), eq(vendorCatalogItemsTable.isPublished, true)));
+  if (!row) return null;
+  return { ...row, priceSell: row.priceSell !== null ? Number(row.priceSell) : null };
+}
+
+// GET /api/portal/marketplace/:id — single published catalog item detail (NO priceBase)
+router.get("/marketplace/:id", async (req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: "id tidak valid" });
+  const item = await getCatalogItemPublic(id);
+  if (!item) return res.status(404).json({ error: "Item tidak ditemukan atau belum dipublikasikan" });
+  return res.json(item);
+});
+
+// POST /api/portal/marketplace/:id/quote — buat Quote Request dari catalog item
+router.post("/marketplace/:id/quote", async (req, res) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: "id tidak valid" });
+
+  const item = await getCatalogItemPublic(id);
+  if (!item) return res.status(404).json({ error: "Item tidak ditemukan" });
+
+  const { customerName, email, phone, qty = 1, unit, notes, includePpn = false } = req.body as {
+    customerName?: string; email?: string; phone?: string;
+    qty?: number; unit?: string; notes?: string; includePpn?: boolean;
+  };
+
+  if (!customerName?.trim()) return res.status(400).json({ error: "Nama customer wajib diisi" });
+  if (!phone?.trim())         return res.status(400).json({ error: "No. WhatsApp wajib diisi" });
+
+  const qtyNum   = Math.max(1, Number(qty) || 1);
+  const unitStr  = (unit?.trim() || item.unit || "unit");
+  const sellPrice = item.priceSell ?? 0;
+  const subtotal  = sellPrice * qtyNum;
+  const ppnRate   = includePpn ? 0.11 : 0;
+  const grandTotal = subtotal * (1 + ppnRate);
+
+  const orderNumber = mkMarketplaceOrderNumber();
+  const catalogSnapshot = {
+    catalogSource: "catalog" as const,
+    vendorCatalogItemId: item.id,
+    vendorId: item.vendorId,
+    vendorName: item.vendorName,
+    templateKind: item.templateKind,
+    templateId: item.templateId,
+    templateVersion: item.templateVersion,
+    specValues: item.specValues,
+    priceSell: item.priceSell,
+    currency: item.currency,
+    ...(item.templateSnapshot && typeof item.templateSnapshot === "object" ? item.templateSnapshot as object : {}),
+  };
+
+  const [order] = await db.insert(portalProductOrdersTable).values({
+    orderNumber,
+    customerName: customerName.trim(),
+    email: email?.trim() ?? "",
+    phone: phone.trim(),
+    shippingAddress: "TBD — Quote Request",
+    notes: notes?.trim() ?? null,
+    subtotal: String(subtotal),
+    grandTotal: String(grandTotal),
+    status: "Quote Request",
+    productCategory: item.categoryKey ?? item.serviceType ?? item.kategori ?? null,
+    templateId: item.templateId ?? null,
+    templateVersion: item.templateVersion ?? null,
+    customFieldValues: (item.specValues && typeof item.specValues === "object" ? item.specValues : {}) as Record<string, string | number | boolean>,
+    templateSnapshot: catalogSnapshot as Record<string, unknown>,
+  }).returning();
+
+  await db.insert(portalProductOrderItemsTable).values({
+    orderId: order.id,
+    productName: item.name,
+    unit: unitStr,
+    unitPrice: String(sellPrice),
+    qty: qtyNum,
+    subtotal: String(sellPrice * qtyNum),
+  });
+
+  return res.status(201).json({ orderNumber, id: order.id, status: "Quote Request" });
+});
+
+// POST /api/portal/marketplace/:id/order — buat Order Now dari catalog item
+router.post("/marketplace/:id/order", async (req, res) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: "id tidak valid" });
+
+  const item = await getCatalogItemPublic(id);
+  if (!item) return res.status(404).json({ error: "Item tidak ditemukan" });
+
+  const { customerName, email, phone, shippingAddress, qty = 1, unit, notes, includePpn = false } = req.body as {
+    customerName?: string; email?: string; phone?: string; shippingAddress?: string;
+    qty?: number; unit?: string; notes?: string; includePpn?: boolean;
+  };
+
+  if (!customerName?.trim())    return res.status(400).json({ error: "Nama customer wajib diisi" });
+  if (!phone?.trim())            return res.status(400).json({ error: "No. WhatsApp wajib diisi" });
+  if (!shippingAddress?.trim())  return res.status(400).json({ error: "Alamat pengiriman wajib diisi" });
+
+  const qtyNum    = Math.max(1, Number(qty) || 1);
+  const unitStr   = (unit?.trim() || item.unit || "unit");
+  const sellPrice = item.priceSell ?? 0;
+  const subtotal  = sellPrice * qtyNum;
+  const ppnRate   = includePpn ? 0.11 : 0;
+  const grandTotal = subtotal * (1 + ppnRate);
+
+  const orderNumber = mkMarketplaceOrderNumber();
+  const catalogSnapshot = {
+    catalogSource: "catalog" as const,
+    vendorCatalogItemId: item.id,
+    vendorId: item.vendorId,
+    vendorName: item.vendorName,
+    templateKind: item.templateKind,
+    templateId: item.templateId,
+    templateVersion: item.templateVersion,
+    specValues: item.specValues,
+    priceSell: item.priceSell,
+    currency: item.currency,
+    ...(item.templateSnapshot && typeof item.templateSnapshot === "object" ? item.templateSnapshot as object : {}),
+  };
+
+  const [order] = await db.insert(portalProductOrdersTable).values({
+    orderNumber,
+    customerName: customerName.trim(),
+    email: email?.trim() ?? "",
+    phone: phone.trim(),
+    shippingAddress: shippingAddress.trim(),
+    notes: notes?.trim() ?? null,
+    subtotal: String(subtotal),
+    grandTotal: String(grandTotal),
+    status: "New Order",
+    productCategory: item.categoryKey ?? item.serviceType ?? item.kategori ?? null,
+    templateId: item.templateId ?? null,
+    templateVersion: item.templateVersion ?? null,
+    customFieldValues: (item.specValues && typeof item.specValues === "object" ? item.specValues : {}) as Record<string, string | number | boolean>,
+    templateSnapshot: catalogSnapshot as Record<string, unknown>,
+  }).returning();
+
+  await db.insert(portalProductOrderItemsTable).values({
+    orderId: order.id,
+    productName: item.name,
+    unit: unitStr,
+    unitPrice: String(sellPrice),
+    qty: qtyNum,
+    subtotal: String(sellPrice * qtyNum),
+  });
+
+  return res.status(201).json({ orderNumber, id: order.id, status: "New Order" });
 });
 
 // ── Routes khusus untuk /logistic-admin (auth: portal admin JWT) ─────────────

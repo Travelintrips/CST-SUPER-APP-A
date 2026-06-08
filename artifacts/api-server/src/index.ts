@@ -58,6 +58,8 @@ import { runEnterpriseWorkflowMigration } from "./lib/enterpriseWorkflowTemplate
 import { runOrderProgressMigration } from "./lib/orderProgress.js";
 import { runExceptionEnumMigration, runOrderExceptionsMigration } from "./lib/services/exceptionService.js";
 import { runVendorCompanyAssignmentsMigration } from "./lib/vendorCompanyAssignmentsMigration.js";
+import { runVendorCatalogSchemaMigration } from "./lib/vendorCatalogSchemaMigration.js";
+import { runProductFirstFlowMigration } from "./lib/productFirstFlowMigration.js";
 import { runStep4TemplateMigration } from "./lib/step4TemplateMigration.js";
 import { runServiceTemplateMigration } from "./lib/serviceTemplateMigration.js";
 import { expireStaleApprovals } from "./lib/aiGovernance.js";
@@ -68,6 +70,9 @@ import { runSportCenterMigration, runSportCenterAccountCorrection } from "./modu
 import { startRecurringExpenseWorker } from "./modules/sport-center/recurringExpenseWorker.js";
 import { startMemberReminderWorker } from "./modules/sport-center/memberReminderWorker.js";
 import { startExpenseReminderWorker } from "./lib/expenseReminderWorker.js";
+import { startProductFirstReminderWorker } from "./lib/productFirstReminderWorker.js";
+import { startProductFirstExceptionWorker } from "./lib/productFirstExceptionWorker.js";
+import { startRekonsiliasiWorker } from "./lib/rekonsiliasiWorker.js";
 import { runCostCenterMigration } from "./lib/costCenterMigration.js";
 import { runDriverPodMigration, runDriverAssignmentMigration } from "./routes/driver.js";
 import { runProductVolumeCbmMigration } from "./routes/ecommerce.js";
@@ -475,7 +480,18 @@ async function runCriticalPreStartMigrations() {
   `);
 }
 
+// Flag set to true once the full migration + seed chain completes.
+// Exposed via GET /api/health/ready so tests and clients can poll before
+// triggering write operations that touch migrating tables.
+let migrationsComplete = false;
+
 async function startServer() {
+  // Health-ready endpoint — must be registered before server.listen so it is
+  // available as soon as the socket is open.
+  app.get("/api/health/ready", (_req, res) => {
+    res.json({ ready: migrationsComplete });
+  });
+
   // Listen on port FIRST so Replit's startup health-check passes immediately.
   // All migrations & seeds run in the background after the server is ready.
   const server = app.listen(port, (err?: Error) => {
@@ -520,6 +536,9 @@ async function startServer() {
   startRecurringExpenseWorker();
   startMemberReminderWorker();
   startExpenseReminderWorker();
+  startProductFirstReminderWorker();
+  startProductFirstExceptionWorker();
+  startRekonsiliasiWorker();
   startDbBackupScheduler();
   startWaRetryWorker();
 
@@ -561,6 +580,7 @@ async function startServer() {
     .then(() => runWithRetry("Admin notifications migration", runAdminNotificationsMigration))
     .then(() => runWithRetry("Nav preferences migration", runNavPreferencesMigration))
     .then(() => runWithRetry("Vendor mini form migration", runVendorMiniFormMigration))
+    .then(() => runWithRetry("Product-first flow migration", runProductFirstFlowMigration))
     .then(() => runWithRetry("Customer quote flow migration", runCustomerQuoteFlowMigration))
     .then(() => runWithRetry("Enterprise migration", runEnterpriseMigration))
     .then(() => runWithRetry("Short links migration", runShortLinksMigration))
@@ -589,6 +609,7 @@ async function startServer() {
     .then(() => runWithRetry("Driver POD migration", runDriverPodMigration))
     .then(() => runWithRetry("Driver assignment migration", runDriverAssignmentMigration))
     .then(() => runWithRetry("Vendor company assignments migration", runVendorCompanyAssignmentsMigration))
+    .then(() => runWithRetry("Vendor catalog schema migration", runVendorCatalogSchemaMigration))
     .then(() => enableRealtimeTables().catch((err) => {
       logger.warn({ err }, "Supabase Realtime table enable failed (non-fatal)");
     }))
@@ -614,6 +635,10 @@ async function startServer() {
           logger.error({ err: seedErr }, "Logistics/demo seed failed");
         })
     )
+    .then(() => {
+      migrationsComplete = true;
+      logger.info("All startup migrations complete — /api/health/ready → true");
+    })
     .catch((err) => {
       logger.error({ err }, "Startup migration/seed chain failed");
     });

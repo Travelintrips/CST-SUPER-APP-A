@@ -474,7 +474,8 @@ async function streamImportChat(
 
 // ─── Routes ────────────────────────────────────────────────────────────────────
 
-router.post("/chat", requireAdmin, async (req: Request, res: Response) => {
+router.post("/chat", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
   const { messages } = req.body as { messages?: OpenAI.Chat.ChatCompletionMessageParam[] };
 
   if (!Array.isArray(messages)) {

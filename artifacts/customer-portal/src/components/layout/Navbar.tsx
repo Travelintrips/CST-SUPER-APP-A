@@ -220,6 +220,11 @@ export function Navbar() {
               {t("nav.products")}
             </Link>
 
+            {/* Marketplace */}
+            <Link href="/marketplace" className={navItemCls(location === "/marketplace")}>
+              Marketplace
+            </Link>
+
             {/* Services Mega Menu */}
             <div className="relative" ref={servicesRef}>
               <button
@@ -474,6 +479,14 @@ export function Navbar() {
                 location === "/products" ? "bg-[rgba(14,165,233,0.10)] text-[#0284C7]" : "text-slate-600 hover:bg-slate-50"
               }`}>
                 {t("nav.products")}
+              </div>
+            </Link>
+
+            <Link href="/marketplace" onClick={() => setIsOpen(false)}>
+              <div className={`flex items-center px-3 py-2.5 rounded-[14px] text-[15px] font-semibold cursor-pointer ${
+                location === "/marketplace" ? "bg-[rgba(14,165,233,0.10)] text-[#0284C7]" : "text-slate-600 hover:bg-slate-50"
+              }`}>
+                Marketplace
               </div>
             </Link>
 

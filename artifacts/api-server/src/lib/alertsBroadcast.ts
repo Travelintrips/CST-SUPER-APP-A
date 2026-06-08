@@ -75,6 +75,28 @@ export function initAlertsBroadcast(server: Server): void {
   logger.info("Intelligence Alerts SSE ready at /api/alerts/stream");
 }
 
+// ── Broadcast query-invalidation hint to all SSE clients ──────────────────────
+/**
+ * Sends a lightweight `{ type: "invalidate", scope, entityId? }` event to
+ * every connected SSE client.  The BizPortal frontend maps each scope to the
+ * matching TanStack Query key(s) and calls invalidateQueries() automatically.
+ *
+ * Supported scopes: "rfq" | "logistic_orders" | "sales_documents" |
+ *   "freight_shipments" | "approvals" | "purchase_documents"
+ */
+export function broadcastInvalidation(scope: string, entityId?: number): void {
+  if (sseClients.size === 0) return;
+  const payload = `data: ${JSON.stringify({ type: "invalidate", scope, entityId })}\n\n`;
+  for (const client of sseClients) {
+    try {
+      client.res.write(payload);
+    } catch {
+      clearInterval(client.heartbeat);
+      sseClients.delete(client);
+    }
+  }
+}
+
 // ── Broadcast to all connected clients (WS + SSE) ─────────────────────────────
 export function broadcastNewAlert(alert: AlertBroadcastPayload): void {
   const payload = JSON.stringify({ type: "new_alert", alert });
