@@ -230,4 +230,230 @@ router.get("/summary", async (req, res) => {
   }
 });
 
+/**
+ * Sprint 10 — Executive Logistics Summary
+ * GET /api/executive/logistics-summary?from=&to=
+ *
+ * Returns logistics-specific KPIs for the executive dashboard:
+ * - Total orders, revenue, cost, margin, margin%
+ * - Top 5 routes by revenue + margin
+ * - Top 5 commodities by revenue + margin
+ * - Vendor grade distribution
+ * - MoM comparison (this period vs same period prior)
+ * - AI-derived insight bullets
+ */
+router.get("/logistics-summary", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  try {
+    const range = parseDateRange(req);
+    if (range.error) return res.status(400).json({ message: range.error });
+
+    const fromSql = range.from ? sql`AND lo.created_at >= ${range.from.toISOString()}` : sql``;
+    const toSql   = range.to   ? sql`AND lo.created_at <= ${range.to.toISOString()}`   : sql``;
+
+    const [kpiRes, routeRes, commodityRes, gradeRes, trendRes] = await Promise.all([
+      // ── KPI ─────────────────────────────────────────────────────────────────
+      db.execute<{
+        order_count: string; revenue: string; vendor_cost: string;
+        margin: string; margin_pct: string; avg_order_value: string;
+        completed: string; cancelled: string;
+      }>(sql`
+        SELECT
+          COUNT(lo.id)::text                                             AS order_count,
+          COALESCE(SUM(lo.final_price),  0)::text                       AS revenue,
+          COALESCE(SUM(lo.vendor_price), 0)::text                       AS vendor_cost,
+          COALESCE(SUM(lo.final_price - lo.vendor_price), 0)::text      AS margin,
+          ROUND(
+            CASE WHEN SUM(lo.final_price) > 0
+              THEN SUM(lo.final_price - lo.vendor_price) / SUM(lo.final_price) * 100
+              ELSE 0
+            END, 1
+          )::text                                                        AS margin_pct,
+          COALESCE(AVG(lo.final_price), 0)::text                        AS avg_order_value,
+          COUNT(*) FILTER (WHERE lo.status ILIKE '%completed%' OR lo.status ILIKE '%delivered%')::text AS completed,
+          COUNT(*) FILTER (WHERE lo.status ILIKE '%cancel%')::text      AS cancelled
+        FROM logistic_orders lo
+        WHERE lo.status NOT IN ('Cancelled','cancelled')
+          ${fromSql} ${toSql}
+      `),
+
+      // ── Top Routes ───────────────────────────────────────────────────────────
+      db.execute<{
+        origin: string; destination: string; order_count: string;
+        revenue: string; margin: string; margin_pct: string;
+      }>(sql`
+        SELECT
+          COALESCE(NULLIF(TRIM(lo.origin), ''), '?')        AS origin,
+          COALESCE(NULLIF(TRIM(lo.destination), ''), '?')   AS destination,
+          COUNT(lo.id)::text                                 AS order_count,
+          COALESCE(SUM(lo.final_price),  0)::text           AS revenue,
+          COALESCE(SUM(lo.final_price - lo.vendor_price), 0)::text AS margin,
+          ROUND(
+            CASE WHEN SUM(lo.final_price) > 0
+              THEN SUM(lo.final_price - lo.vendor_price) / SUM(lo.final_price) * 100
+              ELSE 0
+            END, 1
+          )::text                                            AS margin_pct
+        FROM logistic_orders lo
+        WHERE lo.status NOT IN ('Cancelled','cancelled')
+          AND NULLIF(TRIM(lo.origin), '') IS NOT NULL
+          AND NULLIF(TRIM(lo.destination), '') IS NOT NULL
+          ${fromSql} ${toSql}
+        GROUP BY lo.origin, lo.destination
+        ORDER BY SUM(lo.final_price) DESC NULLS LAST
+        LIMIT 5
+      `),
+
+      // ── Top Commodities ──────────────────────────────────────────────────────
+      db.execute<{
+        commodity: string; order_count: string; revenue: string;
+        margin: string; margin_pct: string;
+      }>(sql`
+        SELECT
+          COALESCE(NULLIF(TRIM(lo.commodity), ''), '(tidak diisi)')  AS commodity,
+          COUNT(lo.id)::text                                          AS order_count,
+          COALESCE(SUM(lo.final_price),  0)::text                    AS revenue,
+          COALESCE(SUM(lo.final_price - lo.vendor_price), 0)::text   AS margin,
+          ROUND(
+            CASE WHEN SUM(lo.final_price) > 0
+              THEN SUM(lo.final_price - lo.vendor_price) / SUM(lo.final_price) * 100
+              ELSE 0
+            END, 1
+          )::text                                                     AS margin_pct
+        FROM logistic_orders lo
+        WHERE lo.status NOT IN ('Cancelled','cancelled')
+          ${fromSql} ${toSql}
+        GROUP BY lo.commodity
+        ORDER BY SUM(lo.final_price) DESC NULLS LAST
+        LIMIT 5
+      `),
+
+      // ── Vendor Grade Distribution ────────────────────────────────────────────
+      db.execute<{ vendor_grade: string; cnt: string }>(sql`
+        SELECT COALESCE(vendor_grade, 'D') AS vendor_grade, COUNT(*)::text AS cnt
+        FROM vendor_performance
+        GROUP BY vendor_grade
+        ORDER BY vendor_grade
+      `),
+
+      // ── Monthly Trend (last 6 months) ────────────────────────────────────────
+      db.execute<{
+        month: string; order_count: string; revenue: string; margin: string;
+      }>(sql`
+        SELECT
+          TO_CHAR(DATE_TRUNC('month', lo.created_at), 'YYYY-MM') AS month,
+          COUNT(lo.id)::text                                       AS order_count,
+          COALESCE(SUM(lo.final_price), 0)::text                  AS revenue,
+          COALESCE(SUM(lo.final_price - lo.vendor_price), 0)::text AS margin
+        FROM logistic_orders lo
+        WHERE lo.status NOT IN ('Cancelled','cancelled')
+          AND lo.created_at >= NOW() - INTERVAL '6 months'
+        GROUP BY DATE_TRUNC('month', lo.created_at)
+        ORDER BY month ASC
+      `),
+    ]);
+
+    const kpi = kpiRes.rows[0];
+    const orderCount   = Number(kpi?.order_count   ?? 0);
+    const revenue      = Number(kpi?.revenue        ?? 0);
+    const vendorCost   = Number(kpi?.vendor_cost    ?? 0);
+    const margin       = Number(kpi?.margin         ?? 0);
+    const marginPct    = Number(kpi?.margin_pct     ?? 0);
+    const avgOrderVal  = Number(kpi?.avg_order_value ?? 0);
+    const completed    = Number(kpi?.completed       ?? 0);
+    const cancelled    = Number(kpi?.cancelled       ?? 0);
+    const completionRate = orderCount > 0 ? Math.round(completed / orderCount * 1000) / 10 : 0;
+    const cancelRate     = orderCount > 0 ? Math.round(cancelled / orderCount * 1000) / 10 : 0;
+
+    const topRoutes = routeRes.rows.map(r => ({
+      route:       `${r.origin} → ${r.destination}`,
+      origin:      r.origin,
+      destination: r.destination,
+      orderCount:  Number(r.order_count),
+      revenue:     Number(r.revenue),
+      margin:      Number(r.margin),
+      marginPct:   Number(r.margin_pct),
+    }));
+
+    const topCommodities = commodityRes.rows.map(r => ({
+      commodity:  r.commodity,
+      orderCount: Number(r.order_count),
+      revenue:    Number(r.revenue),
+      margin:     Number(r.margin),
+      marginPct:  Number(r.margin_pct),
+    }));
+
+    const gradeDistribution: Record<string, number> = {};
+    for (const r of gradeRes.rows) {
+      gradeDistribution[r.vendor_grade] = Number(r.cnt);
+    }
+
+    const trendData = trendRes.rows.map(r => ({
+      month:      r.month,
+      orderCount: Number(r.order_count),
+      revenue:    Number(r.revenue),
+      margin:     Number(r.margin),
+    }));
+
+    // AI-derived insight bullets (rule-based, no external LLM call)
+    const insights: string[] = [];
+    if (marginPct >= 20) {
+      insights.push(`Margin sehat ${marginPct.toFixed(1)}% — target di atas 15%.`);
+    } else if (marginPct > 0) {
+      insights.push(`Margin ${marginPct.toFixed(1)}% — perlu optimasi pricing atau vendor cost.`);
+    }
+    if (cancelRate > 10) {
+      insights.push(`Cancel rate ${cancelRate.toFixed(1)}% tinggi — investigasi akar masalah.`);
+    } else if (cancelRate > 0) {
+      insights.push(`Cancel rate terkendali di ${cancelRate.toFixed(1)}%.`);
+    }
+    if (topRoutes.length > 0) {
+      const best = topRoutes[0];
+      insights.push(`Rute terlaris: ${best.route} (${best.orderCount} order, margin ${best.marginPct.toFixed(1)}%).`);
+    }
+    if (topCommodities.length > 0) {
+      const best = topCommodities[0];
+      insights.push(`Komoditas dominan: ${best.commodity} (revenue terbesar, margin ${best.marginPct.toFixed(1)}%).`);
+    }
+    const gradeA = (gradeDistribution["A+"] ?? 0) + (gradeDistribution["A"] ?? 0);
+    const gradeTotal = Object.values(gradeDistribution).reduce((s, v) => s + v, 0);
+    if (gradeTotal > 0) {
+      const gradeAPct = Math.round(gradeA / gradeTotal * 100);
+      if (gradeAPct >= 50) {
+        insights.push(`${gradeAPct}% vendor termasuk grade A/A+ — kualitas vendor baik.`);
+      } else {
+        insights.push(`Hanya ${gradeAPct}% vendor grade A/A+ — pertimbangkan seleksi vendor.`);
+      }
+    }
+    if (trendData.length >= 2) {
+      const last  = trendData[trendData.length - 1];
+      const prev  = trendData[trendData.length - 2];
+      if (prev.revenue > 0) {
+        const growthPct = (last.revenue - prev.revenue) / prev.revenue * 100;
+        if (growthPct > 0) {
+          insights.push(`Revenue bulan ini tumbuh ${growthPct.toFixed(1)}% vs bulan lalu.`);
+        } else {
+          insights.push(`Revenue bulan ini turun ${Math.abs(growthPct).toFixed(1)}% vs bulan lalu — perlu perhatian.`);
+        }
+      }
+    }
+
+    return res.json({
+      kpi: {
+        orderCount, revenue, vendorCost, margin, marginPct,
+        avgOrderValue: avgOrderVal, completionRate, cancelRate,
+        completed, cancelled,
+      },
+      topRoutes,
+      topCommodities,
+      gradeDistribution,
+      trendData,
+      insights,
+    });
+  } catch (err) {
+    console.error("[executive/logistics-summary]", err);
+    return res.status(500).json({ message: "Gagal memuat logistics summary" });
+  }
+});
+
 export default router;
