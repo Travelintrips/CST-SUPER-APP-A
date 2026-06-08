@@ -82,7 +82,7 @@ outputType = "console"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "BIZPORTAL_PORT=6800 bash artifacts/bizportal/start-dev.sh"
-waitForPort = 6800
+waitForPort = 3000
 
 [[workflows.workflow]]
 name = "Customer Portal"
@@ -223,3 +223,11 @@ externalPort = 5173
 [[ports]]
 localPort = 23435
 externalPort = 8081
+
+[[ports]]
+localPort = 6000
+externalPort = 6000
+
+[[ports]]
+localPort = 8080
+externalPort = 8080
