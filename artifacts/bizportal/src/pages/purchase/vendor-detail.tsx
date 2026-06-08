@@ -179,13 +179,30 @@ export default function VendorDetailPage() {
         credentials: "include",
         body: JSON.stringify({ status }),
       });
-      if (!r.ok) throw new Error("Gagal mengubah status");
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({}));
+        throw new Error(data.message ?? "Gagal mengubah status");
+      }
       return r.json();
     },
-    onSuccess: () => {
+    onSuccess: (data, { itemId, status }) => {
+      queryClient.setQueryData(
+        getListVendorCatalogQueryKey(vendorId),
+        (old: any[] | undefined) =>
+          old?.map((item) =>
+            item.id === itemId
+              ? { ...item, status, isPublished: status === "published", publishedAt: data.publishedAt ?? null }
+              : item
+          ) ?? old,
+      );
       queryClient.invalidateQueries({ queryKey: getListVendorCatalogQueryKey(vendorId) });
+      if (status === "published") {
+        toast({ title: "✅ Item dipublikasikan ke Marketplace" });
+      } else {
+        toast({ title: "Item diturunkan dari Marketplace" });
+      }
     },
-    onError: () => toast({ variant: "destructive", title: "Gagal mengubah status publikasi" }),
+    onError: (err: any) => toast({ variant: "destructive", title: "Gagal mengubah status publikasi", description: err?.message }),
   });
 
   const featuredMutation = useMutation({
