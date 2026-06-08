@@ -426,6 +426,52 @@ export default function VendorMiniFormPage() {
   const [submitted, setSubmitted] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
+  type MediaAssetItem = { role: string; objectPath: string; filename: string; mimeType: string; size: number; localPreview?: string };
+  const [mediaAssets, setMediaAssets] = useState<MediaAssetItem[]>([]);
+  const [mediaUploadingRoles, setMediaUploadingRoles] = useState<Set<string>>(new Set());
+  const [mediaErrors, setMediaErrors] = useState<Record<string, string>>({});
+
+  const handleMediaUpload = async (role: string, file: File) => {
+    setMediaUploadingRoles(prev => new Set(prev).add(role));
+    setMediaErrors(prev => { const n = { ...prev }; delete n[role]; return n; });
+    const localPreview = file.type.startsWith("image/") ? URL.createObjectURL(file) : undefined;
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("role", role);
+      const res = await fetch(`/api/vendor-form/upload-media/${token}`, { method: "POST", body: fd });
+      const data = await res.json() as { objectPath?: string; filename?: string; mimeType?: string; size?: number; role?: string; error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Upload gagal");
+      const item: MediaAssetItem = {
+        role,
+        objectPath: data.objectPath!,
+        filename: data.filename ?? file.name,
+        mimeType: data.mimeType ?? file.type,
+        size: data.size ?? file.size,
+        localPreview,
+      };
+      setMediaAssets(prev => {
+        const isSingle = ["cover", "video", "brochure"].includes(role);
+        return isSingle
+          ? [...prev.filter(m => m.role !== role), item]
+          : [...prev, item];
+      });
+    } catch (err) {
+      if (localPreview) URL.revokeObjectURL(localPreview);
+      setMediaErrors(prev => ({ ...prev, [role]: (err as Error).message }));
+    } finally {
+      setMediaUploadingRoles(prev => { const n = new Set(prev); n.delete(role); return n; });
+    }
+  };
+
+  const handleMediaRemove = (objectPath: string) => {
+    setMediaAssets(prev => {
+      const item = prev.find(m => m.objectPath === objectPath);
+      if (item?.localPreview) URL.revokeObjectURL(item.localPreview);
+      return prev.filter(m => m.objectPath !== objectPath);
+    });
+  };
+
   useEffect(() => {
     if (!token) { setError("Token tidak ditemukan"); setLoading(false); return; }
     const ctrl = new AbortController();
@@ -537,6 +583,9 @@ export default function VendorMiniFormPage() {
           } : {}),
         },
         attachmentUrl,
+        mediaAssets: mediaAssets.length > 0
+          ? mediaAssets.map(({ role, objectPath, filename, mimeType, size }) => ({ role, objectPath, filename, mimeType, size }))
+          : undefined,
       };
       if (meta.mode === "order_based") {
         body["vendorPrice"] = subtotal > 0 ? subtotal : undefined;
@@ -1087,6 +1136,176 @@ export default function VendorMiniFormPage() {
                 className="mt-2 text-xs text-red-500 hover:text-red-700">
                 ✕ Hapus lampiran
               </button>
+            )}
+          </div>
+
+          {/* ── Media Produk/Jasa ──────────────────────────────────────── */}
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+            <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">📷 Media Produk/Jasa</h2>
+            <p className="text-xs text-slate-500 mb-5">Opsional — unggah foto, video, atau brosur untuk memperkuat penawaran Anda.</p>
+
+            {/* Cover Image */}
+            {(() => {
+              const items = mediaAssets.filter(m => m.role === "cover");
+              const busy = mediaUploadingRoles.has("cover");
+              const err = mediaErrors["cover"];
+              return (
+                <div className="mb-5">
+                  <p className="text-sm font-medium text-slate-700 mb-1">🖼️ Cover Image <span className="text-slate-400 font-normal text-xs">(1 foto, maks. 10 MB)</span></p>
+                  {items.length === 0 ? (
+                    <label className={`flex items-center gap-3 cursor-pointer w-fit ${busy ? "pointer-events-none opacity-60" : ""}`}>
+                      <span className="inline-flex items-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 hover:bg-slate-100 px-4 py-2.5 text-sm text-slate-600 transition-colors">
+                        {busy ? <span className="h-4 w-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin inline-block" /> : "📤"} {busy ? "Mengupload..." : "Pilih Foto Cover"}
+                      </span>
+                      <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" disabled={busy}
+                        onChange={e => { const f = e.target.files?.[0]; if (f) handleMediaUpload("cover", f); e.target.value = ""; }} />
+                    </label>
+                  ) : (
+                    <div className="flex items-center gap-3">
+                      <div className="relative">
+                        <img src={items[0].localPreview ?? ""} alt="cover" className="w-20 h-20 object-cover rounded-lg border border-slate-200 shadow-sm" />
+                        <button type="button" onClick={() => handleMediaRemove(items[0].objectPath)}
+                          className="absolute -top-2 -right-2 h-5 w-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center shadow hover:bg-red-600">✕</button>
+                      </div>
+                      <div>
+                        <p className="text-sm text-slate-700 font-medium truncate max-w-[160px]">{items[0].filename}</p>
+                        <p className="text-xs text-green-600 mt-0.5">✓ Terupload</p>
+                      </div>
+                    </div>
+                  )}
+                  {err && <p className="text-xs text-red-500 mt-1">{err}</p>}
+                </div>
+              );
+            })()}
+
+            {/* Gallery */}
+            {(() => {
+              const items = mediaAssets.filter(m => m.role === "gallery");
+              const busy = mediaUploadingRoles.has("gallery");
+              const err = mediaErrors["gallery"];
+              return (
+                <div className="mb-5">
+                  <p className="text-sm font-medium text-slate-700 mb-1">🖼️ Gallery Foto <span className="text-slate-400 font-normal text-xs">(beberapa foto, maks. 10 MB/file)</span></p>
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {items.map(item => (
+                      <div key={item.objectPath} className="relative">
+                        <img src={item.localPreview ?? ""} alt={item.filename} className="w-16 h-16 object-cover rounded-lg border border-slate-200 shadow-sm" />
+                        <button type="button" onClick={() => handleMediaRemove(item.objectPath)}
+                          className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center shadow hover:bg-red-600">✕</button>
+                      </div>
+                    ))}
+                    <label className={`cursor-pointer flex items-center justify-center w-16 h-16 rounded-lg border border-dashed border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-400 text-xl transition-colors ${busy ? "pointer-events-none opacity-60" : ""}`}>
+                      {busy ? <span className="h-4 w-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" /> : "+"}
+                      <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" disabled={busy} multiple
+                        onChange={e => { Array.from(e.target.files ?? []).forEach(f => handleMediaUpload("gallery", f)); e.target.value = ""; }} />
+                    </label>
+                  </div>
+                  {err && <p className="text-xs text-red-500">{err}</p>}
+                </div>
+              );
+            })()}
+
+            {/* Video */}
+            {(() => {
+              const items = mediaAssets.filter(m => m.role === "video");
+              const busy = mediaUploadingRoles.has("video");
+              const err = mediaErrors["video"];
+              return (
+                <div className="mb-5">
+                  <p className="text-sm font-medium text-slate-700 mb-1">🎬 Video Profil <span className="text-slate-400 font-normal text-xs">(1 video MP4/MOV/WebM, maks. 50 MB)</span></p>
+                  {items.length === 0 ? (
+                    <label className={`flex items-center gap-3 cursor-pointer w-fit ${busy ? "pointer-events-none opacity-60" : ""}`}>
+                      <span className="inline-flex items-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 hover:bg-slate-100 px-4 py-2.5 text-sm text-slate-600 transition-colors">
+                        {busy ? <span className="h-4 w-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin inline-block" /> : "🎥"} {busy ? "Mengupload..." : "Pilih Video"}
+                      </span>
+                      <input type="file" accept="video/mp4,video/quicktime,video/webm,video/x-msvideo" className="hidden" disabled={busy}
+                        onChange={e => { const f = e.target.files?.[0]; if (f) handleMediaUpload("video", f); e.target.value = ""; }} />
+                    </label>
+                  ) : (
+                    <div className="flex items-center gap-3 bg-slate-50 rounded-lg px-3 py-2 border border-slate-200 w-fit">
+                      <span className="text-xl">🎬</span>
+                      <div className="min-w-0">
+                        <p className="text-sm text-slate-700 font-medium truncate max-w-[200px]">{items[0].filename}</p>
+                        <p className="text-xs text-green-600">✓ Terupload · {(items[0].size / 1024 / 1024).toFixed(1)} MB</p>
+                      </div>
+                      <button type="button" onClick={() => handleMediaRemove(items[0].objectPath)}
+                        className="text-red-400 hover:text-red-600 ml-2 text-xs">✕ Hapus</button>
+                    </div>
+                  )}
+                  {err && <p className="text-xs text-red-500 mt-1">{err}</p>}
+                </div>
+              );
+            })()}
+
+            {/* Brochure PDF */}
+            {(() => {
+              const items = mediaAssets.filter(m => m.role === "brochure");
+              const busy = mediaUploadingRoles.has("brochure");
+              const err = mediaErrors["brochure"];
+              return (
+                <div className="mb-5">
+                  <p className="text-sm font-medium text-slate-700 mb-1">📄 Brosur / Katalog PDF <span className="text-slate-400 font-normal text-xs">(1 PDF, maks. 10 MB)</span></p>
+                  {items.length === 0 ? (
+                    <label className={`flex items-center gap-3 cursor-pointer w-fit ${busy ? "pointer-events-none opacity-60" : ""}`}>
+                      <span className="inline-flex items-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 hover:bg-slate-100 px-4 py-2.5 text-sm text-slate-600 transition-colors">
+                        {busy ? <span className="h-4 w-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin inline-block" /> : "📁"} {busy ? "Mengupload..." : "Pilih PDF"}
+                      </span>
+                      <input type="file" accept="application/pdf" className="hidden" disabled={busy}
+                        onChange={e => { const f = e.target.files?.[0]; if (f) handleMediaUpload("brochure", f); e.target.value = ""; }} />
+                    </label>
+                  ) : (
+                    <div className="flex items-center gap-3 bg-red-50 rounded-lg px-3 py-2 border border-red-100 w-fit">
+                      <span className="text-xl">📄</span>
+                      <div className="min-w-0">
+                        <p className="text-sm text-slate-700 font-medium truncate max-w-[200px]">{items[0].filename}</p>
+                        <p className="text-xs text-green-600">✓ Terupload</p>
+                      </div>
+                      <button type="button" onClick={() => handleMediaRemove(items[0].objectPath)}
+                        className="text-red-400 hover:text-red-600 ml-2 text-xs">✕ Hapus</button>
+                    </div>
+                  )}
+                  {err && <p className="text-xs text-red-500 mt-1">{err}</p>}
+                </div>
+              );
+            })()}
+
+            {/* Certificates */}
+            {(() => {
+              const items = mediaAssets.filter(m => m.role === "certificate");
+              const busy = mediaUploadingRoles.has("certificate");
+              const err = mediaErrors["certificate"];
+              return (
+                <div>
+                  <p className="text-sm font-medium text-slate-700 mb-1">🏆 Sertifikat / Dokumen Pendukung <span className="text-slate-400 font-normal text-xs">(PDF atau foto, maks. 10 MB/file)</span></p>
+                  {items.length > 0 && (
+                    <div className="space-y-1.5 mb-2">
+                      {items.map(item => (
+                        <div key={item.objectPath} className="flex items-center gap-2 bg-slate-50 rounded-lg px-3 py-1.5 border border-slate-200">
+                          <span>{item.mimeType === "application/pdf" ? "📄" : "🖼️"}</span>
+                          <span className="text-sm text-slate-700 truncate max-w-[200px] flex-1">{item.filename}</span>
+                          <span className="text-xs text-green-600">✓</span>
+                          <button type="button" onClick={() => handleMediaRemove(item.objectPath)}
+                            className="text-red-400 hover:text-red-600 text-xs">✕</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <label className={`flex items-center gap-3 cursor-pointer w-fit ${busy ? "pointer-events-none opacity-60" : ""}`}>
+                    <span className="inline-flex items-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 hover:bg-slate-100 px-4 py-2.5 text-sm text-slate-600 transition-colors">
+                      {busy ? <span className="h-4 w-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin inline-block" /> : "➕"} {busy ? "Mengupload..." : "Tambah Sertifikat"}
+                    </span>
+                    <input type="file" accept="application/pdf,image/jpeg,image/png,image/webp" className="hidden" disabled={busy} multiple
+                      onChange={e => { Array.from(e.target.files ?? []).forEach(f => handleMediaUpload("certificate", f)); e.target.value = ""; }} />
+                  </label>
+                  {err && <p className="text-xs text-red-500 mt-1">{err}</p>}
+                </div>
+              );
+            })()}
+
+            {mediaAssets.length > 0 && (
+              <p className="text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2 mt-4">
+                ✓ {mediaAssets.length} file media siap dikirim bersama penawaran
+              </p>
             )}
           </div>
 

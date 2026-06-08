@@ -2,6 +2,8 @@ import { Router } from "express";
 import multer from "multer";
 import { db, productMediaTable, vendorCatalogItemsTable, suppliersTable } from "@workspace/db";
 import { eq, and, asc, inArray, isNull, ne } from "drizzle-orm";
+import { db, productMediaTable, vendorCatalogItemsTable } from "@workspace/db";
+import { eq, and, asc, desc, isNull, sql } from "drizzle-orm";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { uploadToSupabase, deleteFromSupabase } from "../lib/supabaseStorage.js";
 import { compressImageBuffer, isCompressibleImage } from "../lib/imageCompress.js";
@@ -11,6 +13,11 @@ import {
   generateImagesForItem,
   type CatalogItemData,
 } from "../lib/aiImageGenerator.js";
+import {
+  validateVideo,
+  optimizeAndUploadVideo,
+  VIDEO_MAX_BYTES,
+} from "../lib/videoOptimizer.js";
 
 const router = Router();
 
@@ -20,6 +27,7 @@ const IMAGE_MAX = 5 * 1024 * 1024;
 const VIDEO_MAX = 50 * 1024 * 1024;
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: VIDEO_MAX } });
+const uploadVideo = multer({ storage: multer.memoryStorage(), limits: { fileSize: VIDEO_MAX_BYTES } });
 
 function actor(req: any) {
   const u = req.user as { email?: string; role?: string } | undefined;
@@ -219,6 +227,153 @@ router.post("/upload", upload.single("file"), async (req, res): Promise<void> =>
     res.status(201).json({ media: inserted });
   } catch (e: any) { res.status(500).json({ error: e?.message }); }
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/product-media/upload-video
+//
+// Video Optimization Engine Pipeline:
+//   validate → compress (H.264 CRF28) → thumbnail → upload → REPORT
+//
+// Allowed:  mp4, mov
+// Max:      100 MB
+// Generates: thumbnailUrl (640×360 JPEG)
+// Stores:   videoUrl, thumbnailUrl, duration, fileSizeBytes
+// ─────────────────────────────────────────────────────────────────────────────
+router.post(
+  "/upload-video",
+  (req: any, res: any, next: any) =>
+    (uploadVideo.single("file") as any)(req, res, (err: any) => {
+      if (err?.code === "LIMIT_FILE_SIZE") {
+        return res.status(413).json({ error: "Ukuran video melebihi batas 100 MB." });
+      }
+      next(err);
+    }),
+  async (req: any, res: any): Promise<void> => {
+    if (!(await requireClerkUser(req, res))) return;
+    if (!req.file) { res.status(400).json({ error: "Tidak ada file yang diunggah." }); return; }
+
+    const validation = validateVideo(req.file.buffer, req.file.mimetype, req.file.originalname);
+    if (!validation.ok) {
+      res.status(validation.status ?? 400).json({ error: validation.errorMessage }); return;
+    }
+
+    const vendorCatalogItemId = req.body.vendorCatalogItemId
+      ? parseInt(req.body.vendorCatalogItemId) : null;
+    const vendorId = req.body.vendorId ? parseInt(req.body.vendorId) : null;
+    const isPrimary = req.body.isPrimary === "true";
+    const imageSource = req.body.imageSource === "vendor" ? "vendor" : "admin";
+
+    if (!vendorCatalogItemId) {
+      res.status(400).json({ error: "vendorCatalogItemId wajib diisi." }); return;
+    }
+
+    const pipelineStart = Date.now();
+
+    try {
+      // Run full optimization pipeline
+      const report = await optimizeAndUploadVideo(
+        req.file.buffer,
+        req.file.mimetype,
+        "product-media/videos",
+      );
+
+      // If setting as primary, unset others first
+      if (isPrimary) {
+        await db
+          .update(productMediaTable)
+          .set({ isPrimary: false, updatedAt: new Date() })
+          .where(
+            and(
+              eq(productMediaTable.vendorCatalogItemId, vendorCatalogItemId),
+              eq(productMediaTable.isPrimary, true),
+            ),
+          );
+      }
+
+      const a = actor(req);
+      const [inserted] = await db
+        .insert(productMediaTable)
+        .values({
+          vendorCatalogItemId,
+          vendorId,
+          mediaType: "video",
+          fileUrl: report.videoUrl,
+          thumbnailUrl: report.thumbnailUrl,
+          storagePath: report.videoStoragePath,
+          isPrimary,
+          isActive: true,
+          uploadedBy: a.email,
+          uploadedByRole: a.role,
+          sortOrder: 0,
+          imageSource,
+          aiImageStatus: null,
+          duration: Math.round(report.compressed.durationSec),
+          fileSizeBytes: report.compressed.fileSizeBytes,
+        } as any)
+        .returning();
+
+      const totalMs = Date.now() - pipelineStart;
+
+      // ── VIDEO OPTIMIZATION REPORT ─────────────────────────────────────────
+      res.status(201).json({
+        ok: true,
+        media: inserted,
+        report: {
+          title: "VIDEO OPTIMIZATION REPORT",
+          generatedAt: new Date().toISOString(),
+          pipeline: ["validate", "probe", "compress", "thumbnail", "upload"],
+
+          input: {
+            originalName: req.file.originalname,
+            mimeType: report.original.mime,
+            extension: report.original.ext,
+            fileSizeBytes: report.original.fileSizeBytes,
+            fileSizeMb: +(report.original.fileSizeBytes / 1024 / 1024).toFixed(2),
+          },
+
+          video: {
+            url: report.videoUrl,
+            storagePath: report.videoStoragePath,
+            fileSizeBytes: report.compressed.fileSizeBytes,
+            fileSizeMb: +(report.compressed.fileSizeBytes / 1024 / 1024).toFixed(2),
+            durationSec: report.compressed.durationSec,
+            width: report.compressed.width,
+            height: report.compressed.height,
+            codec: report.compressed.codec,
+            bitrateKbps: report.compressed.bitrateKbps,
+          },
+
+          thumbnail: {
+            url: report.thumbnailUrl,
+            storagePath: report.thumbnailStoragePath,
+            fileSizeBytes: report.thumbnail.fileSizeBytes,
+            timestampSec: report.thumbnail.timestampSec,
+            width: report.thumbnail.width,
+            height: report.thumbnail.height,
+            format: "JPEG",
+          },
+
+          optimization: {
+            originalSizeBytes: report.original.fileSizeBytes,
+            compressedSizeBytes: report.compressed.fileSizeBytes,
+            savedBytes: report.compressed.savedBytes,
+            savedMb: +(report.compressed.savedBytes / 1024 / 1024).toFixed(2),
+            compressionRatioPct: report.compressed.compressionRatioPct,
+            status: report.compressed.compressionRatioPct > 0 ? "compressed" : "already_optimal",
+          },
+
+          timing: {
+            ...report.timingMs,
+            totalMs,
+          },
+        },
+      });
+    } catch (e: any) {
+      console.error("[product-media/upload-video] Error:", e?.message ?? e);
+      res.status(500).json({ error: e?.message ?? "Video upload gagal" });
+    }
+  },
+);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/product-media/link
