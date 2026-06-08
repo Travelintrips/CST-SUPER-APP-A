@@ -6,7 +6,9 @@ import {
   ChevronDown, Ship, FileCheck, Truck,
   Search, Calculator, ChevronRight, MapPin, Phone, Info,
   ImagePlus, Loader2, ClipboardList,
+  Package, Wind, Globe, FileText, Factory, Coffee, Flame,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { isAuthenticated, removeAuthToken, isPortalAdmin } from "@/lib/auth";
 import { useGetPortalCompany } from "@workspace/api-client-react";
 import { CART_KEY } from "@/lib/logistic-cart";
@@ -22,15 +24,112 @@ const SERVICES_ITEMS = [
   { icon: Search,    titleKey: "servicesMenu.tracking.title",  descKey: "servicesMenu.tracking.desc",  href: "/track" },
 ];
 
-const SEARCH_SUGGESTIONS = [
-  { label: "Freight Shipment", href: "/marketplace?type=service&category=sea_freight" },
-  { label: "Customs / PPJK", href: "/marketplace?type=service&category=ppjk" },
-  { label: "Trucking Domestik", href: "/marketplace?type=service&category=trucking" },
-  { label: "Air Freight", href: "/marketplace?type=service&category=air_freight" },
-  { label: "Lacak Pesanan", href: "/track" },
-  { label: "Kalkulator Biaya", href: "/calculator" },
-  { label: "Marketplace Produk", href: "/marketplace?type=product" },
-  { label: "Semua Layanan Jasa", href: "/marketplace?type=service" },
+type AutocompleteEntry = {
+  icon: LucideIcon;
+  label: string;
+  description: string;
+  kind: "Layanan" | "Produk";
+  href: string;
+  terms: string[];
+};
+
+const AUTOCOMPLETE_MAP: AutocompleteEntry[] = [
+  // ── Jasa / Services ───────────────────────────────────────────────────────
+  {
+    icon: Truck, label: "Trucking Domestik",
+    description: "Angkutan darat dalam kota & antar kota",
+    kind: "Layanan", terms: ["truck", "truk", "angkut", "darat", "trucking"],
+    href: "/marketplace?type=service&category=trucking&q=trucking",
+  },
+  {
+    icon: Ship, label: "Sea Freight",
+    description: "Pengiriman laut internasional FCL / LCL",
+    kind: "Layanan", terms: ["sea", "freight", "fcl", "lcl", "kapal", "laut", "forwarding", "ekspedisi"],
+    href: "/marketplace?type=service&category=sea_freight&q=sea+freight",
+  },
+  {
+    icon: Wind, label: "Air Freight",
+    description: "Pengiriman udara cepat domestik & internasional",
+    kind: "Layanan", terms: ["air", "udara", "pesawat", "fly"],
+    href: "/marketplace?type=service&category=air_freight&q=air+freight",
+  },
+  {
+    icon: FileCheck, label: "PPJK / Customs Clearance",
+    description: "Pengurusan kepabeanan, bea cukai & dokumen",
+    kind: "Layanan", terms: ["ppjk", "custom", "kepabeanan", "bea", "cukai", "pabean", "customs"],
+    href: "/marketplace?type=service&category=ppjk&q=ppjk",
+  },
+  {
+    icon: Factory, label: "Cargo Handling",
+    description: "Bongkar muat & penanganan kargo di gudang",
+    kind: "Layanan", terms: ["handling", "bongkar", "muat", "gudang", "cargo"],
+    href: "/marketplace?type=service&category=handling&q=handling",
+  },
+  {
+    icon: FileText, label: "Pengurusan Dokumen",
+    description: "Perizinan, surat jalan & dokumen ekspor-impor",
+    kind: "Layanan", terms: ["dokumen", "document", "surat", "perizinan", "lisensi"],
+    href: "/marketplace?type=service&category=document&q=dokumen",
+  },
+  {
+    icon: Globe, label: "Exim Service",
+    description: "Layanan ekspor & impor terintegrasi",
+    kind: "Layanan", terms: ["exim", "ekspor", "impor", "export", "import"],
+    href: "/marketplace?type=service&category=exim_service&q=exim",
+  },
+  // ── Produk ────────────────────────────────────────────────────────────────
+  {
+    icon: Coffee, label: "Kopi / Coffee",
+    description: "Arabica, Robusta, biji & olahan",
+    kind: "Produk", terms: ["kopi", "coffee", "arabica", "robusta"],
+    href: "/marketplace?type=product&category=coffee&q=kopi",
+  },
+  {
+    icon: Flame, label: "Batubara",
+    description: "Batubara thermal & coking berbagai kalori",
+    kind: "Produk", terms: ["batubara", "coal", "batu bara"],
+    href: "/marketplace?type=product&category=coal&q=batubara",
+  },
+  {
+    icon: Package, label: "Minyak Sawit / CPO",
+    description: "Crude Palm Oil & turunannya",
+    kind: "Produk", terms: ["sawit", "palm", "cpo", "minyak sawit"],
+    href: "/marketplace?type=product&category=palm_oil&q=sawit",
+  },
+  {
+    icon: Package, label: "Nikel",
+    description: "Ore nikel & produk olahan",
+    kind: "Produk", terms: ["nikel", "nickel", "ore"],
+    href: "/marketplace?type=product&category=nickel&q=nikel",
+  },
+  {
+    icon: Package, label: "Beras",
+    description: "Beras premium & medium berbagai varietas",
+    kind: "Produk", terms: ["beras", "rice", "gabah"],
+    href: "/marketplace?type=product&category=rice&q=beras",
+  },
+  {
+    icon: Package, label: "Seafood",
+    description: "Ikan, udang, cumi & produk laut segar/beku",
+    kind: "Produk", terms: ["seafood", "ikan", "udang", "cumi", "fish"],
+    href: "/marketplace?type=product&category=seafood&q=seafood",
+  },
+  {
+    icon: Package, label: "Besi & Baja",
+    description: "Besi beton, plat baja & profil baja",
+    kind: "Produk", terms: ["besi", "baja", "iron", "steel", "beton"],
+    href: "/marketplace?type=product&category=iron_steel&q=besi",
+  },
+];
+
+// Default popular suggestions shown before user types
+const DEFAULT_SUGGESTIONS: AutocompleteEntry[] = [
+  AUTOCOMPLETE_MAP.find(e => e.label === "Trucking Domestik")!,
+  AUTOCOMPLETE_MAP.find(e => e.label === "Sea Freight")!,
+  AUTOCOMPLETE_MAP.find(e => e.label === "PPJK / Customs Clearance")!,
+  AUTOCOMPLETE_MAP.find(e => e.label === "Kopi / Coffee")!,
+  AUTOCOMPLETE_MAP.find(e => e.label === "Batubara")!,
+  AUTOCOMPLETE_MAP.find(e => e.label === "Minyak Sawit / CPO")!,
 ];
 
 const NAV_BASE: React.CSSProperties = {
@@ -193,11 +292,18 @@ export function Navbar() {
     setLocation(href);
   }
 
-  const filteredSuggestions = searchQuery.trim()
-    ? SEARCH_SUGGESTIONS.filter(s =>
-        s.label.toLowerCase().includes(searchQuery.toLowerCase())
-      )
-    : SEARCH_SUGGESTIONS;
+  // Smart autocomplete: ≥2 chars → filter by label+terms, else show defaults
+  const autocompleteSuggestions: AutocompleteEntry[] = (() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (q.length < 2) return DEFAULT_SUGGESTIONS;
+    const results = AUTOCOMPLETE_MAP.filter(
+      (e) =>
+        e.label.toLowerCase().includes(q) ||
+        e.description.toLowerCase().includes(q) ||
+        e.terms.some((t) => t.includes(q) || q.includes(t)),
+    );
+    return results.length > 0 ? results : [];
+  })();
 
   const isServicesActive =
     location.startsWith("/jasa") ||
@@ -431,27 +537,71 @@ export function Navbar() {
                     </button>
                   </div>
 
-                  {/* Suggestions dropdown */}
-                  {searchFocused && filteredSuggestions.length > 0 && (
+                  {/* Smart autocomplete dropdown */}
+                  {searchFocused && (
                     <div
-                      className="absolute top-full left-0 mt-2 w-full rounded-xl py-1.5 z-50"
+                      className="absolute top-full left-0 mt-2 rounded-2xl overflow-hidden z-50"
                       style={{
+                        width: "340px",
                         background: "rgba(255,255,255,0.99)",
                         border: "1px solid #E2E8F0",
-                        boxShadow: "0 12px 32px rgba(15,23,42,0.10)",
+                        boxShadow: "0 16px 48px rgba(15,23,42,0.13)",
                       }}
                     >
-                      {filteredSuggestions.map((s) => (
-                        <button
-                          key={s.href}
-                          type="button"
-                          onMouseDown={() => handleSuggestionClick(s.href)}
-                          className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-[13px] text-slate-700 hover:bg-sky-50 hover:text-sky-700 transition-colors text-left"
-                        >
-                          <Search className="h-3 w-3 text-slate-400 shrink-0" />
-                          {s.label}
-                        </button>
-                      ))}
+                      {/* Header */}
+                      <div className="px-4 py-2.5 border-b border-slate-100 flex items-center justify-between">
+                        <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest">
+                          {searchQuery.trim().length >= 2 ? "Saran pencarian" : "Populer"}
+                        </span>
+                        <span className="text-[10px] text-slate-300">Enter untuk cari semua</span>
+                      </div>
+
+                      {/* Suggestions */}
+                      {autocompleteSuggestions.length > 0 ? (
+                        <div className="py-1">
+                          {autocompleteSuggestions.map((s) => {
+                            const Icon = s.icon;
+                            const isService = s.kind === "Layanan";
+                            return (
+                              <button
+                                key={s.href}
+                                type="button"
+                                onMouseDown={() => handleSuggestionClick(s.href)}
+                                className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-sky-50 transition-colors text-left group"
+                              >
+                                <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
+                                  isService ? "bg-sky-50 group-hover:bg-sky-100" : "bg-emerald-50 group-hover:bg-emerald-100"
+                                }`}>
+                                  <Icon className={`h-3.5 w-3.5 ${isService ? "text-sky-600" : "text-emerald-600"}`} />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[13px] font-semibold text-slate-800 group-hover:text-sky-700 transition-colors truncate">
+                                      {s.label}
+                                    </span>
+                                    <span className={`shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
+                                      isService
+                                        ? "bg-sky-100 text-sky-600"
+                                        : "bg-emerald-100 text-emerald-600"
+                                    }`}>
+                                      {s.kind}
+                                    </span>
+                                  </div>
+                                  <p className="text-[11px] text-slate-400 leading-tight truncate mt-0.5">
+                                    {s.description}
+                                  </p>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="px-4 py-6 text-center">
+                          <Search className="h-5 w-5 text-slate-300 mx-auto mb-1.5" />
+                          <p className="text-[13px] text-slate-400 font-medium">Tidak ada saran</p>
+                          <p className="text-[11px] text-slate-300 mt-0.5">Tekan Enter untuk cari "{searchQuery}"</p>
+                        </div>
+                      )}
                     </div>
                   )}
                 </form>
