@@ -228,6 +228,7 @@ router.get("/marketplace", async (req, res) => {
       publishedAt: vendorCatalogItemsTable.publishedAt,
       sortOrder: vendorCatalogItemsTable.sortOrder,
       primaryImageUrl: productMediaTable.fileUrl,
+      mediaAssets: vendorCatalogItemsTable.mediaAssets,
     })
     .from(vendorCatalogItemsTable)
     .leftJoin(
@@ -247,10 +248,17 @@ router.get("/marketplace", async (req, res) => {
     rows.map((r) => {
       const rawCat = r.serviceType || r.kategori || r.categoryKey;
       const resolvedCategory = normalizeServiceCategory(rawCat);
+      // Fallback: jika tidak ada primaryImageUrl dari productMedia, ambil dari mediaAssets kolom
+      const mediaAssets = Array.isArray(r.mediaAssets)
+        ? r.mediaAssets as { type: string; url: string; isPrimary?: boolean }[]
+        : [];
+      const fallbackImageUrl = mediaAssets.find((m) => m.type === "image" && m.isPrimary)?.url
+        ?? mediaAssets.find((m) => m.type === "image")?.url
+        ?? null;
       return {
         ...r,
         priceSell: r.priceSell !== null ? Number(r.priceSell) : null,
-        primaryImageUrl: r.primaryImageUrl ?? null,
+        primaryImageUrl: r.primaryImageUrl ?? fallbackImageUrl,
         resolvedCategory,
         resolvedCategoryLabel: resolvedCategory
           ? (SERVICE_CATEGORY_LABELS[resolvedCategory] ?? resolvedCategory)
