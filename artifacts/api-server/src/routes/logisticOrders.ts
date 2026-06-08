@@ -934,8 +934,8 @@ logisticOrdersRouter.post("/:orderNumber/create-paylabs-link", async (req: Reque
     });
   }
 
-  const requestId = randomUUID();
-  const timestamp = new Date().toISOString().replace(/\.\d+Z$/, "+07:00");
+  const requestId = `${Date.now()}${Math.floor(Math.random() * 100000).toString().padStart(5, "0")}`;
+  const timestamp = new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().replace(/\.\d+Z$/, "+07:00");
   const host = (req.headers["x-forwarded-proto"] ?? "https") + "://" + (req.headers.host ?? "");
   const notifyUrl = `${host}/api/payments/paylabs/webhook`;
   const redirectUrl = `${host}/track?order=${orderNumber}`;
@@ -953,10 +953,10 @@ logisticOrdersRouter.post("/:orderNumber/create-paylabs-link", async (req: Reque
     requestId,
     amount: amount.toFixed(2),
     productName: `Pembayaran ${orderNumber}`,
+    payer: order.customerName,
     phoneNumber,
     notifyUrl,
     redirectUrl,
-    expire: 86400,
   };
   const bodyJson = JSON.stringify(body);
   const sigPayload = _paylabsBuildSigPayload2("POST", new URL(_PAYLABS_API_URL_2).pathname, bodyJson, timestamp);

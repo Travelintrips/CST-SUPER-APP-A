@@ -154,8 +154,8 @@ router.post("/sales/:id/create-link", async (req, res) => {
     });
   }
 
-  const requestId = crypto.randomUUID();
-  const timestamp = new Date().toISOString().replace(/\.\d+Z$/, "+07:00");
+  const requestId = `${Date.now()}${Math.floor(Math.random() * 100000).toString().padStart(5, "0")}`;
+  const timestamp = new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().replace(/\.\d+Z$/, "+07:00");
   const baseUrl = (req.headers["x-forwarded-proto"] ?? "https") + "://" + (req.headers.host ?? "");
   const notifyUrl = `${baseUrl}/api/payments/paylabs/webhook`;
   const redirectUrl = `${baseUrl}/sales/orders/${doc.id}`;
@@ -166,10 +166,10 @@ router.post("/sales/:id/create-link", async (req, res) => {
     requestId,
     amount: amount.toFixed(2),
     productName: `Pembayaran ${doc.docNumber}`,
+    payer: doc.customerName ?? "Customer",
+    phoneNumber: customerPhone,
     notifyUrl,
     redirectUrl,
-    phoneNumber: customerPhone,
-    expire: 86400,
   };
   const bodyJson = JSON.stringify(body);
   const signaturePayload = buildSignaturePayload("POST", new URL(PAYLABS_API_URL).pathname, bodyJson, timestamp);
