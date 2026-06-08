@@ -3,6 +3,38 @@ import { sql } from "drizzle-orm";
 import { db } from "@workspace/db";
 import { requireAdmin } from "../lib/requireAdmin";
 
+// Lookup vendor_performance scores for a list of vendor IDs — graceful fallback if table absent
+async function fetchVendorPerfMap(vendorIds: number[]): Promise<Map<number, {
+  score: number; ontimePct: number; avgResponseMin: number; onTimeOrders: number; podCompleteOrders: number;
+}>> {
+  const map = new Map<number, { score: number; ontimePct: number; avgResponseMin: number; onTimeOrders: number; podCompleteOrders: number }>();
+  if (vendorIds.length === 0) return map;
+  try {
+    const rows = await db.execute<{
+      vendor_id: string; score: string; ontime_percentage: string;
+      average_response_minutes: string; on_time_orders: string; pod_complete_orders: string;
+    }>(sql`
+      SELECT vendor_id, COALESCE(score, recommendation_score, 0) AS score,
+             COALESCE(ontime_percentage, 0) AS ontime_percentage,
+             COALESCE(average_response_minutes, 0) AS average_response_minutes,
+             COALESCE(on_time_orders, 0) AS on_time_orders,
+             COALESCE(pod_complete_orders, 0) AS pod_complete_orders
+      FROM vendor_performance
+      WHERE vendor_id = ANY(${vendorIds})
+    `);
+    for (const r of rows.rows) {
+      map.set(Number(r.vendor_id), {
+        score:            Number(r.score                    ?? 0),
+        ontimePct:        Number(r.ontime_percentage        ?? 0),
+        avgResponseMin:   Number(r.average_response_minutes ?? 0),
+        onTimeOrders:     Number(r.on_time_orders           ?? 0),
+        podCompleteOrders: Number(r.pod_complete_orders     ?? 0),
+      });
+    }
+  } catch { /* vendor_performance table might not exist yet — safe fallback */ }
+  return map;
+}
+
 const router = Router();
 
 // ── Per Order ─────────────────────────────────────────────────────────────
@@ -266,8 +298,10 @@ router.get("/customers", async (req, res) => {
   }
 });
 
-// ── Per Vendor ────────────────────────────────────────────────────────────
+// ── Per Vendor (segmented: product vs shipment) ───────────────────────────
 // GET /api/analytics/profitability/vendors?companyId=&dateFrom=&dateTo=
+// Response: { productVendors[], shipmentVendors[], combined[] }
+// combined[] preserves legacy fields for backward compat.
 router.get("/vendors", async (req, res) => {
   if (!(await requireAdmin(req, res))) return;
   const dateFrom  = req.query.dateFrom ? new Date(String(req.query.dateFrom)) : null;
@@ -276,76 +310,240 @@ router.get("/vendors", async (req, res) => {
     ? Number(req.query.companyId) : null;
 
   try {
-    const rows = await db.execute<{
-      vendor_id: string; vendor_name: string; order_count: string;
-      total_spend: string; win_rate: string; total_invites: string; total_wins: string;
-      ontime_pct: string; recommendation_score: string; avg_response_min: string;
-    }>(sql`
-      WITH vendor_orders AS (
+    // ── A. Product Vendors ────────────────────────────────────────────────
+    // Source: logistic_orders.product_vendor_id
+    // Cost/revenue: customer_approvals (latest approved per order)
+    // Win rate: vendor_mini_form_submissions (order-based, selected_by_admin)
+    const [productRows, shipmentRows] = await Promise.all([
+      db.execute<{
+        vendor_id: string; vendor_name: string;
+        total_orders: string; total_cost: string;
+        total_revenue: string; total_margin: string;
+        avg_product_cost: string;
+        win_invites: string; win_selected: string;
+      }>(sql`
+        WITH product_orders AS (
+          SELECT
+            lo.product_vendor_id                                         AS vendor_id,
+            lo.id                                                        AS order_id,
+            COALESCE(ca_sub.vendor_cost,   0)                           AS vendor_cost,
+            COALESCE(ca_sub.selling_price, 0)                           AS selling_price
+          FROM logistic_orders lo
+          LEFT JOIN LATERAL (
+            SELECT vendor_cost, selling_price
+            FROM   customer_approvals ca2
+            WHERE  ca2.order_id = lo.id
+            ORDER  BY ca2.id DESC
+            LIMIT  1
+          ) ca_sub ON TRUE
+          WHERE lo.product_vendor_id IS NOT NULL
+            AND lo.status NOT IN ('Cancelled','cancelled')
+            ${companyId !== null ? sql`AND lo.company_id = ${companyId}` : sql``}
+            ${dateFrom ? sql`AND lo.created_at >= ${dateFrom}` : sql``}
+            ${dateTo   ? sql`AND lo.created_at <= ${dateTo}`   : sql``}
+        ),
+        win_stats AS (
+          SELECT
+            vmfs.supplier_id,
+            COUNT(*)                                                       AS total_invites,
+            COUNT(*) FILTER (WHERE vmfs.selected_by_admin = true)         AS selected_count
+          FROM vendor_mini_form_submissions vmfs
+          WHERE vmfs.supplier_id IS NOT NULL
+            AND vmfs.order_id    IS NOT NULL
+            ${dateFrom ? sql`AND vmfs.submitted_at >= ${dateFrom}` : sql``}
+            ${dateTo   ? sql`AND vmfs.submitted_at <= ${dateTo}`   : sql``}
+          GROUP BY vmfs.supplier_id
+        )
         SELECT
-          lo.approved_vendor_id AS vendor_id,
-          COUNT(lo.id)                                           AS order_count,
-          SUM(COALESCE(loq_agg.vendor_cost, 0))                 AS total_spend
-        FROM logistic_orders lo
-        LEFT JOIN (
-          SELECT order_id, MAX(vendor_price::numeric) AS vendor_cost
-          FROM logistic_order_quotes GROUP BY order_id
-        ) loq_agg ON loq_agg.order_id = lo.id
-        WHERE lo.approved_vendor_id IS NOT NULL
-          AND lo.status NOT IN ('Cancelled','cancelled')
-          ${companyId !== null ? sql`AND lo.company_id = ${companyId}` : sql``}
-          ${dateFrom ? sql`AND lo.created_at >= ${dateFrom}` : sql``}
-          ${dateTo   ? sql`AND lo.created_at <= ${dateTo}`   : sql``}
-        GROUP BY lo.approved_vendor_id
-      ),
-      vendor_win AS (
-        SELECT
-          rvl.vendor_id,
-          COUNT(*)                                               AS total_invites,
-          COUNT(*) FILTER (WHERE rvl.status = 'selected')       AS total_wins
-        FROM rfq_vendor_links rvl
-        WHERE TRUE
-          ${dateFrom ? sql`AND rvl.submitted_at >= ${dateFrom}` : sql``}
-          ${dateTo ? sql`AND rvl.submitted_at <= ${dateTo}` : sql``}
-        GROUP BY rvl.vendor_id
-      )
-      SELECT
-        s.id::text                                          AS vendor_id,
-        s.name                                             AS vendor_name,
-        COALESCE(vo.order_count, 0)::text                  AS order_count,
-        COALESCE(vo.total_spend, 0)::text                  AS total_spend,
-        ROUND(
-          CASE WHEN COALESCE(vw.total_invites, 0) > 0
-            THEN vw.total_wins::numeric / vw.total_invites * 100
-            ELSE 0
-          END, 1
-        )::text                                            AS win_rate,
-        COALESCE(vw.total_invites, 0)::text                AS total_invites,
-        COALESCE(vw.total_wins, 0)::text                   AS total_wins,
-        '0'                                                AS ontime_pct,
-        '0'                                                AS recommendation_score,
-        '0'                                                AS avg_response_min
-      FROM suppliers s
-      LEFT JOIN vendor_orders vo ON vo.vendor_id = s.id
-      LEFT JOIN vendor_win vw ON vw.vendor_id = s.id
-      WHERE s.is_active = true
-        AND (vo.order_count > 0 OR vw.total_invites > 0)
-      ORDER BY COALESCE(vo.total_spend, 0) DESC NULLS LAST
-      LIMIT 100
-    `);
+          COALESCE(s.id::text, '0')                                      AS vendor_id,
+          COALESCE(s.name, 'Unknown Vendor')                             AS vendor_name,
+          COUNT(po.order_id)::text                                       AS total_orders,
+          COALESCE(SUM(po.vendor_cost),   0)::text                      AS total_cost,
+          COALESCE(SUM(po.selling_price), 0)::text                      AS total_revenue,
+          COALESCE(SUM(po.selling_price - po.vendor_cost), 0)::text     AS total_margin,
+          COALESCE(AVG(NULLIF(po.vendor_cost, 0)), 0)::text             AS avg_product_cost,
+          COALESCE(ws.total_invites,  0)::text                          AS win_invites,
+          COALESCE(ws.selected_count, 0)::text                          AS win_selected
+        FROM product_orders po
+        LEFT JOIN suppliers  s  ON s.id  = po.vendor_id
+        LEFT JOIN win_stats  ws ON ws.supplier_id = po.vendor_id
+        GROUP BY po.vendor_id, s.id, s.name, ws.total_invites, ws.selected_count
+        ORDER BY COALESCE(SUM(po.vendor_cost), 0) DESC NULLS LAST
+        LIMIT 100
+      `),
 
-    return res.json(rows.rows.map(r => ({
-      vendorId:            Number(r.vendor_id),
-      vendorName:          r.vendor_name,
-      orderCount:          Number(r.order_count),
-      totalSpend:          Number(r.total_spend),
-      winRate:             Number(r.win_rate),
-      totalInvites:        Number(r.total_invites),
-      totalWins:           Number(r.total_wins),
-      ontimePct:           Number(r.ontime_pct),
-      recommendationScore: Number(r.recommendation_score),
-      avgResponseMin:      Number(r.avg_response_min),
-    })));
+      // ── B. Shipment / Trucking Vendors ──────────────────────────────────
+      // Source: logistic_orders.approved_vendor_id
+      // Cost: MAX(logistic_order_quotes.vendor_price) per order
+      // Revenue: logistic_orders.grand_total
+      // Win rate: rfq_vendor_links (status = 'selected')
+      db.execute<{
+        vendor_id: string; vendor_name: string;
+        total_orders: string; total_spend: string;
+        total_revenue: string; total_margin: string;
+        rfq_invites: string; selected_count: string;
+        win_rate: string; avg_response_min: string;
+      }>(sql`
+        WITH vendor_orders AS (
+          SELECT
+            lo.approved_vendor_id                                        AS vendor_id,
+            COUNT(lo.id)                                                 AS order_count,
+            SUM(COALESCE(loq_agg.vendor_cost, 0))                       AS total_spend,
+            SUM(lo.grand_total::numeric)                                 AS total_revenue
+          FROM logistic_orders lo
+          LEFT JOIN (
+            SELECT order_id, MAX(vendor_price::numeric) AS vendor_cost
+            FROM   logistic_order_quotes
+            GROUP  BY order_id
+          ) loq_agg ON loq_agg.order_id = lo.id
+          WHERE lo.approved_vendor_id IS NOT NULL
+            AND lo.status NOT IN ('Cancelled','cancelled')
+            ${companyId !== null ? sql`AND lo.company_id = ${companyId}` : sql``}
+            ${dateFrom ? sql`AND lo.created_at >= ${dateFrom}` : sql``}
+            ${dateTo   ? sql`AND lo.created_at <= ${dateTo}`   : sql``}
+          GROUP BY lo.approved_vendor_id
+        ),
+        vendor_rfq AS (
+          SELECT
+            rvl.vendor_id,
+            COUNT(*)                                                       AS rfq_invites,
+            COUNT(*) FILTER (WHERE rvl.status = 'selected')               AS selected_count,
+            AVG(
+              EXTRACT(EPOCH FROM (rvl.submitted_at - rvl.created_at)) / 60
+            ) FILTER (WHERE rvl.submitted_at IS NOT NULL)                 AS avg_response_min
+          FROM rfq_vendor_links rvl
+          WHERE TRUE
+            ${dateFrom ? sql`AND rvl.submitted_at >= ${dateFrom}` : sql``}
+            ${dateTo   ? sql`AND rvl.submitted_at <= ${dateTo}`   : sql``}
+          GROUP BY rvl.vendor_id
+        )
+        SELECT
+          s.id::text                                                     AS vendor_id,
+          COALESCE(s.name, 'Unknown Vendor')                            AS vendor_name,
+          COALESCE(vo.order_count, 0)::text                             AS total_orders,
+          COALESCE(vo.total_spend, 0)::text                             AS total_spend,
+          COALESCE(vo.total_revenue, 0)::text                           AS total_revenue,
+          (COALESCE(vo.total_revenue, 0) - COALESCE(vo.total_spend, 0))::text AS total_margin,
+          COALESCE(vr.rfq_invites,   0)::text                          AS rfq_invites,
+          COALESCE(vr.selected_count, 0)::text                         AS selected_count,
+          ROUND(
+            CASE WHEN COALESCE(vr.rfq_invites, 0) > 0
+              THEN vr.selected_count::numeric / vr.rfq_invites * 100
+              ELSE 0
+            END, 1
+          )::text                                                        AS win_rate,
+          COALESCE(vr.avg_response_min, 0)::text                       AS avg_response_min
+        FROM suppliers s
+        LEFT JOIN vendor_orders vo ON vo.vendor_id = s.id
+        LEFT JOIN vendor_rfq    vr ON vr.vendor_id = s.id
+        WHERE s.is_active = true
+          AND (vo.order_count > 0 OR vr.rfq_invites > 0)
+        ORDER BY COALESCE(vo.total_spend, 0) DESC NULLS LAST
+        LIMIT 100
+      `),
+    ]);
+
+    // Fetch vendor_performance data for all vendor IDs in results (safe fallback if table absent)
+    const allVendorIds = [
+      ...productRows.rows.map(r => Number(r.vendor_id)),
+      ...shipmentRows.rows.map(r => Number(r.vendor_id)),
+    ].filter(id => id > 0);
+    const perfMap = await fetchVendorPerfMap([...new Set(allVendorIds)]);
+
+    const productVendors = productRows.rows.map(r => {
+      const cost    = Number(r.total_cost);
+      const revenue = Number(r.total_revenue);
+      const margin  = Number(r.total_margin);
+      const invites = Number(r.win_invites);
+      const sel     = Number(r.win_selected);
+      const vId     = Number(r.vendor_id);
+      const perf    = perfMap.get(vId);
+      return {
+        vendorId:            vId,
+        vendorName:          r.vendor_name || "Unknown Vendor",
+        vendorType:          "product" as const,
+        totalOrders:         Number(r.total_orders),
+        totalCost:           cost,
+        totalRevenue:        revenue,
+        totalMargin:         margin,
+        marginPct:           revenue > 0 ? Math.round(margin / revenue * 1000) / 10 : 0,
+        avgProductCost:      Number(r.avg_product_cost) || 0,
+        winInvites:          invites,
+        winSelected:         sel,
+        winRate:             invites > 0 ? Math.round(sel / invites * 1000) / 10 : 0,
+        ontimePct:           perf?.ontimePct           ?? 0,
+        recommendationScore: perf?.score               ?? 0,
+        avgResponseMin:      perf?.avgResponseMin       ?? 0,
+        onTimeOrders:        perf?.onTimeOrders         ?? 0,
+        podCompleteOrders:   perf?.podCompleteOrders    ?? 0,
+      };
+    });
+
+    const shipmentVendors = shipmentRows.rows.map(r => {
+      const cost    = Number(r.total_spend);
+      const revenue = Number(r.total_revenue);
+      const margin  = Number(r.total_margin);
+      const invites = Number(r.rfq_invites);
+      const sel     = Number(r.selected_count);
+      const vId     = Number(r.vendor_id);
+      const perf    = perfMap.get(vId);
+      return {
+        vendorId:              vId,
+        vendorName:            r.vendor_name || "Unknown Vendor",
+        vendorType:            "shipment" as const,
+        totalOrders:           Number(r.total_orders),
+        totalShipmentCost:     cost,
+        totalShipmentRevenue:  revenue,
+        totalShipmentMargin:   margin,
+        marginPct:             revenue > 0 ? Math.round(margin / revenue * 1000) / 10 : 0,
+        rfqInvites:            invites,
+        selectedCount:         sel,
+        winRate:               Number(r.win_rate),
+        avgResponseMin:        perf?.avgResponseMin     ?? Number(r.avg_response_min),
+        totalSpend:            cost,
+        totalInvites:          invites,
+        totalWins:             sel,
+        ontimePct:             perf?.ontimePct          ?? 0,
+        recommendationScore:   perf?.score              ?? 0,
+        onTimeOrders:          perf?.onTimeOrders       ?? 0,
+        podCompleteOrders:     perf?.podCompleteOrders  ?? 0,
+      };
+    });
+
+    const combined = [
+      ...productVendors.map(v => ({
+        vendorId:            v.vendorId,
+        vendorName:          v.vendorName,
+        vendorType:          v.vendorType,
+        orderCount:          v.totalOrders,
+        totalSpend:          v.totalCost,
+        winRate:             v.winRate,
+        totalInvites:        v.winInvites,
+        totalWins:           v.winSelected,
+        ontimePct:           v.ontimePct,
+        recommendationScore: v.recommendationScore,
+        avgResponseMin:      v.avgResponseMin,
+        onTimeOrders:        v.onTimeOrders,
+        podCompleteOrders:   v.podCompleteOrders,
+      })),
+      ...shipmentVendors.map(v => ({
+        vendorId:            v.vendorId,
+        vendorName:          v.vendorName,
+        vendorType:          v.vendorType,
+        orderCount:          v.totalOrders,
+        totalSpend:          v.totalShipmentCost,
+        winRate:             v.winRate,
+        totalInvites:        v.rfqInvites,
+        totalWins:           v.selectedCount,
+        ontimePct:           v.ontimePct,
+        recommendationScore: v.recommendationScore,
+        avgResponseMin:      v.avgResponseMin,
+        onTimeOrders:        v.onTimeOrders,
+        podCompleteOrders:   v.podCompleteOrders,
+      })),
+    ];
+
+    return res.json({ productVendors, shipmentVendors, combined });
   } catch (e) {
     console.error("[analytics/vendors]", e);
     return res.status(500).json({ error: "Gagal memuat data vendor" });

@@ -471,7 +471,6 @@ function WaTemplateDialog({
 
 // ── Create Link Dialog ─────────────────────────────────────────────────────────
 
-type CommodityTemplateItem = { id: number; key: string; name: string; icon: string | null };
 
 function CreateLinkDialog({ onCreated }: { onCreated: () => void }) {
   const [open, setOpen] = useState(false);
@@ -485,7 +484,7 @@ function CreateLinkDialog({ onCreated }: { onCreated: () => void }) {
   const [orderId, setOrderId] = useState<string>("");
   const [orderItemId, setOrderItemId] = useState<string>("");
   const [maxSubmissions, setMaxSubmissions] = useState("");
-  const [commodityTemplateId, setCommodityTemplateId] = useState<string>("");
+  const [selectedCategoryKey, setSelectedCategoryKey] = useState<string>("");
   const [vendorPickerOpen, setVendorPickerOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
@@ -513,18 +512,16 @@ function CreateLinkDialog({ onCreated }: { onCreated: () => void }) {
     enabled: !!orderId && mode === "order_based",
   });
 
-  const { data: commodityTemplates } = useQuery<CommodityTemplateItem[]>({
-    queryKey: ["commodity-templates-list"],
-    queryFn: () => apiFetch<CommodityTemplateItem[]>("/api/commodity-templates"),
-    enabled: open,
-  });
+  const allCommodityTemplates = Object.entries(inCodeTemplates).sort(([, a], [, b]) =>
+    a.label.localeCompare(b.label, "id")
+  );
 
   const selectedOrder = orders?.find(o => String(o.id) === orderId);
 
   const reset = () => {
     setMode("rate_collection"); setServiceType(""); setSupplierId(""); setVendorName("");
     setTitle(""); setNotes(""); setExpiresInDays(""); setOrderId(""); setOrderItemId("");
-    setMaxSubmissions(""); setCommodityTemplateId(""); setVendorPickerOpen(false);
+    setMaxSubmissions(""); setSelectedCategoryKey(""); setVendorPickerOpen(false);
   };
 
   const handleCreate = async () => {
@@ -541,7 +538,7 @@ function CreateLinkDialog({ onCreated }: { onCreated: () => void }) {
           mode, orderId: orderId ? Number(orderId) : undefined,
           orderNumber: selectedOrder?.orderNumber, orderItemId: orderItemId ? Number(orderItemId) : undefined,
           maxSubmissions: maxSubmissions ? Number(maxSubmissions) : undefined,
-          commodityTemplateId: commodityTemplateId ? Number(commodityTemplateId) : undefined,
+          categoryKey: selectedCategoryKey || undefined,
         }),
       });
       const deactivated = result?.deactivatedCount ?? 0;
@@ -696,18 +693,18 @@ function CreateLinkDialog({ onCreated }: { onCreated: () => void }) {
           {/* Commodity Template */}
           <div className="space-y-1.5">
             <Label>Template Komoditas (opsional)</Label>
-            <Select value={commodityTemplateId || "__none__"} onValueChange={v => setCommodityTemplateId(v === "__none__" ? "" : v)}>
+            <Select value={selectedCategoryKey || "__none__"} onValueChange={v => setSelectedCategoryKey(v === "__none__" ? "" : v)}>
               <SelectTrigger><SelectValue placeholder="Tanpa template komoditas" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="__none__">— Tanpa template —</SelectItem>
-                {commodityTemplates?.map(t => (
-                  <SelectItem key={t.id} value={String(t.id)}>
-                    {t.icon ?? "📦"} {t.name}
+                {allCommodityTemplates.map(([key, tpl]) => (
+                  <SelectItem key={key} value={key}>
+                    📦 {tpl.label}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            {commodityTemplateId && (
+            {selectedCategoryKey && (
               <p className="text-xs text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-1.5">
                 ✅ Vendor akan melihat custom fields, dokumen wajib, & checklist dari template ini.
               </p>

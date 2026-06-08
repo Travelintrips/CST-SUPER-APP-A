@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import {
   Menu, X, LogOut, LayoutDashboard, ShoppingCart, Shield,
   ChevronDown, Ship, FileCheck, Truck,
-  Search, Calculator, ChevronRight, MapPin, Phone, Info, ImagePlus, Loader2, ClipboardList,
+  Search, Calculator, ChevronRight, MapPin, Phone, Info, ImagePlus, Loader2, ClipboardList, Store,
 } from "lucide-react";
 import { isAuthenticated, removeAuthToken, isPortalAdmin } from "@/lib/auth";
 import { useGetPortalCompany } from "@workspace/api-client-react";
@@ -215,14 +215,20 @@ export function Navbar() {
               {t("nav.home")}
             </Link>
 
-            {/* Produk */}
-            <Link href="/products" className={navItemCls(location === "/products")}>
-              {t("nav.products")}
+            {/* Marketplace */}
+            <Link href="/marketplace" className={navItemCls(location === "/marketplace")}>
+              Marketplace
             </Link>
 
             {/* Marketplace */}
             <Link href="/marketplace" className={navItemCls(location === "/marketplace")}>
               Marketplace
+            </Link>
+
+            {/* Katalog Vendor */}
+            <Link href="/catalog" className={navItemCls(location === "/catalog")}>
+              <Store className="h-3.5 w-3.5" />
+              Katalog
             </Link>
 
             {/* Services Mega Menu */}
@@ -474,11 +480,11 @@ export function Navbar() {
               </div>
             </Link>
 
-            <Link href="/products" onClick={() => setIsOpen(false)}>
+            <Link href="/marketplace" onClick={() => setIsOpen(false)}>
               <div className={`flex items-center px-3 py-2.5 rounded-[14px] text-[15px] font-semibold cursor-pointer ${
-                location === "/products" ? "bg-[rgba(14,165,233,0.10)] text-[#0284C7]" : "text-slate-600 hover:bg-slate-50"
+                location === "/marketplace" ? "bg-[rgba(14,165,233,0.10)] text-[#0284C7]" : "text-slate-600 hover:bg-slate-50"
               }`}>
-                {t("nav.products")}
+                Marketplace
               </div>
             </Link>
 
@@ -487,6 +493,15 @@ export function Navbar() {
                 location === "/marketplace" ? "bg-[rgba(14,165,233,0.10)] text-[#0284C7]" : "text-slate-600 hover:bg-slate-50"
               }`}>
                 Marketplace
+              </div>
+            </Link>
+
+            <Link href="/catalog" onClick={() => setIsOpen(false)}>
+              <div className={`flex items-center gap-2 px-3 py-2.5 rounded-[14px] text-[15px] font-semibold cursor-pointer ${
+                location === "/catalog" ? "bg-[rgba(14,165,233,0.10)] text-[#0284C7]" : "text-slate-600 hover:bg-slate-50"
+              }`}>
+                <Store className="h-4 w-4 shrink-0" />
+                Katalog Vendor
               </div>
             </Link>
 

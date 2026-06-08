@@ -173,7 +173,6 @@ function ItemCard({ item, onClick }: { item: MarketplaceItem; onClick: () => voi
     </div>
   );
 }
-
 // ── Detail Modal ──────────────────────────────────────────────────────────────
 function ItemDetailModal({ item, onClose }: { item: MarketplaceItem; onClose: () => void }) {
   const [, setLocation] = useLocation();
@@ -584,6 +583,43 @@ export default function MarketplacePage() {
               )}
             </div>
 
+            {isLoading ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="bg-white rounded-2xl border border-slate-200 h-64 animate-pulse"
+                  />
+                ))}
+              </div>
+            ) : filtered.length === 0 ? (
+              <div className="text-center py-20">
+                <Package className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                <p className="text-slate-500 font-semibold">
+                  {search
+                    ? `Tidak ada produk untuk "${search}"`
+                    : "Tidak ada produk yang sesuai filter"}
+                </p>
+                <p className="text-sm text-slate-400 mt-1">
+                  Coba ubah filter atau kata kunci pencarian
+                </p>
+                {hasActiveFilter && (
+                  <button
+                    onClick={resetAll}
+                    className="mt-4 text-sm text-primary hover:underline"
+                  >
+                    Reset semua filter
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                {filtered.map((p) => (
+                  <ProductCard key={p.id} product={p} />
+                ))}
+              </div>
+            )}
+          </main>
             {/* Loading */}
             {isLoading && (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

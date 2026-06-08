@@ -2959,6 +2959,50 @@ router.post("/member-reminders/run", async (req, res) => {
 });
 
 /**
+ * POST /api/sport-center/member-reminders/test-wa
+ * Kirim test WA ke nomor HP tertentu menggunakan template yang sedang aktif.
+ */
+router.post("/member-reminders/test-wa", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  try {
+    const { phone, template, center_name, days_label, end_date, company_id } = req.body as Record<string, string | undefined>;
+    if (!phone?.trim()) {
+      return res.status(400).json({ error: "Nomor HP wajib diisi" });
+    }
+
+    const { getWaTemplate } = await import("./memberReminderWorker.js");
+    const cId = company_id ? Number(company_id) : null;
+    const { template: dbTemplate, centerName: dbCenterName } = await getWaTemplate(cId);
+
+    const useTemplate   = template?.trim()     || dbTemplate;
+    const useCenterName = center_name?.trim()  || dbCenterName;
+    const useDaysLabel  = days_label?.trim()   || "4 hari lagi";
+    const useEndDate    = end_date?.trim()      || new Intl.DateTimeFormat("id-ID", {
+      day: "2-digit", month: "long", year: "numeric", timeZone: "Asia/Jakarta",
+    }).format(new Date(Date.now() + 4 * 86400_000));
+
+    const message = useTemplate
+      .replace(/\{\{name\}\}/g,        "Test Member")
+      .replace(/\{\{end_date\}\}/g,    useEndDate)
+      .replace(/\{\{days_label\}\}/g,  useDaysLabel)
+      .replace(/\{\{center_name\}\}/g, useCenterName);
+
+    const { sendViaService } = await import("../../lib/waTransport.js");
+    await sendViaService(phone.trim(), message, {
+      context: "sport_member_reminder_test",
+      refType:  "test",
+      refId:    `test_${Date.now()}`,
+    });
+
+    res.json({ ok: true, phone: phone.trim(), message });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[sport-center] POST /member-reminders/test-wa error:", err);
+    res.status(500).json({ error: msg || "Gagal kirim test WA" });
+  }
+});
+
+/**
  * GET /api/sport-center/member-reminders/logs
  * Ambil log reminder WA member terbaru.
  */
