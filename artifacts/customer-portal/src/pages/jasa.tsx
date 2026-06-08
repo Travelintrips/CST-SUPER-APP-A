@@ -149,9 +149,6 @@ function useServicesRealtime(queryKey: string) {
       setConnected(false);
     };
   }, [handleChange, handleCatalogChange]);
-      .subscribe((status) => setConnected(status === "SUBSCRIBED"));
-    return () => { supabase!.removeChannel(channel); setConnected(false); };
-  }, [handleChange]);
 
   return { connected, justUpdated };
 }
