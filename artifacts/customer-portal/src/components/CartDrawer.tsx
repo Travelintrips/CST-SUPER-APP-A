@@ -74,6 +74,17 @@ function getItemDetails(item: CartItem): string[] {
   const d = item.inputData;
   const str = (v: unknown) => (v != null && v !== "" ? String(v) : "");
   const details: string[] = [];
+
+  // ── Vendor catalog item: tampilkan qty + unit dari calculationResult ──
+  if (item.itemSource === "vendor_catalog_item") {
+    const cr = item.calculationResult as Record<string, unknown>;
+    const qty = cr.chargeableQty ?? d.quantity;
+    const unit = cr.chargeableUnit ?? d.unit;
+    if (qty != null) details.push(`Qty: ${str(qty)}${unit ? ` ${str(unit)}` : ""}`);
+    if (item.vendorName) details.push(`Vendor: ${item.vendorName}`);
+    return details;
+  }
+
   switch (item.calculatorType) {
     case "product":
       if (d.qty) details.push(`Qty: ${str(d.qty)}${d.unit ? ` ${str(d.unit)}` : ""}`);
@@ -136,18 +147,28 @@ function CartItemCard({ item, onRemove }: { item: CartItem; onRemove: (id: strin
   const Icon   = meta.icon;
   const details = getItemDetails(item);
   const isTrucking = item.calculatorType === "trucking";
+  const isVendorCatalog = item.itemSource === "vendor_catalog_item";
+  const ps = item.priceSnapshot;
+
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-3.5 shadow-sm">
       <div className="flex items-start gap-3">
-        <div className={`w-8 h-8 rounded-lg ${meta.iconBg} flex items-center justify-center shrink-0`}>
-          <Icon className="w-4 h-4 text-slate-600" />
+        <div className={`w-8 h-8 rounded-lg ${isVendorCatalog ? "bg-sky-50" : meta.iconBg} flex items-center justify-center shrink-0`}>
+          <Icon className={`w-4 h-4 ${isVendorCatalog ? "text-sky-600" : "text-slate-600"}`} />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2 mb-1">
-            <div>
-              <span className={`inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold border ${meta.color} mb-0.5`}>
-                {meta.label}
-              </span>
+            <div className="flex flex-col gap-0.5">
+              <div className="flex items-center gap-1 flex-wrap">
+                <span className={`inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold border ${meta.color}`}>
+                  {meta.label}
+                </span>
+                {isVendorCatalog && (
+                  <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold border bg-sky-50 text-sky-700 border-sky-200">
+                    Vendor Marketplace
+                  </span>
+                )}
+              </div>
               <p className="text-xs font-semibold text-slate-800 leading-snug">{item.serviceName}</p>
             </div>
             <button onClick={() => onRemove(item.cartId)} className="text-slate-300 hover:text-red-400 transition-colors mt-0.5 shrink-0">
@@ -159,7 +180,18 @@ function CartItemCard({ item, onRemove }: { item: CartItem; onRemove: (id: strin
               <p key={i} className="text-[11px] text-slate-400 leading-snug">{d}</p>
             ))}
           </div>
-          {item.subtotal > 0 ? (
+          {/* Price display */}
+          {isVendorCatalog && ps ? (
+            <div className="mt-1.5 space-y-0.5">
+              <p className="text-[11px] text-slate-400">
+                {formatCurrency(ps.priceSell)} / {ps.unit}
+              </p>
+              {ps.tax != null && ps.tax > 0 && (
+                <p className="text-[11px] text-slate-400">PPN: {formatCurrency(ps.tax)}</p>
+              )}
+              <p className="text-xs font-bold text-sky-700">{formatCurrency(item.subtotal)}</p>
+            </div>
+          ) : item.subtotal > 0 ? (
             <p className="text-xs font-bold text-sky-700 mt-1.5">{formatCurrency(item.subtotal)}</p>
           ) : isTrucking ? (
             <span className="inline-block mt-1.5 text-[10px] font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded px-1.5 py-0.5">Harga menyusul</span>
