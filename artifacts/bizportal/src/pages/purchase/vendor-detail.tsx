@@ -186,7 +186,7 @@ export default function VendorDetailPage() {
       return r.json();
     },
     onSuccess: (data, { itemId, status }) => {
-      queryClient.setQueryData(
+      qc.setQueryData(
         getListVendorCatalogQueryKey(vendorId),
         (old: any[] | undefined) =>
           old?.map((item) =>
@@ -195,7 +195,7 @@ export default function VendorDetailPage() {
               : item
           ) ?? old,
       );
-      queryClient.invalidateQueries({ queryKey: getListVendorCatalogQueryKey(vendorId) });
+      qc.invalidateQueries({ queryKey: getListVendorCatalogQueryKey(vendorId) });
       if (status === "published") {
         toast({ title: "✅ Item dipublikasikan ke Marketplace" });
       } else {
