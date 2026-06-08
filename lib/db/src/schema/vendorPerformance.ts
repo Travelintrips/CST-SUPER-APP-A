@@ -1,4 +1,4 @@
-import { pgTable, serial, integer, numeric, timestamp, index } from "drizzle-orm/pg-core";
+import { pgTable, serial, integer, numeric, text, timestamp, index } from "drizzle-orm/pg-core";
 import { suppliersTable } from "./suppliers";
 
 export const vendorPerformanceTable = pgTable("vendor_performance", {
@@ -28,6 +28,22 @@ export const vendorPerformanceTable = pgTable("vendor_performance", {
   podCompleteOrders: integer("pod_complete_orders").default(0),
   score: numeric("score", { precision: 5, scale: 2 }).default("0"),
   lastCalculatedAt: timestamp("last_calculated_at"),
+  // Financial metrics
+  totalRevenue: numeric("total_revenue", { precision: 18, scale: 2 }).default("0"),
+  totalCost: numeric("total_cost", { precision: 18, scale: 2 }).default("0"),
+  totalMargin: numeric("total_margin", { precision: 18, scale: 2 }).default("0"),
+  marginPct: numeric("margin_pct", { precision: 7, scale: 2 }).default("0"),
+  // POD counts
+  podUploadedCount: integer("pod_uploaded_count").default(0),
+  podMissingCount: integer("pod_missing_count").default(0),
+  // Invoice counts
+  invoiceIssuedCount: integer("invoice_issued_count").default(0),
+  invoiceDisputeCount: integer("invoice_dispute_count").default(0),
+  // Complaint count
+  customerComplaintCount: integer("customer_complaint_count").default(0),
+  // Preferred vendor score & grade
+  preferredVendorScore: numeric("preferred_vendor_score", { precision: 5, scale: 2 }).default("0"),
+  vendorGrade: text("vendor_grade").default("D"),
 }, (t) => [
   index("vendor_perf_vendor_idx").on(t.vendorId),
 ]);

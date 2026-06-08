@@ -1,5 +1,5 @@
 import { db, suppliersTable, vendorPerformanceTable, logisticOrdersTable, rfqVendorLinksTable, driverJobsTable, driversTable } from "@workspace/db";
-import { eq, and, sql, desc } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { logger } from "./logger.js";
 
 // ── Additive column migration ──────────────────────────────────────────────────
@@ -27,16 +27,32 @@ export async function runVendorPerformanceMigration(): Promise<void> {
     `);
 
     const extendedCols: Array<[string, string]> = [
-      ["total_rfq_invites",  "INTEGER DEFAULT 0"],
-      ["total_submitted",    "INTEGER DEFAULT 0"],
-      ["total_selected",     "INTEGER DEFAULT 0"],
-      ["total_rejected",     "INTEGER DEFAULT 0"],
-      ["avg_response_hours", "NUMERIC(10,2) DEFAULT 0"],
-      ["on_time_orders",     "INTEGER DEFAULT 0"],
-      ["late_orders",        "INTEGER DEFAULT 0"],
-      ["pod_complete_orders","INTEGER DEFAULT 0"],
-      ["score",              "NUMERIC(5,2) DEFAULT 0"],
-      ["last_calculated_at", "TIMESTAMPTZ"],
+      ["total_rfq_invites",        "INTEGER DEFAULT 0"],
+      ["total_submitted",          "INTEGER DEFAULT 0"],
+      ["total_selected",           "INTEGER DEFAULT 0"],
+      ["total_rejected",           "INTEGER DEFAULT 0"],
+      ["avg_response_hours",       "NUMERIC(10,2) DEFAULT 0"],
+      ["on_time_orders",           "INTEGER DEFAULT 0"],
+      ["late_orders",              "INTEGER DEFAULT 0"],
+      ["pod_complete_orders",      "INTEGER DEFAULT 0"],
+      ["score",                    "NUMERIC(5,2) DEFAULT 0"],
+      ["last_calculated_at",       "TIMESTAMPTZ"],
+      // Financial
+      ["total_revenue",            "NUMERIC(18,2) DEFAULT 0"],
+      ["total_cost",               "NUMERIC(18,2) DEFAULT 0"],
+      ["total_margin",             "NUMERIC(18,2) DEFAULT 0"],
+      ["margin_pct",               "NUMERIC(7,2) DEFAULT 0"],
+      // POD counts
+      ["pod_uploaded_count",       "INTEGER DEFAULT 0"],
+      ["pod_missing_count",        "INTEGER DEFAULT 0"],
+      // Invoice counts
+      ["invoice_issued_count",     "INTEGER DEFAULT 0"],
+      ["invoice_dispute_count",    "INTEGER DEFAULT 0"],
+      // Complaint
+      ["customer_complaint_count", "INTEGER DEFAULT 0"],
+      // Preferred score & grade
+      ["preferred_vendor_score",   "NUMERIC(5,2) DEFAULT 0"],
+      ["vendor_grade",             "TEXT DEFAULT 'D'"],
     ];
 
     for (const [col, def] of extendedCols) {
@@ -64,34 +80,52 @@ export async function runVendorPerformanceMigration(): Promise<void> {
   }
 }
 
+// ── Grade from preferred score ─────────────────────────────────────────────────
+function calcGrade(score: number): string {
+  if (score >= 85) return "A+";
+  if (score >= 70) return "A";
+  if (score >= 55) return "B";
+  if (score >= 40) return "C";
+  return "D";
+}
+
 // ── Core recalculation for a single vendor ────────────────────────────────────
 export async function recalculateVendorPerformance(vendorId: number) {
-  // A. Order stats
-  const orderStats = await db
-    .select({
-      total:     sql<number>`count(*)::int`,
-      completed: sql<number>`count(*) filter (where status ilike '%completed%' or status ilike '%delivered%')::int`,
-      cancelled: sql<number>`count(*) filter (where status ilike '%cancelled%' or status ilike '%cancel%')::int`,
-    })
-    .from(logisticOrdersTable)
-    .where(eq(logisticOrdersTable.approvedVendorId, vendorId));
+  // A. Order stats + financial (revenue = final_price, cost = vendor_price, for completed orders)
+  const orderStats = await db.execute<{
+    total: string; completed: string; cancelled: string;
+    total_revenue: string; total_cost: string;
+  }>(sql`
+    SELECT
+      COUNT(*)::int                                                                         AS total,
+      COUNT(*) FILTER (WHERE status ILIKE '%completed%' OR status ILIKE '%delivered%')::int AS completed,
+      COUNT(*) FILTER (WHERE status ILIKE '%cancelled%' OR status ILIKE '%cancel%')::int    AS cancelled,
+      COALESCE(SUM(final_price)   FILTER (WHERE status ILIKE '%completed%' OR status ILIKE '%delivered%'), 0)::numeric(18,2) AS total_revenue,
+      COALESCE(SUM(vendor_price)  FILTER (WHERE status ILIKE '%completed%' OR status ILIKE '%delivered%'), 0)::numeric(18,2) AS total_cost
+    FROM logistic_orders
+    WHERE approved_vendor_id = ${vendorId}
+  `);
 
-  const { total, completed, cancelled } = orderStats[0] ?? { total: 0, completed: 0, cancelled: 0 };
+  const os = (orderStats.rows[0] ?? {}) as Record<string, string>;
+  const total        = Number(os["total"]         ?? 0);
+  const completed    = Number(os["completed"]     ?? 0);
+  const cancelled    = Number(os["cancelled"]     ?? 0);
+  const totalRevenue = Number(os["total_revenue"] ?? 0);
+  const totalCost    = Number(os["total_cost"]    ?? 0);
+  const totalMargin  = totalRevenue - totalCost;
+  const marginPct    = totalRevenue > 0 ? (totalMargin / totalRevenue) * 100 : 0;
 
   // B. RFQ stats
   const rfqStats = await db.execute<{
-    total_invites: string;
-    total_submitted: string;
-    total_selected: string;
-    avg_response_min: string;
+    total_invites: string; total_submitted: string;
+    total_selected: string; avg_response_min: string;
   }>(sql`
     SELECT
-      COUNT(*)::int                                                      AS total_invites,
-      COUNT(*) FILTER (WHERE submitted_at IS NOT NULL)::int             AS total_submitted,
-      COUNT(*) FILTER (WHERE status = 'selected')::int                  AS total_selected,
-      COALESCE(AVG(
-        EXTRACT(EPOCH FROM (submitted_at - created_at)) / 60
-      ) FILTER (WHERE submitted_at IS NOT NULL), 0)::numeric(10,2)     AS avg_response_min
+      COUNT(*)::int                                                        AS total_invites,
+      COUNT(*) FILTER (WHERE submitted_at IS NOT NULL)::int               AS total_submitted,
+      COUNT(*) FILTER (WHERE status = 'selected')::int                    AS total_selected,
+      COALESCE(AVG(EXTRACT(EPOCH FROM (submitted_at - created_at)) / 60)
+        FILTER (WHERE submitted_at IS NOT NULL), 0)::numeric(10,2)        AS avg_response_min
     FROM rfq_vendor_links
     WHERE vendor_id = ${vendorId}
   `);
@@ -123,14 +157,54 @@ export async function recalculateVendorPerformance(vendorId: number) {
   const { totalJobs, withPod } = podStats[0] ?? { totalJobs: 0, withPod: 0 };
   const podScore          = totalJobs > 0 ? (withPod / totalJobs) * 100 : 0;
   const podCompleteOrders = withPod;
+  const podUploadedCount  = withPod;
+  const podMissingCount   = Math.max(0, totalJobs - withPod);
 
-  // D. Derived metrics
-  const successRate = total > 0 ? (completed / total) * 100 : 0;
-  const cancelRate  = total > 0 ? (cancelled / total) * 100 : 0;
-  const ontimePct   = total > 0 ? Math.max(0, successRate - cancelRate / 2) : 0;
+  // D. Invoice stats & complaints via exceptions table
+  const invoiceIssuedCount = completed; // each completed order = 1 invoice issued
+  let invoiceDisputeCount    = 0;
+  let customerComplaintCount = 0;
+  try {
+    const exRes = await db.execute<{ dispute_count: string; complaint_count: string }>(sql`
+      SELECT
+        COUNT(*) FILTER (WHERE exception_type = 'payment_overdue')::int    AS dispute_count,
+        COUNT(*) FILTER (WHERE exception_type = 'customer_complaint')::int AS complaint_count
+      FROM exceptions
+      WHERE supplier_name IN (SELECT name FROM suppliers WHERE id = ${vendorId})
+    `);
+    const ex = (exRes.rows[0] ?? {}) as Record<string, string>;
+    invoiceDisputeCount    = Number(ex["dispute_count"]   ?? 0);
+    customerComplaintCount = Number(ex["complaint_count"] ?? 0);
+  } catch { /* exceptions table may not exist yet */ }
+
+  // E. Derived order metrics
+  const successRate  = total > 0 ? (completed / total) * 100 : 0;
+  const cancelRate   = total > 0 ? (cancelled / total) * 100 : 0;
+  const ontimePct    = total > 0 ? Math.max(0, successRate - cancelRate / 2) : 0;
   const onTimeOrders = completed;
   const lateOrders   = Math.max(0, total - completed - cancelled);
 
+  // F. Preferred Vendor Score (0–100) with weighted components
+  //   25% On Time
+  //   20% Win Rate (selected / invites)
+  //   20% Margin % (normalized, 30% margin = full score)
+  //   15% Response Speed (inverted avg response hours, 48h cap)
+  //   10% POD Completeness
+  //   10% Cancellation Rate (inverted)
+  const winRate = totalRfqInvites > 0 ? totalSelected / totalRfqInvites : 0;
+  const scoreOnTime     = (ontimePct / 100) * 25;
+  const scoreWinRate    = winRate * 20;
+  const scoreMargin     = Math.min(Math.max(marginPct, 0) / 30, 1) * 20;
+  const scoreRespSpeed  = (1 - Math.min(avgResponseHours, 48) / 48) * 15;
+  const scorePod        = (podScore / 100) * 10;
+  const scoreCancelRate = (1 - Math.min(cancelRate, 100) / 100) * 10;
+  const preferredVendorScore = Math.min(
+    100,
+    scoreOnTime + scoreWinRate + scoreMargin + scoreRespSpeed + scorePod + scoreCancelRate
+  );
+  const vendorGrade = calcGrade(preferredVendorScore);
+
+  // Legacy recommendation score (kept for backward compat & RFQ recommendation)
   const recScore =
     (ontimePct * 0.3) +
     (Math.max(0, 100 - Math.min(avgResponseMin, 120)) * 0.2) +
@@ -149,23 +223,25 @@ export async function recalculateVendorPerformance(vendorId: number) {
     customerRating:         "0",
     orderSuccessRate:       successRate.toFixed(2),
     cancelRate:             cancelRate.toFixed(2),
-    totalComplaints:        0,
+    totalComplaints:        customerComplaintCount,
     recommendationScore:    recScore.toFixed(2),
     updatedAt:              new Date(),
-    // Extended
-    totalRfqInvites,
-    totalSubmitted,
-    totalSelected,
-    totalRejected,
-    avgResponseHours:  avgResponseHours.toFixed(2),
-    onTimeOrders,
-    lateOrders,
-    podCompleteOrders,
-    score:             recScore.toFixed(2),
-    lastCalculatedAt:  new Date(),
+    totalRfqInvites, totalSubmitted, totalSelected, totalRejected,
+    avgResponseHours:       avgResponseHours.toFixed(2),
+    onTimeOrders, lateOrders, podCompleteOrders,
+    score:                  recScore.toFixed(2),
+    lastCalculatedAt:       new Date(),
+    totalRevenue:           totalRevenue.toFixed(2),
+    totalCost:              totalCost.toFixed(2),
+    totalMargin:            totalMargin.toFixed(2),
+    marginPct:              marginPct.toFixed(2),
+    podUploadedCount, podMissingCount,
+    invoiceIssuedCount, invoiceDisputeCount,
+    customerComplaintCount,
+    preferredVendorScore:   preferredVendorScore.toFixed(2),
+    vendorGrade,
   };
 
-  // Use raw SQL to match the partial unique index (WHERE vendor_id IS NOT NULL)
   await db.execute(sql`
     INSERT INTO vendor_performance (
       vendor_id, total_orders, completed_orders, cancelled_orders,
@@ -174,15 +250,25 @@ export async function recalculateVendorPerformance(vendorId: number) {
       total_complaints, recommendation_score, updated_at,
       total_rfq_invites, total_submitted, total_selected, total_rejected,
       avg_response_hours, on_time_orders, late_orders, pod_complete_orders,
-      score, last_calculated_at
+      score, last_calculated_at,
+      total_revenue, total_cost, total_margin, margin_pct,
+      pod_uploaded_count, pod_missing_count,
+      invoice_issued_count, invoice_dispute_count,
+      customer_complaint_count,
+      preferred_vendor_score, vendor_grade
     ) VALUES (
       ${vendorId}, ${total}, ${completed}, ${cancelled},
       ${ontimePct.toFixed(2)}, ${avgResponseMin.toFixed(2)}, ${podScore.toFixed(2)},
-      0, 0, ${successRate.toFixed(2)}, ${cancelRate.toFixed(2)}, 0,
+      0, 0, ${successRate.toFixed(2)}, ${cancelRate.toFixed(2)}, ${customerComplaintCount},
       ${recScore.toFixed(2)}, NOW(),
       ${totalRfqInvites}, ${totalSubmitted}, ${totalSelected}, ${totalRejected},
       ${avgResponseHours.toFixed(2)}, ${onTimeOrders}, ${lateOrders}, ${podCompleteOrders},
-      ${recScore.toFixed(2)}, NOW()
+      ${recScore.toFixed(2)}, NOW(),
+      ${totalRevenue.toFixed(2)}, ${totalCost.toFixed(2)}, ${totalMargin.toFixed(2)}, ${marginPct.toFixed(2)},
+      ${podUploadedCount}, ${podMissingCount},
+      ${invoiceIssuedCount}, ${invoiceDisputeCount},
+      ${customerComplaintCount},
+      ${preferredVendorScore.toFixed(2)}, ${vendorGrade}
     )
     ON CONFLICT (vendor_id) WHERE vendor_id IS NOT NULL
     DO UPDATE SET
@@ -194,6 +280,7 @@ export async function recalculateVendorPerformance(vendorId: number) {
       pod_completeness_score   = EXCLUDED.pod_completeness_score,
       order_success_rate       = EXCLUDED.order_success_rate,
       cancel_rate              = EXCLUDED.cancel_rate,
+      total_complaints         = EXCLUDED.total_complaints,
       recommendation_score     = EXCLUDED.recommendation_score,
       updated_at               = NOW(),
       total_rfq_invites        = EXCLUDED.total_rfq_invites,
@@ -205,7 +292,18 @@ export async function recalculateVendorPerformance(vendorId: number) {
       late_orders              = EXCLUDED.late_orders,
       pod_complete_orders      = EXCLUDED.pod_complete_orders,
       score                    = EXCLUDED.score,
-      last_calculated_at       = NOW()
+      last_calculated_at       = NOW(),
+      total_revenue            = EXCLUDED.total_revenue,
+      total_cost               = EXCLUDED.total_cost,
+      total_margin             = EXCLUDED.total_margin,
+      margin_pct               = EXCLUDED.margin_pct,
+      pod_uploaded_count       = EXCLUDED.pod_uploaded_count,
+      pod_missing_count        = EXCLUDED.pod_missing_count,
+      invoice_issued_count     = EXCLUDED.invoice_issued_count,
+      invoice_dispute_count    = EXCLUDED.invoice_dispute_count,
+      customer_complaint_count = EXCLUDED.customer_complaint_count,
+      preferred_vendor_score   = EXCLUDED.preferred_vendor_score,
+      vendor_grade             = EXCLUDED.vendor_grade
   `);
 
   return perf;
@@ -276,12 +374,12 @@ export async function getVendorPerformanceHealth(): Promise<{
     }
 
     const s = (statsRes.rows[0] ?? {}) as Record<string, unknown>;
-    const rowCount           = Number(s["row_count"]          ?? 0);
-    const vendorsWithScore   = Number(s["with_score"]         ?? 0);
-    const vendorsWithoutScore = Number(s["without_score"]     ?? 0);
-    const lastCalculatedAt   = s["last_calculated_at"] ? String(s["last_calculated_at"]) : null;
-    const activeVendors      = Number((activeRes.rows[0] as Record<string, unknown>)?.["n"] ?? 0);
-    const backfillCoverage   = activeVendors > 0
+    const rowCount            = Number(s["row_count"]          ?? 0);
+    const vendorsWithScore    = Number(s["with_score"]         ?? 0);
+    const vendorsWithoutScore = Number(s["without_score"]      ?? 0);
+    const lastCalculatedAt    = s["last_calculated_at"] ? String(s["last_calculated_at"]) : null;
+    const activeVendors       = Number((activeRes.rows[0] as Record<string, unknown>)?.["n"] ?? 0);
+    const backfillCoverage    = activeVendors > 0
       ? `${Math.round((rowCount / activeVendors) * 100)}%`
       : "0%";
 
