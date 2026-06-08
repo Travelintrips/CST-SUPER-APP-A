@@ -59,6 +59,7 @@ import PurchaseReceivePage from "@/pages/purchase/receive";
 import VendorCatalogPage from "@/pages/purchase/vendor-catalog";
 import VendorCatalogEnginePage from "@/pages/purchase/vendor-catalog-engine";
 import MarketplaceAiImagesPage from "@/pages/marketplace-ai-images";
+import MarketplaceAnalyticsPage from "@/pages/purchase/marketplace-analytics";
 // Reports
 import ReportsIndexPage from "@/pages/reports/index";
 import ReportsSalesPage from "@/pages/reports/sales";

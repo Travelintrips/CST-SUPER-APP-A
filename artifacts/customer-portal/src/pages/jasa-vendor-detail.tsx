@@ -1,6 +1,7 @@
-import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useMemo, useEffect, useCallback } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useLocation } from "wouter";
+import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -8,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
+import { ToastAction } from "@/components/ui/toast";
 import { useCart } from "@/lib/logistic-cart";
 import {
   ArrowLeft, Building2, Truck, Plane, Ship, Package,
@@ -459,8 +461,11 @@ export default function JasaVendorDetail() {
   const [added, setAdded] = useState(false);
   const [activeImage, setActiveImage] = useState<string | null>(null);
 
+  const qc = useQueryClient();
+  const queryKey = ["jasa-vendor-detail", id];
+
   const { data: item, isLoading, isError } = useQuery<CatalogDetail>({
-    queryKey: ["jasa-vendor-detail", id],
+    queryKey,
     queryFn: async () => {
       const r = await fetch(`/api/portal/marketplace/${id}`);
       if (!r.ok) throw new Error("not_found");
@@ -469,6 +474,41 @@ export default function JasaVendorDetail() {
     enabled: !!id && !isNaN(Number(id)),
     retry: false,
   });
+
+  // Realtime: watch vendor_catalog_items untuk item ini (dan semua item vendor yg sama)
+  const handleCatalogChange = useCallback((payload: { eventType: string; new: Record<string, unknown>; old: Record<string, unknown> }) => {
+    const row = (payload.new ?? payload.old ?? {}) as Record<string, unknown>;
+    if (row["template_kind"] !== "service" && row["templateKind"] !== "service") return;
+    if (import.meta.env.DEV) {
+      console.log("[Realtime] vendor_catalog_items service changed, refetch marketplace", payload.eventType, row["id"]);
+    }
+    qc.invalidateQueries({ queryKey });
+  }, [qc, id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!supabase || !id) return;
+    const channel = supabase
+      .channel(`jasa-vendor-detail-catalog-${id}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "vendor_catalog_items" },
+        handleCatalogChange,
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "vendor_catalog_items" },
+        handleCatalogChange,
+      )
+      .on(
+        "postgres_changes",
+        { event: "DELETE", schema: "public", table: "vendor_catalog_items" },
+        handleCatalogChange,
+      )
+      .subscribe();
+    return () => {
+      supabase!.removeChannel(channel);
+    };
+  }, [id, handleCatalogChange]);
 
   const serviceType = useMemo(() => item ? resolveServiceType(item) : "general", [item]);
   const categoryLabel = CATEGORY_LABELS[serviceType] ?? "Layanan";
@@ -480,26 +520,55 @@ export default function JasaVendorDetail() {
 
   function handleAddToCart() {
     if (!item || !calcResult) return;
+    const taxAmount = withTax ? tax : 0;
     addItem({
       category: categoryLabel,
       serviceName: item.name,
       calculatorType: serviceType,
+      // ── top-level vendor catalog fields ──
+      itemSource: "vendor_catalog_item",
+      vendorCatalogItemId: item.id,
+      vendorId: item.vendorId ?? null,
+      vendorName: item.vendorName ?? null,
+      templateKind: "service",
+      serviceType: item.serviceType ?? null,
+      calculationInput: {
+        quantity: calcResult.chargeableQty,
+        serviceType: item.serviceType ?? serviceType,
+        ...calcResult.inputs,
+      },
+      priceSnapshot: item.priceSell != null ? {
+        priceSell: item.priceSell,
+        currency: item.currency,
+        unit: item.unit ?? "unit",
+        subtotal: calcResult.subtotal,
+        tax: taxAmount,
+        total,
+      } : null,
+      tax: taxAmount,
+      total,
+      // ── inputData (detail lengkap untuk /book) ──
       inputData: {
         itemSource: "vendor_catalog_item",
         vendorCatalogItemId: item.id,
-        serviceType: item.serviceType ?? serviceType,
         vendorId: item.vendorId,
+        vendorName: item.vendorName ?? undefined,
+        templateKind: "service",
+        serviceType: item.serviceType ?? serviceType,
         name: item.name,
+        description: item.description ?? undefined,
         priceSell: item.priceSell,
         currency: item.currency,
         unit: item.unit,
+        quantity: calcResult.chargeableQty,
+        templateSnapshot: item.templateSnapshot ?? undefined,
         calculationInput: calcResult.inputs,
       },
       calculationResult: {
         chargeableQty: calcResult.chargeableQty,
         chargeableUnit: calcResult.chargeableUnit,
         subtotal: calcResult.subtotal,
-        tax: withTax ? tax : 0,
+        tax: taxAmount,
         total,
       },
       subtotal: total,
@@ -507,7 +576,12 @@ export default function JasaVendorDetail() {
     setAdded(true);
     toast({
       title: "Ditambahkan ke pesanan",
-      description: `${item.name} (${calcResult.chargeableQty} ${calcResult.chargeableUnit})`,
+      description: `${item.name} · ${calcResult.chargeableQty} ${calcResult.chargeableUnit}`,
+      action: (
+        <ToastAction altText="Lanjut ke Pesanan" onClick={() => setLocation("/book")}>
+          Lanjut →
+        </ToastAction>
+      ),
     });
     setTimeout(() => setAdded(false), 3000);
   }
