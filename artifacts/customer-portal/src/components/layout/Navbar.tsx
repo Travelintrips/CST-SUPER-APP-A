@@ -220,12 +220,6 @@ export function Navbar() {
               Marketplace
             </Link>
 
-            {/* Katalog Vendor */}
-            <Link href="/catalog" className={navItemCls(location === "/catalog")}>
-              <Store className="h-3.5 w-3.5" />
-              Katalog
-            </Link>
-
             {/* Services Mega Menu */}
             <div className="relative" ref={servicesRef}>
               <button
@@ -480,15 +474,6 @@ export function Navbar() {
                 location === "/marketplace" ? "bg-[rgba(14,165,233,0.10)] text-[#0284C7]" : "text-slate-600 hover:bg-slate-50"
               }`}>
                 Marketplace
-              </div>
-            </Link>
-
-            <Link href="/catalog" onClick={() => setIsOpen(false)}>
-              <div className={`flex items-center gap-2 px-3 py-2.5 rounded-[14px] text-[15px] font-semibold cursor-pointer ${
-                location === "/catalog" ? "bg-[rgba(14,165,233,0.10)] text-[#0284C7]" : "text-slate-600 hover:bg-slate-50"
-              }`}>
-                <Store className="h-4 w-4 shrink-0" />
-                Katalog Vendor
               </div>
             </Link>
 
