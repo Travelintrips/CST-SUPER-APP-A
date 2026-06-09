@@ -1,5 +1,8 @@
-import { db, salesDocumentsTable, salesDocumentLinesTable } from "@workspace/db";
-import { eq, sql } from "drizzle-orm";
+import {
+  db, salesDocumentsTable, salesDocumentLinesTable,
+  logisticOrderItemsTable, logisticVendorFulfillmentsTable,
+} from "@workspace/db";
+import { eq, sql, and, inArray } from "drizzle-orm";
 import { buildInvoicePdfBuffer } from "./pdfInvoice.js";
 import { ObjectStorageService } from "./objectStorage.js";
 import { sendMediaViaService, sendViaService as sendWhatsApp } from "./waTransport.js";
@@ -15,13 +18,16 @@ export type { LogisticOrderData };
 
 const _pubObjStore = new ObjectStorageService();
 
-// ── One-time column migration ────────────────────────────────────────────────
+// ── One-time column migrations ────────────────────────────────────────────────
 db.execute(sql`
   ALTER TABLE sales_documents
   ADD COLUMN IF NOT EXISTS invoice_pdf_url text
-`).catch(() => {
-  // silently ignore if already exists or no permission (non-fatal)
-});
+`).catch(() => {});
+
+db.execute(sql`
+  ALTER TABLE sales_document_lines
+  ADD COLUMN IF NOT EXISTS meta jsonb
+`).catch(() => {});
 
 function idrFmt(n: number): string {
   return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
@@ -42,11 +48,98 @@ async function nextSoNumber(offset = 0): Promise<string> {
   return `SO/${year}/${seq}`;
 }
 
+// ── Helper: fetch vendor catalog order items as invoice lines ─────────────────
+interface CatalogInvoiceLine {
+  orderItemId: number;
+  vendorCatalogItemId: number | null;
+  vendorFulfillmentId: number | null;
+  name: string;
+  description: string | null;
+  quantity: string;
+  unitPrice: string;
+  subtotal: string;
+  subtotalNum: number;
+}
+
+export async function fetchVendorCatalogLines(orderId: number): Promise<CatalogInvoiceLine[]> {
+  const items = await db
+    .select({
+      id:                 logisticOrderItemsTable.id,
+      serviceName:        logisticOrderItemsTable.serviceName,
+      serviceType:        logisticOrderItemsTable.serviceType,
+      vendorCatalogItemId: logisticOrderItemsTable.vendorCatalogItemId,
+      priceSnapshot:      logisticOrderItemsTable.priceSnapshot,
+      calculationInput:   logisticOrderItemsTable.calculationInput,
+      subtotal:           logisticOrderItemsTable.subtotal,
+    })
+    .from(logisticOrderItemsTable)
+    .where(
+      and(
+        eq(logisticOrderItemsTable.orderId, orderId),
+        eq(logisticOrderItemsTable.itemSource, "vendor_catalog_item"),
+      )
+    );
+
+  if (items.length === 0) return [];
+
+  // Fetch fulfillment IDs for these items
+  const itemIds = items.map((i) => i.id);
+  const fulfillments = await db
+    .select({
+      id:          logisticVendorFulfillmentsTable.id,
+      orderItemId: logisticVendorFulfillmentsTable.orderItemId,
+    })
+    .from(logisticVendorFulfillmentsTable)
+    .where(inArray(logisticVendorFulfillmentsTable.orderItemId, itemIds));
+
+  const fulfillmentByItemId = new Map(fulfillments.map((f) => [f.orderItemId, f.id]));
+
+  return items.map((item) => {
+    const ps  = item.priceSnapshot  as Record<string, unknown> | null;
+    const ci  = item.calculationInput as Record<string, unknown> | null;
+
+    // Unit price: prefer priceSell from snapshot
+    const priceSell = ps?.priceSell  != null ? Number(ps.priceSell)  : 0;
+    const subtotalNum = ps?.subtotal != null ? Number(ps.subtotal)   : Number(item.subtotal ?? 0);
+
+    // Quantity: try multiple calculationInput keys
+    const qty = Number(
+      ci?.chargeableUnit ?? ci?.chargeableQty ?? ci?.quantity ?? ci?.qty ?? 1
+    ) || 1;
+
+    // Compute unit price if priceSell is not set
+    const unitPrice = priceSell > 0 ? priceSell : (qty > 0 ? subtotalNum / qty : subtotalNum);
+
+    const serviceType = (item.serviceType ?? "").trim();
+    const lineName = serviceType
+      ? `Jasa ${serviceType} - ${item.serviceName}`
+      : item.serviceName;
+
+    const meta: Record<string, unknown> = { orderItemId: item.id };
+    if (item.vendorCatalogItemId) meta.vendorCatalogItemId = item.vendorCatalogItemId;
+    const vfId = fulfillmentByItemId.get(item.id);
+    if (vfId) meta.vendorFulfillmentId = vfId;
+
+    return {
+      orderItemId:         item.id,
+      vendorCatalogItemId: item.vendorCatalogItemId ?? null,
+      vendorFulfillmentId: vfId ?? null,
+      name:                lineName,
+      description:         null,
+      quantity:            String(qty),
+      unitPrice:           String(unitPrice),
+      subtotal:            String(subtotalNum),
+      subtotalNum,
+    };
+  });
+}
+
+// ── Main: auto-create customer invoice from logistic order ────────────────────
 export async function autoCreateLogisticInvoice(order: LogisticOrderData, companyId = 1): Promise<void> {
   try {
     const grandTotal = order.grandTotal ?? 0;
-    const taxAmount = order.tax ?? 0;
-    const subtotal = taxAmount > 0 ? grandTotal - taxAmount : grandTotal;
+    const taxAmount  = order.tax ?? 0;
+    const subtotal   = taxAmount > 0 ? grandTotal - taxAmount : grandTotal;
 
     let docId: number;
     let docNumber: string;
@@ -80,20 +173,20 @@ export async function autoCreateLogisticInvoice(order: LogisticOrderData, compan
             .values({
               companyId,
               docNumber: candidate,
-              kind: "order",
-              status: "confirmed",
-              invoiceStatus: "to_invoice",
+              kind:           "order",
+              status:         "confirmed",
+              invoiceStatus:  "to_invoice",
               deliveryStatus: "delivered",
-              paymentStatus: "unpaid",
-              customerName: order.customerName,
-              totalAmount: String(subtotal),
-              taxAmount: String(taxAmount),
-              grandTotal: String(grandTotal),
-              notes: noteLines.join("\n"),
+              paymentStatus:  "unpaid",
+              customerName:   order.customerName,
+              totalAmount:    String(subtotal),
+              taxAmount:      String(taxAmount),
+              grandTotal:     String(grandTotal),
+              notes:          noteLines.join("\n"),
               logisticOrderId: order.id,
-              confirmedAt: new Date(),
-              origin: order.origin,
-              destination: order.destination,
+              confirmedAt:    new Date(),
+              origin:         order.origin,
+              destination:    order.destination,
             })
             .returning();
           break;
@@ -104,83 +197,134 @@ export async function autoCreateLogisticInvoice(order: LogisticOrderData, compan
         }
       }
       if (!doc) throw new Error("Gagal membuat SO setelah 5 percobaan");
-      docId = doc.id;
+      docId    = doc.id;
       docNumber = doc.docNumber;
 
-      await db.insert(salesDocumentLinesTable).values({
-        documentId: docId,
-        productId: null,
-        name: `Jasa Pengiriman ${order.shipmentType ?? ""}`.trim(),
-        description: [
-          `${order.origin} → ${order.destination}`,
-          order.commodity ? `Komoditas: ${order.commodity}` : null,
-          order.cargoDescription ?? null,
-        ].filter(Boolean).join(" | "),
-        quantity: "1",
-        unitPrice: String(subtotal),
-        subtotal: String(subtotal),
-      });
+      // ── Fetch vendor catalog item lines ───────────────────────────────────
+      const catalogLines = await fetchVendorCatalogLines(order.id);
+      const catalogSubtotalSum = catalogLines.reduce((acc, l) => acc + l.subtotalNum, 0);
+
+      // ── Freight line: order total minus catalog items ─────────────────────
+      const freightSubtotal = Math.max(0, subtotal - catalogSubtotalSum);
+
+      if (freightSubtotal > 0 || catalogLines.length === 0) {
+        const freightAmount = catalogLines.length === 0 ? subtotal : freightSubtotal;
+        await db.insert(salesDocumentLinesTable).values({
+          documentId:  docId,
+          productId:   null,
+          name:        `Jasa Pengiriman ${order.shipmentType ?? ""}`.trim(),
+          description: [
+            `${order.origin} → ${order.destination}`,
+            order.commodity         ? `Komoditas: ${order.commodity}` : null,
+            order.cargoDescription  ?? null,
+          ].filter(Boolean).join(" | ") || null,
+          quantity:  "1",
+          unitPrice: String(freightAmount),
+          subtotal:  String(freightAmount),
+        } as any);
+      }
+
+      // ── Vendor catalog item lines ─────────────────────────────────────────
+      for (const line of catalogLines) {
+        await db.insert(salesDocumentLinesTable).values({
+          documentId:  docId,
+          productId:   null,
+          name:        line.name,
+          description: line.description,
+          quantity:    line.quantity,
+          unitPrice:   line.unitPrice,
+          subtotal:    line.subtotal,
+          meta: {
+            orderItemId:         line.orderItemId,
+            vendorCatalogItemId: line.vendorCatalogItemId,
+            vendorFulfillmentId: line.vendorFulfillmentId,
+          },
+        } as any);
+      }
 
       // Audit: SO created
       writeAuditLog({
         companyId,
-        action: "invoice_created",
-        module: "logistic_invoice",
-        referenceId: String(order.id),
+        action:       "invoice_created",
+        module:       "logistic_invoice",
+        referenceId:  String(order.id),
         newData: {
           docId, docNumber,
-          orderId: order.id,
-          orderNumber: order.orderNumber,
+          orderId:      order.id,
+          orderNumber:  order.orderNumber,
           customerName: order.customerName,
           grandTotal,
+          catalogLineCount: catalogLines.length,
         },
       });
 
       void postSalesInvoice({
-        salesDocId: docId,
+        salesDocId:   docId,
         docNumber,
         customerName: order.customerName,
-        netAmount: subtotal,
+        netAmount:    subtotal,
         taxAmount,
         taxAccountId: null,
         companyId,
       }).catch((err) => logger.error({ err, docId, docNumber }, "autoCreateLogisticInvoice: jurnal gagal"));
     }
 
+    // ── Build PDF with all lines ──────────────────────────────────────────────
     const [acctSettings, template] = await Promise.all([
       ensureAccountingSettings(),
       loadDocTemplate("invoice"),
     ]);
 
-    const pdfBuffer = await buildInvoicePdfBuffer({
-      title: "INVOICE",
-      docNumber,
-      status: "Menunggu Pembayaran",
-      kind: "order",
-      companyName: acctSettings.companyName,
-      companyAddress: acctSettings.companyAddress,
-      companyNpwp: acctSettings.companyNpwp,
-      partyLabel: "Pelanggan",
-      partyName: order.customerName,
-      partyPhone: order.phone,
-      partyEmail: order.email || null,
-      createdAt: new Date().toISOString(),
-      notes: order.notes ?? null,
-      lines: [{
-        name: `Jasa Pengiriman ${order.shipmentType ?? ""}`.trim(),
+    // Reload all lines from DB (so PDF stays consistent even if SO existed)
+    const allDbLines = await db
+      .select()
+      .from(salesDocumentLinesTable)
+      .where(eq(salesDocumentLinesTable.documentId, docId));
+
+    const pdfLines = allDbLines.map((l) => ({
+      name:        l.name,
+      description: l.description ?? undefined,
+      quantity:    Number(l.quantity),
+      unitPrice:   Number(l.unitPrice),
+      subtotal:    Number(l.subtotal),
+    }));
+
+    // Fallback: if no lines in DB (old SO), build from order data
+    if (pdfLines.length === 0) {
+      pdfLines.push({
+        name:      `Jasa Pengiriman ${order.shipmentType ?? ""}`.trim(),
         description: [
           `${order.origin} → ${order.destination}`,
           order.commodity ? `Komoditas: ${order.commodity}` : null,
           order.cargoDescription ?? null,
-        ].filter(Boolean).join(" | "),
-        quantity: 1,
+        ].filter(Boolean).join(" | ") || undefined,
+        quantity:  1,
         unitPrice: subtotal,
         subtotal,
-      }],
-      totalAmount: subtotal,
-      taxAmount: taxAmount > 0 ? taxAmount : null,
-      grandTotal: taxAmount > 0 ? grandTotal : null,
-      taxRate: taxAmount > 0 && subtotal > 0 ? Math.round((taxAmount / subtotal) * 100) : null,
+      });
+    }
+
+    const pdfTotalAmount = pdfLines.reduce((acc, l) => acc + l.subtotal, 0);
+
+    const pdfBuffer = await buildInvoicePdfBuffer({
+      title:          "INVOICE",
+      docNumber,
+      status:         "Menunggu Pembayaran",
+      kind:           "order",
+      companyName:    acctSettings.companyName,
+      companyAddress: acctSettings.companyAddress,
+      companyNpwp:    acctSettings.companyNpwp,
+      partyLabel:     "Pelanggan",
+      partyName:      order.customerName,
+      partyPhone:     order.phone,
+      partyEmail:     order.email || null,
+      createdAt:      new Date().toISOString(),
+      notes:          order.notes ?? null,
+      lines:          pdfLines,
+      totalAmount:    pdfTotalAmount,
+      taxAmount:      taxAmount > 0 ? taxAmount : null,
+      grandTotal:     taxAmount > 0 ? grandTotal : null,
+      taxRate:        taxAmount > 0 && subtotal > 0 ? Math.round((taxAmount / subtotal) * 100) : null,
       template,
     });
 
@@ -190,7 +334,6 @@ export async function autoCreateLogisticInvoice(order: LogisticOrderData, compan
       await _pubObjStore.uploadPublicRaw(subPath, pdfBuffer, "application/pdf");
       pdfPublicUrl = _pubObjStore.toSupabasePublicUrl(subPath);
 
-      // Store PDF URL on sales_documents for retrieval in tracking API
       await db.execute(sql`
         UPDATE sales_documents
         SET invoice_pdf_url = ${pdfPublicUrl}
@@ -199,15 +342,16 @@ export async function autoCreateLogisticInvoice(order: LogisticOrderData, compan
 
       writeAuditLog({
         companyId,
-        action: "pdf_uploaded",
-        module: "logistic_invoice",
+        action:      "pdf_uploaded",
+        module:      "logistic_invoice",
         referenceId: String(order.id),
-        newData: { docId, docNumber, pdfUrl: pdfPublicUrl },
+        newData:     { docId, docNumber, pdfUrl: pdfPublicUrl },
       });
     } catch (e) {
       logger.warn({ e, subPath }, "autoCreateLogisticInvoice: upload PDF gagal — kirim WA tanpa attachment");
     }
 
+    // ── WA Notifications ──────────────────────────────────────────────────────
     const adminWa = await getAdminGroupWa();
     if (adminWa) {
       const adminMsg = [
@@ -226,24 +370,20 @@ export async function autoCreateLogisticInvoice(order: LogisticOrderData, compan
 
       const waAdminSent = pdfPublicUrl
         ? sendMediaViaService(adminWa, adminMsg, pdfPublicUrl, {
-            context: "pod_invoice_admin",
-            refType: "logistic_order",
-            refId: String(order.id),
+            context: "pod_invoice_admin", refType: "logistic_order", refId: String(order.id),
           }).then(() => true).catch((e) => { logger.warn({ e }, "WA admin media gagal"); return false; })
         : sendWhatsApp(adminWa, adminMsg, {
-            context: "pod_invoice_admin",
-            refType: "logistic_order",
-            refId: String(order.id),
+            context: "pod_invoice_admin", refType: "logistic_order", refId: String(order.id),
           }).then(() => true).catch((e) => { logger.warn({ e }, "WA admin teks gagal"); return false; });
 
       void waAdminSent.then((ok) => {
         if (ok) {
           writeAuditLog({
             companyId,
-            action: "wa_sent_admin",
-            module: "logistic_invoice",
+            action:      "wa_sent_admin",
+            module:      "logistic_invoice",
             referenceId: String(order.id),
-            newData: { docNumber, adminWa, hasPdf: !!pdfPublicUrl },
+            newData:     { docNumber, adminWa, hasPdf: !!pdfPublicUrl },
           });
         }
       });
@@ -259,7 +399,7 @@ export async function autoCreateLogisticInvoice(order: LogisticOrderData, compan
         `No. Invoice : *${docNumber}*`,
         `Rute        : ${order.origin} → ${order.destination}`,
         order.commodity ? `Komoditas   : ${order.commodity}` : null,
-        grandTotal > 0 ? `Total       : *${idrFmt(grandTotal)}*` : null,
+        grandTotal > 0  ? `Total       : *${idrFmt(grandTotal)}*` : null,
         ``,
         pdfPublicUrl
           ? `📄 File invoice terlampir. Mohon simpan sebagai bukti pembayaran.`
@@ -270,30 +410,26 @@ export async function autoCreateLogisticInvoice(order: LogisticOrderData, compan
 
       const waCustSent = pdfPublicUrl
         ? sendMediaViaService(order.phone, custMsg, pdfPublicUrl, {
-            context: "pod_invoice_customer",
-            refType: "logistic_order",
-            refId: String(order.id),
+            context: "pod_invoice_customer", refType: "logistic_order", refId: String(order.id),
           }).then(() => true).catch((e) => { logger.warn({ e, phone: order.phone }, "WA customer media gagal"); return false; })
         : sendWhatsApp(order.phone, custMsg, {
-            context: "pod_invoice_customer",
-            refType: "logistic_order",
-            refId: String(order.id),
+            context: "pod_invoice_customer", refType: "logistic_order", refId: String(order.id),
           }).then(() => true).catch((e) => { logger.warn({ e, phone: order.phone }, "WA customer teks gagal"); return false; });
 
       void waCustSent.then((ok) => {
         if (ok) {
           writeAuditLog({
             companyId,
-            action: "wa_sent_customer",
-            module: "logistic_invoice",
+            action:      "wa_sent_customer",
+            module:      "logistic_invoice",
             referenceId: String(order.id),
-            newData: { docNumber, phone: order.phone, hasPdf: !!pdfPublicUrl },
+            newData:     { docNumber, phone: order.phone, hasPdf: !!pdfPublicUrl },
           });
         }
       });
     }
 
-    void isNew; // suppress unused variable warning
+    void isNew;
     logger.info({ orderId: order.id, docId, docNumber, hasPdf: !!pdfPublicUrl }, "autoCreateLogisticInvoice: selesai");
   } catch (err) {
     logger.warn({ err, orderId: order.id }, "autoCreateLogisticInvoice: non-fatal error");
