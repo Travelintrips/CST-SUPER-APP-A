@@ -72,7 +72,6 @@ const PRODUCT_CATS = [
 
 const SERVICE_CATS = [
   { key: "all",          label: "Semua Jasa",  emoji: "🌐" },
-  { key: "trucking",     label: "Trucking",    emoji: "🚛" },
   { key: "sea_freight",  label: "Sea Freight", emoji: "🚢" },
   { key: "air_freight",  label: "Air Freight", emoji: "✈️" },
   { key: "ppjk",         label: "PPJK",        emoji: "📋" },
@@ -696,6 +695,14 @@ function useMarketplaceCatalogRealtime() {
 export default function MarketplacePage() {
   const [, setLocation] = useLocation();
   const search = useSearch(); // e.g. "type=service&category=trucking&q=foo"
+
+  // Redirect trucking category to dedicated /trucking page
+  useEffect(() => {
+    const sp = new URLSearchParams(search);
+    if (sp.get("category") === "trucking") {
+      setLocation("/trucking");
+    }
+  }, [search, setLocation]);
 
   // Derive tab/category/q from URL search string — reactive to navigation
   // If `type` is explicit in URL → honour it.

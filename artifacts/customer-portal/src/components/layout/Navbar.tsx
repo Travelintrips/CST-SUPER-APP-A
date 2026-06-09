@@ -21,7 +21,6 @@ import { useEditMode } from "@/contexts/EditModeContext";
 const SERVICES_ITEMS = [
   { icon: Ship,      titleKey: "servicesMenu.freight.title",   descKey: "servicesMenu.freight.desc",   href: "/marketplace?type=service&category=sea_freight" },
   { icon: FileCheck, titleKey: "servicesMenu.customs.title",   descKey: "servicesMenu.customs.desc",   href: "/marketplace?type=service&category=ppjk" },
-  { icon: Truck,     titleKey: "servicesMenu.domestic.title",  descKey: "servicesMenu.domestic.desc",  href: "/marketplace?type=service&category=trucking" },
   { icon: Truck,     titleKey: "servicesMenu.trucking.title",  descKey: "servicesMenu.trucking.desc",  href: "/trucking" },
   { icon: Search,    titleKey: "servicesMenu.tracking.title",  descKey: "servicesMenu.tracking.desc",  href: "/track" },
 ];
@@ -50,7 +49,7 @@ const AUTOCOMPLETE_MAP: AutocompleteEntry[] = [
     icon: Truck, label: "Trucking Domestik",
     description: "Angkutan darat dalam kota & antar kota",
     kind: "Layanan", terms: ["truck", "truk", "angkut", "darat", "trucking"],
-    href: "/marketplace?type=service&category=trucking&q=trucking",
+    href: "/trucking",
   },
   {
     icon: Ship, label: "Sea Freight",
