@@ -1127,6 +1127,65 @@ function SimilarItemsSection({ itemId, onNavigate }: { itemId: number; onNavigat
   );
 }
 
+// ── Same Province Section ─────────────────────────────────────────────────────
+function SameProvinceSection({
+  itemId,
+  province,
+  onNavigate,
+}: {
+  itemId: number;
+  province: string | null;
+  onNavigate: (id: number) => void;
+}) {
+  const { data: items = [], isLoading } = useQuery<CatalogItemSummary[]>({
+    queryKey: ["marketplace-same-province", itemId],
+    queryFn: () =>
+      fetch(`/api/portal/marketplace/${itemId}/same-province`)
+        .then((r) => r.json())
+        .then((d) => (Array.isArray(d) ? d : [])),
+    staleTime: 120_000,
+    enabled: !!itemId && !!province,
+  });
+
+  if (!province) return null;
+  if (isLoading) {
+    return (
+      <div className="bg-white rounded-2xl border border-slate-200 p-5">
+        <div className="h-4 w-56 bg-slate-200 rounded animate-pulse mb-4" />
+        <div className="flex gap-3 overflow-hidden">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="w-[200px] h-52 bg-slate-100 rounded-2xl shrink-0 animate-pulse" />
+          ))}
+        </div>
+      </div>
+    );
+  }
+  if (items.length === 0) return null;
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+      <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between">
+        <div>
+          <p className="text-[15px] font-extrabold text-slate-800 flex items-center gap-2">
+            <MapPin className="h-4 w-4 text-emerald-500" />
+            Produk dari {province}
+          </p>
+          <p className="text-[12px] text-slate-400 mt-0.5">
+            {items.length} produk dari vendor lain di provinsi yang sama
+          </p>
+        </div>
+      </div>
+      <div className="px-5 py-4 overflow-x-auto">
+        <div className="flex gap-3 min-w-max">
+          {items.map((item) => (
+            <ItemMiniCard key={item.id} item={item} onNavigate={onNavigate} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Detail Page ──────────────────────────────────────────────────────────
 export default function MarketplaceDetailPage() {
   const [, params] = useRoute<{ id: string }>("/marketplace/:id");
@@ -1375,6 +1434,18 @@ export default function MarketplaceDetailPage() {
           />
           <SimilarItemsSection
             itemId={item.id}
+            onNavigate={(id) => {
+              setLocation(`/marketplace/${id}`);
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }}
+          />
+          <SameProvinceSection
+            itemId={item.id}
+            province={
+              item.location?.includes(",")
+                ? item.location.split(",").pop()!.trim()
+                : item.location ?? null
+            }
             onNavigate={(id) => {
               setLocation(`/marketplace/${id}`);
               window.scrollTo({ top: 0, behavior: "smooth" });

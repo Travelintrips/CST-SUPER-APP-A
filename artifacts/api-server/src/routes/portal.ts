@@ -4036,8 +4036,8 @@ router.get("/marketplace/:id/related", async (req, res) => {
       .orderBy(
         sql`CASE WHEN ${vci.categoryKey} = ${item.categoryKey ?? ""} THEN 0 ELSE 1 END`,
         item.priceSell != null
-          ? sql`CASE WHEN ${vci.priceSell} IS NOT NULL THEN ABS(${vci.priceSell}::numeric - ${String(item.priceSell)}::numeric) ELSE 999999 END`
-          : sql`999999`,
+          ? sql`CASE WHEN ${vci.priceSell} IS NOT NULL THEN ABS(${vci.priceSell}::numeric - ${String(item.priceSell)}::numeric) ELSE CAST(999999 AS numeric) END`
+          : sql`CAST(999999 AS numeric)`,
         desc(vci.publishedAt),
       )
       .limit(8);
@@ -4119,6 +4119,59 @@ router.get("/marketplace/:id/similar", async (req, res) => {
   } catch (err) {
     req.log?.error({ err }, "similar items error");
     return res.status(500).json({ error: "Gagal memuat similar items" });
+  }
+});
+
+// GET /api/portal/marketplace/:id/same-province — products from other vendors in the same province
+router.get("/marketplace/:id/same-province", async (req, res) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: "id tidak valid" });
+
+  const item = await getCatalogItemPublic(id);
+  if (!item) return res.status(404).json({ error: "Item tidak ditemukan" });
+
+  // Extract province: "City, Province" → take everything after last comma
+  const rawLocation = item.location ?? "";
+  const province = rawLocation.includes(",")
+    ? rawLocation.split(",").pop()!.trim()
+    : rawLocation.trim();
+
+  if (!province) return res.json([]);
+
+  try {
+    const vci = vendorCatalogItemsTable;
+
+    const rows = await db
+      .select({
+        ...CATALOG_PUBLIC_COLS,
+        primaryImageUrl: sql<string | null>`(
+          SELECT pm.file_url FROM product_media pm
+          WHERE pm.vendor_catalog_item_id = ${vci.id}
+            AND pm.is_active = true AND pm.media_type = 'image'
+          ORDER BY pm.is_primary DESC, pm.sort_order ASC LIMIT 1
+        )`.as("primary_image_url"),
+      })
+      .from(vci)
+      .where(and(
+        ne(vci.id, id),
+        ne(vci.vendorId, item.vendorId),
+        ilike(vci.location, `%${province}%`),
+        ...catalogPublicConditions(vci),
+      ))
+      .orderBy(
+        // same category first
+        sql`CASE WHEN ${vci.categoryKey} = ${item.categoryKey ?? ""} THEN 0 ELSE 1 END`,
+        desc(vci.publishedAt),
+      )
+      .limit(8);
+
+    return res.json(rows.map((r) => ({
+      ...r,
+      priceSell: r.priceSell !== null ? Number(r.priceSell) : null,
+    })));
+  } catch (err) {
+    req.log?.error({ err }, "same-province items error");
+    return res.status(500).json({ error: "Gagal memuat item provinsi yang sama" });
   }
 });
 
