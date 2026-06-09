@@ -317,7 +317,7 @@ export default function VehicleImagesPage() {
       <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
         {/* Header */}
         <div className="flex items-center gap-3">
-          <Link href="/bizportal/settings">
+          <Link href="/settings">
             <Button variant="ghost" size="icon" className="shrink-0">
               <ArrowLeft className="w-4 h-4" />
             </Button>
