@@ -294,8 +294,8 @@ export default function LogisticsVendorFulfillmentsPage() {
                       </TableCell>
                       <TableCell className="text-xs text-gray-500 whitespace-nowrap">{fmt(row.createdAt)}</TableCell>
                       <TableCell>
-                        <Link href={`/logistics/portal-orders/${row.orderId}`}>
-                          <Button variant="ghost" size="icon" className="h-7 w-7">
+                        <Link href={`/logistics/vendor-fulfillments/${row.id}`}>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" title="Lihat detail">
                             <ExternalLink className="h-3.5 w-3.5 text-gray-400" />
                           </Button>
                         </Link>
