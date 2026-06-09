@@ -43,7 +43,9 @@ import {
   Package,
   Wrench,
   AlertTriangle,
+  Images,
 } from "lucide-react";
+import { ProductMediaManager } from "@/components/catalog/ProductMediaManager";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -107,6 +109,7 @@ export default function MarketplaceAiImagesPage() {
   const [onlyPublished, setOnlyPublished] = useState(false);
   const [forceRegenerate, setForceRegenerate] = useState(false);
   const [previewItem, setPreviewItem] = useState<GenerationItem | null>(null);
+  const [mediaItem, setMediaItem] = useState<GenerationItem | null>(null);
   const [bulkResult, setBulkResult] = useState<BulkResult | null>(null);
   const [regeneratingIds, setRegeneratingIds] = useState<Set<number>>(new Set());
 
@@ -514,11 +517,21 @@ export default function MarketplaceAiImagesPage() {
                                 size="sm"
                                 variant="ghost"
                                 className="h-8 px-2"
+                                title="Preview gambar"
                                 onClick={() => setPreviewItem(item)}
                               >
                                 <Eye className="w-4 h-4" />
                               </Button>
                             )}
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-8 px-2 text-sky-500 hover:text-sky-600"
+                              title="Kelola Foto / Video"
+                              onClick={() => setMediaItem(item)}
+                            >
+                              <Images className="w-4 h-4" />
+                            </Button>
                             <Button
                               size="sm"
                               variant={item.hasImage ? "outline" : "default"}
@@ -545,6 +558,22 @@ export default function MarketplaceAiImagesPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Media Manager Dialog */}
+      {mediaItem && (
+        <ProductMediaManager
+          open={!!mediaItem}
+          onClose={() => {
+            setMediaItem(null);
+            queryClient.invalidateQueries({ queryKey: ["product-media/generation-status"] });
+          }}
+          vendorCatalogItemId={mediaItem.id}
+          vendorId={mediaItem.vendorId}
+          itemName={mediaItem.name}
+          itemCategory={mediaItem.kategori}
+          itemDescription={mediaItem.description}
+        />
+      )}
 
       {/* Preview Dialog */}
       <Dialog open={!!previewItem} onOpenChange={(o) => !o && setPreviewItem(null)}>
