@@ -14,7 +14,8 @@ export const logisticVendorFulfillmentsTable = pgTable(
     vendorId:             integer("vendor_id").notNull().references(() => suppliersTable.id, { onDelete: "restrict" }),
     serviceType:          text("service_type"),
     status:               text("status").notNull().default("pending"),
-    // pending | in_progress | completed | cancelled
+    // pending | confirmed | in_progress | completed | cancelled
+    vendorPoId:           integer("vendor_po_id"),
     fulfillmentPayload:   jsonb("fulfillment_payload"),
     calculationInput:     jsonb("calculation_input"),
     templateSnapshot:     jsonb("template_snapshot"),

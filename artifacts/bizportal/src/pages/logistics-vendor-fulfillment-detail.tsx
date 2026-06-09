@@ -15,7 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   ArrowLeft, CheckCircle2, XCircle, Clock, Loader2,
   Building2, Phone, Mail, Package, ExternalLink,
-  ChevronRight, AlertCircle, User,
+  ChevronRight, AlertCircle, User, ShoppingCart, FileText,
 } from "lucide-react";
 import { Link } from "wouter";
 
@@ -36,6 +36,8 @@ interface VendorFulfillmentDetail {
   vendorId: number;
   serviceType: string;
   status: string;
+  vendorPoId: number | null;
+  vendorPoNumber: string | null;
   adminNotes: string | null;
   createdAt: string;
   updatedAt: string;
@@ -231,6 +233,7 @@ export default function LogisticsVendorFulfillmentDetailPage() {
 
   const [actionDialog, setActionDialog] = useState<{ status: string; label: string } | null>(null);
   const [notes, setNotes] = useState("");
+  const [createPoDialog, setCreatePoDialog] = useState(false);
 
   const { data, isLoading, error } = useQuery<VendorFulfillmentDetail>({
     queryKey: ["vendor-fulfillment-detail", id],
@@ -245,7 +248,7 @@ export default function LogisticsVendorFulfillmentDetailPage() {
     enabled: !!id,
   });
 
-  const mutation = useMutation({
+  const statusMutation = useMutation({
     mutationFn: async ({ status, notes }: { status: string; notes: string }) => {
       const res = await fetch(`/api/logistic/vendor-fulfillments/${id}/status`, {
         method: "PATCH",
@@ -267,6 +270,36 @@ export default function LogisticsVendorFulfillmentDetailPage() {
     },
     onError: (err: Error) => {
       toast({ variant: "destructive", title: "Gagal", description: err.message });
+    },
+  });
+
+  const createPoMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/logistic/vendor-fulfillments/${id}/create-vendor-po`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.message ?? "Gagal membuat Vendor PO");
+      }
+      return res.json();
+    },
+    onSuccess: (result) => {
+      qc.invalidateQueries({ queryKey: ["vendor-fulfillment-detail", id] });
+      setCreatePoDialog(false);
+      if (result.needCostReview) {
+        toast({
+          title: `PO ${result.po?.docNumber} dibuat`,
+          description: "⚠️ Harap input vendor cost secara manual sebelum konfirmasi PO ini.",
+          variant: "default",
+        });
+      } else {
+        toast({ title: `PO ${result.po?.docNumber} berhasil dibuat` });
+      }
+    },
+    onError: (err: Error) => {
+      toast({ variant: "destructive", title: "Gagal membuat Vendor PO", description: err.message });
     },
   });
 
@@ -302,6 +335,10 @@ export default function LogisticsVendorFulfillmentDetailPage() {
 
   const allowedActions = data.allowedTransitions.filter((s) => s !== "cancelled");
   const canCancel = data.allowedTransitions.includes("cancelled");
+
+  const canCreatePo =
+    !data.vendorPoId &&
+    ["pending", "confirmed", "in_progress"].includes(data.status);
 
   return (
     <AppShell>
@@ -348,13 +385,52 @@ export default function LogisticsVendorFulfillmentDetailPage() {
             </div>
           </div>
 
-          <Link href={`/logistics/portal-orders/${data.orderId}`}>
-            <Button variant="outline" size="sm">
-              <ExternalLink className="h-4 w-4 mr-2" />
-              Buka Order
-            </Button>
-          </Link>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Link href={`/logistics/portal-orders/${data.orderId}`}>
+              <Button variant="outline" size="sm">
+                <ExternalLink className="h-4 w-4 mr-2" />
+                Buka Order
+              </Button>
+            </Link>
+
+            {/* ── Vendor PO button area ─────────────────────────── */}
+            {data.vendorPoId ? (
+              <Link href={`/purchase/orders/${data.vendorPoId}`}>
+                <Button variant="outline" size="sm" className="border-purple-200 text-purple-700 hover:bg-purple-50">
+                  <FileText className="h-4 w-4 mr-2" />
+                  Lihat Vendor PO
+                  <span className="ml-1.5 font-mono text-xs opacity-75">
+                    {data.vendorPoNumber ?? `#${data.vendorPoId}`}
+                  </span>
+                </Button>
+              </Link>
+            ) : canCreatePo ? (
+              <Button
+                size="sm"
+                className="bg-purple-600 hover:bg-purple-700 text-white"
+                onClick={() => setCreatePoDialog(true)}
+              >
+                <ShoppingCart className="h-4 w-4 mr-2" />
+                Buat Vendor PO
+              </Button>
+            ) : null}
+          </div>
         </div>
+
+        {/* ── Vendor PO info banner ─────────────────────────────────── */}
+        {data.vendorPoId && data.vendorPoNumber && (
+          <div className="flex items-center gap-3 p-3 bg-purple-50 border border-purple-200 rounded-lg text-sm text-purple-800">
+            <FileText className="h-4 w-4 flex-shrink-0 text-purple-500" />
+            <span>
+              Vendor PO terhubung:{" "}
+              <Link href={`/purchase/orders/${data.vendorPoId}`}>
+                <span className="font-mono font-semibold hover:underline cursor-pointer">
+                  {data.vendorPoNumber}
+                </span>
+              </Link>
+            </span>
+          </div>
+        )}
 
         {/* ── Status Timeline ──────────────────────────────────────────── */}
         <Card>
@@ -392,7 +468,7 @@ export default function LogisticsVendorFulfillmentDetailPage() {
                 <p className="text-sm">{data.item.category || "—"}</p>
               </div>
               <div>
-                <p className="text-xs text-gray-500">Subtotal Item</p>
+                <p className="text-xs text-gray-500">Subtotal Item (Harga Customer)</p>
                 <p className="text-sm font-medium tabular-nums">
                   {data.item.subtotal > 0 ? idr(data.item.subtotal) : "—"}
                 </p>
@@ -583,7 +659,7 @@ export default function LogisticsVendorFulfillmentDetailPage() {
         </div>
       </div>
 
-      {/* ── Action Dialog ───────────────────────────────────────────────── */}
+      {/* ── Status Action Dialog ─────────────────────────────────────────── */}
       <Dialog open={!!actionDialog} onOpenChange={(o) => { if (!o) { setActionDialog(null); setNotes(""); } }}>
         <DialogContent>
           <DialogHeader>
@@ -615,13 +691,76 @@ export default function LogisticsVendorFulfillmentDetailPage() {
             </Button>
             <Button
               variant={actionDialog?.status === "cancelled" ? "destructive" : "default"}
-              disabled={mutation.isPending}
+              disabled={statusMutation.isPending}
               onClick={() => {
-                if (actionDialog) mutation.mutate({ status: actionDialog.status, notes });
+                if (actionDialog) statusMutation.mutate({ status: actionDialog.status, notes });
               }}
             >
-              {mutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+              {statusMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
               Konfirmasi
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Create Vendor PO Dialog ──────────────────────────────────────── */}
+      <Dialog open={createPoDialog} onOpenChange={(o) => { if (!o) setCreatePoDialog(false); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ShoppingCart className="h-5 w-5 text-purple-600" />
+              Buat Vendor PO
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2 text-sm text-gray-700">
+            <p>
+              Buat <strong>Purchase Order</strong> ke vendor{" "}
+              <span className="font-semibold">{data.vendor.name}</span> untuk fulfillment ini.
+            </p>
+            {data.catalogItem && parseFloat(data.catalogItem.priceBase) > 0 ? (
+              <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg space-y-1.5">
+                <div className="flex justify-between text-xs">
+                  <span className="text-gray-500">Vendor Cost (Harga Dasar)</span>
+                  <span className="font-semibold tabular-nums">{idr(data.catalogItem.priceBase)}</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-gray-500">Harga Customer</span>
+                  <span className="font-semibold tabular-nums">
+                    {data.item.subtotal > 0 ? idr(data.item.subtotal) : "—"}
+                  </span>
+                </div>
+                {data.item.subtotal > 0 && parseFloat(data.catalogItem.priceBase) > 0 && (
+                  <div className="flex justify-between text-xs border-t border-purple-200 pt-1.5 mt-1.5">
+                    <span className="text-gray-500">Estimasi Margin</span>
+                    <span className="font-semibold tabular-nums text-green-700">
+                      {idr(data.item.subtotal - parseFloat(data.catalogItem.priceBase))}
+                    </span>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg flex gap-2">
+                <AlertCircle className="h-4 w-4 text-amber-500 flex-shrink-0 mt-0.5" />
+                <p className="text-xs text-amber-700">
+                  Harga dasar vendor tidak tersedia. PO akan dibuat dengan status <strong>Draft</strong> — harap input vendor cost secara manual sebelum konfirmasi.
+                </p>
+              </div>
+            )}
+            <p className="text-xs text-gray-500">
+              PO akan tercatat di modul <strong>Purchase → Orders</strong> dan terhubung ke fulfillment ini.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreatePoDialog(false)}>
+              Batal
+            </Button>
+            <Button
+              className="bg-purple-600 hover:bg-purple-700 text-white"
+              disabled={createPoMutation.isPending}
+              onClick={() => createPoMutation.mutate()}
+            >
+              {createPoMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+              Buat Vendor PO
             </Button>
           </DialogFooter>
         </DialogContent>

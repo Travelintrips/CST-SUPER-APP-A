@@ -1,6 +1,5 @@
 import { Router, type Request, type Response } from "express";
-import { eq, and, desc } from "drizzle-orm";
-import { sql } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 import {
   db,
   logisticVendorFulfillmentsTable,
@@ -8,6 +7,8 @@ import {
   logisticOrderItemsTable,
   suppliersTable,
   vendorCatalogItemsTable,
+  purchaseDocumentsTable,
+  purchaseDocumentLinesTable,
 } from "@workspace/db";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { logOrderAudit } from "../lib/auditTrail.js";
@@ -25,6 +26,28 @@ const TRANSITIONS: Record<string, string[]> = {
   cancelled:   [],
 };
 
+// ── Idempotent migration: vendor_po_id column ─────────────────────────────────
+db.execute(sql`
+  ALTER TABLE logistic_vendor_fulfillments
+    ADD COLUMN IF NOT EXISTS vendor_po_id INTEGER
+`).catch((err) => {
+  logger.warn({ err: String(err) }, "vendor_po_id migration non-fatal");
+});
+
+// ── Helper: generate PO doc number ────────────────────────────────────────────
+async function nextVendorPoNumber(): Promise<string> {
+  const year = new Date().getFullYear();
+  const pattern = `PO/${year}/%`;
+  const [row] = await db
+    .select({
+      maxSeq: sql<number>`COALESCE(MAX(CAST(SPLIT_PART(doc_number, '/', 3) AS int)), 0)`,
+    })
+    .from(purchaseDocumentsTable)
+    .where(sql`doc_number LIKE ${pattern}`);
+  const seq = (Number(row?.maxSeq ?? 0) + 1).toString().padStart(5, "0");
+  return `PO/${year}/${seq}`;
+}
+
 // ─── GET /:id ─────────────────────────────────────────────────────────────────
 logisticVendorFulfillmentAdminRouter.get("/:id", requireClerkUser, async (req: Request, res: Response) => {
   const id = parseInt(req.params.id ?? "", 10);
@@ -39,6 +62,7 @@ logisticVendorFulfillmentAdminRouter.get("/:id", requireClerkUser, async (req: R
       vendorId:           logisticVendorFulfillmentsTable.vendorId,
       serviceType:        logisticVendorFulfillmentsTable.serviceType,
       status:             logisticVendorFulfillmentsTable.status,
+      vendorPoId:         logisticVendorFulfillmentsTable.vendorPoId,
       fulfillmentPayload: logisticVendorFulfillmentsTable.fulfillmentPayload,
       calculationInput:   logisticVendorFulfillmentsTable.calculationInput,
       templateSnapshot:   logisticVendorFulfillmentsTable.templateSnapshot,
@@ -88,6 +112,16 @@ logisticVendorFulfillmentAdminRouter.get("/:id", requireClerkUser, async (req: R
     catalogItem = ci ?? null;
   }
 
+  // Ambil docNumber PO jika sudah ada
+  let vendorPoNumber: string | null = null;
+  if (vf.vendorPoId) {
+    const [po] = await db
+      .select({ docNumber: purchaseDocumentsTable.docNumber })
+      .from(purchaseDocumentsTable)
+      .where(eq(purchaseDocumentsTable.id, vf.vendorPoId));
+    vendorPoNumber = po?.docNumber ?? null;
+  }
+
   const auditRows = await db.execute<{
     id: number; actor_name: string | null; action: string;
     description: string | null; old_value: unknown; new_value: unknown; created_at: string;
@@ -110,6 +144,8 @@ logisticVendorFulfillmentAdminRouter.get("/:id", requireClerkUser, async (req: R
     vendorId:        vf.vendorId,
     serviceType:     vf.serviceType,
     status:          vf.status,
+    vendorPoId:      vf.vendorPoId ?? null,
+    vendorPoNumber:  vendorPoNumber,
     adminNotes:      vf.adminNotes,
     createdAt:       vf.createdAt?.toISOString() ?? "",
     updatedAt:       vf.updatedAt?.toISOString() ?? "",
@@ -148,6 +184,205 @@ logisticVendorFulfillmentAdminRouter.get("/:id", requireClerkUser, async (req: R
     })),
   });
 });
+
+// ─── POST /:id/create-vendor-po ───────────────────────────────────────────────
+logisticVendorFulfillmentAdminRouter.post(
+  "/:id/create-vendor-po",
+  requireClerkUser,
+  async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id ?? "", 10);
+    if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
+
+    // ── 1. Load fulfillment ──────────────────────────────────────────────────
+    const [vf] = await db
+      .select({
+        id:                 logisticVendorFulfillmentsTable.id,
+        orderId:            logisticVendorFulfillmentsTable.orderId,
+        orderItemId:        logisticVendorFulfillmentsTable.orderItemId,
+        vendorCatalogItemId: logisticVendorFulfillmentsTable.vendorCatalogItemId,
+        vendorId:           logisticVendorFulfillmentsTable.vendorId,
+        serviceType:        logisticVendorFulfillmentsTable.serviceType,
+        status:             logisticVendorFulfillmentsTable.status,
+        vendorPoId:         logisticVendorFulfillmentsTable.vendorPoId,
+        templateSnapshot:   logisticVendorFulfillmentsTable.templateSnapshot,
+        calculationInput:   logisticVendorFulfillmentsTable.calculationInput,
+        priceSnapshot:      logisticVendorFulfillmentsTable.priceSnapshot,
+        orderNumber:        logisticOrdersTable.orderNumber,
+        companyId:          logisticOrdersTable.companyId,
+        itemServiceName:    logisticOrderItemsTable.serviceName,
+        itemSubtotal:       logisticOrderItemsTable.subtotal,
+        vendorName:         suppliersTable.name,
+        vendorAddress:      suppliersTable.address,
+      })
+      .from(logisticVendorFulfillmentsTable)
+      .leftJoin(logisticOrdersTable, eq(logisticOrdersTable.id, logisticVendorFulfillmentsTable.orderId))
+      .leftJoin(logisticOrderItemsTable, eq(logisticOrderItemsTable.id, logisticVendorFulfillmentsTable.orderItemId))
+      .leftJoin(suppliersTable, eq(suppliersTable.id, logisticVendorFulfillmentsTable.vendorId))
+      .where(eq(logisticVendorFulfillmentsTable.id, id));
+
+    if (!vf) return res.status(404).json({ message: "Fulfillment tidak ditemukan" });
+
+    // ── 2. Validasi status ────────────────────────────────────────────────────
+    const ALLOWED_STATUSES = new Set(["pending", "confirmed", "in_progress"]);
+    if (!ALLOWED_STATUSES.has(vf.status)) {
+      return res.status(422).json({
+        message: `Vendor PO hanya bisa dibuat dari status pending/confirmed/in_progress. Status saat ini: ${vf.status}`,
+      });
+    }
+
+    // ── 3. Cek duplikat — return existing jika sudah ada ──────────────────────
+    if (vf.vendorPoId) {
+      const [existingPo] = await db
+        .select({
+          id:        purchaseDocumentsTable.id,
+          docNumber: purchaseDocumentsTable.docNumber,
+          status:    purchaseDocumentsTable.status,
+          grandTotal: purchaseDocumentsTable.grandTotal,
+        })
+        .from(purchaseDocumentsTable)
+        .where(eq(purchaseDocumentsTable.id, vf.vendorPoId));
+
+      return res.json({
+        ok: true,
+        alreadyExists: true,
+        po: existingPo ?? null,
+        message: "Vendor PO sudah ada",
+      });
+    }
+
+    // ── 4. Ambil priceBase dari vendor_catalog_items ───────────────────────────
+    let priceBase = 0;
+    let catalogItemName = vf.itemServiceName ?? "Layanan Logistik";
+    let catalogItemUnit: string | null = null;
+    let needCostReview = false;
+
+    if (vf.vendorCatalogItemId) {
+      const [ci] = await db
+        .select({
+          priceBase: vendorCatalogItemsTable.priceBase,
+          name:      vendorCatalogItemsTable.name,
+          unit:      vendorCatalogItemsTable.unit,
+        })
+        .from(vendorCatalogItemsTable)
+        .where(eq(vendorCatalogItemsTable.id, vf.vendorCatalogItemId));
+
+      if (ci) {
+        priceBase = parseFloat(ci.priceBase ?? "0") || 0;
+        if (ci.name) catalogItemName = ci.name;
+        catalogItemUnit = ci.unit ?? null;
+      }
+    }
+
+    if (priceBase <= 0) {
+      needCostReview = true;
+    }
+
+    // ── 5. Hitung margin snapshot ──────────────────────────────────────────────
+    const customerPrice = vf.itemSubtotal ? parseFloat(vf.itemSubtotal) : 0;
+    const marginAmount = priceBase > 0 && customerPrice > 0
+      ? customerPrice - priceBase
+      : null;
+    const marginPct = marginAmount !== null && priceBase > 0
+      ? ((marginAmount / priceBase) * 100).toFixed(2)
+      : null;
+
+    const poSnapshot = {
+      fulfillmentId:      id,
+      orderId:            vf.orderId,
+      orderNumber:        vf.orderNumber ?? null,
+      vendorCatalogItemId: vf.vendorCatalogItemId,
+      serviceType:        vf.serviceType ?? null,
+      vendorCostSnapshot:     priceBase > 0 ? priceBase : null,
+      customerPriceSnapshot:  customerPrice > 0 ? customerPrice : null,
+      marginSnapshot:         marginAmount,
+      marginPctSnapshot:      marginPct ? parseFloat(marginPct) : null,
+      needCostReview,
+      templateSnapshot:   vf.templateSnapshot ?? null,
+      calculationInput:   vf.calculationInput ?? null,
+      priceSnapshot:      vf.priceSnapshot ?? null,
+      createdFrom:        "vendor_fulfillment",
+    };
+
+    // ── 6. Generate PO number ─────────────────────────────────────────────────
+    const docNumber = await nextVendorPoNumber();
+
+    // ── 7. Notes jika perlu review cost ──────────────────────────────────────
+    const notes = [
+      `Dibuat otomatis dari Vendor Fulfillment #${id} (Order: ${vf.orderNumber ?? vf.orderId})`,
+      needCostReview
+        ? "⚠️ PERLU REVIEW: harga dasar vendor tidak tersedia — harap input vendor cost secara manual sebelum konfirmasi PO ini."
+        : null,
+    ].filter(Boolean).join("\n");
+
+    // ── 8. Insert purchase_documents ─────────────────────────────────────────
+    const [po] = await db
+      .insert(purchaseDocumentsTable)
+      .values({
+        companyId:       vf.companyId ?? null,
+        docNumber,
+        kind:            "order",
+        status:          "draft",
+        supplierId:      vf.vendorId,
+        supplierName:    vf.vendorName ?? "—",
+        supplierAddress: vf.vendorAddress ?? null,
+        totalAmount:     String(priceBase),
+        taxAmount:       "0",
+        grandTotal:      String(priceBase),
+        notes,
+        templateSnapshot: poSnapshot as Record<string, unknown>,
+        createdById:     ((req as any).clerkUser?.id ?? null) as string | null,
+      })
+      .returning();
+
+    // ── 9. Insert purchase_document_lines ─────────────────────────────────────
+    await db.insert(purchaseDocumentLinesTable).values({
+      documentId: po.id,
+      name:       catalogItemName,
+      description: `Layanan ${vf.serviceType ?? ""} — fulfillment #${id}`,
+      quantity:   "1",
+      unit:       catalogItemUnit ?? "unit",
+      unitCost:   String(priceBase),
+      subtotal:   String(priceBase),
+    });
+
+    // ── 10. Update fulfillment.vendorPoId ─────────────────────────────────────
+    await db
+      .update(logisticVendorFulfillmentsTable)
+      .set({ vendorPoId: po.id, updatedAt: new Date() })
+      .where(eq(logisticVendorFulfillmentsTable.id, id));
+
+    // ── 11. Audit log ─────────────────────────────────────────────────────────
+    const actor = (req as any).clerkUser;
+    await logOrderAudit({
+      orderId:     vf.orderId,
+      orderNumber: vf.orderNumber ?? null,
+      actorType:   "admin",
+      actorId:     actor?.id ?? null,
+      actorName:   actor?.name ?? actor?.email ?? "Admin",
+      action:      "vendor_po_created",
+      description: `Vendor PO created from marketplace service fulfillment VF#${id}: ${docNumber}${needCostReview ? " [PERLU REVIEW COST]" : ""}`,
+      newValue:    { fulfillmentId: id, poId: po.id, docNumber, needCostReview },
+      ipAddress:   req.ip ?? null,
+    }).catch(() => {});
+
+    logger.info({ fulfillmentId: id, poId: po.id, docNumber, needCostReview }, "vendor PO created from fulfillment");
+
+    return res.status(201).json({
+      ok: true,
+      alreadyExists: false,
+      po: {
+        id:        po.id,
+        docNumber: po.docNumber,
+        status:    po.status,
+        grandTotal: po.grandTotal,
+      },
+      needCostReview,
+      message: needCostReview
+        ? `PO ${docNumber} dibuat — harap input vendor cost secara manual`
+        : `PO ${docNumber} berhasil dibuat`,
+    });
+  }
+);
 
 // ─── PATCH /:id/status ────────────────────────────────────────────────────────
 logisticVendorFulfillmentAdminRouter.patch("/:id/status", requireClerkUser, async (req: Request, res: Response) => {
