@@ -1,10 +1,11 @@
 import { Router, type IRouter } from "express";
 import { pool } from "@workspace/db";
+import { getRuntimeCheckState } from "../lib/startupValidator.js";
 
 const router: IRouter = Router();
 const startedAt = Date.now();
 
-type ServiceStatus = "ok" | "error" | "unconfigured";
+type ServiceStatus = "ok" | "error" | "unconfigured" | "degraded";
 
 interface ExternalCheckResult {
   status: ServiceStatus;
@@ -87,10 +88,14 @@ router.get("/healthz", async (_req, res) => {
     cachedCheck("resend", checkResend),
   ]);
 
+  const runtimeState = getRuntimeCheckState();
+  const hasMissingDeps = (runtimeState?.missing.length ?? 0) > 0;
+
   const criticalFailing = db.status === "error";
   const anyExternalError = whatsapp.status === "error" || smtp.status === "error";
 
   const overallStatus = criticalFailing ? "error"
+    : hasMissingDeps ? "degraded"
     : anyExternalError ? "degraded"
     : "ok";
 
@@ -107,6 +112,13 @@ router.get("/healthz", async (_req, res) => {
       smtp: smtp.status,
       smtpLatencyMs: smtp.latencyMs,
     },
+    dependencies: runtimeState
+      ? {
+          status: runtimeState.status,
+          missing: runtimeState.missing,
+          checkedAt: runtimeState.checkedAt,
+        }
+      : { status: "not_checked", missing: [] },
   });
 });
 

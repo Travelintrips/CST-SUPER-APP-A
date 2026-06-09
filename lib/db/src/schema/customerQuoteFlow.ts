@@ -27,6 +27,8 @@ export const customerQuoteLinksTable = pgTable("customer_quote_links", {
   templateId: text("template_id"),
   templateVersion: text("template_version"),
   templateSnapshot: jsonb("template_snapshot").$type<Record<string, unknown> | null>(),
+  // ── Media Foundation ──────────────────────────────────────────────────────
+  mediaAssets: jsonb("media_assets").$type<Record<string, unknown>[]>().notNull().default([]),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

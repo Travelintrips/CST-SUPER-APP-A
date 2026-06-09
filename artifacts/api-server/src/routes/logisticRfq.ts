@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { randomUUID } from "crypto";
+import { broadcastInvalidation } from "../lib/alertsBroadcast.js";
 import { rfqRateLimit } from "../middlewares/rfqRateLimit.js";
 import { db, suppliersTable, logisticOrdersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, logisticOrderItemsTable, vendorCatalogItemsTable, vendorOffersTable, vendorRatesTable, salesDocumentsTable, salesDocumentLinesTable, rfqVendorLinksTable, productTemplatesTable } from "@workspace/db";
 import { resolveTemplate } from "@workspace/product-templates";
@@ -31,6 +32,7 @@ import { sendMail, isSmtpConfigured } from "../lib/mailer.js";
 import { logActivity } from "../lib/activityLog.js";
 import { logOrderAudit, logVendorQuoteEvent, logOrderStatusChange } from "../lib/auditTrail.js";
 import { updateOrderProgress } from "../lib/orderProgress.js";
+import { fetchVendorCatalogLines } from "../lib/podInvoiceAutoCreate.js";
 
 function getConfirmFormUrl(token: string): string {
   const domain = getPreferredDomain();
@@ -1504,6 +1506,8 @@ logisticRfqRouter.post("/:id/manual-rfq", async (req: Request, res: Response) =>
   }).catch(() => {});
 
   logger.info({ rfqNumber, orderId, vendorCount: eligible.length }, "Manual RFQ created and sent to vendors");
+  broadcastInvalidation("rfq", orderId);
+  broadcastInvalidation("logistic_orders", orderId);
   return res.json({ ok: true, rfqNumber, vendorCount: eligible.length });
 });
 
@@ -1726,6 +1730,7 @@ logisticRfqRouter.post("/:id/resend-rfq", async (req: Request, res: Response) =>
 
   const sentCount = results.filter((r) => r.sent).length;
   logger.info({ rfqNumber: rfqs.rfqNumber, orderId, sentCount }, "Resend RFQ WA");
+  broadcastInvalidation("rfq", orderId);
   return res.json({ ok: true, rfqNumber: rfqs.rfqNumber, sentCount, results });
 });
 
@@ -2039,20 +2044,50 @@ logisticRfqRouter.post("/confirm/:token", async (req: Request, res: Response) =>
 
         if (newSo) {
           createdSoNumber = newSo.docNumber;
-          // Insert 1 line: jasa pengiriman
-          await db.insert(salesDocumentLinesTable).values({
-            documentId: newSo.id,
-            name: `Jasa Pengiriman ${order.origin} → ${order.destination}`,
-            description: [
-              order.shipmentType,
-              order.commodity ? `Komoditi: ${order.commodity}` : null,
-              order.grossWeight ? `Berat: ${order.grossWeight} kg` : null,
-            ].filter(Boolean).join(" | ") || null,
-            quantity: "1",
-            unitPrice: String(sellingPrice),
-            subtotal: String(sellingPrice),
-          });
-          logger.info({ orderId: order.id, soNumber, soId: newSo.id }, "Sales Order auto-created dari customer confirm");
+
+          // Fetch vendor catalog item lines
+          const catalogLines = await fetchVendorCatalogLines(order.id).catch(() => []);
+          const catalogSubtotalSum = catalogLines.reduce((acc, l) => acc + l.subtotalNum, 0);
+          const freightSubtotal = Math.max(0, sellingPrice - catalogSubtotalSum);
+
+          // Insert freight line (adjusted amount excl. catalog items)
+          if (freightSubtotal > 0 || catalogLines.length === 0) {
+            const freightAmt = catalogLines.length === 0 ? sellingPrice : freightSubtotal;
+            await (db.insert(salesDocumentLinesTable) as any).values({
+              documentId: newSo.id,
+              name: `Jasa Pengiriman ${order.origin} → ${order.destination}`,
+              description: [
+                order.shipmentType,
+                order.commodity ? `Komoditi: ${order.commodity}` : null,
+                order.grossWeight ? `Berat: ${order.grossWeight} kg` : null,
+              ].filter(Boolean).join(" | ") || null,
+              quantity: "1",
+              unitPrice: String(freightAmt),
+              subtotal: String(freightAmt),
+            });
+          }
+
+          // Insert vendor catalog item lines
+          for (const line of catalogLines) {
+            await (db.insert(salesDocumentLinesTable) as any).values({
+              documentId:  newSo.id,
+              name:        line.name,
+              description: line.description,
+              quantity:    line.quantity,
+              unitPrice:   line.unitPrice,
+              subtotal:    line.subtotal,
+              meta: {
+                orderItemId:         line.orderItemId,
+                vendorCatalogItemId: line.vendorCatalogItemId,
+                vendorFulfillmentId: line.vendorFulfillmentId,
+              },
+            });
+          }
+
+          logger.info(
+            { orderId: order.id, soNumber, soId: newSo.id, catalogLineCount: catalogLines.length },
+            "Sales Order auto-created dari customer confirm",
+          );
         }
       }
     } catch (soErr) {
@@ -2115,6 +2150,9 @@ logisticRfqRouter.post("/confirm/:token", async (req: Request, res: Response) =>
   }
 
   logger.info({ orderId: order.id, action, orderNumber: order.orderNumber, soNumber: createdSoNumber }, "Customer confirmation received");
+  broadcastInvalidation("rfq", order.id);
+  broadcastInvalidation("logistic_orders", order.id);
+  if (createdSoNumber) broadcastInvalidation("sales_documents");
   return res.json({ ok: true, action, salesOrderNumber: createdSoNumber });
 });
 
@@ -2396,6 +2434,8 @@ logisticRfqRouter.post("/choose-option", async (req: Request, res: Response) => 
 
   console.log(`[MULTI-MODE] State: Options Sent → Confirmed (order ${order.id}, chose offer ${chosen.id})`);
   logger.info({ orderId: order.id, offerId: chosen.id, price: chosenPrice }, "[MULTI-MODE] Customer chose option");
+  broadcastInvalidation("rfq", order.id);
+  broadcastInvalidation("logistic_orders", order.id);
   return res.json({ ok: true, chosenLabel: chosen.optionLabel ?? "Opsi", price: chosenPrice });
 });
 

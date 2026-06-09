@@ -58,6 +58,7 @@ async function buildAll() {
       "protobufjs",
       "onnxruntime-node",
       "jose",
+      "fluent-ffmpeg",
       "@tensorflow/*",
       "@prisma/client",
       "@mikro-orm/*",
@@ -105,6 +106,7 @@ async function buildAll() {
       "puppeteer-core",
       "electron",
       "web-push",
+      "compression",
     ],
     alias: {
       "@workspace/logistics-constants": path.resolve(workspaceRoot, "lib/logistics-constants/src/index.ts"),

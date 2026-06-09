@@ -1,5 +1,5 @@
 import { useRef } from "react";
-import { Bell, Package, Ship, ShoppingBag, CheckCheck, Trash2, FileText, RefreshCw, Container, Layers, BellOff, BellRing, AlertTriangle, ClipboardList, ShoppingCart, MessageSquare } from "lucide-react";
+import { Bell, Package, Ship, ShoppingBag, CheckCheck, Trash2, FileText, RefreshCw, Container, Layers, BellOff, BellRing, AlertTriangle, ClipboardList, ShoppingCart, MessageSquare, Dumbbell } from "lucide-react";
 import { toast } from "sonner";
 import {
   Popover,
@@ -24,6 +24,7 @@ function typeLabel(type: OrderNotification["type"]) {
   if (type === "purchase_po") return "Purchase Order Dikonfirmasi";
   if (type === "vendor_quote") return "Penawaran Vendor Masuk";
   if (type === "vendor_po_accepted") return "Vendor Konfirmasi PO";
+  if (type === "sport_booking") return "Booking Sport Centre Baru";
   return "Order Produk";
 }
 
@@ -40,6 +41,7 @@ function typeIcon(type: OrderNotification["type"]) {
   if (type === "purchase_po") return <ShoppingCart size={14} className="text-green-600 shrink-0" />;
   if (type === "vendor_quote") return <MessageSquare size={14} className="text-sky-500 shrink-0" />;
   if (type === "vendor_po_accepted") return <CheckCheck size={14} className="text-green-600 shrink-0" />;
+  if (type === "sport_booking") return <Dumbbell size={14} className="text-pink-500 shrink-0" />;
   return <Package size={14} className="text-green-500 shrink-0" />;
 }
 
@@ -51,6 +53,7 @@ function orderHref(n: OrderNotification) {
   if (n.type === "purchase_rfq" || n.type === "purchase_po") return `/purchase/documents/${n.orderId}`;
   if (n.type === "vendor_quote") return `/logistics/portal-orders/${n.orderId}`;
   if (n.type === "vendor_po_accepted") return `/purchase/orders/${n.orderId}`;
+  if (n.type === "sport_booking") return `/sport-center/bookings`;
   return `/portal-product-orders`;
 }
 
@@ -112,6 +115,13 @@ function notifDescription(n: OrderNotification): string {
   if (n.type === "vendor_po_accepted") {
     const total = n.grandTotal != null ? ` · ${formatRupiah(n.grandTotal)}` : "";
     return `PO dikonfirmasi vendor${total}`;
+  }
+  if (n.type === "sport_booking") {
+    const facility = n.facilityName ? `${n.facilityName} · ` : "";
+    const date = n.bookingDate ?? "";
+    const time = n.startTime && n.endTime ? ` · ${n.startTime}–${n.endTime}` : "";
+    const total = n.grandTotal != null ? ` · ${formatRupiah(n.grandTotal)}` : "";
+    return `${facility}${date}${time}${total}`;
   }
   return `${n.itemCount ?? 1} item · ${formatRupiah(n.grandTotal ?? 0)}`;
 }

@@ -17,6 +17,8 @@ export const intelligenceAlertSettingsTable = pgTable("intelligence_alert_settin
 
   quoteExpiredAlertEnabled: boolean("quote_expired_alert_enabled").notNull().default(true),
 
+  invoiceReminderEnabled: boolean("invoice_reminder_enabled").notNull().default(true),
+
   alertWindowStart: text("alert_window_start").notNull().default("00:00"),
   alertWindowEnd: text("alert_window_end").notNull().default("23:59"),
 

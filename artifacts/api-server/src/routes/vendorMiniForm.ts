@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { rateLimit, ipKeyGenerator } from "express-rate-limit";
+import { broadcastInvalidation } from "../lib/alertsBroadcast.js";
 import { eq, desc, inArray, and, count, isNull, ne, sql } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import multer from "multer";
@@ -25,21 +26,24 @@ import {
   serviceTemplatesTable,
   customerQuoteLinksTable,
 } from "@workspace/db";
-import { getInCodeTemplate, resolveTemplate } from "@workspace/product-templates";
-import type { ProductTemplateOverride } from "@workspace/product-templates";
+import { getInCodeTemplate, resolveTemplate, validateTemplatePayload } from "@workspace/product-templates";
+import type { ProductTemplateOverride, DynamicFormValues } from "@workspace/product-templates";
 import {
   resolveServiceTemplate,
   getInCodeServiceTemplate,
   hasInCodeServiceTemplate,
+  validateServicePayload,
 } from "@workspace/service-templates";
 import type { ServiceTemplate, ServiceTemplateField, ServiceTemplateOverride as SvcTemplateOverride } from "@workspace/service-templates";
 import { requireClerkUser } from "../lib/requireAdmin";
+import { upsertCatalogDraftFromSubmission } from "../lib/vendorCatalogDraft.js";
+import type { SubmissionForCatalog, LinkForCatalog } from "../lib/vendorCatalogDraft.js";
 import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStatusService.js";
 import { deleteFromSupabase } from "../lib/supabaseStorage.js";
-import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
+import { sendViaService as sendWhatsApp, sendToAdminGroup } from "../lib/waTransport.js";
 import { getWaTemplateConfig, renderTemplate } from "../lib/orderNotification.js";
-import { getAdminGroupWa } from "../lib/adminWa.js";
-import { wasRecentlyNotified } from "../lib/notificationLog.js";
+import { getAdminWa, getAdminGroupWa } from "../lib/adminWa.js";
+import { wasRecentlyNotified, logNotification } from "../lib/notificationLog.js";
 import { createSalesOrderFromVmfApproval } from "../lib/vmfSoIntegration.js";
 import { updateOrderProgress } from "../lib/orderProgress.js";
 import {
@@ -131,13 +135,11 @@ const PUBLIC_CACHE = "public, max-age=300, stale-while-revalidate=600";
 // Set USE_PRODUCT_TEMPLATE_ENGINE=true di environment untuk mengaktifkan resolver
 // berbasis product_templates + resolveTemplate(). Bila false, fallback ke
 // commodity_templates (tabel lama) tetap dipakai.
-const USE_PRODUCT_TEMPLATE_ENGINE = process.env.USE_PRODUCT_TEMPLATE_ENGINE === "true";
+const USE_PRODUCT_TEMPLATE_ENGINE = process.env.USE_PRODUCT_TEMPLATE_ENGINE !== "false";
 
 // ── Feature flag: Service Template Engine ─────────────────────────────────────
-// Set USE_SERVICE_TEMPLATE_ENGINE=true untuk mengaktifkan resolver berbasis
-// service_templates (DB + in-code). Bila false (default), SERVICE_SCHEMAS tetap
-// menjadi satu-satunya sumber. Flag OFF = zero behavior change.
-const USE_SERVICE_TEMPLATE_ENGINE = process.env.USE_SERVICE_TEMPLATE_ENGINE === "true";
+// Default ON. Set USE_SERVICE_TEMPLATE_ENGINE=false untuk fallback ke SERVICE_SCHEMAS saja.
+const USE_SERVICE_TEMPLATE_ENGINE = process.env.USE_SERVICE_TEMPLATE_ENGINE !== "false";
 
 /**
  * Resolve ProductTemplate dari product_templates DB menggunakan resolveTemplate().
@@ -696,6 +698,25 @@ export const SERVICE_SCHEMAS: Record<string, {
       { key: "notes_to_vendor", label: "Pesan / Instruksi ke Vendor", type: "textarea", section: "quotation", placeholder: "Tambahan informasi yang perlu diketahui vendor" },
     ],
   },
+  // ── Phase 2A: Product-First — Vendor Produk ─────────────────────────────
+  product_vendor: {
+    label: "Vendor Produk", emoji: "🏭",
+    fields: [
+      { key: "product_price", label: "Harga Produk (Rp)", type: "number", required: true, section: "quotation" },
+      { key: "stock_status", label: "Status Stok", type: "select", required: true, options: ["Ready Stock", "Indent", "Pre-order", "Habis"], section: "quotation" },
+      { key: "available_qty", label: "Qty Tersedia", type: "number", required: true, section: "quotation" },
+      { key: "ready_date", label: "Tanggal Siap (Produk Ready)", type: "date", required: true, section: "quotation" },
+      { key: "pickup_location", label: "Kota / Lokasi Pickup", type: "text", required: true, section: "quotation", placeholder: "Contoh: Cilincing, Jakarta Utara" },
+      { key: "warehouse_address", label: "Alamat Lengkap Gudang", type: "textarea", required: true, section: "quotation", placeholder: "Alamat gudang / lokasi pengambilan produk" },
+      { key: "product_documents", label: "Dokumen Produk", type: "text", section: "quotation", placeholder: "Link atau keterangan dokumen produk (COA, MSDS, dll.)", isUpload: true },
+      { key: "notes", label: "Catatan Tambahan", type: "textarea", section: "both" },
+      // Operational
+      { key: "qty_confirmed", label: "Qty Dikonfirmasi", type: "number", required: true, section: "operational" },
+      { key: "packing_status", label: "Status Packing", type: "select", options: ["Belum Packing", "Sedang Packing", "Sudah Packing"], section: "operational" },
+      { key: "ready_confirmation", label: "Konfirmasi Kesiapan", type: "select", options: ["Siap Dijemput", "Butuh 1-2 Hari", "Butuh 3+ Hari"], section: "operational" },
+      { key: "pickup_contact", label: "Kontak PIC Gudang", type: "text", section: "operational", placeholder: "Nama dan nomor WA PIC di lokasi" },
+    ],
+  },
 };
 
 // ── Universal operational fields (appended to all schemas for fulfillment form) ─
@@ -716,22 +737,7 @@ const UNIVERSAL_OP_FIELDS: {
   { key: "pod_doc",            label: "Proof of Delivery (POD)", type: "text",                      placeholder: "Upload bukti pengiriman / POD",                              section: "operational", isUpload: true },
 ];
 
-// ── PUBLIC: GET /api/vendor-form/local-file/:filename ─────────────────────────
-vendorMiniFormRouter.get("/local-file/:filename", async (req: Request, res: Response) => {
-  const { filename } = req.params as { filename: string };
-  if (!/^[a-zA-Z0-9_\-]+\.[a-z0-9]+$/i.test(filename)) return res.status(400).send("Invalid");
-  try {
-    const { promises: fs } = await import("fs");
-    const path = await import("path");
-    const data = await fs.readFile(path.join("/tmp/vmf-uploads", filename));
-    const ext = filename.split(".").pop()?.toLowerCase() ?? "";
-    const mimeMap: Record<string, string> = { pdf: "application/pdf", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp" };
-    res.setHeader("Content-Type", mimeMap[ext] ?? "application/octet-stream");
-    return res.send(data);
-  } catch {
-    return res.status(404).send("Not found");
-  }
-});
+// ── /local-file removed — uploads go directly to object storage (no /tmp fallback) ──
 
 // ── PUBLIC: GET /api/vendor-form/:token/drivers ───────────────────────────────
 vendorMiniFormRouter.get("/:token/drivers", async (req: Request, res: Response) => {
@@ -1147,27 +1153,113 @@ vendorMiniFormRouter.post("/upload/:token", _vmfUploadRateLimit, _vmfUpload.sing
     try {
       objectPath = await _vmfStorage.uploadPrivateEntity(req.file.buffer, req.file.mimetype);
     } catch (storErr: unknown) {
-      req.log?.warn({ err: storErr }, "GCS upload gagal, fallback ke local storage");
-      try {
-        const { promises: fs } = await import("fs");
-        const path = await import("path");
-        const { randomUUID } = await import("crypto");
-        const LOCAL_VMF_DIR = "/tmp/vmf-uploads";
-        await fs.mkdir(LOCAL_VMF_DIR, { recursive: true });
-        const ext = req.file.mimetype === "application/pdf" ? "pdf"
-          : req.file.mimetype.startsWith("image/") ? req.file.mimetype.split("/")[1]
-          : "bin";
-        const fname = `${randomUUID()}.${ext}`;
-        await fs.writeFile(path.join(LOCAL_VMF_DIR, fname), req.file.buffer);
-        objectPath = `/api/vendor-form/local-file/${fname}`;
-      } catch (localErr: unknown) {
-        req.log?.error({ err: localErr }, "Local fallback upload juga gagal");
-        return res.status(500).json({ error: "Upload file gagal. Coba lagi atau hubungi admin." });
-      }
+      req.log?.error({ err: storErr }, "Storage upload gagal pada VMF");
+      return res.status(503).json({ error: "Storage sedang tidak tersedia, silakan coba lagi." });
     }
     return res.json({ objectPath });
   } catch (err) {
     req.log?.error({ err }, "vmf upload error");
+    return res.status(500).json({ error: "Upload gagal" });
+  }
+});
+
+// ── PUBLIC: POST /api/vendor-form/upload-media/:token ────────────────────────
+const _vmfMediaUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
+const _vmfMediaRateLimit = rateLimit({ windowMs: 60 * 60 * 1000, max: 40, standardHeaders: true, legacyHeaders: false });
+
+const MEDIA_ALLOWED_TYPES: Record<string, string[]> = {
+  cover:       ["image/jpeg", "image/png", "image/webp"],
+  gallery:     ["image/jpeg", "image/png", "image/webp"],
+  video:       ["video/mp4", "video/quicktime", "video/webm", "video/x-msvideo", "video/mpeg"],
+  brochure:    ["application/pdf"],
+  certificate: ["application/pdf", "image/jpeg", "image/png", "image/webp"],
+};
+
+vendorMiniFormRouter.post("/upload-media/:token", _vmfMediaRateLimit, _vmfMediaUpload.single("file"), async (req: Request, res: Response) => {
+  const { token } = req.params as { token: string };
+  if (token === "admin") return res.status(404).json({ error: "Not found" });
+  try {
+    const [link] = await db.select({
+      id: vendorMiniFormLinksTable.id,
+      isActive: vendorMiniFormLinksTable.isActive,
+      expiresAt: vendorMiniFormLinksTable.expiresAt,
+      vendorName: vendorMiniFormLinksTable.vendorName,
+      serviceType: vendorMiniFormLinksTable.serviceType,
+      orderNumber: vendorMiniFormLinksTable.orderNumber,
+    })
+      .from(vendorMiniFormLinksTable)
+      .where(eq(vendorMiniFormLinksTable.token, token));
+    if (!link) return res.status(404).json({ error: "Link tidak ditemukan" });
+    if (!link.isActive) return res.status(410).json({ error: "Link sudah dinonaktifkan" });
+    if (link.expiresAt && link.expiresAt < new Date()) return res.status(410).json({ error: "Link sudah kadaluarsa" });
+
+    if (!req.file) return res.status(400).json({ error: "File diperlukan" });
+
+    const role = String(req.body?.role ?? "gallery");
+    if (!MEDIA_ALLOWED_TYPES[role]) {
+      return res.status(400).json({ error: `Role tidak valid. Pilih: ${Object.keys(MEDIA_ALLOWED_TYPES).join(", ")}` });
+    }
+    if (!MEDIA_ALLOWED_TYPES[role].includes(req.file.mimetype)) {
+      return res.status(400).json({ error: `Tipe file tidak didukung untuk ${role}.` });
+    }
+
+    let objectPath: string;
+    try {
+      objectPath = await _vmfStorage.uploadPrivateEntity(req.file.buffer, req.file.mimetype);
+    } catch (storErr: unknown) {
+      req.log?.error({ err: storErr }, "Storage upload gagal pada VMF media");
+      return res.status(503).json({ error: "Storage sedang tidak tersedia, silakan coba lagi." });
+    }
+
+    const uploadResult = { objectPath, filename: req.file.originalname, mimeType: req.file.mimetype, size: req.file.size, role };
+
+    // ── Fire-and-forget WA notification ke admin ─────────────────────────────
+    const _linkId = String(link.id);
+    const _vendorName = link.vendorName ?? "Vendor";
+    const _serviceType = link.serviceType;
+    const _orderNumber = link.orderNumber;
+    const _filename = req.file.originalname;
+    const _role = role;
+    setImmediate(async () => {
+      try {
+        const dedupCtx = "vmf_media_upload";
+        const alreadyNotified = await wasRecentlyNotified(dedupCtx, _linkId, 30 * 60 * 1000);
+        if (alreadyNotified) return;
+
+        const ROLE_LABEL: Record<string, string> = {
+          cover: "Cover Image",
+          gallery: "Foto Gallery",
+          video: "Video",
+          brochure: "Brosur PDF",
+          certificate: "Sertifikat",
+        };
+        const msg =
+          `📷 *Media Vendor Diterima*\n\n` +
+          `Vendor *${_vendorName}* (${_serviceType})` +
+          (_orderNumber ? ` untuk order *${_orderNumber}*` : "") +
+          ` baru saja mengunggah media:\n` +
+          `• Jenis: ${ROLE_LABEL[_role] ?? _role}\n` +
+          `• File: ${_filename}\n\n` +
+          `Lihat di BizPortal → Vendor Forms → 📷 Media Submission.`;
+
+        const [adminGroupWa, adminWa] = await Promise.all([getAdminGroupWa(), getAdminWa()]);
+        const waOpts = { context: dedupCtx, refType: "vmf_link", refId: _linkId };
+
+        if (adminGroupWa) {
+          await sendToAdminGroup(adminGroupWa, msg, waOpts);
+          await logNotification({ channel: "wa", recipient: adminGroupWa, message: msg, status: "sent", context: dedupCtx, refType: "vmf_link", refId: _linkId });
+        } else if (adminWa) {
+          await sendWhatsApp(adminWa, msg, waOpts);
+          await logNotification({ channel: "wa", recipient: adminWa, message: msg, status: "sent", context: dedupCtx, refType: "vmf_link", refId: _linkId });
+        }
+      } catch (notifErr) {
+        req.log?.warn({ err: notifErr }, "vmf media upload — notifikasi WA gagal (non-fatal)");
+      }
+    });
+
+    return res.json(uploadResult);
+  } catch (err) {
+    req.log?.error({ err }, "vmf media upload error");
     return res.status(500).json({ error: "Upload gagal" });
   }
 });
@@ -1202,11 +1294,12 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
       if (!link.resubmitAllowed) return res.status(409).json({ error: "Penawaran sudah pernah dikirim. Hubungi admin untuk izin revisi." });
     }
 
-    const { vendorName, contactPerson, contactPhone, formData, responseStatus, vendorPrice, currency, eta, validUntil, attachmentUrl } = req.body as {
+    const { vendorName, contactPerson, contactPhone, formData, responseStatus, vendorPrice, currency, eta, validUntil, attachmentUrl, mediaAssets } = req.body as {
       vendorName?: string; contactPerson?: string; contactPhone?: string;
       formData?: Record<string, unknown>;
       responseStatus?: string; vendorPrice?: number; currency?: string;
       eta?: string; validUntil?: string; attachmentUrl?: string;
+      mediaAssets?: Array<{ role: string; objectPath: string; filename: string; mimeType: string; size?: number }>;
     };
 
     if (!formData || typeof formData !== "object") return res.status(400).json({ error: "formData diperlukan" });
@@ -1219,23 +1312,113 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
       }
     }
 
-    // Validasi server-side untuk field required berdasarkan SERVICE_SCHEMAS
-    const schema = SERVICE_SCHEMAS[link.serviceType];
-    if (schema) {
-      const activePhase = link.phase ?? "quotation";
-      const requiredKeys = schema.fields
-        .filter(f => f.required && (!f.section || f.section === activePhase || f.section === "both"))
-        .map(f => f.key);
-      const missingFields = requiredKeys.filter(k => {
-        const val = (formData as Record<string, unknown>)[k];
-        return val === undefined || val === null || String(val).trim() === "";
-      });
-      if (missingFields.length > 0) {
-        return res.status(400).json({
-          error: `Field wajib belum diisi: ${missingFields.join(", ")}`,
-          missingFields,
+    // Validasi mediaAssets — setiap objectPath harus dari private storage
+    const validatedMediaAssets: Array<{ role: string; objectPath: string; filename: string; mimeType: string; size?: number }> = [];
+    if (Array.isArray(mediaAssets)) {
+      for (const item of mediaAssets) {
+        if (!item || typeof item !== "object") continue;
+        if (!item.objectPath?.startsWith("/objects/")) continue;
+        const validRoles = ["cover", "gallery", "video", "brochure", "certificate"];
+        if (!validRoles.includes(item.role)) continue;
+        validatedMediaAssets.push({
+          role: item.role,
+          objectPath: item.objectPath,
+          filename: String(item.filename ?? "").slice(0, 255),
+          mimeType: String(item.mimeType ?? "").slice(0, 128),
+          size: typeof item.size === "number" ? item.size : undefined,
         });
       }
+    }
+
+    // Validasi server-side untuk field required
+    // Ketika link punya templateSnapshot, field yang ada di template
+    // dihandle oleh template engine — skip dari validasi schema / service template.
+    // Derive dari customFields dan requiredDocuments snapshot, bukan hardcode.
+    const activePhase = (link.phase ?? "quotation") as "quotation" | "operational";
+    const tplManagedKeys: string[] = (() => {
+      if (!link.templateSnapshot) return [];
+      const snap = link.templateSnapshot as Record<string, unknown>;
+      const cfKeys = Array.isArray(snap.customFields)
+        ? (snap.customFields as Array<{ key?: string }>).map(f => f.key ?? "").filter(Boolean)
+        : [];
+      const docKeys = Array.isArray(snap.requiredDocuments)
+        ? (snap.requiredDocuments as Array<{ key?: string }>).map(d => `_doc_${d.key ?? ""}`).filter(k => k !== "_doc_")
+        : [];
+      return [...cfKeys, ...docKeys];
+    })();
+
+    const schemaFallback = SERVICE_SCHEMAS[link.serviceType];
+    if (schemaFallback) {
+      // SERVICE_SCHEMAS validation — tampilkan label user-friendly bukan key teknis
+      const missingFields = schemaFallback.fields
+        .filter(f =>
+          f.required &&
+          !tplManagedKeys.includes(f.key) &&
+          (!f.section || f.section === activePhase || f.section === "both") &&
+          !(f as { isUpload?: boolean }).isUpload
+        )
+        .filter(f => {
+          const val = (formData as Record<string, unknown>)[f.key];
+          return val === undefined || val === null || String(val).trim() === "";
+        });
+      if (missingFields.length > 0) {
+        const missingLabels = missingFields.map(f => f.label);
+        const missingKeys = missingFields.map(f => f.key);
+        return res.status(400).json({
+          error: `Field wajib belum diisi: ${missingLabels.join(", ")}`,
+          missingFields: missingKeys,
+        });
+      }
+    } else if (USE_SERVICE_TEMPLATE_ENGINE) {
+      // Service type tidak ada di SERVICE_SCHEMAS — gunakan service template engine
+      // agar service type custom yang didefinisikan di DB tetap tervalidasi server-side
+      try {
+        const svcTemplate = await resolveFromServiceTemplates(link.serviceType);
+        const svcErrors = validateServicePayload(svcTemplate, formData as Record<string, unknown>, activePhase);
+        // Filter out error untuk field yang dihandle product template (jika ada)
+        const filteredErrors = tplManagedKeys.length > 0
+          ? svcErrors.filter(msg => {
+              const field = svcTemplate.fields.find(f => tplManagedKeys.includes(f.key) && msg.includes(f.label));
+              return !field;
+            })
+          : svcErrors;
+        if (filteredErrors.length > 0) {
+          return res.status(400).json({
+            error: filteredErrors[0],
+            validationErrors: filteredErrors,
+          });
+        }
+      } catch { /* non-fatal — skip validasi service template engine jika error */ }
+    }
+
+    // Validasi product template custom fields (server-side defense)
+    // Hanya jika link.templateSnapshot ada dan USE_PRODUCT_TEMPLATE_ENGINE aktif
+    if (link.templateSnapshot && USE_PRODUCT_TEMPLATE_ENGINE) {
+      try {
+        const snap = link.templateSnapshot as unknown as import("@workspace/product-templates").ProductTemplate;
+        const fd = formData as Record<string, unknown>;
+        // Rekonstruksi DynamicFormValues dari formData
+        const customFieldValues: Record<string, string> = {};
+        const uploadedDocuments: Array<{ key: string; reference: string }> = [];
+        const checklistStatus: Record<string, boolean> = {};
+        let packagingNotes: string | undefined;
+        for (const [k, v] of Object.entries(fd)) {
+          if (k.startsWith("_doc_")) {
+            uploadedDocuments.push({ key: k.slice(5), reference: String(v ?? "") });
+          } else if (k.startsWith("_chk_")) {
+            checklistStatus[k.slice(5)] = Boolean(v);
+          } else if (k === "_packagingNotes") {
+            packagingNotes = String(v ?? "");
+          } else if (!k.startsWith("_")) {
+            customFieldValues[k] = String(v ?? "");
+          }
+        }
+        const tplValues: DynamicFormValues = { customFieldValues, uploadedDocuments, checklistStatus, packagingNotes };
+        const tplErrors = validateTemplatePayload(snap, tplValues);
+        if (tplErrors.length > 0) {
+          return res.status(400).json({ error: tplErrors[0], validationErrors: tplErrors });
+        }
+      } catch { /* non-fatal — skip jika snapshot tidak valid sebagai ProductTemplate */ }
     }
 
     // Capture IP and UA
@@ -1280,6 +1463,7 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
           responseStatus: "resubmitted", vendorPrice: vendorPrice ? String(vendorPrice) : undefined,
           currency: currency ?? undefined, eta: eta ?? undefined, validUntil: validUntil ?? undefined,
           attachmentUrl: attachmentUrl ?? undefined,
+          mediaAssets: validatedMediaAssets.length > 0 ? validatedMediaAssets : undefined,
           submittedIp, submittedUa,
           revisionCount: (prev?.revisionCount ?? 0) + 1,
           // Refresh snapshot from link on resubmit (captures template updates)
@@ -1335,6 +1519,7 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
           templateId: link.templateId ?? null,
           templateVersion: link.templateVersion ?? null,
           templateSnapshot: (link.templateSnapshot as Record<string, unknown> | null) ?? null,
+          mediaAssets: validatedMediaAssets.length > 0 ? validatedMediaAssets : [],
         }).returning();
         return row;
       });
@@ -1344,6 +1529,38 @@ vendorMiniFormRouter.post("/:token", async (req: Request, res: Response) => {
         `Penawaran dari ${vendorName ?? link.vendorName ?? "vendor"}`,
         { linkId: link.id, orderNumber: link.orderNumber, vendorPrice, currency, eta });
     }
+
+    // ── Fase 3: buat/update vendor_catalog_items draft (fire-and-forget) ─────
+    // Tidak blocking — kegagalan diabaikan agar tidak mengganggu response vendor.
+    // Guard internal: skip jika data kurang (no vendorId, no priceBase, dll).
+    upsertCatalogDraftFromSubmission(
+      {
+        id:               submission.id,
+        supplierId:       submission.supplierId,
+        vendorName:       submission.vendorName,
+        serviceType:      submission.serviceType,
+        formData:         submission.formData as Record<string, unknown> | null,
+        vendorPrice:      submission.vendorPrice,
+        currency:         submission.currency,
+        attachmentUrl:    submission.attachmentUrl,
+        templateId:       submission.templateId,
+        templateVersion:  submission.templateVersion,
+        templateSnapshot: submission.templateSnapshot as Record<string, unknown> | null,
+      } satisfies SubmissionForCatalog,
+      {
+        supplierId:       link.supplierId,
+        vendorName:       link.vendorName,
+        serviceType:      link.serviceType,
+        categoryKey:      link.categoryKey,
+        templateId:       link.templateId,
+        templateVersion:  link.templateVersion,
+        templateSnapshot: link.templateSnapshot as Record<string, unknown> | null,
+      } satisfies LinkForCatalog,
+    ).then((result) => {
+      if (!result.skipped) {
+        console.info(`[catalog-draft] submission=${submission.id} → catalogItemId=${result.catalogItemId} status=pending_review`);
+      }
+    }).catch(() => {/* non-fatal */});
 
     // Update link item_status for order-based
     if (link.mode === "order_based") {
@@ -2134,6 +2351,7 @@ vendorMiniFormRouter.post("/admin/links", async (req: Request, res: Response) =>
     };
 
     if (!serviceType || !SERVICE_SCHEMAS[serviceType]) return res.status(400).json({ error: "serviceType tidak valid" });
+    if (reqCategoryKey && serviceType !== "product") return res.status(400).json({ error: "categoryKey hanya boleh digunakan dengan serviceType 'product'" });
 
     const token = randomBytes(24).toString("hex");
     const expiresAt = expiresInDays ? new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000) : null;
@@ -2322,6 +2540,55 @@ vendorMiniFormRouter.delete("/admin/links/:id", async (req: Request, res: Respon
   } catch (err) {
     req.log?.error({ err }, "vendor-mini-form admin DELETE links error");
     return res.status(500).json({ error: "Gagal menghapus link" });
+  }
+});
+
+// ── ADMIN: POST /api/vendor-form/admin/links/:id/clone ───────────────────────
+
+vendorMiniFormRouter.post("/admin/links/:id/clone", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const id = Number(req.params["id"]);
+  if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+  try {
+    const [src] = await db.select().from(vendorMiniFormLinksTable).where(eq(vendorMiniFormLinksTable.id, id));
+    if (!src) return res.status(404).json({ error: "Link tidak ditemukan" });
+
+    const userId = (req.user as { id: string } | undefined)?.id ?? null;
+    const token = randomBytes(24).toString("hex");
+
+    const [cloned] = await db.insert(vendorMiniFormLinksTable).values({
+      token,
+      serviceType:       src.serviceType,
+      supplierId:        src.supplierId,
+      vendorName:        src.vendorName,
+      title:             src.title ? `[Klon] ${src.title}` : null,
+      notes:             src.notes,
+      mode:              src.mode,
+      orderId:           src.orderId,
+      orderNumber:       src.orderNumber,
+      orderItemId:       src.orderItemId,
+      maxSubmissions:    src.maxSubmissions,
+      adminNotes:        src.adminNotes,
+      commodityTemplateId: src.commodityTemplateId,
+      categoryKey:       src.categoryKey,
+      templateId:        src.templateId,
+      templateVersion:   src.templateVersion,
+      templateSnapshot:  src.templateSnapshot,
+      expiresAt:         src.expiresAt,
+      isActive:          true,
+      phase:             "quotation",
+      itemStatus:        src.mode === "order_based" ? "waiting_vendor" : null,
+      createdBy:         userId,
+    }).returning();
+
+    await logActivity("link", cloned.id, "created", userId,
+      `Link diklon dari link #${src.id} (${src.serviceType})`,
+      { clonedFrom: src.id });
+
+    return res.json({ id: cloned.id, token: cloned.token });
+  } catch (err) {
+    req.log?.error({ err }, "vendor-mini-form admin clone link error");
+    return res.status(500).json({ error: "Gagal mengklon link" });
   }
 });
 
@@ -2907,6 +3174,8 @@ vendorMiniFormRouter.post("/admin/customer-approvals", async (req: Request, res:
         .where(and(eq(vendorMiniFormLinksTable.orderId, orderId), eq(vendorMiniFormLinksTable.mode, "order_based")));
     }
 
+    broadcastInvalidation("rfq", orderId ?? undefined);
+    broadcastInvalidation("logistic_orders", orderId ?? undefined);
     return res.status(201).json({ ...approval, createdAt: approval.createdAt.toISOString() });
   } catch (err) {
     req.log?.error({ err }, "create customer-approval error");
@@ -2983,6 +3252,7 @@ vendorMiniFormRouter.post("/admin/op-confirms", async (req: Request, res: Respon
       ).catch(() => {});
     }
 
+    broadcastInvalidation("logistic_orders", orderId ?? undefined);
     return res.status(201).json({ ...conf, createdAt: conf.createdAt.toISOString() });
   } catch (err) {
     req.log?.error({ err }, "create op-confirm error");
@@ -3235,6 +3505,8 @@ vendorMiniFormRouter.post("/admin/customer-approvals/:id/retry-so", async (req: 
       await logActivity("sales_order", soResult.docId, "so_created", (req.user as { id: string } | undefined)?.id ?? "admin",
         `SO ${soResult.docNumber} dibuat ulang via retry untuk approval ID ${id}${approval.customerName ? ` (${approval.customerName})` : ""}`,
         { docNumber: soResult.docNumber, approvalId: id, orderId: approval.orderId, orderNumber: approval.orderNumber });
+      broadcastInvalidation("sales_documents");
+      broadcastInvalidation("logistic_orders", approval.orderId ?? undefined);
       return res.json({ ok: true, docId: soResult.docId, docNumber: soResult.docNumber });
     } else if (soResult.reason === "already_exists") {
       if (!approval.soNumber) {
@@ -3242,6 +3514,7 @@ vendorMiniFormRouter.post("/admin/customer-approvals/:id/retry-so", async (req: 
           .set({ soNumber: soResult.docNumber })
           .where(eq(customerApprovalsTable.id, id));
       }
+      broadcastInvalidation("sales_documents");
       return res.json({ ok: true, already: true, docId: soResult.docId, docNumber: soResult.docNumber });
     } else {
       return res.status(500).json({ error: soResult.message });

@@ -21,6 +21,7 @@ import expensesRouter from "./expenses";
 import portalRouter from "./portal";
 import { logisticOrdersRouter } from "./logisticOrders";
 import { logisticRfqRouter } from "./logisticRfq";
+import { productFirstFlowRouter } from "./productFirstFlow";
 import { logisticRfqV2Router } from "./logisticRfqV2";
 import settingsRouter from "./settings";
 import { driverRouter, driversAdminRouter } from "./driver";
@@ -65,6 +66,7 @@ import { podOcrRouter } from "./podOcr";
 import { marginRulesRouter } from "./marginRules";
 import { adminActionPublicRouter, adminActionAdminRouter } from "./adminAction";
 import { vendorFulfillmentPublicRouter } from "./vendorFulfillment";
+import { logisticVendorFulfillmentAdminRouter } from "./logisticVendorFulfillmentAdmin.js";
 import { driverProgressPublicRouter } from "./driverProgress.js";
 import { fulfillmentAdminRouter, fulfillmentPublicRouter } from "./orderFulfillment.js";
 import { vendorJobAdminRouter, vendorJobPublicRouter, orderTrackingPublicRouter } from "./vendorJobOrder.js";
@@ -91,12 +93,18 @@ import { exceptionsRouter } from "./exceptions.js";
 import { orderExceptionsRouter } from "./orderExceptions.js";
 import { waNotificationLogsRouter } from "./waNotificationLogs.js";
 import analyticsProfitRouter from "./analyticsProfit.js";
+import { vendorRecommendationRouter } from "./vendorRecommendation.js";
+import { vendorCommodityIntelligenceRouter } from "./vendorCommodityIntelligence.js";
+import productFirstAnalyticsRouter from "./productFirstAnalytics.js";
+import productFirstAuditDashboardRouter from "./productFirstAuditDashboard.js";
+import { productFirstOverrideRouter } from "./productFirstOverride.js";
 import { systemRouter } from "./system.js";
 import rbacRouter from "./rbac.js";
 import importAdvisorRouter from "./importAdvisor.js";
 import { handleAlertSse } from "../lib/alertsBroadcast.js";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import sportCenterRouter from "../modules/sport-center/routes.js";
+import tenantRouter from "../modules/tenant/routes.js";
 import executiveRouter from "./executive.js";
 import cashAdvancesRouter from "./cashAdvances.js";
 import vendorPaymentsRouter from "./vendorPayments.js";
@@ -108,6 +116,11 @@ import expenseDashboardRouter from "./expenseDashboard.js";
 import expenseTemplatesRouter from "./expenseTemplates.js";
 import expenseBudgetsRouter from "./expenseBudgets.js";
 import { watiRouter } from "./wati.js";
+import { marketplaceRouter } from "./marketplace.js";
+import { escrowAdminRouter, escrowPublicRouter } from "./escrow.js";
+import { vendorCatalogEnginePublicRouter, vendorCatalogEngineAdminRouter } from "./vendorCatalogEngine.js";
+import orderCostsRouter from "./orderCosts.js";
+import productMediaRouter from "./productMedia.js";
 
 import type { Request, Response } from "express";
 
@@ -136,11 +149,16 @@ router.use("/email-correspondences", emailCorrespondencesRouter);
 router.use("/scan-document", scanDocumentRouter);
 router.use("/expenses", expensesRouter);
 router.use("/portal", portalRouter);
+router.use("/marketplace", marketplaceRouter);
+router.use("/vendor-catalog-engine", vendorCatalogEnginePublicRouter);
+router.use("/trading/catalog-engine", vendorCatalogEngineAdminRouter);
 // PERHATIAN: logisticRfqRouter dan logisticOrdersRouter keduanya di-mount di /logistic/orders.
 // Express akan mencoba logisticRfqRouter dulu; jika tidak ada handler yang cocok, baru logisticOrdersRouter.
 // Risiko: jika keduanya mendefinisikan path yang sama (misal GET /), hanya yang pertama yang merespons.
 // TODO Step 2: pisahkan sub-path agar tidak ada ambiguitas (misal /logistic/rfq vs /logistic/orders).
 router.use("/logistic/orders", logisticRfqRouter);
+// Phase 2A: Product-First Flow endpoints (product-rfq, select-product-vendor, dll.)
+router.use("/logistic/orders", productFirstFlowRouter);
 router.use("/logistic/orders", logisticOrdersRouter);
 router.use("/logistic", logisticRfqV2Router);
 router.use("/settings", settingsRouter);
@@ -154,6 +172,7 @@ router.use(geocodeRouter);
 router.use("/whatsapp", whatsappRouter);
 router.use("/vendor-response", vendorResponseRouter);
 router.use("/media", mediaRouter);
+router.use("/product-media", productMediaRouter);
 
 router.use("/warehouse", warehouseRouter);
 router.use("/inventory", inventoryMainRouter);
@@ -201,6 +220,7 @@ router.use("/margin-rules", marginRulesRouter);
 router.use("/admin-action", adminActionAdminRouter);
 router.use("/admin-action", adminActionPublicRouter);
 router.use("/vendor-fulfillment", vendorFulfillmentPublicRouter);
+router.use("/logistic/vendor-fulfillments", logisticVendorFulfillmentAdminRouter);
 router.use("/driver-progress", driverProgressPublicRouter);
 router.use("/commodity-templates", commodityTemplatesRouter);
 router.use("/logistic", fulfillmentAdminRouter);
@@ -230,14 +250,21 @@ router.use("/payment-proof", paymentProofRouter);
 
 router.use("/logistic", orderAuditTrailRouter);
 router.use("/logistic", orderExceptionsRouter);
+router.use("/logistic/orders", productFirstOverrideRouter);
+router.use("/logistic/product-first/analytics", productFirstAnalyticsRouter);
+router.use("/logistic/product-first/audit", productFirstAuditDashboardRouter);
 
 router.use("/exceptions", exceptionsRouter);
 router.use("/wa-notification-logs", waNotificationLogsRouter);
 router.use("/analytics/profitability", analyticsProfitRouter);
+router.use("/vendor-recommendation", vendorRecommendationRouter);
+router.use("/vendor-intelligence", vendorCommodityIntelligenceRouter);
+router.use("/order-costs", orderCostsRouter);
 router.use("/system", systemRouter);
 router.use("/rbac", rbacRouter);
 router.use("/import-advisor", importAdvisorRouter);
 router.use("/sport-center", sportCenterRouter);
+router.use("/tenant", tenantRouter);
 router.use("/executive", executiveRouter);
 router.use("/cash-advances", cashAdvancesRouter);
 router.use("/vendor-payments", vendorPaymentsRouter);
@@ -249,6 +276,8 @@ router.use("/expense-dashboard", expenseDashboardRouter);
 router.use("/expense-templates", expenseTemplatesRouter);
 router.use("/expense-config", expenseBudgetsRouter);
 router.use("/wati", watiRouter);
+router.use("/sales/escrow", escrowPublicRouter);
+router.use("/sales/escrow", escrowAdminRouter);
 
 router.get("/alerts/stream", async (req: Request, res: Response) => {
   const ok = await requireAdmin(req, res);

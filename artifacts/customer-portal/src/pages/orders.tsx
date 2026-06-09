@@ -4,7 +4,7 @@ import { getAuthToken, getAuthHeaders } from "@/lib/auth";
 import { useLocation, useSearch } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
-import { Search, Calendar, FileText, ExternalLink, X, Package } from "lucide-react";
+import { Search, Calendar, FileText, ExternalLink, X, Package, CreditCard } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/lib/utils";
@@ -410,20 +410,37 @@ export default function Orders() {
                         </span>
                       </td>
                       <td className="px-6 py-4 text-center">
-                        {order._cancellable && (
-                          <button
-                            className="inline-flex items-center justify-center w-7 h-7 rounded-full text-muted-foreground hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
-                            title={t("orders.cancelOrder")}
-                            disabled={cancellingKey === order._key}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              void handleCancel(order);
-                            }}
-                            data-testid={`btn-cancel-${order._key}`}
-                          >
-                            <X className="h-4 w-4" />
-                          </button>
-                        )}
+                        <div className="flex items-center justify-center gap-1">
+                          {order._type === "logistic" &&
+                            (order.grandTotal ?? 0) > 0 &&
+                            !["Completed", "Payment Received", "Cancelled"].includes(order.status) &&
+                            order.trackUrl && (
+                              <button
+                                className="inline-flex items-center justify-center w-7 h-7 rounded-full text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 transition-colors"
+                                title="Bayar via Paylabs"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setLocation(order.trackUrl!);
+                                }}
+                              >
+                                <CreditCard className="h-4 w-4" />
+                              </button>
+                            )}
+                          {order._cancellable && (
+                            <button
+                              className="inline-flex items-center justify-center w-7 h-7 rounded-full text-muted-foreground hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
+                              title={t("orders.cancelOrder")}
+                              disabled={cancellingKey === order._key}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void handleCancel(order);
+                              }}
+                              data-testid={`btn-cancel-${order._key}`}
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))

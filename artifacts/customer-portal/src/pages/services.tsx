@@ -8,12 +8,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Search, ShoppingCart, Truck, ChevronRight, X, Container, ArrowLeft } from "lucide-react";
+import { Search, ShoppingCart, Truck, ChevronRight, X, Container, ArrowLeft, Calculator, ArrowRight } from "lucide-react";
 import { useLocation } from "wouter";
 import { resolveImageUrl } from "@/lib/utils";
 import { getServiceFallbackImage } from "@/lib/categoryImages";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/lib/supabase";
 import { useLanguage } from "@/i18n/LanguageContext";
 import { translateServiceName, translateCategory } from "@/i18n/serviceData";
 import { GROUPED_DISPLAY_CATEGORIES } from "@workspace/logistics-constants";
@@ -58,12 +59,42 @@ function ServiceImage({ service, className = "" }: { service: Service; className
   );
 }
 
+function useServicesRealtime() {
+  const qc = useQueryClient();
+  const [connected, setConnected] = useState(false);
+  const [justUpdated, setJustUpdated] = useState(false);
+
+  const handleChange = useCallback(() => {
+    qc.invalidateQueries({ queryKey: ["listPortalServices"] });
+    qc.invalidateQueries({ queryKey: ["listPortalServicesJasa"] });
+    setJustUpdated(true);
+    setTimeout(() => setJustUpdated(false), 3000);
+  }, [qc]);
+
+  useEffect(() => {
+    if (!supabase) return;
+    const channel = supabase
+      .channel("portal-services-realtime")
+      .on("postgres_changes", { event: "*", schema: "public", table: "products" }, handleChange)
+      .subscribe((status) => {
+        setConnected(status === "SUBSCRIBED");
+      });
+    return () => {
+      supabase!.removeChannel(channel);
+      setConnected(false);
+    };
+  }, [handleChange]);
+
+  return { connected, justUpdated };
+}
+
 export default function Services() {
   const [searchQuery, setSearchQuery] = useState("");
   const [truckingOpen, setTruckingOpen] = useState(false);
   const { t, locale } = useLanguage();
   const [, setLocation] = useLocation();
   const qc = useQueryClient();
+  const { connected: realtimeConnected, justUpdated: realtimeUpdated } = useServicesRealtime();
 
   const { data: servicesData, isLoading } = useListPortalServices({
     query: { queryKey: ["listPortalServices"] }
@@ -267,6 +298,77 @@ export default function Services() {
 
       {/* Catalog Grid */}
       <div className="container px-4 md:px-6 mt-12">
+        <div className="flex items-center justify-between mb-6">
+          <span className="text-[13px] text-slate-500 font-medium">
+            {allServices.length} layanan
+          </span>
+          {realtimeConnected && (
+            <span
+              className="inline-flex items-center gap-1.5 text-[11px] font-semibold rounded-full px-2.5 py-1"
+              style={{
+                background: realtimeUpdated ? "rgba(245,158,11,0.10)" : "rgba(34,197,94,0.10)",
+                color: realtimeUpdated ? "#B45309" : "#15803D",
+                border: `1px solid ${realtimeUpdated ? "rgba(245,158,11,0.25)" : "rgba(34,197,94,0.25)"}`,
+              }}
+            >
+              <span
+                className="w-1.5 h-1.5 rounded-full"
+                style={{
+                  background: realtimeUpdated ? "#F59E0B" : "#22C55E",
+                  animation: "pulse 1.5s ease-in-out infinite",
+                }}
+              />
+              {realtimeUpdated ? "Diperbarui" : "Live"}
+            </span>
+          )}
+        </div>
+
+        {/* ── Trucking Booking Banner ── */}
+        <div
+          className="mb-8 rounded-2xl overflow-hidden relative cursor-pointer group"
+          style={{ background: "linear-gradient(135deg, #1e3a5f 0%, #1d4ed8 55%, #2563eb 100%)" }}
+          onClick={() => setLocation("/trucking")}
+        >
+          {/* dot-grid overlay */}
+          <div aria-hidden="true" className="absolute inset-0 pointer-events-none"
+            style={{ backgroundImage: "radial-gradient(rgba(255,255,255,0.10) 1px, transparent 1px)", backgroundSize: "28px 28px" }} />
+          {/* truck silhouette bg */}
+          <div aria-hidden="true" className="absolute right-0 top-0 bottom-0 w-1/2 flex items-center justify-end pr-8 opacity-20 pointer-events-none select-none">
+            <Truck className="w-48 h-48 text-white" strokeWidth={0.6} />
+          </div>
+
+          <div className="relative z-10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 px-6 py-6">
+            <div className="space-y-1.5">
+              <div className="inline-flex items-center gap-1.5 bg-white/15 border border-white/25 rounded-full px-3 py-0.5">
+                <Truck className="w-3 h-3 text-white" />
+                <span className="text-[11px] font-semibold text-white uppercase tracking-wider">Trucking Booking</span>
+              </div>
+              <h3 className="text-xl font-bold text-white leading-tight">
+                Pesan Armada Trucking Langsung
+              </h3>
+              <p className="text-[13px] text-blue-100 max-w-md leading-relaxed">
+                Pilih dari 12 jenis armada, cek ongkir instan, dan tambahkan layanan sesuai kebutuhan. Seperti Deliveree — mudah dan transparan.
+              </p>
+              <div className="flex flex-wrap gap-2 pt-1">
+                {["Pickup Kecil", "Engkel", "CDD Long", "Fuso", "Tronton", "Truk Trailer"].map((v) => (
+                  <span key={v} className="text-[11px] bg-white/15 border border-white/20 text-white rounded-full px-2.5 py-0.5">{v}</span>
+                ))}
+              </div>
+            </div>
+            <div className="shrink-0">
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setLocation("/trucking"); }}
+                className="flex items-center gap-2 bg-white text-blue-700 font-bold text-[13px] rounded-xl px-5 py-3 shadow-lg group-hover:shadow-xl group-hover:scale-105 transition-all duration-200"
+              >
+                <Calculator className="w-4 h-4" />
+                Cek Ongkir & Pesan
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+
         {isLoading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {[1, 2, 3, 4, 5, 6].map((i) => (

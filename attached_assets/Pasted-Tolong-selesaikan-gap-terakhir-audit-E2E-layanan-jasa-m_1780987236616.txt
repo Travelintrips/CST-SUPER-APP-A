@@ -1,0 +1,137 @@
+Tolong selesaikan gap terakhir audit E2E layanan jasa marketplace.
+
+Hasil audit:
+9/10 passed.
+Satu-satunya partial fail:
+Booking submit belum menyimpan templateSnapshot sebagai dedicated field/column.
+Saat ini templateSnapshot hanya tersimpan implisit di inputData JSONB dari halaman jasa-vendor-detail.tsx.
+
+Target:
+Tambahkan templateSnapshot sebagai field khusus di logistic_order_items.
+
+File terkait yang sudah diaudit:
+- artifacts/customer-portal/src/pages/jasa-vendor-detail.tsx
+- artifacts/customer-portal/src/pages/logistic-book.tsx
+- artifacts/api-server/src/routes/logisticOrders.ts
+- lib/db/src/schema/logisticOrders.ts
+- tabel logistic_order_items
+
+Yang harus dilakukan:
+
+1. Database schema
+Tambahkan kolom baru pada logistic_order_items:
+
+template_snapshot JSONB NULL
+
+Jika memakai Drizzle schema, tambahkan field:
+templateSnapshot: jsonb("template_snapshot")
+
+Pastikan nama camelCase di aplikasi:
+templateSnapshot
+
+2. Migration
+Buat migration aman untuk menambahkan kolom:
+
+ALTER TABLE logistic_order_items
+ADD COLUMN IF NOT EXISTS template_snapshot jsonb;
+
+Jangan drop data lama.
+Jangan ubah kolom lama.
+Jangan rename field lama.
+
+3. Frontend cart / detail jasa vendor
+Pastikan saat customer add item dari /jasa/vendor/:id, cart item membawa:
+
+templateSnapshot: item.templateSnapshot ?? null
+
+Saat ini kemungkinan templateSnapshot sudah ada di inputData. Tetap boleh dipertahankan untuk backward compatibility, tapi juga harus dikirim sebagai field top-level item.
+
+Payload cart item minimal harus berisi:
+
+{
+  itemSource: "vendor_catalog_item",
+  vendorCatalogItemId: item.id,
+  vendorId: item.vendorId ?? null,
+  templateKind: "service",
+  serviceType: resolvedServiceType,
+  templateSnapshot: item.templateSnapshot ?? null,
+  calculationInput,
+  priceSnapshot,
+  subtotal,
+  tax,
+  total
+}
+
+4. Booking submit frontend
+Di artifacts/customer-portal/src/pages/logistic-book.tsx, saat mapping cart item ke payload API, tambahkan:
+
+templateSnapshot: item.templateSnapshot ?? item.inputData?.templateSnapshot ?? null
+
+Pastikan ini dikirim sejajar dengan:
+- vendorCatalogItemId
+- calculationInput
+- priceSnapshot
+
+Jangan hanya disimpan di inputData.
+
+5. Backend logisticOrders route
+Di artifacts/api-server/src/routes/logisticOrders.ts, saat menerima items payload, simpan:
+
+templateSnapshot: item.templateSnapshot ?? item.inputData?.templateSnapshot ?? null
+
+ke kolom logistic_order_items.template_snapshot.
+
+Pastikan existing insert/update mapping untuk order item memasukkan:
+- vendorCatalogItemId
+- calculationInput
+- priceSnapshot
+- templateSnapshot
+
+6. Response order detail
+Pastikan GET detail order mengembalikan templateSnapshot untuk order items.
+
+Admin BizPortal boleh menampilkan templateSnapshot secara ringkas, minimal:
+- serviceType
+- category
+- template version jika ada
+- required fields/checklist jika ada
+
+Jika UI terlalu ramai, cukup tambahkan collapsible section:
+"Template Snapshot"
+
+7. Backward compatibility
+Order lama yang tidak punya template_snapshot tetap aman.
+Jika template_snapshot null tapi input_data.templateSnapshot ada, admin detail boleh fallback membaca dari inputData.templateSnapshot.
+
+8. Test manual
+Lakukan test E2E:
+
+A. Customer:
+- Buka /marketplace tab layanan
+- Klik item jasa vendor
+- Masuk /jasa/vendor/:id
+- Isi kalkulator
+- Tambahkan ke Pesanan
+- Lanjut /book
+- Submit order
+
+B. Backend / DB:
+Cek row logistic_order_items:
+- vendor_catalog_item_id terisi
+- calculation_input terisi
+- price_snapshot terisi
+- template_snapshot terisi
+
+C. Admin:
+- Buka detail order di BizPortal
+- Item menunjukkan badge Vendor Marketplace
+- Calculation Input tampil
+- Price Snapshot tampil
+- Template Snapshot tampil atau tersedia di response
+
+9. Audit ulang
+Setelah implementasi, jalankan audit ulang nomor 8:
+"Booking submit menyimpan vendorCatalogItemId, calculationInput, templateSnapshot, priceSnapshot"
+
+Expected result:
+Status harus PASSED.

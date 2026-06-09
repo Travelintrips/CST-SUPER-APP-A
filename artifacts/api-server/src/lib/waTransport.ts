@@ -1,27 +1,22 @@
 /**
  * WA Transport Layer — single egress point untuk semua pengiriman WhatsApp.
  *
- * Routing logic:
- *  - Jika WATI_API_TOKEN + WATI_BASE_URL dikonfigurasi → gunakan WATI (session message)
- *  - Fallback → gunakan Fonnte
- *
- * Untuk kirim WATI template (HSM), import sendWatiTemplate langsung dari wati.ts.
+ * Semua pengiriman WA (teks, media, grup admin) memakai Fonnte.
  */
 
 import { sendWhatsApp, sendWhatsAppMedia } from "./fonnte.js";
-import { sendWatiSession, isWatiConfigured } from "./wati.js";
 import { logger } from "./logger.js";
 
 export type WaSendOpts = {
   context?: string;
   refType?: string;
   refId?: string;
-  /** Force pakai Fonnte meski WATI tersedia (untuk grup WA admin yang tidak bisa pakai WATI) */
+  /** Disimpan untuk kompatibilitas pemanggil lama; semua pengiriman sudah via Fonnte. */
   forceFonnte?: boolean;
 };
 
 /**
- * Kirim pesan WA teks. Router otomatis pilih WATI atau Fonnte.
+ * Kirim pesan WA teks via Fonnte.
  */
 export async function sendViaService(
   phone: string,
@@ -33,19 +28,12 @@ export async function sendViaService(
     return;
   }
 
-  const useWati = !opts?.forceFonnte && (await isWatiConfigured());
-
-  if (useWati) {
-    logger.debug({ phone, context: opts?.context, refId: opts?.refId }, "[waTransport] routing ke WATI (session)");
-    return sendWatiSession(phone, message, opts);
-  }
-
   logger.debug({ phone, context: opts?.context, refId: opts?.refId }, "[waTransport] routing ke Fonnte");
   return sendWhatsApp(phone, message, opts);
 }
 
 /**
- * Kirim pesan WA dengan media. Selalu pakai Fonnte (WATI media perlu template).
+ * Kirim pesan WA dengan media via Fonnte.
  */
 export async function sendMediaViaService(
   phone: string,
@@ -62,7 +50,7 @@ export async function sendMediaViaService(
 }
 
 /**
- * Kirim ke grup WA admin — selalu pakai Fonnte karena WATI tidak support group.
+ * Kirim ke grup WA admin via Fonnte.
  */
 export async function sendToAdminGroup(
   groupId: string,

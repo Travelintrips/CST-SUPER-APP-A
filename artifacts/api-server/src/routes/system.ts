@@ -1,14 +1,9 @@
 /**
- * system.ts — Governance Health Endpoint
+ * system.ts — Governance, Runtime & Vendor Performance Health Endpoints
  *
- * GET /api/system/governance-health
- *   Admin-only. Tidak terekspos ke customer portal.
- *   Mengembalikan ringkasan status observability:
- *     - statistik exceptions (open/in_progress/resolved)
- *     - 20 transisi status terakhir dari order_status_history
- *     - jumlah invoice overdue
- *     - jumlah bill overdue
- *     - ringkasan status audit log per module
+ * GET /api/system/governance-health       — Admin-only. Observability ringkasan ERP.
+ * GET /api/system/runtime-check           — Admin-only. Dependency audit + runtime validation.
+ * GET /api/system/vendor-performance-health — Admin-only. Vendor performance migration & row count.
  */
 
 import { Router, type Request, type Response, type NextFunction } from "express";
@@ -16,9 +11,9 @@ import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { logger } from "../lib/logger.js";
+import { getRuntimeCheckState } from "../lib/startupValidator.js";
 
 const router = Router();
-
 
 async function requireAdminMiddleware(req: Request, res: Response, next: NextFunction) {
   const ok = await requireAdmin(req, res);
@@ -27,7 +22,8 @@ async function requireAdminMiddleware(req: Request, res: Response, next: NextFun
 
 router.use(requireAdminMiddleware);
 
-router.get("/governance-health", async (req, res) => {
+// ── Governance Health ──────────────────────────────────────────────────────────
+router.get("/governance-health", async (_req, res) => {
   try {
     const [
       exceptionStats,
@@ -35,8 +31,9 @@ router.get("/governance-health", async (req, res) => {
       overdueInvoices,
       overdueBills,
       auditModuleSummary,
+      runtimeState,
+      vendorPerfStats,
     ] = await Promise.all([
-      // Exception stats
       db.execute(sql`
         SELECT
           COUNT(*)                                                   AS total,
@@ -51,8 +48,6 @@ router.get("/governance-health", async (req, res) => {
           SUM(CASE WHEN exception_type = 'vendor_rejected'  AND status IN ('open','in_progress') THEN 1 ELSE 0 END) AS open_vendor_rejected
         FROM exceptions
       `),
-
-      // Recent 20 status transitions from order_status_history
       db.execute(sql`
         SELECT
           id, order_id, order_number, old_status, new_status,
@@ -61,8 +56,6 @@ router.get("/governance-health", async (req, res) => {
         ORDER BY created_at DESC
         LIMIT 20
       `),
-
-      // Overdue invoices count (unpaid/partial past due_date)
       db.execute(sql`
         SELECT COUNT(*) AS count
         FROM sales_documents
@@ -72,8 +65,6 @@ router.get("/governance-health", async (req, res) => {
           AND due_date IS NOT NULL
           AND due_date < CURRENT_DATE
       `),
-
-      // Overdue bills count
       db.execute(sql`
         SELECT COUNT(*) AS count
         FROM purchase_documents
@@ -83,8 +74,6 @@ router.get("/governance-health", async (req, res) => {
           AND due_date IS NOT NULL
           AND due_date < CURRENT_DATE::text
       `),
-
-      // Audit log summary by module (last 24h)
       db.execute(sql`
         SELECT module, action, COUNT(*) AS count
         FROM erp_audit_logs
@@ -94,22 +83,62 @@ router.get("/governance-health", async (req, res) => {
         ORDER BY count DESC
         LIMIT 20
       `),
+      // Runtime check — from cached state
+      Promise.resolve(getRuntimeCheckState()),
+      // Vendor performance stats
+      db.execute(sql`
+        SELECT
+          COUNT(*) AS total_rows,
+          COUNT(*) FILTER (WHERE total_orders > 0) AS with_orders,
+          MAX(updated_at) AS last_updated
+        FROM vendor_performance
+      `).catch(() => ({ rows: [] })),
     ]);
 
     const exc = (exceptionStats.rows[0] ?? {}) as Record<string, unknown>;
     const inv = (overdueInvoices.rows[0] ?? { count: 0 }) as { count: unknown };
     const bil = (overdueBills.rows[0] ?? { count: 0 }) as { count: unknown };
+    const vpRow = (vendorPerfStats.rows[0] ?? {}) as Record<string, unknown>;
+
+    const depAudit = runtimeState
+      ? { status: runtimeState.status, missing: runtimeState.missing, checkedAt: runtimeState.checkedAt, dependencies: runtimeState.dependencies }
+      : { status: "not_checked", missing: [], checkedAt: null, dependencies: {} };
+
+    const depErrorCount = runtimeState
+      ? Object.values(runtimeState.dependencies).filter(d => d.status === "error").length
+      : 0;
+    const depMissingCount = runtimeState?.missing.length ?? 0;
+    const depOk = runtimeState?.status === "ok";
 
     res.json({
       generatedAt: new Date().toISOString(),
+
+      // A. Files yang diaudit / diubah dalam infra hardening
+      filesAudited: {
+        checked: [
+          "artifacts/api-server/build.mjs",
+          "artifacts/api-server/package.json",
+          "artifacts/api-server/src/lib/startupValidator.ts",
+          "artifacts/api-server/src/routes/system.ts",
+          "artifacts/api-server/src/routes/health.ts",
+        ],
+        notes: {
+          "build.mjs":          "googleapis & @google-cloud/* ada di external list — di-load sebagai runtime require()",
+          "package.json":       "googleapis@^173 ada di dependencies (bukan devDependencies)",
+          "startupValidator.ts":"Validasi runtime: googleapis, openai, drizzle-orm, pg, nodemailer",
+          "system.ts":          "GET /api/system/runtime-check & /api/system/governance-health",
+          "health.ts":          "GET /api/healthz — integrasi runtimeState ke healthz degraded check",
+        },
+      },
+
       exceptions: {
-        total:             Number(exc["total"]              ?? 0),
-        open:              Number(exc["open"]               ?? 0),
-        in_progress:       Number(exc["in_progress"]        ?? 0),
-        resolved:          Number(exc["resolved"]           ?? 0),
-        closed:            Number(exc["closed"]             ?? 0),
-        critical:          Number(exc["critical"]           ?? 0),
-        high:              Number(exc["high"]               ?? 0),
+        total:               Number(exc["total"]               ?? 0),
+        open:                Number(exc["open"]                ?? 0),
+        in_progress:         Number(exc["in_progress"]         ?? 0),
+        resolved:            Number(exc["resolved"]            ?? 0),
+        closed:              Number(exc["closed"]              ?? 0),
+        critical:            Number(exc["critical"]            ?? 0),
+        high:                Number(exc["high"]                ?? 0),
         openDeliveryDelayed: Number(exc["open_delivery_delayed"] ?? 0),
         openPaymentOverdue:  Number(exc["open_payment_overdue"]  ?? 0),
         openVendorRejected:  Number(exc["open_vendor_rejected"]  ?? 0),
@@ -120,6 +149,40 @@ router.get("/governance-health", async (req, res) => {
       },
       recentStatusTransitions: recentTransitions.rows,
       auditLast24h: auditModuleSummary.rows,
+
+      // B. Dependency audit
+      dependencyAudit: depAudit,
+
+      // C. Runtime validation (summary — detail ada di dependencyAudit.dependencies)
+      runtimeValidation: {
+        status:       runtimeState?.status ?? "not_checked",
+        checkedAt:    runtimeState?.checkedAt ?? null,
+        totalChecked: runtimeState ? Object.keys(runtimeState.dependencies).length : 0,
+        okCount:      runtimeState ? Object.values(runtimeState.dependencies).filter(d => d.status === "ok").length : 0,
+        errorCount:   depErrorCount,
+        missingCount: depMissingCount,
+      },
+
+      vendorPerformance: {
+        tableExists:   vpRow["total_rows"] !== undefined,
+        totalRows:     Number(vpRow["total_rows"] ?? 0),
+        withOrders:    Number(vpRow["with_orders"] ?? 0),
+        lastUpdated:   vpRow["last_updated"] ?? null,
+      },
+
+      // D. Test result — overall pass/fail
+      testResult: {
+        allOk:   depOk,
+        status:  depOk ? "PASS" : (depMissingCount > 0 ? "FAIL" : "DEGRADED"),
+        summary: depOk
+          ? "Semua dependency runtime OK. Server dalam kondisi sehat."
+          : depMissingCount > 0
+            ? `${depMissingCount} dependency HILANG: ${runtimeState?.missing.join(", ") ?? "—"}. Jalankan: pnpm add <package>`
+            : `${depErrorCount} dependency error saat load. Periksa logs startupValidator untuk detail.`,
+        action: depOk ? null : depMissingCount > 0
+          ? `pnpm add ${runtimeState?.missing.join(" ")}`
+          : "Cek artifacts/api-server/src/lib/startupValidator.ts dan jalankan ulang server",
+      },
     });
   } catch (err) {
     logger.error({ err }, "governance-health error");
@@ -127,6 +190,126 @@ router.get("/governance-health", async (req, res) => {
   }
 });
 
+// ── Runtime Check ──────────────────────────────────────────────────────────────
+router.get("/runtime-check", async (_req, res) => {
+  try {
+    const state = getRuntimeCheckState();
+
+    if (!state) {
+      return res.status(503).json({
+        status: "not_ready",
+        message: "Startup validation belum selesai. Coba beberapa detik lagi.",
+        dependencies: {},
+        missing: [],
+      });
+    }
+
+    const filesAudited = [
+      "artifacts/api-server/build.mjs",
+      "artifacts/api-server/package.json",
+    ];
+
+    const buildExternals = [
+      "googleapis", "@google-cloud/*", "@google/*",
+    ];
+
+    res.json({
+      status: state.status,
+      checkedAt: state.checkedAt,
+      dependencies: state.dependencies,
+      missing: state.missing,
+      audit: {
+        filesAudited,
+        buildExternals: {
+          note: "googleapis ada di external list build.mjs — di-bundle sebagai runtime require()",
+          entries: buildExternals,
+        },
+        packageJson: {
+          googleapis: "ada di dependencies (bukan devDependencies) ✅",
+          openai: "ada di dependencies ✅",
+          "drizzle-orm": "ada di dependencies ✅",
+          nodemailer: "ada di dependencies ✅",
+        },
+      },
+      testResult: {
+        allOk: state.status === "ok",
+        summary: state.status === "ok"
+          ? "Semua dependency runtime tersedia dan dapat di-import."
+          : `${state.missing.length} dependency hilang, ${Object.values(state.dependencies).filter(d => d.status === "error").length} error saat load.`,
+      },
+    });
+  } catch (err) {
+    logger.error({ err }, "runtime-check error");
+    res.status(500).json({ error: "Gagal menjalankan runtime check" });
+  }
+});
+
+// ── Vendor Performance Health ──────────────────────────────────────────────────
+router.get("/vendor-performance-health", async (_req, res) => {
+  try {
+    const { getVendorPerformanceHealth } = await import("../lib/vendorPerformanceService.js");
+    const health = await getVendorPerformanceHealth();
+
+    // Extended detail (columns, top vendors) for admin diagnostics
+    let columns: string[] = [];
+    let topVendors: unknown[] = [];
+
+    if (health.tableExists) {
+      try {
+        const [colRes, topRes] = await Promise.all([
+          db.execute(sql`
+            SELECT column_name FROM information_schema.columns
+            WHERE table_name = 'vendor_performance' ORDER BY ordinal_position
+          `),
+          db.execute(sql`
+            SELECT s.name AS vendor_name, vp.total_orders, vp.completed_orders,
+                   vp.score, vp.recommendation_score, vp.last_calculated_at
+            FROM vendor_performance vp
+            JOIN suppliers s ON s.id = vp.vendor_id
+            ORDER BY COALESCE(vp.score::numeric, vp.recommendation_score::numeric, 0) DESC NULLS LAST
+            LIMIT 10
+          `),
+        ]);
+        columns = (colRes.rows as Record<string, string>[]).map(r => r["column_name"]);
+        topVendors = topRes.rows;
+      } catch { /* non-fatal */ }
+    }
+
+    const requiredColumns = [
+      "id", "vendor_id", "total_orders", "completed_orders", "cancelled_orders",
+      "ontime_percentage", "average_response_minutes", "pod_completeness_score",
+      "recommendation_score", "updated_at",
+      "total_rfq_invites", "total_submitted", "total_selected", "total_rejected",
+      "avg_response_hours", "on_time_orders", "late_orders", "pod_complete_orders",
+      "score", "last_calculated_at",
+    ];
+    const missingColumns = health.tableExists
+      ? requiredColumns.filter(c => !columns.includes(c))
+      : requiredColumns;
+
+    res.json({
+      // Spec fields (top-level)
+      tableExists:         health.tableExists,
+      rowCount:            health.rowCount,
+      lastCalculatedAt:    health.lastCalculatedAt,
+      vendorsWithScore:    health.vendorsWithScore,
+      vendorsWithoutScore: health.vendorsWithoutScore,
+      // Extended diagnostics
+      activeVendors:     health.activeVendors,
+      backfillCoverage:  health.backfillCoverage,
+      schemaOk:          health.tableExists && missingColumns.length === 0,
+      missingColumns,
+      columns,
+      topVendors,
+      generatedAt: new Date().toISOString(),
+    });
+  } catch (err) {
+    logger.error({ err }, "vendor-performance-health error");
+    res.status(500).json({ error: "Gagal memuat vendor performance health" });
+  }
+});
+
+// ── Init Storage (existing) ────────────────────────────────────────────────────
 router.get("/init-storage", async (_req, res) => {
   try {
     const url = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "";

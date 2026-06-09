@@ -252,6 +252,186 @@ uri = "file://artifacts/customer-portal/public/menu/roti-bakar.png"
 type = "image"
 title = "grilled toast bread snack"
 
+[[generated]]
+id = "gXF0H7tIeoSoLvc7MJEOK"
+uri = "file://artifacts/customer-portal/public/images/products/meja-standing-desk.png"
+type = "image"
+title = "standing desk product"
+
+[[generated]]
+id = "eAegp039DCEVMGkf020kl"
+uri = "file://artifacts/customer-portal/public/images/products/customs-clearance.png"
+type = "image"
+title = "customs clearance"
+
+[[generated]]
+id = "XNDRqCTHs8QIkxywdNFs_"
+uri = "file://artifacts/customer-portal/public/images/products/freight-laut-lcl.png"
+type = "image"
+title = "LCL sea freight"
+
+[[generated]]
+id = "LcQrIzvSrDSdSWgAgRn8q"
+uri = "file://artifacts/customer-portal/public/images/products/freight-laut-fcl-20ft.png"
+type = "image"
+title = "FCL 20ft container ship"
+
+[[generated]]
+id = "Zx981vaR4eppGYj_jCdG2"
+uri = "file://artifacts/customer-portal/public/images/products/kursi-kantor-ergonomik.png"
+type = "image"
+title = "ergonomic office chair"
+
+[[generated]]
+id = "npNsaJ9eYvfAAq2dUdosk"
+uri = "file://artifacts/customer-portal/public/images/products/handling.png"
+type = "image"
+title = "warehouse handling"
+
+[[generated]]
+id = "ljI9JtVDT95ji-rFdfrPo"
+uri = "file://artifacts/customer-portal/public/images/products/emkl.png"
+type = "image"
+title = "EMKL freight forwarding"
+
+[[generated]]
+id = "X2SEHqT0TatOu1KmYz8Sg"
+uri = "file://artifacts/customer-portal/public/images/products/freight-udara.png"
+type = "image"
+title = "air freight cargo plane"
+
+[[generated]]
+id = "iE8myRaxfEKT555EC9UO5"
+uri = "file://artifacts/customer-portal/public/images/products/handling-cargo-udara.png"
+type = "image"
+title = "air cargo handling workers"
+
+[[generated]]
+id = "7-tySKi-7nLsDUXk5EKaq"
+uri = "file://artifacts/customer-portal/public/images/products/container.png"
+type = "image"
+title = "stacked shipping containers port"
+
+[[generated]]
+id = "RxKIzGalCAwc7V6X7D-x0"
+uri = "file://artifacts/customer-portal/public/images/products/ocean-freight.png"
+type = "image"
+title = "ocean freight cargo ship"
+
+[[generated]]
+id = "ALBppJbQwj6Nwy-gzpLiR"
+uri = "file://artifacts/customer-portal/public/images/products/asuransi-kargo.png"
+type = "image"
+title = "cargo insurance shield"
+
+[[generated]]
+id = "uWA99_pWyKQ-v7xYEWIAv"
+uri = "file://artifacts/customer-portal/public/images/products/pengurusan-dokumen-ppjk.png"
+type = "image"
+title = "PPJK customs documents"
+
+[[generated]]
+id = "3UmddehVRnHsnWR8KGdDP"
+uri = "file://artifacts/customer-portal/public/images/products/port-charges.png"
+type = "image"
+title = "port charges terminal"
+
+[[generated]]
+id = "EL6dfBd4ydeGypcUwVSzN"
+uri = "file://artifacts/customer-portal/public/images/products/storage-demurrage.png"
+type = "image"
+title = "warehouse storage facility"
+
+[[generated]]
+id = "UgZephpurCDWNY-sWd2cq"
+uri = "file://artifacts/customer-portal/public/images/products/trucking.png"
+type = "image"
+title = "trucking freight transport"
+
+[[generated]]
+id = "mzJ006PwWQFEjJ6p4sTpv"
+uri = "file://artifacts/customer-portal/public/images/products/urus-dokumen-pabean.png"
+type = "image"
+title = "customs document clearance"
+
+[[generated]]
+id = "n-LhXaqmKBWGTo1xF3Y_2"
+uri = "file://artifacts/customer-portal/public/images/products/handling-cargo-laut.png"
+type = "image"
+title = "sea cargo port handling"
+
+[[generated]]
+id = "iRLaKLQkAe0ZSSgUecRC2"
+uri = "file://artifacts/customer-portal/public/images/products/green-bean-arabica-grade1.png"
+type = "image"
+title = "green arabica coffee beans"
+
+[[generated]]
+id = "Y8DM19gHa7JaDrb8UZw0h"
+uri = "file://artifacts/customer-portal/public/images/products/biaya-storage.png"
+type = "image"
+title = "warehouse storage cost"
+
+[[generated]]
+id = "Vy4b3X7CMTfHtV8E1Tcu2"
+uri = "file://attached_assets/products/kopi_arabika_gayo.png"
+type = "image"
+title = "kopi arabika gayo specialty green beans"
+
+[[generated]]
+id = "T69EpzCVgE--ugOvNMmBq"
+uri = "file://attached_assets/products/kopi_arabika_toraja.png"
+type = "image"
+title = "kopi arabika toraja grade 1"
+
+[[generated]]
+id = "IIN5ecnwIJYOduavW2t_-"
+uri = "file://attached_assets/products/kopi_robusta_lampung.png"
+type = "image"
+title = "kopi robusta lampung grade B"
+
+[[generated]]
+id = "JEL2UNiiQTgF8MaNM48Og"
+uri = "file://attached_assets/products/batubara_gar4200.png"
+type = "image"
+title = "batubara thermal GAR 4200 Kalimantan"
+
+[[generated]]
+id = "ykn8Ks3RmfCSNMlz_TEDh"
+uri = "file://attached_assets/products/batubara_gar5000.png"
+type = "image"
+title = "batubara thermal GAR 5000 Kaltim"
+
+[[generated]]
+id = "tStFBrAbm8lkNuCZbTsKg"
+uri = "file://attached_assets/products/cpo_belawan.png"
+type = "image"
+title = "crude palm oil CPO Belawan"
+
+[[generated]]
+id = "DLfVKfMJe0iuApC_RrDUv"
+uri = "file://attached_assets/products/rbd_palm_olein.png"
+type = "image"
+title = "RBD palm olein grade A drum"
+
+[[generated]]
+id = "xse1bvSNEkvMS7D5ryZW0"
+uri = "file://attached_assets/products/samsung_galaxy_a54.png"
+type = "image"
+title = "Samsung Galaxy A54 smartphone product"
+
+[[generated]]
+id = "dmYPyin_bTG6Ka_6paoPr"
+uri = "file://attached_assets/products/meja_standing_desk.png"
+type = "image"
+title = "standing desk office furniture Indonesia"
+
+[[generated]]
+id = "PACAvj7pEn5UmYPENaAsA"
+uri = "file://attached_assets/products/truck_cdd_7ton.png"
+type = "image"
+title = "CDD truck 7 ton Indonesia logistics"
+
 [[outputs]]
 id = "jbw844mUijSYeJ7x1ujqa"
 uri = "file://attached_assets/logo_composited.png"
@@ -365,3 +545,75 @@ id = "rVh149sxoAxM3iYh_M-Aj"
 uri = "file://ADAPTIVE_ENTERPRISE_INTELLIGENCE_ROADMAP.md"
 type = "text"
 title = "Adaptive Enterprise Intelligence Network — Strategic Roadmap"
+
+[[outputs]]
+id = "LqmvhZ7kxrAwhGN0zMQSf"
+uri = "file://VENDOR CATALOG SCHEMA REPORT.md"
+type = "text"
+title = "VENDOR CATALOG SCHEMA REPORT"
+
+[[outputs]]
+id = "v-OQE6kUe4COZqMcY5G7s"
+uri = "file://SUBMISSION TO CATALOG REPORT.md"
+type = "text"
+title = "SUBMISSION TO CATALOG REPORT"
+
+[[outputs]]
+id = "OPhcvp1lzIeVNIo9c1Ke7"
+uri = "file://attached_assets/products/kopi_arabika_gayo.png"
+type = "image"
+title = "Kopi Arabica Gayo — Grade Specialty"
+
+[[outputs]]
+id = "PwTGYavzIsgIQWEMKUZYW"
+uri = "file://attached_assets/products/kopi_arabika_toraja.png"
+type = "image"
+title = "Kopi Arabica Toraja — Grade 1"
+
+[[outputs]]
+id = "o5Ctr1j5ksdHbCJjWano2"
+uri = "file://attached_assets/products/kopi_robusta_lampung.png"
+type = "image"
+title = "Kopi Robusta Lampung — Grade B"
+
+[[outputs]]
+id = "BXYxXF_KlHkDEffL65nMM"
+uri = "file://attached_assets/products/batubara_gar4200.png"
+type = "image"
+title = "Batubara Thermal — GAR 4200"
+
+[[outputs]]
+id = "h6rsBjcmUs-LQ6-G8rJjf"
+uri = "file://attached_assets/products/batubara_gar5000.png"
+type = "image"
+title = "Batubara Thermal — GAR 5000"
+
+[[outputs]]
+id = "xTSArY9ZfOnFU1jaQqJwb"
+uri = "file://attached_assets/products/cpo_belawan.png"
+type = "image"
+title = "Crude Palm Oil (CPO) — Belawan"
+
+[[outputs]]
+id = "ZE89QTEaz5Ah9i78HF_jM"
+uri = "file://attached_assets/products/rbd_palm_olein.png"
+type = "image"
+title = "RBD Palm Olein — Grade A"
+
+[[outputs]]
+id = "M_axISiiq6Rd7ybq2EdWd"
+uri = "file://attached_assets/products/samsung_galaxy_a54.png"
+type = "image"
+title = "Samsung Galaxy A54"
+
+[[outputs]]
+id = "zXurSqfYVdsuORJzlSAeI"
+uri = "file://attached_assets/products/meja_standing_desk.png"
+type = "image"
+title = "Meja Kerja Standing Desk"
+
+[[outputs]]
+id = "mo1jBbtYCd5wI0y-sJBQG"
+uri = "file://attached_assets/products/truck_cdd_7ton.png"
+type = "image"
+title = "Angkut CDD 7 Ton"

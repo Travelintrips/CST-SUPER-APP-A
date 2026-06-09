@@ -125,6 +125,8 @@ import VendorFormsPage from "@/pages/purchase/vendor-forms";
 import AnalyticsDashboardPage from "@/pages/analytics-dashboard";
 import VendorPerformancePage from "@/pages/logistics/vendor-performance";
 import InternalTasksPage from "@/pages/logistics/internal-tasks";
+import ProductFirstAnalyticsPage from "@/pages/logistics/product-first-analytics";
+import ProductFirstAuditPage from "@/pages/logistics/product-first-audit";
 
 const queryClient = new QueryClient({
   defaultOptions: {

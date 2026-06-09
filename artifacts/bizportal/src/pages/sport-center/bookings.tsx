@@ -115,11 +115,11 @@ export default function SportCenterBookings() {
       if (!supabase) return [];
       const { data, error } = await supabase
         .from("sport_center_bookings")
-        .select("booking_code, customer_name, customer_phone, facility_name, date, start_time, end_time, total_hours, total_price, status, payment_status, notes, created_at")
+        .select("id, booking_code, customer_name, customer_phone, facility_name, date, start_time, end_time, total_hours, total_price, status, payment_status, notes, created_at")
         .order("created_at", { ascending: false });
       if (error || !data) return [];
       return data.map((b: any) => ({
-        id: b.booking_code ?? "-",
+        id: b.id ?? b.booking_code ?? "-",
         booking_number: b.booking_code ?? "-",
         customer_name: b.customer_name ?? "-",
         customer_phone: b.customer_phone ?? "-",

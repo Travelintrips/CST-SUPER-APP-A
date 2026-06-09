@@ -8,8 +8,9 @@
 
 import { Router, type Request } from "express";
 import { requireAdmin } from "../lib/requireAdmin.js";
-import { testWatiConnection, listWatiTemplates, sendWatiTemplate, sendWatiSession, isWatiConfigured } from "../lib/wati.js";
+import { testWatiConnection, listWatiTemplates, sendWatiTemplate, sendWatiSession, isWatiConfigured, getWatiAccountInfo, validateWatiPhone } from "../lib/wati.js";
 import { logger } from "../lib/logger.js";
+import { setSetting, getSetting } from "../lib/appSecrets.js";
 
 export const watiRouter = Router();
 watiRouter.use((_req, _res, next) => next());
@@ -28,17 +29,66 @@ watiRouter.get("/status", async (_req, res) => {
     });
   }
 
-  const test = await testWatiConnection();
+  const [test, account] = await Promise.all([testWatiConnection(), getWatiAccountInfo()]);
+
+  // Auto-save nomor ke DB jika terdeteksi dari API (bukan manual) & belum ada setting manual
+  if (test.ok && account.phone && account.source !== "manual" && account.source !== undefined) {
+    const existing = (await getSetting("wati_phone_number", "")).trim();
+    if (!existing) {
+      try {
+        await setSetting("wati_phone_number", account.phone);
+        logger.info({ phone: account.phone, source: account.source }, "[wati] auto-saved phone from API");
+      } catch (e) {
+        logger.warn({ e }, "[wati] failed to auto-save phone");
+      }
+    }
+  }
+
+  const baseUrlRaw = (await getSetting("wati_base_url", process.env.WATI_BASE_URL ?? "")).trim();
+  const baseUrlDisplay = baseUrlRaw.replace(/^(https?:\/\/[^/]+).*/, "$1") || null;
+
   return res.json({
     provider: "wati",
     wati: {
       configured: true,
       connected: test.ok,
       error: test.error ?? null,
-      baseUrl: process.env.WATI_BASE_URL?.replace(/^(https?:\/\/[^/]+).*/, "$1") ?? null,
+      baseUrl: baseUrlDisplay,
+      phone: account.phone ?? null,
+      accountName: account.name ?? null,
+      phoneSource: account.source ?? null,
     },
     fonnte: { configured: fonnteConfigured, note: "digunakan sebagai fallback untuk grup WA admin" },
   });
+});
+
+// ─── Self-ping test ────────────────────────────────────────────────────────────
+// Kirim pesan ke nomor WATI sendiri (untuk tes koneksi kirim)
+watiRouter.post("/self-ping", async (_req, res) => {
+  if (!(await isWatiConfigured())) {
+    return res.status(400).json({ message: "WATI belum dikonfigurasi." });
+  }
+  const account = await getWatiAccountInfo();
+  const phone = account.phone;
+  if (!phone) {
+    return res.status(400).json({
+      message: "Nomor WATI tidak diketahui. Isi manual di Settings → WATI.",
+    });
+  }
+  const message = `[BizPortal Self-Ping] Test koneksi WATI berhasil ✅\nWaktu: ${new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })}`;
+  try {
+    const result = await sendWatiSession(phone, message, { context: "wati_self_ping", refId: String(Date.now()) });
+    if (!result.ok) {
+      return res.status(400).json({
+        message: result.error ?? "WATI menolak pengiriman",
+        hint: "Session message hanya berfungsi dalam 24 jam session window. Jika nomor WATI belum pernah mengirim/menerima pesan, gunakan Template Message.",
+        watiResponse: result.watiResponse,
+      });
+    }
+    return res.json({ ok: true, sentTo: phone, message: "Self-ping berhasil dikirim." });
+  } catch (err: any) {
+    return res.status(500).json({ message: err?.message ?? "Gagal self-ping." });
+  }
 });
 
 // ─── List templates ────────────────────────────────────────────────────────────
@@ -61,15 +111,72 @@ watiRouter.post("/test-send", async (req: Request, res) => {
   }
 
   try {
-    await sendWatiSession(String(phone).trim(), String(message).trim(), {
+    const result = await sendWatiSession(String(phone).trim(), String(message).trim(), {
       context: "wati_test",
       refId: String(Date.now()),
     });
-    return res.json({ ok: true, message: "Pesan test berhasil dikirim via WATI." });
+    if (!result.ok) {
+      return res.status(400).json({
+        message: result.error ?? "WATI menolak pengiriman",
+        watiResponse: result.watiResponse,
+        hint: "Session message hanya berfungsi jika nomor tujuan pernah menghubungi WATI Business number dalam 24 jam terakhir. Gunakan Template Message untuk kirim kapan saja.",
+      });
+    }
+    return res.json({ ok: true, message: "Pesan berhasil dikirim via WATI.", watiResponse: result.watiResponse });
   } catch (err: any) {
     logger.error({ err }, "[wati] test-send error");
     return res.status(500).json({ message: err?.message ?? "Gagal kirim." });
   }
+});
+
+// ─── Validate phone ────────────────────────────────────────────────────────────
+watiRouter.post("/validate-phone", async (req: Request, res) => {
+  const { phone } = req.body ?? {};
+  if (!phone?.trim()) return res.status(400).json({ message: "phone wajib diisi." });
+  if (!(await isWatiConfigured())) {
+    return res.status(400).json({ message: "WATI belum dikonfigurasi." });
+  }
+  try {
+    const result = await validateWatiPhone(String(phone).trim());
+    return res.json(result);
+  } catch (err: any) {
+    logger.error({ err }, "[wati] validate-phone error");
+    return res.status(500).json({ valid: false, phone, error: err?.message ?? "Gagal validasi." });
+  }
+});
+
+// ─── Bulk validate phones ──────────────────────────────────────────────────────
+watiRouter.post("/validate-phones-bulk", async (req: Request, res) => {
+  const { phones } = req.body ?? {};
+  if (!Array.isArray(phones) || phones.length === 0) {
+    return res.status(400).json({ message: "phones harus berupa array tidak kosong." });
+  }
+  if (phones.length > 100) {
+    return res.status(400).json({ message: "Maksimal 100 nomor per request." });
+  }
+  if (!(await isWatiConfigured())) {
+    return res.status(400).json({ message: "WATI belum dikonfigurasi." });
+  }
+
+  const results: { phone: string; valid: boolean; name?: string; source?: string; error?: string }[] = [];
+  for (const raw of phones) {
+    const phone = String(raw).replace(/\D/g, "").replace(/^0/, "62").trim();
+    if (!phone) {
+      results.push({ phone: String(raw).trim(), valid: false, error: "Format tidak valid" });
+      continue;
+    }
+    try {
+      const r = await validateWatiPhone(phone);
+      results.push({ phone, valid: r.valid, name: r.name, source: r.source, error: r.error });
+    } catch (err: any) {
+      results.push({ phone, valid: false, error: err?.message ?? "Gagal" });
+    }
+    // small delay to avoid WATI rate limit
+    await new Promise((ok) => setTimeout(ok, 120));
+  }
+
+  const validCount = results.filter((r) => r.valid).length;
+  return res.json({ results, validCount, invalidCount: results.length - validCount });
 });
 
 // ─── Send template ────────────────────────────────────────────────────────────

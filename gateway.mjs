@@ -25,6 +25,7 @@
 
 import http from "node:http";
 import net  from "node:net";
+import fs   from "node:fs";
 
 const PORT          = Number(process.env.PORT          ?? 5000);
 const MAX_ATTEMPTS  = Number(process.env.GW_MAX_ATTEMPTS  ?? 8);
@@ -36,7 +37,7 @@ const RETRYABLE_CODES = new Set(["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "ENO
 
 const API_PORT            = Number(process.env.API_PORT            ?? 8080);
 const BIZPORTAL_PORT      = Number(process.env.BIZPORTAL_PORT      ?? 18442);
-const CUSTOMER_PORT       = Number(process.env.CUSTOMER_PORT       ?? 5174);
+const CUSTOMER_PORT       = Number(process.env.CUSTOMER_PORT       ?? 3001);
 const LOGISTIC_ORDER_PORT = Number(process.env.LOGISTIC_ORDER_PORT ?? 19368);
 
 const ROUTES = [
@@ -288,9 +289,44 @@ async function handleUpgrade(req, socket, head) {
   socket.pipe(tunnel, { end: true });
 }
 
+// ── Kill any process holding a port (works on NixOS where fuser is unavailable) ─
+function killPort(port) {
+  const hex = port.toString(16).toUpperCase().padStart(4, "0");
+  const inodes = new Set();
+  for (const f of ["/proc/net/tcp6", "/proc/net/tcp"]) {
+    try {
+      for (const line of fs.readFileSync(f, "utf8").split("\n")) {
+        const parts = line.trim().split(/\s+/);
+        if (parts[1]?.endsWith(":" + hex)) inodes.add(parts[9]);
+      }
+    } catch {}
+  }
+  if (!inodes.size) return;
+  try {
+    for (const pid of fs.readdirSync("/proc")) {
+      if (!/^\d+$/.test(pid)) continue;
+      try {
+        for (const fd of fs.readdirSync(`/proc/${pid}/fd`)) {
+          try {
+            const link = fs.readlinkSync(`/proc/${pid}/fd/${fd}`);
+            if (link.startsWith("socket:[") && inodes.has(link.slice(8, -1))) {
+              try { process.kill(Number(pid), "SIGKILL"); } catch {}
+            }
+          } catch {}
+        }
+      } catch {}
+    }
+  } catch {}
+}
+
 // ── Start with retry on EADDRINUSE ────────────────────────────────────────────
 
 async function startGateway() {
+  // Kill any stale process holding our port before attempting to bind.
+  // This replaces `fuser -k PORT/tcp` which is unavailable on NixOS/Replit.
+  killPort(PORT);
+  await new Promise(r => setTimeout(r, 300));
+
   for (let attempt = 0; attempt < 20; attempt++) {
     const started = await new Promise((resolve) => {
       const srv = http.createServer(handleRequest);
@@ -324,19 +360,4 @@ async function startGateway() {
 
 startGateway();
 
-// Also listen on EXTRA_PORT (default 23434) to mirror the gateway
-const EXTRA_PORT = Number(process.env.EXTRA_PORT ?? 23434);
-if (EXTRA_PORT !== PORT) {
-  const extra = http.createServer(handleRequest);
-  extra.on("upgrade", handleUpgrade);
-  extra.on("error", (err) => {
-    if (err.code === "EADDRINUSE" || err.code === "EADDRNOTAVAIL") {
-      console.log(`Gateway: EXTRA_PORT ${EXTRA_PORT} unavailable (${err.code}) — skipping mirror`);
-    } else {
-      console.error("Gateway extra server error:", err.message);
-    }
-  });
-  extra.listen(EXTRA_PORT, () => {
-    console.log(`Gateway also listening on port ${EXTRA_PORT} (mirror)`);
-  });
-}
+// EXTRA_PORT mirror disabled — port 23434 dipakai Customer Portal dev server

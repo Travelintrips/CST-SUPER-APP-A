@@ -13,33 +13,34 @@ router.use(async (req, res, next) => {
 });
 
 // ─── Inline migration ─────────────────────────────────────────────────────────
-let migrated = false;
-async function runMigration() {
-  if (migrated) return;
-  await db.execute(sql.raw(`
-    CREATE TABLE IF NOT EXISTS vendor_payments (
-      id SERIAL PRIMARY KEY,
-      company_id INTEGER,
-      payment_number TEXT NOT NULL UNIQUE,
-      supplier_id INTEGER,
-      vendor_name TEXT NOT NULL,
-      payment_date DATE NOT NULL,
-      amount NUMERIC(14,2) NOT NULL,
-      payment_method TEXT NOT NULL DEFAULT 'bank',
-      reference TEXT,
-      purchase_document_id INTEGER,
-      bank_account_id INTEGER,
-      status TEXT NOT NULL DEFAULT 'paid',
-      journal_entry_id INTEGER,
-      notes TEXT,
-      created_by_id TEXT,
-      created_at TIMESTAMPTZ DEFAULT NOW(),
-      updated_at TIMESTAMPTZ DEFAULT NOW()
-    );
-    CREATE INDEX IF NOT EXISTS vendor_payments_company_idx ON vendor_payments(company_id);
-    CREATE INDEX IF NOT EXISTS vendor_payments_supplier_idx ON vendor_payments(supplier_id);
-  `));
-  migrated = true;
+let migrationPromise: Promise<void> | null = null;
+function runMigration(): Promise<void> {
+  if (!migrationPromise) {
+    migrationPromise = db.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS vendor_payments (
+        id SERIAL PRIMARY KEY,
+        company_id INTEGER,
+        payment_number TEXT NOT NULL UNIQUE,
+        supplier_id INTEGER,
+        vendor_name TEXT NOT NULL,
+        payment_date DATE NOT NULL,
+        amount NUMERIC(14,2) NOT NULL,
+        payment_method TEXT NOT NULL DEFAULT 'bank',
+        reference TEXT,
+        purchase_document_id INTEGER,
+        bank_account_id INTEGER,
+        status TEXT NOT NULL DEFAULT 'paid',
+        journal_entry_id INTEGER,
+        notes TEXT,
+        created_by_id TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS vendor_payments_company_idx ON vendor_payments(company_id);
+      CREATE INDEX IF NOT EXISTS vendor_payments_supplier_idx ON vendor_payments(supplier_id);
+    `)).then(() => undefined);
+  }
+  return migrationPromise;
 }
 
 async function nextPaymentNumber(companyId: number | null): Promise<string> {

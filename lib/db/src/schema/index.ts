@@ -93,3 +93,6 @@ export * from "./vendorInstallments";
 export * from "./bankLoans";
 export * from "./fixedAssets";
 export * from "./expenseApprovals";
+export * from "./productMedia";
+export * from "./vendorCatalogEngine";
+export * from "./logisticVendorFulfillments";

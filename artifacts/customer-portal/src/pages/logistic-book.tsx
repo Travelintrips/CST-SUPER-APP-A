@@ -30,6 +30,45 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   Package, Warehouse, Truck, FileCheck, Shield, FileText,
 };
 
+const QUICK_SERVICES = [
+  {
+    id: "freight",
+    name: "Freight",
+    description: "Air & sea forwarding, domestic delivery",
+    category: "Freight" as const,
+    isTrucking: false,
+    icon: <Ship className="w-5 h-5 text-blue-600" />,
+    color: "border-blue-200 bg-blue-50/60 hover:border-blue-400 text-blue-900",
+  },
+  {
+    id: "customs",
+    name: "Customs",
+    description: "Import/export customs clearance",
+    category: "Customs" as const,
+    isTrucking: false,
+    icon: <FileCheck className="w-5 h-5 text-orange-600" />,
+    color: "border-orange-200 bg-orange-50/60 hover:border-orange-400 text-orange-900",
+  },
+  {
+    id: "trucking",
+    name: "Trucking",
+    description: "Pickup, delivery & container transport",
+    category: "Trucking" as const,
+    isTrucking: true,
+    icon: <Truck className="w-5 h-5 text-amber-600" />,
+    color: "border-amber-200 bg-amber-50/60 hover:border-amber-400 text-amber-900",
+  },
+  {
+    id: "storage",
+    name: "Storage",
+    description: "Warehouse & bonded storage",
+    category: "Storage" as const,
+    isTrucking: false,
+    icon: <Warehouse className="w-5 h-5 text-teal-600" />,
+    color: "border-teal-200 bg-teal-50/60 hover:border-teal-400 text-teal-900",
+  },
+];
+
 function getServiceDetailRows(
   calculatorType: string,
   inputData: Record<string, unknown>
@@ -85,6 +124,17 @@ function getServiceDetailRows(
       ...(inputData.qty ? [{ label: "Qty", value: String(inputData.qty) }] : []),
       ...(inputData.unit ? [{ label: "Unit", value: str(inputData.unit) }] : []),
     ];
+  }
+  if (inputData.itemSource === "vendor_catalog_item") {
+    const rows: { label: string; value: string }[] = [];
+    if (inputData.serviceType) rows.push({ label: "Tipe Layanan", value: str(inputData.serviceType) });
+    if (inputData.quantity != null) rows.push({ label: "Qty / Volume", value: `${inputData.quantity}${inputData.unit ? " " + str(inputData.unit) : ""}` });
+    if (inputData.pickupCity || inputData.origin) rows.push({ label: "Asal", value: str(inputData.pickupCity ?? inputData.origin) });
+    if (inputData.destCity || inputData.destination) rows.push({ label: "Tujuan", value: str(inputData.destCity ?? inputData.destination) });
+    if (inputData.containerType) rows.push({ label: "Kontainer", value: str(inputData.containerType) });
+    if (inputData.grossWeight) rows.push({ label: "Berat Kotor", value: `${inputData.grossWeight} kg` });
+    if (inputData.chargeableWeight) rows.push({ label: "Chargeable Weight", value: `${inputData.chargeableWeight} kg` });
+    return rows;
   }
   const skipped = new Set(["unitPrice", "serviceFee", "adminFee", "ratePerKg", "ratePerCbm", "minimumCharge", "freightRate", "handlingFee", "truckingRate", "loadingFee", "customsFee", "documentFee", "pibPebFee", "permitFee", "notes"]);
   return Object.entries(inputData)
@@ -1006,6 +1056,13 @@ export default function BookPage() {
         inputData: c.inputData,
         calculationResult: c.calculationResult,
         subtotal: c.subtotal,
+        itemSource: c.itemSource ?? "manual",
+        vendorCatalogItemId: c.vendorCatalogItemId ?? null,
+        vendorId: c.vendorId ?? null,
+        serviceType: c.serviceType ?? null,
+        priceSnapshot: c.priceSnapshot ?? null,
+        calculationInput: c.calculationInput ?? null,
+        templateSnapshot: c.templateSnapshot ?? (c.inputData?.templateSnapshot as Record<string, unknown> | null | undefined) ?? null,
       })),
     }}, {
       onSuccess: (data: unknown) => {
@@ -1495,26 +1552,52 @@ export default function BookPage() {
                         <div className="flex-1 border-t border-dashed border-border" />
                       </div>
                     )}
-                    <div className="bg-card border border-border rounded-lg p-4">
+                    <div className={`bg-card border rounded-lg p-4 ${item.itemSource === "vendor_catalog_item" ? "border-purple-200 bg-purple-50/30" : "border-border"}`}>
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex-1 min-w-0">
-                          <Badge variant="outline" className="text-xs mb-1">{item.category}</Badge>
+                          <div className="flex items-center flex-wrap gap-1 mb-1">
+                            <Badge variant="outline" className="text-xs">{item.category}</Badge>
+                            {item.itemSource === "vendor_catalog_item" && (
+                              <span className="text-[10px] font-bold bg-purple-100 text-purple-700 border border-purple-200 rounded px-1.5 py-0.5">Vendor Marketplace</span>
+                            )}
+                          </div>
                           <p className="font-semibold text-foreground text-sm">{item.serviceName}</p>
+                          {item.itemSource === "vendor_catalog_item" && item.vendorName && (
+                            <p className="text-xs text-purple-600 mt-0.5 font-medium">by {item.vendorName}</p>
+                          )}
                           <dl className="mt-2 space-y-1">
-                            {getServiceDetailRows(item.calculatorType, item.inputData).map(({ label, value }) => (
+                            {getServiceDetailRows(item.calculatorType, item.itemSource === "vendor_catalog_item" ? { ...item.inputData, itemSource: "vendor_catalog_item", serviceType: item.serviceType } : item.inputData).map(({ label, value }) => (
                               <div key={label} className="flex gap-2 text-xs leading-relaxed">
                                 <dt className="font-medium text-foreground shrink-0 w-28">{label}</dt>
                                 <dd className="text-muted-foreground">{value}</dd>
                               </div>
                             ))}
                           </dl>
+                          {item.itemSource === "vendor_catalog_item" && item.priceSnapshot && (
+                            <div className="mt-2 text-xs text-muted-foreground bg-white/60 border border-purple-100 rounded px-2 py-1 space-y-0.5">
+                              <span className="font-medium text-purple-700">Harga satuan: </span>
+                              <span>{formatCurrency(item.priceSnapshot.priceSell)} / {item.priceSnapshot.unit}</span>
+                              {item.tax != null && item.tax > 0 && (
+                                <span className="block">PPN 11%: +{formatCurrency(item.tax)}</span>
+                              )}
+                            </div>
+                          )}
                         </div>
                         <div className="flex flex-col items-end gap-1">
-                          {item.calculatorType === "trucking"
-                            ? <span className="text-xs font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded px-2 py-0.5">Harga menyusul</span>
-                            : item.subtotal > 0
-                              ? <span className="font-bold text-accent text-sm">{formatCurrency(item.subtotal)}</span>
-                              : <span className="text-xs font-semibold text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-0.5">Harga nego</span>
+                          {item.itemSource === "vendor_catalog_item"
+                            ? item.total != null && item.total > 0
+                              ? (
+                                <div className="text-right">
+                                  <span className="font-bold text-purple-700 text-sm">{formatCurrency(item.total)}</span>
+                                  <p className="text-[10px] text-muted-foreground">incl. PPN</p>
+                                </div>
+                              )
+                              : <span className="font-bold text-accent text-sm">{formatCurrency(item.subtotal)}</span>
+                            : item.calculatorType === "trucking"
+                              ? <span className="text-xs font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded px-2 py-0.5">Harga menyusul</span>
+                              : item.subtotal > 0
+                                ? <span className="font-bold text-accent text-sm">{formatCurrency(item.subtotal)}</span>
+                                : <span className="text-xs font-semibold text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-0.5">Harga nego</span>
                           }
                           <button
                             onClick={() => removeItem(item.cartId)}

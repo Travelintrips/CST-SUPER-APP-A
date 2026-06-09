@@ -1,6 +1,6 @@
 import { Router, type Request } from "express";
 import { resolveCompanyId } from "../lib/resolveCompany.js";
-import { eq, desc, and, gte, lte, like, sql, count, getTableColumns } from "drizzle-orm";
+import { eq, desc, and, gte, lte, like, sql, count, getTableColumns, or, isNull } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { logStorageEvent, getRequestIp, getActor } from "../lib/storageAuditLog.js";
 import {
@@ -38,6 +38,43 @@ router.use(async (req, res, next) => {
   if (!(await requireClerkUser(req, res))) return;
   await ensureExpenseColumns();
   next();
+});
+
+// ── GET /api/expenses/payment-accounts ──
+// Mengembalikan HANYA akun Kas (1-101x) & Bank (1-102x) dari COA untuk dropdown Sumber Dana.
+router.get("/payment-accounts", async (req: Request, res) => {
+  const companyId = resolveCompanyId(req);
+  const rows = await db
+    .select({
+      id: chartOfAccountsTable.id,
+      code: chartOfAccountsTable.code,
+      name: chartOfAccountsTable.name,
+      companyId: chartOfAccountsTable.companyId,
+      isActive: chartOfAccountsTable.isActive,
+    })
+    .from(chartOfAccountsTable)
+    .where(
+      and(
+        or(
+          like(chartOfAccountsTable.code, "1-101%"),
+          like(chartOfAccountsTable.code, "1-102%"),
+        ),
+        or(
+          eq(chartOfAccountsTable.companyId, companyId),
+          isNull(chartOfAccountsTable.companyId),
+        ),
+      ),
+    )
+    .orderBy(chartOfAccountsTable.code);
+
+  const result = rows.map((r) => ({
+    id: r.id,
+    code: r.code,
+    name: r.name,
+    account_class: r.code.startsWith("1-101") ? "kas" : "bank",
+  }));
+
+  return res.json(result);
 });
 
 // ── Helpers ──
@@ -145,6 +182,49 @@ router.post("/categories", async (req, res) => {
 
   const row = (await db.execute(sql.raw(`SELECT * FROM expense_categories WHERE id = ${(created as any).id}`))).rows[0];
   return res.status(201).json(serializeCategory(row));
+});
+
+// Seed preset kategori rutin (idempotent by code)
+const PRESET_ROUTINE_CATEGORIES = [
+  { code: "ENTERTAINMENT", name: "Entertainment" },
+  { code: "MAKAN_MINUM", name: "Makan & Minum" },
+  { code: "SEWA_KANTOR", name: "Sewa Kantor" },
+  { code: "UTILITAS", name: "Utilitas" },
+  { code: "PERALATAN", name: "Peralatan & ATK" },
+  { code: "LAIN_LAIN", name: "Lain-lain" },
+];
+
+router.post("/seed-categories", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+
+  const existing = await db.execute(sql.raw(`SELECT code FROM expense_categories`));
+  const existingCodes = new Set(
+    (existing.rows as any[]).map((r) => String(r.code ?? "").toUpperCase()),
+  );
+
+  const toCreate = PRESET_ROUTINE_CATEGORIES.filter(
+    (c) => !existingCodes.has(c.code),
+  );
+
+  let seeded = 0;
+  for (const cat of toCreate) {
+    const [created] = await db
+      .insert(expenseCategoriesTable)
+      .values({
+        name: cat.name,
+        code: cat.code,
+        isActive: true,
+      } as any)
+      .returning();
+    await db.execute(
+      sql.raw(
+        `UPDATE expense_categories SET category_type = 'expense' WHERE id = ${(created as any).id}`,
+      ),
+    );
+    seeded += 1;
+  }
+
+  return res.json({ seeded, total: PRESET_ROUTINE_CATEGORIES.length });
 });
 
 router.patch("/categories/:id", async (req, res) => {
@@ -379,6 +459,155 @@ router.patch("/:id", async (req, res) => {
 
   return res.json(serializeExpense(row));
 });
+
+// ─── Missing journals: list ────────────────────────────────────────────────
+router.get("/missing-journals", async (req: Request, res) => {
+  const companyId = resolveCompanyId(req);
+  const rows = await db.execute(sql.raw(`
+    SELECT e.id, e.expense_number, e.date, e.description, e.total, e.transaction_type, e.status,
+           ec.name AS category_name
+    FROM expenses e
+    LEFT JOIN expense_categories ec ON ec.id = e.category_id
+    WHERE e.status = 'active' AND e.entry_id IS NULL
+      ${companyId ? `AND e.company_id = ${companyId}` : ""}
+    ORDER BY e.date DESC, e.id DESC
+    LIMIT 500
+  `));
+  return res.json({ count: rows.rows.length, items: rows.rows });
+});
+
+// ─── Re-post jurnal: single expense ────────────────────────────────────────
+router.post("/:id/repost-journal", async (req: Request, res) => {
+  const id = Number(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ message: "Invalid id" });
+  try {
+    const entry = await postQuickExpenseJournal(id);
+    return res.json({ success: true, entryId: entry.id });
+  } catch (e: any) {
+    return res.status(400).json({ success: false, message: e.message });
+  }
+});
+
+// ─── Re-post jurnal: bulk (semua yang missing) ─────────────────────────────
+router.post("/bulk-repost", async (req: Request, res) => {
+  const companyId = resolveCompanyId(req);
+  const rows = await db.execute(sql.raw(`
+    SELECT id FROM expenses
+    WHERE status = 'active' AND entry_id IS NULL
+      ${companyId ? `AND company_id = ${companyId}` : ""}
+    ORDER BY date, id
+    LIMIT 500
+  `));
+  const ids = (rows.rows as any[]).map((r) => Number(r.id));
+  const results: { id: number; success: boolean; entryId?: number; error?: string }[] = [];
+  for (const id of ids) {
+    try {
+      const entry = await postQuickExpenseJournal(id);
+      results.push({ id, success: true, entryId: entry.id });
+    } catch (e: any) {
+      results.push({ id, success: false, error: e.message });
+    }
+  }
+  const succeeded = results.filter((r) => r.success).length;
+  const failed = results.filter((r) => !r.success).length;
+  return res.json({ total: ids.length, succeeded, failed, results });
+});
+
+// ─── Helper: post journal untuk expense / penerimaan lain ────────────────────
+export async function postQuickExpenseJournal(expId: number) {
+  const result = await db.execute(sql.raw(`
+    SELECT e.*, ec.expense_account_id AS cat_expense_account_id
+    FROM expenses e
+    LEFT JOIN expense_categories ec ON ec.id = e.category_id
+    WHERE e.id = ${expId}
+  `));
+  const e = result.rows[0] as any;
+  if (!e) throw new Error("Expense tidak ditemukan");
+
+  const companyId: number | null = Number(e.company_id) || null;
+  const settings = await ensureAccountingSettings(companyId);
+  const txType: string = e.transaction_type ?? "expense";
+  const amountN = Number(e.total ?? 0);
+
+  // Resolve akun beban/pendapatan — dari expense itu sendiri, fallback ke kategori
+  const expenseAccountId: number | null =
+    Number(e.expense_account_id) || Number(e.cat_expense_account_id) || null;
+  if (!expenseAccountId)
+    throw new Error(
+      "Akun beban/pendapatan belum diset. Harap pilih akun COA di form expense atau kategori."
+    );
+
+  // Resolve akun sumber (kas/bank/hutang)
+  //   expense → credit ke sourceAccountId atau payableAccountId (hutang usaha)
+  //   income  → debit ke sourceAccountId (kas/bank penerimaan)
+  const sourceAccountId: number | null =
+    Number(e.source_account_id) || null;
+  const payableAccountId: number | null =
+    Number(e.payable_account_id) || null;
+  const counterAccountId: number | null =
+    sourceAccountId ??
+    payableAccountId ??
+    settings.defaultBankAccountId ??
+    settings.defaultCashAccountId ??
+    null;
+
+  if (!counterAccountId)
+    throw new Error(
+      "Akun kas/bank/hutang belum diset. Harap pilih akun sumber di form expense."
+    );
+
+  // Cari jurnal umum (general) sebagai wadah; fallback ke jurnal apapun
+  let journal = (
+    await db
+      .select()
+      .from(accountingJournalsTable)
+      .where(eq(accountingJournalsTable.type, "general" as any))
+      .limit(1)
+  )[0];
+  if (!journal)
+    journal = (await db.select().from(accountingJournalsTable).limit(1))[0];
+  if (!journal) throw new Error("Jurnal tidak ditemukan di database.");
+
+  const label = e.description ?? e.expense_number;
+  const counterLabel = sourceAccountId
+    ? "Kas/Bank"
+    : payableAccountId
+    ? "Hutang Usaha"
+    : "Kas/Bank";
+
+  const lines =
+    txType === "income"
+      ? [
+          // Penerimaan lain: Debit Kas/Bank → Credit Pendapatan
+          { accountId: counterAccountId, debit: amountN, credit: 0, description: `Penerimaan — ${label}` },
+          { accountId: expenseAccountId, debit: 0, credit: amountN, description: label },
+        ]
+      : [
+          // Expense biasa: Debit Beban → Credit Kas/Bank atau Hutang
+          { accountId: expenseAccountId, debit: amountN, credit: 0, description: label },
+          { accountId: counterAccountId, debit: 0, credit: amountN, description: counterLabel },
+        ];
+
+  const entry = await postEntry(
+    {
+      journalId: journal.id,
+      date: new Date(String(e.date)),
+      ref: e.expense_number,
+      description: `${e.expense_number} — ${label}`,
+      source: "manual",
+      companyId,
+      lines,
+    },
+    journal.code
+  );
+
+  await db.execute(
+    sql.raw(
+      `UPDATE expenses SET entry_id = ${entry.id}, status = 'active', updated_at = NOW() WHERE id = ${expId}`
+    )
+  );
+  return entry;
+}
 
 // ── Export router ──
 export default router;

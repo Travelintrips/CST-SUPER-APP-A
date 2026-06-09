@@ -255,6 +255,9 @@ export async function runDriverPodMigration(): Promise<void> {
       ALTER TABLE driver_jobs ADD COLUMN IF NOT EXISTS pod_submitted_at TIMESTAMPTZ;
       ALTER TABLE driver_jobs ADD COLUMN IF NOT EXISTS pod_geo_lat TEXT;
       ALTER TABLE driver_jobs ADD COLUMN IF NOT EXISTS pod_geo_lng TEXT;
+      ALTER TABLE driver_jobs ADD COLUMN IF NOT EXISTS pod_device_timestamp TIMESTAMPTZ;
+      ALTER TABLE driver_jobs ADD COLUMN IF NOT EXISTS pod_map_url TEXT;
+      ALTER TABLE driver_jobs ADD COLUMN IF NOT EXISTS pod_street_view_url TEXT;
       ALTER TABLE driver_jobs ADD COLUMN IF NOT EXISTS pod_signature_data_url TEXT;
     `);
     console.info("Driver POD migration: ok");
@@ -381,7 +384,7 @@ router.get("/jobs", requireDriverAuth, async (req, res) => {
 router.put("/jobs/:jobId/status", requireDriverAuth, async (req, res) => {
   const driverId = (req as DriverAuthReq).driverId;
   const jobId = Number(req.params.jobId);
-  const { status, note } = req.body ?? {};
+  const { status, note, geoLocation } = req.body ?? {};
   if (!status) { res.status(400).json({ message: "Status wajib diisi" }); return; }
 
   const [job] = await db
@@ -421,12 +424,21 @@ router.put("/jobs/:jobId/status", requireDriverAuth, async (req, res) => {
   if (progressStep && job.logisticOrderId) {
     const [driverRow] = await db.select({ name: driversTable.name })
       .from(driversTable).where(eq(driversTable.id, driverId));
+    const rawLat = geoLocation?.lat != null ? Number(geoLocation.lat) : null;
+    const rawLng = geoLocation?.lng != null ? Number(geoLocation.lng) : null;
+    const gpsLat = rawLat != null && rawLat >= -90 && rawLat <= 90 ? rawLat : null;
+    const gpsLng = rawLng != null && rawLng >= -180 && rawLng <= 180 ? rawLng : null;
+    const gpsDeviceTs = geoLocation?.deviceTimestamp ? String(geoLocation.deviceTimestamp) : null;
+    const gpsMapUrl = gpsLat != null && gpsLng != null ? `https://www.google.com/maps?q=${gpsLat},${gpsLng}` : null;
+    const gpsStreetViewUrl = gpsLat != null && gpsLng != null ? `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${gpsLat},${gpsLng}` : null;
     updateOrderProgress(
       job.logisticOrderId,
       progressStep,
       "driver",
       driverRow?.name ?? "Driver",
       note ? String(note) : `Driver update: ${status}`,
+      undefined,
+      { gpsLatitude: gpsLat, gpsLongitude: gpsLng, deviceTimestamp: gpsDeviceTs, mapUrl: gpsMapUrl ?? undefined, streetViewUrl: gpsStreetViewUrl ?? undefined },
     ).catch(() => {});
   }
 
@@ -597,6 +609,11 @@ router.post("/jobs/:jobId/pod", requireDriverAuth, async (req, res) => {
     const podSubmittedAt = submittedAt ? new Date(String(submittedAt)) : new Date();
     const geoLat = geoLocation?.lat ? String(geoLocation.lat) : null;
     const geoLng = geoLocation?.lng ? String(geoLocation.lng) : null;
+    const validGeoLat = geoLat && !isNaN(Number(geoLat)) && Math.abs(Number(geoLat)) <= 90 ? geoLat : null;
+    const validGeoLng = geoLng && !isNaN(Number(geoLng)) && Math.abs(Number(geoLng)) <= 180 ? geoLng : null;
+    const geoDeviceTs = geoLocation?.deviceTimestamp ? new Date(String(geoLocation.deviceTimestamp)) : null;
+    const geoMapUrl = validGeoLat && validGeoLng ? `https://www.google.com/maps?q=${validGeoLat},${validGeoLng}` : null;
+    const geoStreetViewUrl = validGeoLat && validGeoLng ? `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${validGeoLat},${validGeoLng}` : null;
 
     const [updated] = await db
       .update(driverJobsTable)
@@ -606,8 +623,11 @@ router.post("/jobs/:jobId/pod", requireDriverAuth, async (req, res) => {
         podNotes: deliveryNotes ? String(deliveryNotes) : null,
         podPhotos: photoUrls.length ? JSON.stringify(photoUrls) : null,
         podSubmittedAt,
-        podGeoLat: geoLat,
-        podGeoLng: geoLng,
+        podGeoLat: validGeoLat,
+        podGeoLng: validGeoLng,
+        podDeviceTimestamp: geoDeviceTs,
+        podMapUrl: geoMapUrl,
+        podStreetViewUrl: geoStreetViewUrl,
         podSignatureDataUrl: signatureDataUrl ? String(signatureDataUrl) : null,
         status: "DELIVERED",
       })
@@ -671,8 +691,11 @@ router.post("/jobs/:jobId/pod", requireDriverAuth, async (req, res) => {
         podNotes,
         { jobId, jobNumber: updated.jobNumber, receiverName, receiverPosition, photoCount: photoUrls.length, photoUrls },
         { photoUrl: firstPhotoUrl ?? undefined,
-          gpsLatitude: geoLat ? Number(geoLat) : null,
-          gpsLongitude: geoLng ? Number(geoLng) : null },
+          gpsLatitude: validGeoLat ? Number(validGeoLat) : null,
+          gpsLongitude: validGeoLng ? Number(validGeoLng) : null,
+          deviceTimestamp: geoDeviceTs?.toISOString() ?? null,
+          mapUrl: geoMapUrl ?? undefined,
+          streetViewUrl: geoStreetViewUrl ?? undefined },
       ).catch(() => {});
 
       fetchOrderData(job.logisticOrderId).then(async (orderData) => {

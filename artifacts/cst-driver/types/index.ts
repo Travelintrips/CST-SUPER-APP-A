@@ -88,7 +88,7 @@ export interface PODPayload {
   podPhotos?: string[];
   signatureDataUrl?: string;
   submittedAt?: string;
-  geoLocation?: { lat: number; lng: number };
+  geoLocation?: { lat: number; lng: number; deviceTimestamp?: string };
 }
 
 export interface Driver {
