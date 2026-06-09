@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import path from "path";
+import http from "http";
 import { fileURLToPath } from "url";
 import { runWaGatewayMigration } from "./migration.js";
 import { initAllSessions } from "./sessions.js";
@@ -10,7 +11,8 @@ import messagesRouter from "./routes/messages.js";
 import apikeysRouter from "./routes/apikeys.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PORT = Number(process.env.PORT ?? 21173);
+const PORT = Number(process.env.PORT ?? 8000);
+const VITE_PORT = Number(process.env.VITE_PORT ?? 0);
 const BASE = process.env.BASE_PATH?.replace(/\/$/, "") ?? "/wa-gateway";
 
 const app = express();
@@ -29,20 +31,47 @@ app.get(`${BASE}/api/health`, (_req, res) => {
   res.json({ ok: true, time: new Date().toISOString() });
 });
 
-const staticDir = path.resolve(__dirname, "../public");
-app.use(BASE, express.static(staticDir));
-app.get(`${BASE}`, (_req, res) => {
-  const indexPath = path.join(staticDir, "index.html");
-  res.sendFile(indexPath, (err) => {
-    if (err) res.status(200).send("WA Gateway — build client first");
+if (VITE_PORT) {
+  // Dev mode: proxy all non-API requests to Vite dev server
+  app.use((req, res, next) => {
+    if (req.path.startsWith(`${BASE}/api`)) return next();
+    let attempts = 0;
+    function attempt() {
+      const opts = {
+        hostname: "127.0.0.1",
+        port: VITE_PORT,
+        path: req.url,
+        method: req.method,
+        headers: { ...req.headers, host: `127.0.0.1:${VITE_PORT}` },
+      };
+      const proxy = http.request(opts, (r) => {
+        res.writeHead(r.statusCode ?? 200, r.headers);
+        r.pipe(res, { end: true });
+      });
+      proxy.on("error", () => {
+        if (++attempts < 20) { setTimeout(attempt, 300); }
+        else { res.status(502).send("Vite starting..."); }
+      });
+      req.pipe(proxy, { end: true });
+    }
+    attempt();
   });
-});
-app.get(`${BASE}/*path`, (_req, res) => {
-  const indexPath = path.join(staticDir, "index.html");
-  res.sendFile(indexPath, (err) => {
-    if (err) res.status(200).send("WA Gateway — build client first");
+} else {
+  const staticDir = path.resolve(__dirname, "../public");
+  app.use(BASE, express.static(staticDir));
+  app.get(`${BASE}`, (_req, res) => {
+    const indexPath = path.join(staticDir, "index.html");
+    res.sendFile(indexPath, (err) => {
+      if (err) res.status(200).send("WA Gateway — build client first");
+    });
   });
-});
+  app.get(`${BASE}/*path`, (_req, res) => {
+    const indexPath = path.join(staticDir, "index.html");
+    res.sendFile(indexPath, (err) => {
+      if (err) res.status(200).send("WA Gateway — build client first");
+    });
+  });
+}
 
 async function main() {
   try {
