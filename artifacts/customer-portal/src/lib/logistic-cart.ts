@@ -8,6 +8,18 @@ export interface CartItem {
   inputData: Record<string, unknown>;
   calculationResult: Record<string, unknown>;
   subtotal: number;
+  // vendor catalog item fields
+  itemSource?: "vendor_catalog_item" | "manual";
+  vendorCatalogItemId?: number | null;
+  vendorId?: number | null;
+  vendorName?: string | null;
+  serviceType?: string | null;
+  templateKind?: string | null;
+  priceSnapshot?: { priceSell: number; currency: string; unit: string; vendorName?: string | null; subtotal?: number; tax?: number; total?: number } | null;
+  calculationInput?: Record<string, unknown> | null;
+  templateSnapshot?: Record<string, unknown> | null;
+  tax?: number;
+  total?: number;
 }
 
 export const CART_KEY = "logistic_cart";

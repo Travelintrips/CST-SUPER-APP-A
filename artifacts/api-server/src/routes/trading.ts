@@ -5,8 +5,45 @@ import { resolveCompanyId, resolveCompanyScope } from "../lib/resolveCompany.js"
 import { postStockReceived } from "../lib/accounting.js";
 import { deleteFromSupabase } from "../lib/supabaseStorage.js";
 import { requireClerkUser, requireAdmin } from "../lib/requireAdmin.js";
+import { autoGenerateIfNeeded } from "../lib/aiImageGenerator.js";
 
 const router = Router();
+
+// ── Idempotent migrations: vendor_catalog_items new columns (FASE 2) ─────────
+db.execute(sql`
+  ALTER TABLE vendor_catalog_items
+    ADD COLUMN IF NOT EXISTS vendor_name        TEXT,
+    ADD COLUMN IF NOT EXISTS template_kind      TEXT,
+    ADD COLUMN IF NOT EXISTS category_key       TEXT,
+    ADD COLUMN IF NOT EXISTS service_type       TEXT,
+    ADD COLUMN IF NOT EXISTS template_id        TEXT,
+    ADD COLUMN IF NOT EXISTS template_version   TEXT,
+    ADD COLUMN IF NOT EXISTS template_snapshot  JSONB,
+    ADD COLUMN IF NOT EXISTS spec_values        JSONB,
+    ADD COLUMN IF NOT EXISTS price_sell         NUMERIC(15, 2),
+    ADD COLUMN IF NOT EXISTS currency           TEXT NOT NULL DEFAULT 'IDR',
+    ADD COLUMN IF NOT EXISTS stock_status       TEXT,
+    ADD COLUMN IF NOT EXISTS stock_qty          NUMERIC(15, 3),
+    ADD COLUMN IF NOT EXISTS moq                NUMERIC(15, 3),
+    ADD COLUMN IF NOT EXISTS lead_time          TEXT,
+    ADD COLUMN IF NOT EXISTS validity_date      DATE,
+    ADD COLUMN IF NOT EXISTS location           TEXT,
+    ADD COLUMN IF NOT EXISTS origin             TEXT,
+    ADD COLUMN IF NOT EXISTS documents          JSONB,
+    ADD COLUMN IF NOT EXISTS status             TEXT NOT NULL DEFAULT 'draft',
+    ADD COLUMN IF NOT EXISTS is_published       BOOLEAN NOT NULL DEFAULT FALSE,
+    ADD COLUMN IF NOT EXISTS source_submission_id INTEGER,
+    ADD COLUMN IF NOT EXISTS published_at       TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS updated_at         TIMESTAMPTZ DEFAULT NOW()
+`).catch(() => {});
+
+// Index untuk query publik (published catalog)
+db.execute(sql`
+  CREATE INDEX IF NOT EXISTS vendor_catalog_vendor_idx       ON vendor_catalog_items (vendor_id);
+  CREATE INDEX IF NOT EXISTS vendor_catalog_status_idx       ON vendor_catalog_items (status, is_published);
+  CREATE INDEX IF NOT EXISTS vendor_catalog_category_idx     ON vendor_catalog_items (category_key);
+  CREATE INDEX IF NOT EXISTS vendor_catalog_service_type_idx ON vendor_catalog_items (service_type);
+`).catch(() => {});
 
 // [C1-FIX] All trading routes require authenticated internal BizPortal staff.
 // Portal/mobile bearer-token users (isInternalSession=false) are rejected.
@@ -15,13 +52,55 @@ router.use(async (req, res, next) => {
   next();
 });
 
+// toItem — admin view (priceBase BOLEH tampil, hanya untuk internal admin)
+// Untuk public catalog endpoint, filter priceBase/markupPct di layer tersebut.
 const toItem = (i: typeof vendorCatalogItemsTable.$inferSelect) => ({
-  ...i,
+  id: i.id,
+  vendorId: i.vendorId,
+  vendorName: i.vendorName ?? null,
   masterItemId: i.masterItemId ?? null,
+  // legacy
+  type: i.type,
+  name: i.name,
+  description: i.description ?? null,
+  unit: i.unit ?? null,
   kategori: i.kategori ?? null,
+  subcategory: i.subcategory ?? null,
+  isCommodityTag: i.isCommodityTag,
+  sortOrder: i.sortOrder,
+  // template engine
+  templateKind: i.templateKind ?? null,
+  categoryKey: i.categoryKey ?? null,
+  serviceType: (i as any).serviceType ?? null,
+  templateId: i.templateId ?? null,
+  templateVersion: i.templateVersion ?? null,
+  templateSnapshot: i.templateSnapshot ?? null,
+  specValues: i.specValues ?? null,
+  // pricing (priceBase = internal cost, markupPct = internal margin)
   priceBase: Number(i.priceBase ?? 0),
   markupPct: Number(i.markupPct ?? 0),
+  priceSell: i.priceSell != null ? Number(i.priceSell) : null,
+  currency: i.currency ?? "IDR",
+  // availability
+  stockStatus: i.stockStatus ?? null,
+  stockQty: i.stockQty != null ? Number(i.stockQty) : null,
+  moq: i.moq != null ? Number(i.moq) : null,
+  leadTime: i.leadTime ?? null,
+  validityDate: i.validityDate ?? null,
+  // origin
+  location: i.location ?? null,
+  origin: i.origin ?? null,
+  // attachments
+  documents: i.documents ?? null,
+  // publication
+  status: i.status ?? "draft",
+  isPublished: i.isPublished ?? false,
+  isActive: i.isActive,
+  sourceSubmissionId: i.sourceSubmissionId ?? null,
+  publishedAt: i.publishedAt ? i.publishedAt.toISOString() : null,
+  // timestamps
   createdAt: i.createdAt.toISOString(),
+  updatedAt: i.updatedAt ? i.updatedAt.toISOString() : null,
 });
 
 // GET /api/trading/stocks
@@ -291,49 +370,22 @@ router.get("/suppliers/:id/catalog", async (req, res) => {
   if (Number.isNaN(vendorId)) return res.status(400).json({ message: "Invalid id" });
   const rows = await db
     .select({
-      id: vendorCatalogItemsTable.id,
-      vendorId: vendorCatalogItemsTable.vendorId,
-      masterItemId: vendorCatalogItemsTable.masterItemId,
-      type: vendorCatalogItemsTable.type,
-      name: vendorCatalogItemsTable.name,
-      description: vendorCatalogItemsTable.description,
-      unit: vendorCatalogItemsTable.unit,
-      kategori: vendorCatalogItemsTable.kategori,
-      subcategory: vendorCatalogItemsTable.subcategory,
-      priceBase: vendorCatalogItemsTable.priceBase,
-      priceSellOverride: vendorCatalogItemsTable.priceSell,
-      isActive: vendorCatalogItemsTable.isActive,
-      isCommodityTag: vendorCatalogItemsTable.isCommodityTag,
-      sortOrder: vendorCatalogItemsTable.sortOrder,
-      createdAt: vendorCatalogItemsTable.createdAt,
+      catalog: vendorCatalogItemsTable,
       masterPrice: productsTable.price,
     })
     .from(vendorCatalogItemsTable)
     .leftJoin(productsTable, eq(vendorCatalogItemsTable.masterItemId, productsTable.id))
     .where(eq(vendorCatalogItemsTable.vendorId, vendorId))
     .orderBy(vendorCatalogItemsTable.sortOrder, vendorCatalogItemsTable.createdAt);
-  return res.json(rows.map((row) => {
+  return res.json(rows.map(({ catalog: row, masterPrice }) => {
     const priceBase = Number(row.priceBase ?? 0);
-    const priceSellOverride = row.priceSellOverride != null ? Number(row.priceSellOverride) : null;
-    const masterPrice = row.masterPrice != null ? Number(row.masterPrice) : null;
-    // Override menang atas Master Item. Master Item jadi fallback.
-    const priceSell = priceSellOverride ?? masterPrice;
+    const priceSellOverride = row.priceSell != null ? Number(row.priceSell) : null;
+    const masterPriceNum = masterPrice != null ? Number(masterPrice) : null;
+    // priceSell eksplisit menang atas harga master item
+    const priceSell = priceSellOverride ?? masterPriceNum;
     const profit = priceSell != null ? priceSell - priceBase : null;
     return {
-      id: row.id,
-      vendorId: row.vendorId,
-      masterItemId: row.masterItemId ?? null,
-      type: row.type,
-      name: row.name,
-      description: row.description ?? null,
-      unit: row.unit ?? null,
-      kategori: row.kategori ?? null,
-      subcategory: row.subcategory ?? null,
-      priceBase,
-      isActive: row.isActive,
-      isCommodityTag: row.isCommodityTag,
-      sortOrder: row.sortOrder,
-      createdAt: row.createdAt.toISOString(),
+      ...toItem(row),
       priceSell,
       priceSellOverride,
       profit,
@@ -371,9 +423,24 @@ router.post("/suppliers/:id/catalog", async (req, res) => {
   if (existing)
     return res.status(409).json({ message: "Item ini sudah ada di etalase vendor ini" });
 
-  const { isActive, isCommodityTag, sortOrder } = req.body;
+  const {
+    isActive, isCommodityTag, sortOrder,
+    templateKind, categoryKey, serviceType: svcType,
+    templateId, templateVersion, templateSnapshot, specValues,
+    priceSell, currency, stockStatus, stockQty, moq, leadTime,
+    validityDate, location, origin, documents,
+    status: itemStatus, isPublished, sourceSubmissionId,
+    vendorName: bodyVendorName,
+  } = req.body;
+
   // priceBase = Harga Dasar = harga yang vendor charge ke kita (manual input, default 0)
   const priceBase = req.body.priceBase != null ? String(parseFloat(String(req.body.priceBase)) || 0) : "0";
+
+  // Ambil vendor name dari suppliers jika tidak disuplai
+  const [supplierRow] = await db
+    .select({ name: suppliersTable.name })
+    .from(suppliersTable)
+    .where(eq(suppliersTable.id, vendorId));
 
   // Ambil kategori pertama dari master item
   const categoryMap = await db
@@ -385,6 +452,7 @@ router.post("/suppliers/:id/catalog", async (req, res) => {
 
   const [item] = await db.insert(vendorCatalogItemsTable).values({
     vendorId,
+    vendorName: bodyVendorName ?? supplierRow?.name ?? null,
     masterItemId,
     type: masterItem.itemType === "jasa" ? "service" : "product",
     name: masterItem.name,
@@ -394,9 +462,29 @@ router.post("/suppliers/:id/catalog", async (req, res) => {
     subcategory: masterItem.subcategory ?? null,
     priceBase,
     markupPct: "0",
+    priceSell: priceSell != null ? String(parseFloat(String(priceSell)) || 0) : null,
+    currency: currency ?? "IDR",
+    templateKind: templateKind ?? (masterItem.itemType === "jasa" ? "service" : "product"),
+    categoryKey: categoryKey ?? masterItem.subcategory ?? null,
+    serviceType: svcType ?? null,
+    templateId: templateId ?? null,
+    templateVersion: templateVersion ?? null,
+    templateSnapshot: templateSnapshot ?? null,
+    specValues: specValues ?? null,
+    stockStatus: stockStatus ?? null,
+    stockQty: stockQty != null ? String(parseFloat(String(stockQty))) : null,
+    moq: moq != null ? String(parseFloat(String(moq))) : null,
+    leadTime: leadTime ?? null,
+    validityDate: validityDate ?? null,
+    location: location ?? null,
+    origin: origin ?? null,
+    documents: documents ?? null,
+    status: itemStatus ?? "draft",
+    isPublished: isPublished !== undefined ? Boolean(isPublished) : false,
     isActive: isActive !== undefined ? Boolean(isActive) : true,
     isCommodityTag: isCommodityTag !== undefined ? Boolean(isCommodityTag) : false,
     sortOrder: sortOrder !== undefined ? Number(sortOrder) : 0,
+    sourceSubmissionId: sourceSubmissionId ? Number(sourceSubmissionId) : null,
   }).returning();
   return res.status(201).json(toItem(item));
 });
@@ -452,7 +540,15 @@ router.put("/suppliers/catalog/:itemId", async (req, res) => {
     return res.json(toItem(linked));
   }
 
-  const { isActive, isCommodityTag, sortOrder } = req.body;
+  const {
+    isActive, isCommodityTag, sortOrder,
+    templateKind, categoryKey, serviceType: svcType,
+    templateId, templateVersion, templateSnapshot, specValues,
+    priceSell: bodySell, currency, stockStatus, stockQty, moq, leadTime,
+    validityDate, location, origin, documents,
+    status: itemStatus, isPublished, sourceSubmissionId,
+    vendorName: bodyVendorName,
+  } = req.body;
   const patch: Record<string, unknown> = {};
 
   // Item lama (legacy) tanpa masterItemId — boleh edit field deskriptif
@@ -466,23 +562,51 @@ router.put("/suppliers/catalog/:itemId", async (req, res) => {
     if (subcategory !== undefined) patch["subcategory"] = subcategory || null;
   }
 
-  // Harga Dasar (priceBase) — selalu boleh diedit, untuk semua item termasuk yang linked ke master
-  if (req.body.priceBase !== undefined) {
+  // Harga Dasar — selalu boleh diedit
+  if (req.body.priceBase !== undefined)
     patch["priceBase"] = String(parseFloat(String(req.body.priceBase)) || 0);
-  }
 
-  // Override Harga Jual — null = hapus override (kembali ke Master Item / belum linked)
+  // Override Harga Jual — null = hapus override
   if (req.body.priceSellOverride !== undefined) {
     const raw = req.body.priceSellOverride;
     patch["priceSell"] = raw != null && raw !== "" ? String(parseFloat(String(raw)) || 0) : null;
+  } else if (bodySell !== undefined) {
+    patch["priceSell"] = bodySell != null && bodySell !== "" ? String(parseFloat(String(bodySell)) || 0) : null;
   }
 
-  // Status & urutan — selalu boleh diedit
+  // Semua field baru — selalu boleh diedit
+  if (currency !== undefined) patch["currency"] = currency ?? "IDR";
+  if (bodyVendorName !== undefined) patch["vendorName"] = bodyVendorName || null;
+  if (templateKind !== undefined) patch["templateKind"] = templateKind || null;
+  if (categoryKey !== undefined) patch["categoryKey"] = categoryKey || null;
+  if (svcType !== undefined) patch["serviceType"] = svcType || null;
+  if (templateId !== undefined) patch["templateId"] = templateId || null;
+  if (templateVersion !== undefined) patch["templateVersion"] = templateVersion || null;
+  if (templateSnapshot !== undefined) patch["templateSnapshot"] = templateSnapshot ?? null;
+  if (specValues !== undefined) patch["specValues"] = specValues ?? null;
+  if (stockStatus !== undefined) patch["stockStatus"] = stockStatus || null;
+  if (stockQty !== undefined) patch["stockQty"] = stockQty != null ? String(parseFloat(String(stockQty))) : null;
+  if (moq !== undefined) patch["moq"] = moq != null ? String(parseFloat(String(moq))) : null;
+  if (leadTime !== undefined) patch["leadTime"] = leadTime || null;
+  if (validityDate !== undefined) patch["validityDate"] = validityDate || null;
+  if (location !== undefined) patch["location"] = location || null;
+  if (origin !== undefined) patch["origin"] = origin || null;
+  if (documents !== undefined) patch["documents"] = documents ?? null;
+  if (itemStatus !== undefined) patch["status"] = itemStatus;
+  if (isPublished !== undefined) patch["isPublished"] = Boolean(isPublished);
+  if (sourceSubmissionId !== undefined) patch["sourceSubmissionId"] = sourceSubmissionId ? Number(sourceSubmissionId) : null;
+
+  // Featured + Status & urutan
+  if (req.body.isFeatured !== undefined) patch["isFeatured"] = Boolean(req.body.isFeatured);
+  if (req.body.featuredUntil !== undefined) patch["featuredUntil"] = req.body.featuredUntil ? new Date(req.body.featuredUntil as string) : null;
   if (isActive !== undefined) patch["isActive"] = Boolean(isActive);
   if (isCommodityTag !== undefined) patch["isCommodityTag"] = Boolean(isCommodityTag);
   if (sortOrder !== undefined) patch["sortOrder"] = Number(sortOrder);
 
-  if (Object.keys(patch).length === 0) {
+  // Selalu set updatedAt
+  patch["updatedAt"] = new Date();
+
+  if (Object.keys(patch).length <= 1) {
     return res.json(toItem(current));
   }
   const [updated] = await db
@@ -543,8 +667,14 @@ router.get("/suppliers/catalog/all", async (req, res) => {
       status: vendorCatalogItemsTable.status,
       isPublished: vendorCatalogItemsTable.isPublished,
       isActive: vendorCatalogItemsTable.isActive,
+      isFeatured: vendorCatalogItemsTable.isFeatured,
       publishedAt: vendorCatalogItemsTable.publishedAt,
+      validityDate: vendorCatalogItemsTable.validityDate,
+      viewCount: vendorCatalogItemsTable.viewCount,
+      quoteCount: vendorCatalogItemsTable.quoteCount,
+      orderCount: vendorCatalogItemsTable.orderCount,
       sourceSubmissionId: vendorCatalogItemsTable.sourceSubmissionId,
+      mediaAssets: vendorCatalogItemsTable.mediaAssets,
       createdAt: vendorCatalogItemsTable.createdAt,
       updatedAt: vendorCatalogItemsTable.updatedAt,
     })
@@ -646,6 +776,7 @@ router.get("/suppliers/catalog/:itemId/detail", async (req, res) => {
     isActive: i.isActive,
     isCommodityTag: i.isCommodityTag,
     sourceSubmissionId: i.sourceSubmissionId,
+    mediaAssets: i.mediaAssets ?? [],
     publishedAt: i.publishedAt?.toISOString() ?? null,
     createdAt: i.createdAt.toISOString(),
     updatedAt: i.updatedAt.toISOString(),
@@ -660,7 +791,7 @@ router.patch("/suppliers/catalog/:itemId/status", async (req, res) => {
   if (Number.isNaN(itemId)) return res.status(400).json({ message: "Invalid id" });
 
   const { status } = req.body as { status: string };
-  const allowed = ["draft", "pending_review", "published", "archived"];
+  const allowed = ["draft", "pending_review", "approved", "rejected", "published", "archived"];
   if (!allowed.includes(status)) {
     return res.status(400).json({ message: `status harus salah satu dari: ${allowed.join(", ")}` });
   }
@@ -680,6 +811,11 @@ router.patch("/suppliers/catalog/:itemId/status", async (req, res) => {
     .returning();
 
   if (!updated) return res.status(404).json({ message: "Item not found" });
+
+  if (status === "published") {
+    autoGenerateIfNeeded(itemId).catch(() => {});
+  }
+
   return res.json({ ...toItem(updated), priceSell: updated.priceSell != null ? Number(updated.priceSell) : null });
 });
 
@@ -717,6 +853,91 @@ router.patch("/suppliers/catalog/:itemId/fields", async (req, res) => {
 
   if (!updated) return res.status(404).json({ message: "Item not found" });
   return res.json({ ...toItem(updated), priceSell: updated.priceSell != null ? Number(updated.priceSell) : null });
+});
+
+// PATCH /api/trading/suppliers/catalog/:itemId/media
+// Reorder mediaAssets, set cover — admin only
+router.patch("/suppliers/catalog/:itemId/media", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  const itemId = Number(req.params.itemId);
+  if (Number.isNaN(itemId)) return res.status(400).json({ message: "Invalid id" });
+
+  const { mediaAssets } = req.body as {
+    mediaAssets: Array<{
+      url: string;
+      name?: string;
+      type?: string;
+      isCover?: boolean;
+      sortOrder?: number;
+      mimeType?: string;
+    }>;
+  };
+
+  if (!Array.isArray(mediaAssets)) {
+    return res.status(400).json({ message: "mediaAssets harus berupa array" });
+  }
+
+  // Ensure sortOrder is sequential and isCover is consistent (only one cover)
+  let coverSet = false;
+  const normalized = mediaAssets.map((a, i) => {
+    const isCover = !coverSet && (a.isCover === true);
+    if (isCover) coverSet = true;
+    return { ...a, sortOrder: i, isCover };
+  });
+  // If no cover set, make first one cover
+  if (!coverSet && normalized.length > 0) normalized[0].isCover = true;
+
+  const [updated] = await db
+    .update(vendorCatalogItemsTable)
+    .set({ mediaAssets: normalized, updatedAt: new Date() })
+    .where(eq(vendorCatalogItemsTable.id, itemId))
+    .returning();
+
+  if (!updated) return res.status(404).json({ message: "Item not found" });
+  return res.json({
+    id: updated.id,
+    mediaAssets: updated.mediaAssets ?? [],
+    message: "Media assets diperbarui",
+  });
+});
+
+// PATCH /api/trading/suppliers/catalog/:itemId/pricing
+// Admin-only: update priceSell. priceBase & margin TIDAK pernah dikirim ke customer API.
+router.patch("/suppliers/catalog/:itemId/pricing", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  const itemId = Number(req.params.itemId);
+  if (Number.isNaN(itemId)) return res.status(400).json({ message: "Invalid id" });
+
+  const { priceSell } = req.body as { priceSell?: number | null };
+
+  const [updated] = await db
+    .update(vendorCatalogItemsTable)
+    .set({
+      priceSell: priceSell != null ? String(parseFloat(String(priceSell)) || 0) : null,
+      updatedAt: new Date(),
+    })
+    .where(eq(vendorCatalogItemsTable.id, itemId))
+    .returning();
+
+  if (!updated) return res.status(404).json({ message: "Item not found" });
+
+  const priceSellNum  = updated.priceSell != null ? Number(updated.priceSell) : null;
+  const priceBaseNum  = Number(updated.priceBase ?? 0);
+  const marginAmount  = priceSellNum != null ? priceSellNum - priceBaseNum : null;
+  const marginPct     = priceSellNum != null && priceSellNum > 0
+    ? ((priceSellNum - priceBaseNum) / priceSellNum) * 100 : null;
+
+  return res.json({
+    id: updated.id,
+    priceSell: priceSellNum,
+    // priceBase & margin hanya dikembalikan ke admin caller — tidak pernah masuk ke public/customer API
+    _adminOnly: {
+      priceBase:   priceBaseNum,
+      marginAmount,
+      marginPct:   marginPct != null ? Math.round(marginPct * 100) / 100 : null,
+    },
+    message: "Harga jual diperbarui",
+  });
 });
 
 // ─── Vendor Drivers ─────────────────────────────────────────────────────────

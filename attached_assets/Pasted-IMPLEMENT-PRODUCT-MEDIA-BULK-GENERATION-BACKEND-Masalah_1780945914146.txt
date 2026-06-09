@@ -1,0 +1,171 @@
+IMPLEMENT PRODUCT MEDIA BULK GENERATION BACKEND.
+
+Masalah:
+Marketplace belum tampil gambar karena tabel product_media masih kosong.
+Tabel product_media sudah ada.
+Marketplace API sudah join primaryImageUrl.
+Frontend sudah membaca primaryImageUrl.
+Yang belum ada:
+- GET /api/product-media/generation-status
+- POST /api/product-media/bulk-generate-ai
+- POST /api/product-media/regenerate-ai/:id
+
+Tujuan:
+Admin bisa generate gambar AI untuk semua vendor_catalog_items yang belum punya gambar.
+
+Scope:
+
+1. Endpoint Status
+
+Buat endpoint:
+
+GET /api/product-media/generation-status
+
+Return:
+- totalItems
+- withImage
+- withoutImage
+- coveragePercent
+- items[]
+
+Per item:
+- id
+- name
+- vendorName
+- category
+- templateKind
+- serviceType
+- hasImage
+- primaryImageUrl
+- mediaCount
+- lastGeneratedAt
+
+2. Endpoint Bulk Generate
+
+Buat endpoint:
+
+POST /api/product-media/bulk-generate-ai
+
+Body:
+{
+  "limit": 10,
+  "onlyPublished": true,
+  "dryRun": false
+}
+
+Behavior:
+- cari vendor_catalog_items yang belum punya active image
+- generate AI image per item
+- upload ke Supabase Storage bucket product-media
+- insert ke product_media
+- set:
+  media_type = image
+  is_primary = true
+  is_active = true
+  source = ai jika kolom tersedia
+- jangan generate ulang item yang sudah punya gambar kecuali force=true
+- return success/fail list
+
+3. Endpoint Regenerate
+
+POST /api/product-media/regenerate-ai/:id
+
+Behavior:
+- id = vendor_catalog_item_id
+- deactivate media lama untuk item tersebut
+- generate image baru
+- upload ke Supabase
+- insert product_media baru
+- set primary
+
+4. Prompt Builder
+
+Prompt harus beda untuk product dan service.
+
+Product:
+Gunakan:
+- item name
+- category
+- commodity
+- grade
+- origin
+- spec_values
+- vendor name
+
+Service:
+Gunakan:
+- serviceType
+- route_from
+- route_to
+- truck_type
+- port_loading
+- port_discharge
+- container_size
+- coverage_area
+- incoterm
+
+Prompt examples:
+
+Trucking:
+"Professional Indonesian logistics truck, container yard, road freight service, clean corporate style"
+
+PPJK:
+"Customs clearance service, port documentation, customs officer, container inspection, professional logistics environment"
+
+Sea Freight:
+"Container vessel at port terminal, international sea freight, logistics operation"
+
+Air Freight:
+"Cargo aircraft and airport warehouse, professional air freight logistics"
+
+5. Supabase Storage
+
+Pastikan bucket:
+
+product-media
+
+Jika belum ada:
+- create bucket atau gunakan helper upload yang sudah ada
+
+Path:
+product-media/vendor-{vendorId}/item-{itemId}/ai-{timestamp}.png
+
+6. Error Handling
+
+Jika OpenAI gagal:
+- jangan crash seluruh batch
+- catat item gagal
+- lanjut item berikutnya
+
+Jika Supabase upload gagal:
+- return error per item
+
+7. Admin UI
+
+Jika halaman /marketplace/ai-images sudah ada:
+- sambungkan ke endpoint real ini
+- status card harus membaca generation-status
+- tombol Generate semua memanggil bulk-generate-ai
+- tombol Regenerate memanggil regenerate-ai/:id
+
+8. Test
+
+A. GET generation-status → 200
+B. totalItems > 0
+C. withoutImage > 0
+D. POST bulk-generate-ai limit=1 → success 1 item
+E. product_media row bertambah
+F. Supabase file_url valid
+G. Marketplace card item tersebut tampil gambar
+H. Regenerate item → media lama inactive, media baru primary
+I. Jika item sudah punya gambar, bulk tidak generate ulang
+J. Error item tidak menghentikan batch
+
+Output:
+A. File yang diubah
+B. Endpoint baru
+C. Supabase bucket/path
+D. Sample prompt
+E. Test result
+F. Jumlah product_media setelah generate
+G. Risiko tersisa

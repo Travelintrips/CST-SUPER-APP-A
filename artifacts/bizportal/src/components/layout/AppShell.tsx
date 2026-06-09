@@ -71,6 +71,7 @@ import {
   KeyRound,
   Store,
   CreditCard,
+  Sparkles,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -198,6 +199,8 @@ export function AppShell({ children, noPadding }: AppShellProps) {
         { titleKey: "Analytics", href: "/analytics", icon: BarChart2, roles: ["admin", "owner"] },
         { titleKey: "CEO / Director", href: "/ceo-dashboard", icon: Trophy, roles: ["admin", "owner"] },
         { titleKey: "Profitabilitas", href: "/analytics/profitability", icon: TrendingUp, roles: ["admin", "owner"] },
+        { titleKey: "Route Profitability", href: "/analytics/route-profitability", icon: TrendingUp, roles: ["admin", "owner"] },
+        { titleKey: "Commodity Profitability", href: "/analytics/commodity-profitability", icon: TrendingUp, roles: ["admin", "owner"] },
       ],
     },
 
@@ -271,6 +274,7 @@ export function AppShell({ children, noPadding }: AppShellProps) {
         { titleKey: "purchaseOrders", href: "/purchase/orders", icon: ShoppingBag },
         { titleKey: "vendors", href: "/purchase/vendors", icon: UserCircle },
         { titleKey: "Vendor Catalog", href: "/purchase/vendor-catalog", icon: Store },
+        { titleKey: "AI Image Generator", href: "/marketplace/ai-images", icon: ImageIcon, roles: ["admin", "owner"] },
         { titleKey: "Approvals Pembelian", href: "/purchase/payment-requests", icon: ClipboardCheck },
         { titleKey: "Terima Barang (GRN)", href: "/purchase/gr", icon: PackageCheck },
         { titleKey: "Terima Barang Cepat", href: "/purchase/receive", icon: PackageOpen },
@@ -298,6 +302,7 @@ export function AppShell({ children, noPadding }: AppShellProps) {
         { titleKey: "shipments", href: "/logistics", icon: Truck },
         { titleKey: "freightForwarding", href: "/logistics/freight", icon: Ship, companyCodes: ["CST"] },
         { titleKey: "portalOrders", href: "/logistics/portal-orders", icon: ClipboardList, companyCodes: ["CST"] },
+        { titleKey: "Vendor Fulfillment", href: "/logistics/vendor-fulfillments", icon: PackageCheck, companyCodes: ["CST"] },
         { titleKey: "Manajemen Driver", href: "/logistics/drivers", icon: Users, companyCodes: ["CST"] },
         { titleKey: "Performa Driver", href: "/logistics/driver-performance", icon: BarChart2, companyCodes: ["CST"] },
         { titleKey: "Analytics Driver", href: "/logistics/drivers/analytics", icon: BarChart2, companyCodes: ["CST"] },
@@ -307,6 +312,8 @@ export function AppShell({ children, noPadding }: AppShellProps) {
         { titleKey: "AI Import Advisor", href: "/logistics/import-assistant", icon: Bot, companyCodes: ["CST"] },
         { titleKey: "Margin Rules", href: "/logistics/margin-rules", icon: Calculator },
         { titleKey: "Internal Tasks", href: "/logistics/internal-tasks", icon: ClipboardCheck },
+        { titleKey: "Vendor Recommendation", href: "/logistics/vendor-recommendation", icon: BarChart2, roles: ["admin", "owner"] },
+        { titleKey: "Vendor × Komoditas", href: "/logistics/vendor-commodity-intelligence", icon: BarChart2, roles: ["admin", "owner"] },
         { titleKey: "Pelanggan Portal", href: "/portal/customers", icon: Users },
         { titleKey: "Persetujuan Onboarding", href: "/portal/onboarding-approvals", icon: Users },
       ],
@@ -379,6 +386,7 @@ export function AppShell({ children, noPadding }: AppShellProps) {
         { titleKey: "Laporan L/R Holding", href: "/holding/pl-report", icon: TrendingUp, devOnly: true },
         { titleKey: "Laporan Arus Kas", href: "/holding/cashflow-report", icon: Wallet, devOnly: true },
         { titleKey: "Executive Dashboard", href: "/executive", icon: Landmark, roles: ["admin", "owner"] },
+        { titleKey: "Logistics Dashboard", href: "/executive/logistics", icon: Truck, roles: ["admin", "owner"] },
       ],
     },
 
@@ -440,6 +448,21 @@ export function AppShell({ children, noPadding }: AppShellProps) {
         { titleKey: "Pricing Rules", href: "/sport-center/pricing-rules", icon: Tags },
         { titleKey: "Pembayaran", href: "/sport-center/payments", icon: DollarSign },
         { titleKey: "Pengaturan", href: "/sport-center/settings", icon: Settings },
+      ],
+    },
+
+    // ── TENANT / PENYEWA ──────────────────────────────────────────────
+    {
+      type: "group",
+      titleKey: "Tenant / Penyewa",
+      basePath: "/tenant",
+      icon: Store,
+      roles: ["admin", "owner", "manager"],
+      children: [
+        { titleKey: "Dashboard", href: "/tenant/dashboard", icon: LayoutDashboard },
+        { titleKey: "Penyewa", href: "/tenant/tenants", icon: Store },
+        { titleKey: "Penyewaan", href: "/tenant/bookings", icon: FileText },
+        { titleKey: "Pembayaran Sewa", href: "/tenant/payments", icon: DollarSign },
       ],
     },
 

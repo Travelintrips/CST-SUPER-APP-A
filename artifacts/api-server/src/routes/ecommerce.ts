@@ -10,13 +10,6 @@ import { saveAndBroadcast } from "../lib/notificationStore.js";
 import { registerPortalConnection, unregisterPortalConnection, broadcastToPortal } from "../lib/sseManager.js";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { resolveCompanyId } from "../lib/resolveCompany.js";
-import {
-  syncProductToSupabase,
-  deleteProductFromSupabase,
-  syncAllProductsToSupabase,
-  SETUP_SQL,
-  type ProductSyncRow,
-} from "../lib/supabaseProductSync.js";
 
 // Inline migration: add company_id to orders table (idempotent)
 db.execute(sql`
@@ -78,31 +71,6 @@ function resolveCategories(
   categoryMap: Map<number, string[]>
 ): string[] {
   return categoryMap.get(p.id) ?? [];
-}
-
-function buildSyncRow(
-  p: typeof productsTable.$inferSelect,
-  categories: string[]
-): ProductSyncRow {
-  return {
-    id:           p.id,
-    sku:          p.sku,
-    name:         p.name,
-    description:  p.description ?? null,
-    price:        Number(p.price),
-    costPrice:    Number(p.costPrice ?? 0),
-    stock:        p.stock,
-    unit:         p.unit,
-    itemType:     p.itemType,
-    subcategory:  p.subcategory ?? null,
-    isActive:     p.isActive,
-    imageUrl:     p.imageUrl ?? null,
-    mediaItems:   p.mediaItems ?? "[]",
-    categories,
-    companyId:    p.companyId ?? null,
-    currencyCode: p.currencyCode,
-    createdAt:    p.createdAt.toISOString(),
-  };
 }
 
 function serializeProduct(
@@ -305,7 +273,6 @@ router.post("/products", async (req, res) => {
     return p;
   });
 
-  void syncProductToSupabase(buildSyncRow(product, categoryNames));
   return res.status(201).json(serializeProduct(product, categoryNames));
 });
 
@@ -570,7 +537,9 @@ router.put("/products/:id", async (req, res) => {
   });
 
   if (!product) return res.status(404).json({ message: "Product not found" });
-  void syncProductToSupabase(buildSyncRow(product, categoryNames));
+  // Notify Customer Portal: harga/data produk berubah via BizPortal admin.
+  // Listener: products.tsx (invalidates ["portal-products"]),
+  //           jasa.tsx (invalidates ["listPortalServicesJasa"])
   broadcastToPortal("price_sync", { ts: Date.now() });
   return res.json(serializeProduct(product, categoryNames));
 });
@@ -590,7 +559,9 @@ router.delete("/products/:id", async (req, res) => {
     } catch { /* ignore */ }
     for (const url of urls) deleteFromSupabase(url).catch(() => {});
   }
-  void deleteProductFromSupabase(id);
+  // Notify Customer Portal: produk dihapus — hapus dari listing.
+  // Listener: products.tsx (invalidates ["portal-products"]),
+  //           jasa.tsx (invalidates ["listPortalServicesJasa"])
   broadcastToPortal("price_sync", { ts: Date.now() });
   return res.json({ message: "Product deleted" });
 });
@@ -618,12 +589,6 @@ router.patch("/products/:id/image", requireClerkUser, async (req, res) => {
     imageUrl: normalized,
     mediaItems: JSON.stringify(media),
   }).where(eq(productsTable.id, id));
-  // Sync image update ke Supabase DB (gambar sudah ada di Supabase Storage via objectStorage)
-  const [updatedProduct] = await db.select().from(productsTable).where(eq(productsTable.id, id));
-  if (updatedProduct) {
-    const catMap = await getProductCategories([id]);
-    void syncProductToSupabase(buildSyncRow(updatedProduct, resolveCategories(updatedProduct, catMap)));
-  }
   broadcastToPortal("price_sync", { ts: Date.now() });
   return res.json({ id, imageUrl: normalized });
 });
@@ -788,20 +753,6 @@ function serializeOrder(o: typeof ordersTable.$inferSelect) {
     createdAt: o.createdAt.toISOString(),
   };
 }
-
-// GET /api/ecommerce/products/supabase-setup-sql — SQL untuk buat tabel di Supabase (admin)
-router.get("/products/supabase-setup-sql", requireClerkUser, (_req, res) => {
-  return res.json({ sql: SETUP_SQL });
-});
-
-// POST /api/ecommerce/products/supabase-sync-all — bulk sync semua produk ke Supabase (admin)
-router.post("/products/supabase-sync-all", requireClerkUser, async (_req, res) => {
-  const allProducts = await db.select().from(productsTable);
-  const categoryMap = await getProductCategories(allProducts.map((p) => p.id));
-  const rows = allProducts.map((p) => buildSyncRow(p, resolveCategories(p, categoryMap)));
-  const result = await syncAllProductsToSupabase(rows);
-  return res.json(result);
-});
 
 // GET /api/ecommerce/orders — [C2-FIX] requires internal staff session
 router.get("/orders", async (req, res) => {

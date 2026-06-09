@@ -1,4 +1,4 @@
-import { pgTable, serial, text, integer, timestamp, boolean, numeric, index, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, timestamp, boolean, numeric, index, jsonb, date } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { companiesTable } from "./companies";
@@ -25,10 +25,8 @@ export const suppliersTable = pgTable("suppliers", {
   sortOrder: integer("sort_order").notNull().default(0),
   yearVehicle: integer("year_vehicle"),
   supportedModes: text("supported_modes").array(),
-  // ── Phase 1: Structured ETA (replaces free-text eta field) ────────────────
   etaDaysMin: integer("eta_days_min"),
   etaDaysMax: integer("eta_days_max"),
-  // ── Truck support fields ───────────────────────────────────────────────────
   hasInternalTruck: boolean("has_internal_truck").notNull().default(false),
   internalTruckPrice: numeric("internal_truck_price", { precision: 14, scale: 2 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -37,25 +35,24 @@ export const suppliersTable = pgTable("suppliers", {
 ]);
 
 export const vendorCatalogItemsTable = pgTable("vendor_catalog_items", {
+  // ── Core identity ──────────────────────────────────────────────────────────
   id: serial("id").primaryKey(),
-
-  // ── Vendor identity ──────────────────────────────────────────────────────────
-  vendorId: integer("vendor_id").notNull().references(() => suppliersTable.id, { onDelete: "cascade" }),
+  vendorId: integer("vendor_id").notNull().references(() => suppliersTable.id),
   vendorName: text("vendor_name"),
-
-  // ── Legacy / compatibility ───────────────────────────────────────────────────
   masterItemId: integer("master_item_id").references(() => productsTable.id, { onDelete: "set null" }),
-  type: text("type").notNull().default("service"),       // legacy; pakai templateKind untuk data baru
+
+  // ── Legacy fields (backward compat) ───────────────────────────────────────
+  type: text("type").notNull().default("service"),
   name: text("name").notNull(),
   description: text("description"),
-  kategori: text("kategori"),                            // legacy; pakai categoryKey untuk data baru
+  unit: text("unit"),
+  kategori: text("kategori"),
   subcategory: text("subcategory"),
   isCommodityTag: boolean("is_commodity_tag").notNull().default(false),
-  isActive: boolean("is_active").notNull().default(true),
   sortOrder: integer("sort_order").notNull().default(0),
 
-  // ── Template engine ──────────────────────────────────────────────────────────
-  templateKind: text("template_kind").default("service"),  // "product" | "service"
+  // ── Template engine ────────────────────────────────────────────────────────
+  templateKind: text("template_kind"),
   categoryKey: text("category_key"),
   serviceType: text("service_type"),
   templateId: text("template_id"),
@@ -63,42 +60,53 @@ export const vendorCatalogItemsTable = pgTable("vendor_catalog_items", {
   templateSnapshot: jsonb("template_snapshot"),
   specValues: jsonb("spec_values"),
 
-  // ── Pricing (priceBase = INTERNAL ONLY — jangan ekspos ke customer) ──────────
+  // ── Pricing (priceBase = internal cost, NEVER expose to customer) ──────────
   priceBase: numeric("price_base", { precision: 15, scale: 2 }).notNull().default("0"),
   markupPct: numeric("markup_pct", { precision: 5, scale: 2 }).notNull().default("0"),
-  priceSell: numeric("price_sell", { precision: 15, scale: 2 }),  // harga jual yang boleh diekspos
+  priceSell: numeric("price_sell", { precision: 15, scale: 2 }),
   currency: text("currency").notNull().default("IDR"),
 
-  // ── Unit & quantity ──────────────────────────────────────────────────────────
-  unit: text("unit"),
-  moq: integer("moq").default(1),
-
-  // ── Stock ────────────────────────────────────────────────────────────────────
-  stockStatus: text("stock_status").default("available"), // "available" | "limited" | "out_of_stock"
-  stockQty: integer("stock_qty"),
-
-  // ── Lead time & validity ─────────────────────────────────────────────────────
+  // ── Availability ──────────────────────────────────────────────────────────
+  stockStatus: text("stock_status"),
+  stockQty: numeric("stock_qty", { precision: 15, scale: 3 }),
+  moq: numeric("moq", { precision: 15, scale: 3 }),
   leadTime: text("lead_time"),
-  validityDate: timestamp("validity_date"),
+  validityDate: date("validity_date"),
 
-  // ── Asal & lokasi ────────────────────────────────────────────────────────────
+  // ── Origin / location ─────────────────────────────────────────────────────
   location: text("location"),
   origin: text("origin"),
 
-  // ── Dokumen pendukung ─────────────────────────────────────────────────────────
-  documents: jsonb("documents").default([]),
+  // ── Attachments ───────────────────────────────────────────────────────────
+  documents: jsonb("documents"),
+  // ── Media Foundation ──────────────────────────────────────────────────────
+  mediaAssets: jsonb("media_assets").$type<Record<string, unknown>[]>().notNull().default([]),
 
-  // ── Lifecycle status ──────────────────────────────────────────────────────────
-  // "draft" | "pending_review" | "published" | "archived"
+  // ── Publication state ─────────────────────────────────────────────────────
   status: text("status").notNull().default("draft"),
   isPublished: boolean("is_published").notNull().default(false),
+  isActive: boolean("is_active").notNull().default(true),
   sourceSubmissionId: integer("source_submission_id"),
   publishedAt: timestamp("published_at"),
 
-  // ── Timestamps ───────────────────────────────────────────────────────────────
+  // ── Timestamps ────────────────────────────────────────────────────────────
   createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+  updatedAt: timestamp("updated_at").defaultNow(),
+
+  // ── Analytics counters ─────────────────────────────────────────────────────
+  viewCount:  integer("view_count").notNull().default(0),
+  quoteCount: integer("quote_count").notNull().default(0),
+  orderCount: integer("order_count").notNull().default(0),
+
+  // ── Featured ──────────────────────────────────────────────────────────────
+  isFeatured:   boolean("is_featured").notNull().default(false),
+  featuredUntil: timestamp("featured_until"),
+}, (t) => [
+  index("vendor_catalog_vendor_idx").on(t.vendorId),
+  index("vendor_catalog_status_idx").on(t.status, t.isPublished),
+  index("vendor_catalog_category_idx").on(t.categoryKey),
+  index("vendor_catalog_service_type_idx").on(t.serviceType),
+]);
 
 export const insertSupplierSchema = createInsertSchema(suppliersTable).omit({ id: true, createdAt: true });
 export type InsertSupplier = z.infer<typeof insertSupplierSchema>;

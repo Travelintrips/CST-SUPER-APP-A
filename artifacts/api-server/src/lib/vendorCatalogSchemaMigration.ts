@@ -162,6 +162,138 @@ export async function runVendorCatalogSchemaMigration(): Promise<void> {
         ON vendor_catalog_items(source_submission_id)
     `);
 
+    // ── FASE 5: additional columns on vendor_catalog_items ────────────────────
+    await db.execute(sql`
+      ALTER TABLE vendor_catalog_items
+        ADD COLUMN IF NOT EXISTS media_assets JSONB NOT NULL DEFAULT '[]'
+    `);
+    await db.execute(sql`
+      ALTER TABLE vendor_catalog_items
+        ADD COLUMN IF NOT EXISTS subcategory TEXT
+    `);
+    await db.execute(sql`
+      ALTER TABLE vendor_catalog_items
+        ADD COLUMN IF NOT EXISTS markup_pct NUMERIC(5,2) NOT NULL DEFAULT 0
+    `);
+    await db.execute(sql`
+      ALTER TABLE vendor_catalog_items
+        ADD COLUMN IF NOT EXISTS master_item_id INTEGER
+    `);
+    await db.execute(sql`
+      ALTER TABLE vendor_catalog_items
+        ADD COLUMN IF NOT EXISTS view_count INTEGER NOT NULL DEFAULT 0
+    `);
+    await db.execute(sql`
+      ALTER TABLE vendor_catalog_items
+        ADD COLUMN IF NOT EXISTS quote_count INTEGER NOT NULL DEFAULT 0
+    `);
+    await db.execute(sql`
+      ALTER TABLE vendor_catalog_items
+        ADD COLUMN IF NOT EXISTS order_count INTEGER NOT NULL DEFAULT 0
+    `);
+    await db.execute(sql`
+      ALTER TABLE vendor_catalog_items
+        ADD COLUMN IF NOT EXISTS is_featured BOOLEAN NOT NULL DEFAULT FALSE
+    `);
+    await db.execute(sql`
+      ALTER TABLE vendor_catalog_items
+        ADD COLUMN IF NOT EXISTS featured_until TIMESTAMP
+    `);
+    await db.execute(sql`
+      ALTER TABLE vendor_catalog_items
+        ADD COLUMN IF NOT EXISTS price_base NUMERIC(15,2) NOT NULL DEFAULT 0
+    `);
+    await db.execute(sql`
+      ALTER TABLE vendor_catalog_items
+        ADD COLUMN IF NOT EXISTS type TEXT NOT NULL DEFAULT 'service'
+    `);
+    await db.execute(sql`
+      ALTER TABLE vendor_catalog_items
+        ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE
+    `);
+    await db.execute(sql`
+      ALTER TABLE vendor_catalog_items
+        ADD COLUMN IF NOT EXISTS sort_order INTEGER NOT NULL DEFAULT 0
+    `);
+
+    // ── FASE 5: vendor_catalog_submission_links ────────────────────────────────
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS vendor_catalog_submission_links (
+        id               SERIAL PRIMARY KEY,
+        token            TEXT NOT NULL UNIQUE,
+        supplier_id      INTEGER NOT NULL REFERENCES suppliers(id) ON DELETE CASCADE,
+        vendor_name      TEXT,
+        title            TEXT,
+        notes            TEXT,
+        category_key     TEXT,
+        service_type     TEXT,
+        template_kind    TEXT,
+        template_id      TEXT,
+        template_version TEXT,
+        template_snapshot JSONB,
+        is_active        BOOLEAN NOT NULL DEFAULT TRUE,
+        expires_at       TIMESTAMP,
+        max_submissions  INTEGER,
+        submission_count INTEGER NOT NULL DEFAULT 0,
+        created_at       TIMESTAMP NOT NULL DEFAULT NOW(),
+        created_by       TEXT
+      )
+    `);
+    await db.execute(sql`
+      CREATE INDEX IF NOT EXISTS vcsl_supplier_idx
+        ON vendor_catalog_submission_links(supplier_id)
+    `);
+
+    // ── FASE 5: vendor_catalog_submissions ────────────────────────────────────
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS vendor_catalog_submissions (
+        id                SERIAL PRIMARY KEY,
+        link_id           INTEGER REFERENCES vendor_catalog_submission_links(id) ON DELETE SET NULL,
+        token             TEXT NOT NULL UNIQUE,
+        supplier_id       INTEGER REFERENCES suppliers(id) ON DELETE SET NULL,
+        vendor_name       TEXT,
+        category_key      TEXT,
+        service_type      TEXT,
+        template_kind     TEXT,
+        template_id       TEXT,
+        template_version  TEXT,
+        template_snapshot JSONB,
+        spec_values       JSONB,
+        name              TEXT NOT NULL,
+        description       TEXT,
+        unit              TEXT,
+        media_assets      JSONB NOT NULL DEFAULT '[]',
+        price_base        NUMERIC(15,2) NOT NULL DEFAULT 0,
+        currency          TEXT NOT NULL DEFAULT 'IDR',
+        stock_status      TEXT,
+        stock_qty         NUMERIC(15,3),
+        lead_time         TEXT,
+        validity_date     TEXT,
+        location          TEXT,
+        origin            TEXT,
+        status            TEXT NOT NULL DEFAULT 'submitted',
+        catalog_item_id   INTEGER,
+        reviewed_by       TEXT,
+        reviewed_at       TIMESTAMP,
+        review_notes      TEXT,
+        submitted_at      TIMESTAMP NOT NULL DEFAULT NOW(),
+        created_at        TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at        TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    await db.execute(sql`
+      CREATE INDEX IF NOT EXISTS vcs_supplier_idx
+        ON vendor_catalog_submissions(supplier_id)
+    `);
+    await db.execute(sql`
+      CREATE INDEX IF NOT EXISTS vcs_status_idx
+        ON vendor_catalog_submissions(status)
+    `);
+    await db.execute(sql`
+      CREATE INDEX IF NOT EXISTS vcs_link_idx
+        ON vendor_catalog_submissions(link_id)
+    `);
+
     logger.info("Vendor catalog schema migration: ok");
   } catch (err) {
     logger.error({ err }, "Vendor catalog schema migration failed");

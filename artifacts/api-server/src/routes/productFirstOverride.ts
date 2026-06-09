@@ -361,3 +361,113 @@ productFirstOverrideRouter.post("/:id/override/resend-product-approval", async (
     return res.status(500).json({ error: "Gagal mengirim ulang approval link" });
   }
 });
+
+// ── Inline migration: kolom product_stock_unavailable_at ──────────────────────
+db.execute(sql.raw(`
+  ALTER TABLE logistic_orders
+    ADD COLUMN IF NOT EXISTS product_stock_unavailable_at TIMESTAMPTZ
+`)).catch(() => {});
+
+// ── POST /:id/override/flag-stock-unavailable ─────────────────────────────────
+// Tandai bahwa stok produk tidak tersedia. Transition ke "Product RFQ Sent" untuk
+// memulai ulang pencarian vendor / stok.
+productFirstOverrideRouter.post("/:id/override/flag-stock-unavailable", async (req: Request, res: Response) => {
+  const orderId = Number(req.params.id);
+  if (isNaN(orderId)) return res.status(400).json({ error: "ID tidak valid" });
+
+  const { reason } = req.body as { reason?: string };
+  if (!reason?.trim()) return res.status(400).json({ error: "reason wajib diisi untuk override" });
+
+  const order = await getOrder(orderId);
+  if (!order) return res.status(404).json({ error: "Order tidak ditemukan" });
+  if (order.orderType !== "product_first") {
+    return res.status(400).json({ error: "Hanya untuk product_first orders" });
+  }
+
+  const oldStatus = String(order.status);
+
+  try {
+    // Tandai stok tidak tersedia + reset ke Product RFQ Sent agar admin bisa pilih vendor baru
+    await db.execute(sql`
+      UPDATE logistic_orders
+      SET product_stock_unavailable_at = NOW(),
+          product_vendor_id = NULL,
+          product_vendor_confirmed_at = NULL,
+          customer_product_approval_token = NULL,
+          customer_product_approved_at = NULL,
+          updated_at = NOW()
+      WHERE id = ${orderId}
+    `);
+
+    const result = await transitionLogisticOrderStatus(orderId, "Product RFQ Sent", {
+      force: true,
+      actorType: "admin_override",
+      actorName: actorName(req),
+      notes: `[OVERRIDE] Stok produk tidak tersedia — reset ke Product RFQ Sent. Alasan: ${reason}`,
+      source: "admin_override",
+    });
+
+    if (!result.ok && !result.alreadyAt) {
+      return res.status(422).json({ error: result.error });
+    }
+
+    await writeOverrideAudit({
+      orderId,
+      orderNumber: String(order.orderNumber),
+      action: "override.flag_stock_unavailable",
+      reason,
+      actorName: actorName(req),
+      actorId: actorId(req),
+      oldVal: oldStatus,
+      newVal: "Product RFQ Sent (stock unavailable flagged)",
+    });
+
+    logger.info({ orderId, actor: actorName(req), reason }, "override: flag-stock-unavailable");
+    return res.json({ ok: true, newStatus: "Product RFQ Sent", flagged: true });
+  } catch (err) {
+    logger.error({ err, orderId }, "override: flag-stock-unavailable error");
+    return res.status(500).json({ error: "Gagal menandai stok tidak tersedia" });
+  }
+});
+
+// ── POST /:id/override/clear-stock-unavailable ────────────────────────────────
+// Hapus flag stok tidak tersedia (stok sudah tersedia kembali / vendor baru ditemukan).
+productFirstOverrideRouter.post("/:id/override/clear-stock-unavailable", async (req: Request, res: Response) => {
+  const orderId = Number(req.params.id);
+  if (isNaN(orderId)) return res.status(400).json({ error: "ID tidak valid" });
+
+  const { reason } = req.body as { reason?: string };
+  if (!reason?.trim()) return res.status(400).json({ error: "reason wajib diisi untuk override" });
+
+  const order = await getOrder(orderId);
+  if (!order) return res.status(404).json({ error: "Order tidak ditemukan" });
+  if (order.orderType !== "product_first") {
+    return res.status(400).json({ error: "Hanya untuk product_first orders" });
+  }
+
+  try {
+    await db.execute(sql`
+      UPDATE logistic_orders
+      SET product_stock_unavailable_at = NULL,
+          updated_at = NOW()
+      WHERE id = ${orderId}
+    `);
+
+    await writeOverrideAudit({
+      orderId,
+      orderNumber: String(order.orderNumber),
+      action: "override.clear_stock_unavailable",
+      reason,
+      actorName: actorName(req),
+      actorId: actorId(req),
+      oldVal: "stock_unavailable",
+      newVal: "stock_available",
+    });
+
+    logger.info({ orderId, actor: actorName(req), reason }, "override: clear-stock-unavailable");
+    return res.json({ ok: true, flagCleared: true });
+  } catch (err) {
+    logger.error({ err, orderId }, "override: clear-stock-unavailable error");
+    return res.status(500).json({ error: "Gagal menghapus flag stok" });
+  }
+});

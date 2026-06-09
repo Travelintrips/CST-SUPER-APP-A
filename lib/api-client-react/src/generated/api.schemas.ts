@@ -2238,6 +2238,15 @@ export interface LogisticOrderItem {
   inputData: unknown;
   calculationResult: unknown;
   subtotal: number;
+  itemSource?: string | null;
+  vendorCatalogItemId?: number | null;
+  vendorId?: number | null;
+  serviceType?: string | null;
+  priceSnapshot?: unknown | null;
+  calculationInput?: unknown | null;
+  vendorFulfillmentId?: number | null;
+  vendorFulfillmentStatus?: string | null;
+  vendorFulfillmentCreatedAt?: string | null;
   createdAt: string;
 }
 
@@ -2252,6 +2261,12 @@ export interface CreateLogisticOrderItemBody {
   inputData: unknown;
   calculationResult: unknown;
   subtotal: number;
+  itemSource?: string | null;
+  vendorCatalogItemId?: number | null;
+  vendorId?: number | null;
+  serviceType?: string | null;
+  priceSnapshot?: unknown | null;
+  calculationInput?: unknown | null;
 }
 
 export interface CreateLogisticOrderBody {

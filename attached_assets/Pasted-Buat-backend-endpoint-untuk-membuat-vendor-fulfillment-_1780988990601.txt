@@ -1,0 +1,75 @@
+Buat backend endpoint untuk membuat vendor fulfillment dari logistic order item marketplace.
+
+Endpoint:
+POST /api/logistics/orders/:orderId/items/:itemId/vendor-fulfillment
+
+Auth:
+- requireAdmin
+- role admin/owner/manager jika role system tersedia
+
+Input body optional:
+{
+  notes?: string
+}
+
+Data source:
+- logistic_orders
+- logistic_order_items
+- vendor_catalog_items
+- vendors/suppliers jika tersedia
+
+Validasi:
+1. orderId harus valid.
+2. itemId harus valid dan milik order tersebut.
+3. itemSource harus "vendor_catalog_item".
+4. vendorCatalogItemId wajib ada.
+5. vendorId wajib ada, atau bisa di-resolve dari vendor_catalog_items.
+6. Jika fulfillment untuk item ini sudah ada, jangan duplicate. Return existing fulfillment dengan status 200 dan message "already_exists".
+
+Target penyimpanan:
+Jika sudah ada tabel vendor fulfillment/logistic vendor fulfillment, gunakan tabel existing.
+Jika belum ada, buat tabel baru:
+
+logistic_vendor_fulfillments:
+- id serial/bigserial primary key
+- order_id integer not null
+- order_item_id integer not null
+- vendor_catalog_item_id integer not null
+- vendor_id integer not null
+- service_type text null
+- status text not null default 'pending'
+- fulfillment_payload jsonb null
+- calculation_input jsonb null
+- template_snapshot jsonb null
+- price_snapshot jsonb null
+- admin_notes text null
+- created_at timestamp default now()
+- updated_at timestamp default now()
+
+Tambahkan unique constraint:
+unique(order_item_id)
+
+Isi field:
+- order_id dari order
+- order_item_id dari item
+- vendor_catalog_item_id dari item
+- vendor_id dari item/vendor catalog
+- service_type dari item.serviceType atau templateSnapshot.serviceType
+- calculation_input dari item.calculationInput
+- template_snapshot dari item.templateSnapshot
+- price_snapshot dari item.priceSnapshot
+- fulfillment_payload berisi snapshot lengkap order item + vendor catalog public info
+- status = "pending"
+
+Response:
+{
+  success: true,
+  fulfillment,
+  message
+}
+
+Audit log:
+Tambahkan audit log order:
+"Vendor fulfillment created from marketplace service item"
+
+Setelah berhasil, response order detail harus bisa menampilkan vendorFulfillmentId/status pada item terkait.

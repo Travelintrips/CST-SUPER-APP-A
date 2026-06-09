@@ -75,6 +75,8 @@ export const vendorMiniFormSubmissionsTable = pgTable("vendor_mini_form_submissi
   templateId: text("template_id"),
   templateVersion: text("template_version"),
   templateSnapshot: jsonb("template_snapshot").$type<Record<string, unknown> | null>(),
+  // ── Media Foundation ──────────────────────────────────────────────────────
+  mediaAssets: jsonb("media_assets").$type<Record<string, unknown>[]>().notNull().default([]),
 }, (t) => [
   // Mencegah vendor yang sama (supplier_id tidak null) submit 2x untuk link yang sama.
   // Vendor anonim (supplier_id IS NULL) dikecualikan karena diidentifikasi via token unik.
@@ -120,6 +122,8 @@ export const customerApprovalsTable = pgTable("customer_approvals", {
   templateSnapshot: jsonb("template_snapshot").$type<Record<string, unknown> | null>(),
   requiredDocumentsFromTemplate: jsonb("required_documents_from_template").$type<string[] | null>(),
   checklistFromTemplate: jsonb("checklist_from_template").$type<string[] | null>(),
+  // ── Media Foundation ──────────────────────────────────────────────────────
+  mediaAssets: jsonb("media_assets").$type<Record<string, unknown>[]>().notNull().default([]),
 });
 
 export const vendorOperationalConfirmationsTable = pgTable("vendor_operational_confirmations", {

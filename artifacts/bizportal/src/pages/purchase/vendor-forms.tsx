@@ -10,7 +10,7 @@ import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+  Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -20,7 +20,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCompany } from "@/contexts/CompanyContext";
 import {
-  Copy, ExternalLink, Link2, Plus, Trash2, Eye, ToggleLeft, ToggleRight,
+  Copy, CopyPlus, ExternalLink, Link2, Plus, Trash2, Eye, ToggleLeft, ToggleRight,
   Loader2, RotateCcw, CalendarDays, User, Phone, MessageCircle, XCircle,
   Clock, SendHorizonal, Pencil, CheckCircle, Package, Star, Building2, FileText,
   BarChart2, TrendingDown, TrendingUp, Minus, Award,
@@ -58,6 +58,10 @@ type FormLink = {
   maxSubmissions: number | null; resubmitAllowed: boolean | null; adminNotes: string | null;
 };
 
+type MediaAssetItem = {
+  role: string; objectPath: string; filename: string; mimeType: string; size?: number;
+};
+
 type Submission = {
   id: number; linkId: number | null; token: string; supplierId: number | null;
   serviceType: string; vendorName: string | null; contactPerson: string | null;
@@ -71,6 +75,8 @@ type Submission = {
   orderId: number | null;
   templateId: string | null; templateVersion: string | null;
   templateSnapshot: Record<string, unknown> | null;
+  mediaAssets?: MediaAssetItem[] | null;
+  attachmentUrl?: string | null;
 };
 
 type CustomerApproval = {
@@ -137,6 +143,7 @@ const SERVICE_META: Record<string, { label: string; emoji: string }> = {
   exim_service: { label: "Exim Service", emoji: "🌐" },
 };
 const SERVICE_TYPES = Object.keys(SERVICE_META);
+const SERVICE_TYPES_ONLY = SERVICE_TYPES.filter(k => k !== "product");
 
 const ITEM_STATUS_META: Record<string, { label: string; color: string }> = {
   waiting_vendor: { label: "Menunggu Vendor", color: "bg-yellow-100 text-yellow-700 border-yellow-200" },
@@ -471,7 +478,6 @@ function WaTemplateDialog({
 
 // ── Create Link Dialog ─────────────────────────────────────────────────────────
 
-type CommodityTemplateItem = { id: number; key: string; name: string; icon: string | null };
 
 function CreateLinkDialog({ onCreated }: { onCreated: () => void }) {
   const [open, setOpen] = useState(false);
@@ -485,7 +491,7 @@ function CreateLinkDialog({ onCreated }: { onCreated: () => void }) {
   const [orderId, setOrderId] = useState<string>("");
   const [orderItemId, setOrderItemId] = useState<string>("");
   const [maxSubmissions, setMaxSubmissions] = useState("");
-  const [commodityTemplateId, setCommodityTemplateId] = useState<string>("");
+  const [selectedCategoryKey, setSelectedCategoryKey] = useState<string>("");
   const [vendorPickerOpen, setVendorPickerOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
@@ -513,18 +519,16 @@ function CreateLinkDialog({ onCreated }: { onCreated: () => void }) {
     enabled: !!orderId && mode === "order_based",
   });
 
-  const { data: commodityTemplates } = useQuery<CommodityTemplateItem[]>({
-    queryKey: ["commodity-templates-list"],
-    queryFn: () => apiFetch<CommodityTemplateItem[]>("/api/commodity-templates"),
-    enabled: open,
-  });
+  const allCommodityTemplates = Object.entries(inCodeTemplates).sort(([, a], [, b]) =>
+    a.label.localeCompare(b.label, "id")
+  );
 
   const selectedOrder = orders?.find(o => String(o.id) === orderId);
 
   const reset = () => {
     setMode("rate_collection"); setServiceType(""); setSupplierId(""); setVendorName("");
     setTitle(""); setNotes(""); setExpiresInDays(""); setOrderId(""); setOrderItemId("");
-    setMaxSubmissions(""); setCommodityTemplateId(""); setVendorPickerOpen(false);
+    setMaxSubmissions(""); setSelectedCategoryKey(""); setVendorPickerOpen(false);
   };
 
   const handleCreate = async () => {
@@ -541,7 +545,7 @@ function CreateLinkDialog({ onCreated }: { onCreated: () => void }) {
           mode, orderId: orderId ? Number(orderId) : undefined,
           orderNumber: selectedOrder?.orderNumber, orderItemId: orderItemId ? Number(orderItemId) : undefined,
           maxSubmissions: maxSubmissions ? Number(maxSubmissions) : undefined,
-          commodityTemplateId: commodityTemplateId ? Number(commodityTemplateId) : undefined,
+          categoryKey: selectedCategoryKey || undefined,
         }),
       });
       const deactivated = result?.deactivatedCount ?? 0;
@@ -618,13 +622,20 @@ function CreateLinkDialog({ onCreated }: { onCreated: () => void }) {
 
           {/* Service type */}
           <div className="space-y-1.5">
-            <Label>Service Type <span className="text-red-500">*</span></Label>
-            <Select value={serviceType} onValueChange={v => { setServiceType(v); setSupplierId(""); }}>
-              <SelectTrigger><SelectValue placeholder="Pilih tipe layanan" /></SelectTrigger>
+            <Label>Jenis Form <span className="text-red-500">*</span></Label>
+            <Select value={serviceType} onValueChange={v => { setServiceType(v); setSupplierId(""); if (v !== "product") setSelectedCategoryKey(""); }}>
+              <SelectTrigger><SelectValue placeholder="Pilih jenis form" /></SelectTrigger>
               <SelectContent>
-                {SERVICE_TYPES.map(k => (
-                  <SelectItem key={k} value={k}>{SERVICE_META[k]!.emoji} {SERVICE_META[k]!.label}</SelectItem>
-                ))}
+                <SelectGroup>
+                  <SelectLabel className="text-xs text-slate-400">Pembelian Produk</SelectLabel>
+                  <SelectItem value="product">📦 Produk</SelectItem>
+                </SelectGroup>
+                <SelectGroup>
+                  <SelectLabel className="text-xs text-slate-400">Layanan Logistik</SelectLabel>
+                  {SERVICE_TYPES_ONLY.map(k => (
+                    <SelectItem key={k} value={k}>{SERVICE_META[k]!.emoji} {SERVICE_META[k]!.label}</SelectItem>
+                  ))}
+                </SelectGroup>
               </SelectContent>
             </Select>
           </div>
@@ -693,26 +704,30 @@ function CreateLinkDialog({ onCreated }: { onCreated: () => void }) {
             )}
           </div>
 
-          {/* Commodity Template */}
-          <div className="space-y-1.5">
+          {/* Commodity Template — hanya muncul jika jenis form = produk */}
+          {serviceType === "product" && <div className="space-y-1.5">
             <Label>Template Komoditas (opsional)</Label>
-            <Select value={commodityTemplateId || "__none__"} onValueChange={v => setCommodityTemplateId(v === "__none__" ? "" : v)}>
+            <Select value={selectedCategoryKey || "__none__"} onValueChange={v => {
+              const key = v === "__none__" ? "" : v;
+              setSelectedCategoryKey(key);
+              if (key) setServiceType("product");
+            }}>
               <SelectTrigger><SelectValue placeholder="Tanpa template komoditas" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="__none__">— Tanpa template —</SelectItem>
-                {commodityTemplates?.map(t => (
-                  <SelectItem key={t.id} value={String(t.id)}>
-                    {t.icon ?? "📦"} {t.name}
+                {allCommodityTemplates.map(([key, tpl]) => (
+                  <SelectItem key={key} value={key}>
+                    📦 {tpl.label}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            {commodityTemplateId && (
+            {selectedCategoryKey && (
               <p className="text-xs text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-1.5">
                 ✅ Vendor akan melihat custom fields, dokumen wajib, & checklist dari template ini.
               </p>
             )}
-          </div>
+          </div>}
 
           {/* Vendor name override */}
           <div className="space-y-1.5">
@@ -1035,13 +1050,20 @@ function CreateOpConfirmDialog({ suppliers, onCreated }: { suppliers: Supplier[]
             <Input value={orderNumber} onChange={e => setOrderNumber(e.target.value)} placeholder="ORD/..." />
           </div>
           <div className="space-y-1.5">
-            <Label>Service Type <span className="text-red-500">*</span></Label>
+            <Label>Jenis Form <span className="text-red-500">*</span></Label>
             <Select value={serviceType} onValueChange={setServiceType}>
-              <SelectTrigger><SelectValue placeholder="Pilih layanan" /></SelectTrigger>
+              <SelectTrigger><SelectValue placeholder="Pilih jenis form" /></SelectTrigger>
               <SelectContent>
-                {SERVICE_TYPES.map(k => (
-                  <SelectItem key={k} value={k}>{SERVICE_META[k]!.emoji} {SERVICE_META[k]!.label}</SelectItem>
-                ))}
+                <SelectGroup>
+                  <SelectLabel className="text-xs text-slate-400">Pembelian Produk</SelectLabel>
+                  <SelectItem value="product">📦 Produk</SelectItem>
+                </SelectGroup>
+                <SelectGroup>
+                  <SelectLabel className="text-xs text-slate-400">Layanan Logistik</SelectLabel>
+                  {SERVICE_TYPES_ONLY.map(k => (
+                    <SelectItem key={k} value={k}>{SERVICE_META[k]!.emoji} {SERVICE_META[k]!.label}</SelectItem>
+                  ))}
+                </SelectGroup>
               </SelectContent>
             </Select>
           </div>
@@ -1089,6 +1111,77 @@ function getHighlight(serviceType: string, fd: Record<string, unknown>): string 
 }
 
 // ── Submission Card ───────────────────────────────────────────────────────────
+
+// ── Media Gallery helper ──────────────────────────────────────────────────────
+
+const MEDIA_ROLE_LABEL: Record<string, string> = {
+  cover: "🖼️ Cover Image",
+  gallery: "🖼️ Gallery",
+  video: "🎬 Video",
+  brochure: "📄 Brosur",
+  certificate: "🏆 Sertifikat",
+};
+
+function SubmissionMediaGallery({ mediaAssets }: { mediaAssets: MediaAssetItem[] }) {
+  const byRole = mediaAssets.reduce<Record<string, MediaAssetItem[]>>((acc, m) => {
+    if (!acc[m.role]) acc[m.role] = [];
+    acc[m.role].push(m);
+    return acc;
+  }, {});
+
+  return (
+    <div className="space-y-2">
+      {(["cover", "gallery", "video", "brochure", "certificate"] as const).map(role => {
+        const items = byRole[role];
+        if (!items || items.length === 0) return null;
+        const isImage = (m: MediaAssetItem) => m.mimeType.startsWith("image/");
+        const isVideo = (m: MediaAssetItem) => m.mimeType.startsWith("video/");
+        const downloadUrl = (m: MediaAssetItem) => `/api/storage${m.objectPath}`;
+        return (
+          <div key={role}>
+            <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide mb-1">{MEDIA_ROLE_LABEL[role]}</p>
+            {role === "gallery" || role === "certificate" ? (
+              <div className="flex flex-wrap gap-2">
+                {items.map(m => (
+                  <a key={m.objectPath} href={downloadUrl(m)} target="_blank" rel="noreferrer"
+                    className="block" title={m.filename}>
+                    {isImage(m) ? (
+                      <img src={downloadUrl(m)} alt={m.filename}
+                        className="w-14 h-14 object-cover rounded-lg border border-slate-200 shadow-sm hover:opacity-80 transition-opacity" />
+                    ) : (
+                      <div className="flex items-center gap-1.5 text-xs text-indigo-600 hover:underline bg-slate-50 rounded px-2 py-1.5 border border-slate-200">
+                        <FileText className="h-3 w-3 shrink-0" />
+                        <span className="truncate max-w-[120px]">{m.filename}</span>
+                      </div>
+                    )}
+                  </a>
+                ))}
+              </div>
+            ) : (
+              items.map(m => (
+                <a key={m.objectPath} href={downloadUrl(m)} target="_blank" rel="noreferrer"
+                  className="inline-flex items-center gap-2 text-xs text-indigo-600 hover:underline bg-slate-50 rounded-lg px-3 py-2 border border-slate-200 shadow-sm">
+                  {isImage(m) ? (
+                    <img src={downloadUrl(m)} alt={m.filename} className="w-10 h-10 object-cover rounded" />
+                  ) : isVideo(m) ? (
+                    <span className="text-base">🎬</span>
+                  ) : (
+                    <span className="text-base">📄</span>
+                  )}
+                  <div className="min-w-0">
+                    <p className="font-medium truncate max-w-[160px]">{m.filename}</p>
+                    {m.size && <p className="text-[10px] text-slate-400">{(m.size / 1024 / 1024).toFixed(1)} MB</p>}
+                  </div>
+                  <ExternalLink className="h-3 w-3 shrink-0 ml-1" />
+                </a>
+              ))
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 function SubmissionCard({
   sub, idx, onDelete, onSelect, onToggleDetail, showDetail,
@@ -1163,6 +1256,26 @@ function SubmissionCard({
                   <span className="font-medium text-slate-800 break-words">{String(v)}</span>
                 </div>
               ))}
+            </div>
+          )}
+          {/* Lampiran */}
+          {sub.attachmentUrl && (
+            <div className="pt-2 border-t border-dashed border-slate-100">
+              <p className="text-xs text-slate-400 mb-1 font-medium">📎 Lampiran</p>
+              <a
+                href={`/api/storage${sub.attachmentUrl}`}
+                target="_blank" rel="noreferrer"
+                className="text-xs text-indigo-600 hover:underline flex items-center gap-1"
+              >
+                <ExternalLink className="h-3 w-3" /> Buka Lampiran
+              </a>
+            </div>
+          )}
+          {/* Media Assets */}
+          {sub.mediaAssets && sub.mediaAssets.length > 0 && (
+            <div className="pt-2 border-t border-dashed border-slate-100">
+              <p className="text-xs text-slate-500 font-semibold mb-2">📷 Media Produk/Jasa</p>
+              <SubmissionMediaGallery mediaAssets={sub.mediaAssets} />
             </div>
           )}
         </div>
@@ -1914,11 +2027,11 @@ function CreateLinkFromTemplateDialog({
           </div>
 
           <div className="space-y-1.5">
-            <Label>Service Type <span className="text-red-500">*</span></Label>
+            <Label>Jenis Layanan <span className="text-red-500">*</span></Label>
             <Select value={serviceType} onValueChange={setServiceType}>
-              <SelectTrigger><SelectValue placeholder="Pilih tipe layanan logistik" /></SelectTrigger>
+              <SelectTrigger><SelectValue placeholder="Pilih layanan logistik" /></SelectTrigger>
               <SelectContent>
-                {SERVICE_TYPES.map(k => (
+                {SERVICE_TYPES_ONLY.map(k => (
                   <SelectItem key={k} value={k}>{SERVICE_META[k]!.emoji} {SERVICE_META[k]!.label}</SelectItem>
                 ))}
               </SelectContent>
@@ -2591,6 +2704,7 @@ export default function VendorFormsPage() {
   const [compareOpen, setCompareOpen] = useState(false);
   const [searchLinks, setSearchLinks] = useState("");
   const [filterMode, setFilterMode] = useState("all");
+  const [filterCategoryKey, setFilterCategoryKey] = useState("all");
   const [approvalSearch, setApprovalSearch] = useState("");
   const [approvalStatusFilter, setApprovalStatusFilter] = useState("all");
   const [invoiceSearch, setInvoiceSearch] = useState("");
@@ -2724,6 +2838,15 @@ export default function VendorFormsPage() {
     onError: (e: Error) => toast({ title: "Gagal", description: e.message, variant: "destructive" }),
   });
 
+  const cloneLinkMut = useMutation({
+    mutationFn: (id: number) => apiFetch<{ id: number; token: string }>(`/api/vendor-form/admin/links/${id}/clone`, { method: "POST" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["vmf-links"] });
+      toast({ title: "Link berhasil diklon!", description: "Link baru sudah dibuat dengan konfigurasi yang sama." });
+    },
+    onError: (e: Error) => toast({ title: "Gagal klon link", description: e.message, variant: "destructive" }),
+  });
+
   const retrySoMut = useMutation({
     mutationFn: (id: number) => apiFetch<{ ok: boolean; docNumber: string; already?: boolean }>(`/api/vendor-form/admin/customer-approvals/${id}/retry-so`, { method: "POST" }),
     onSuccess: (data) => {
@@ -2734,9 +2857,23 @@ export default function VendorFormsPage() {
   });
 
   // ── Filtered links ──
+  const activeCategoryKeys = useMemo(() => {
+    const keys = new Set(links.map(l => l.categoryKey).filter(Boolean) as string[]);
+    return Array.from(keys).sort((a, b) =>
+      (inCodeTemplates[a]?.label ?? a).localeCompare(inCodeTemplates[b]?.label ?? b, "id")
+    );
+  }, [links]);
+
   const filteredLinks = useMemo(() => {
     let list = links;
     if (filterMode !== "all") list = list.filter(l => l.mode === filterMode);
+    if (filterCategoryKey !== "all") {
+      if (filterCategoryKey === "__none__") {
+        list = list.filter(l => !l.categoryKey);
+      } else {
+        list = list.filter(l => l.categoryKey === filterCategoryKey);
+      }
+    }
     if (searchLinks.trim()) {
       const q = searchLinks.toLowerCase();
       list = list.filter(l =>
@@ -2748,7 +2885,7 @@ export default function VendorFormsPage() {
       );
     }
     return list;
-  }, [links, filterMode, searchLinks]);
+  }, [links, filterMode, filterCategoryKey, searchLinks]);
 
   const rateCollectionLinks = links.filter(l => l.mode === "rate_collection");
   const orderBasedLinks = links.filter(l => l.mode === "order_based");
@@ -2797,6 +2934,7 @@ export default function VendorFormsPage() {
             <TabsTrigger value="approvals">✅ Customer Approval ({approvals.length})</TabsTrigger>
             <TabsTrigger value="op-confirms">🚚 Konfirmasi Operasional ({opConfirms.length})</TabsTrigger>
             <TabsTrigger value="invoices">🧾 Invoice ({invoices.length})</TabsTrigger>
+            <TabsTrigger value="media-report">📷 Media Submission ({submissions.filter(s => s.mediaAssets && s.mediaAssets.length > 0).length})</TabsTrigger>
             <TabsTrigger value="product-templates">🏭 Product Templates</TabsTrigger>
             <TabsTrigger value="activity-log">📋 Log Aktivitas</TabsTrigger>
           </TabsList>
@@ -2818,6 +2956,20 @@ export default function VendorFormsPage() {
                   <SelectItem value="order_based">📦 Order-Based</SelectItem>
                 </SelectContent>
               </Select>
+              {activeCategoryKeys.length > 0 && (
+                <Select value={filterCategoryKey} onValueChange={setFilterCategoryKey}>
+                  <SelectTrigger className="w-48 h-9 text-sm"><SelectValue placeholder="Semua Komoditas" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">📦 Semua Komoditas</SelectItem>
+                    <SelectItem value="__none__">— Tanpa template —</SelectItem>
+                    {activeCategoryKeys.map(k => (
+                      <SelectItem key={k} value={k}>
+                        {inCodeTemplates[k]?.label ?? k}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
               <div className="ml-auto">
                 <CreateLinkDialog onCreated={() => queryClient.invalidateQueries({ queryKey: ["vmf-links"] })} />
               </div>
@@ -2953,6 +3105,13 @@ export default function VendorFormsPage() {
                                     <Link2 className="h-3.5 w-3.5" />
                                   </Button>
                                 )}
+                                <Button
+                                  variant="ghost" size="icon" className="h-7 w-7 text-blue-400 hover:text-blue-600" title="Klon link (duplikat konfigurasi)"
+                                  disabled={cloneLinkMut.isPending}
+                                  onClick={() => cloneLinkMut.mutate(link.id)}
+                                >
+                                  <CopyPlus className="h-3.5 w-3.5" />
+                                </Button>
                                 <Button
                                   variant="ghost" size="icon" className="h-7 w-7 text-red-400 hover:text-red-600" title="Hapus link"
                                   onClick={() => { if (confirm("Hapus link ini? Semua submission akan dibebaskan dari link ini.")) deleteLinkMut.mutate(link.id); }}
@@ -3571,6 +3730,81 @@ export default function VendorFormsPage() {
                   </Table>
                 </CardContent>
               </Card>
+            )}
+          </TabsContent>
+
+          {/* ── MEDIA SUBMISSION REPORT TAB ── */}
+          <TabsContent value="media-report" className="space-y-4">
+            <div className="rounded-xl bg-gradient-to-r from-violet-600 to-pink-600 p-5 text-white">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0 text-xl">📷</div>
+                <div>
+                  <h2 className="font-bold text-lg">Vendor Media Submission Report</h2>
+                  <p className="text-sm text-violet-100 mt-0.5">
+                    Media yang diunggah vendor — cover, gallery, video, brosur, dan sertifikat.
+                  </p>
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-3 mt-4">
+                {[
+                  { label: "Vendor Kirim Media", value: submissions.filter(s => s.mediaAssets && s.mediaAssets.length > 0).length },
+                  { label: "Total File Media", value: submissions.reduce((acc, s) => acc + (s.mediaAssets?.length ?? 0), 0) },
+                  { label: "Dari Total Submissions", value: submissions.length },
+                ].map(st => (
+                  <div key={st.label} className="bg-white/15 rounded-lg p-3 text-center">
+                    <p className="text-xl font-bold">{st.value}</p>
+                    <p className="text-xs text-violet-100 mt-0.5">{st.label}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {submissions.filter(s => s.mediaAssets && s.mediaAssets.length > 0).length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-20 text-slate-400 gap-2">
+                <span className="text-4xl opacity-30">📷</span>
+                <p className="text-sm">Belum ada vendor yang mengunggah media.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {submissions
+                  .filter(s => s.mediaAssets && s.mediaAssets.length > 0)
+                  .map(sub => {
+                    const meta = SERVICE_META[sub.serviceType];
+                    return (
+                      <Card key={sub.id} className="overflow-hidden">
+                        <CardHeader className="pb-3 bg-slate-50 border-b">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <CardTitle className="text-sm font-semibold text-slate-800 flex items-center gap-2">
+                                {meta?.emoji} {sub.vendorName ?? "—"}
+                                {sub.selectedByAdmin && (
+                                  <span className="text-xs bg-green-100 text-green-700 border border-green-200 rounded px-1.5 py-0.5 flex items-center gap-0.5">
+                                    <Star className="h-2.5 w-2.5 fill-green-600 text-green-600" /> Dipilih
+                                  </span>
+                                )}
+                              </CardTitle>
+                              <div className="flex items-center gap-3 mt-1 flex-wrap">
+                                {sub.contactPerson && (
+                                  <span className="text-xs text-slate-500 flex items-center gap-1"><User className="h-3 w-3" />{sub.contactPerson}</span>
+                                )}
+                                <span className="text-xs text-slate-400">{meta?.label ?? sub.serviceType}</span>
+                                <span className="text-xs text-slate-400">
+                                  {new Date(sub.submittedAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
+                                </span>
+                                <span className="text-xs bg-violet-100 text-violet-700 rounded px-1.5 py-0.5 border border-violet-200">
+                                  {sub.mediaAssets!.length} file media
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="pt-4">
+                          <SubmissionMediaGallery mediaAssets={sub.mediaAssets!} />
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+              </div>
             )}
           </TabsContent>
 

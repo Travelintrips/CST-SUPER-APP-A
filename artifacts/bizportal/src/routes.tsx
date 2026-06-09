@@ -57,6 +57,9 @@ import { LandedCostsListPage, LandedCostEditorPage } from "@/pages/purchase/land
 import VendorComparisonPage from "@/pages/purchase/vendor-comparison";
 import PurchaseReceivePage from "@/pages/purchase/receive";
 import VendorCatalogPage from "@/pages/purchase/vendor-catalog";
+import VendorCatalogEnginePage from "@/pages/purchase/vendor-catalog-engine";
+import MarketplaceAiImagesPage from "@/pages/marketplace-ai-images";
+import MarketplaceAnalyticsPage from "@/pages/purchase/marketplace-analytics";
 // Reports
 import ReportsIndexPage from "@/pages/reports/index";
 import ReportsSalesPage from "@/pages/reports/sales";
@@ -89,6 +92,7 @@ import AccountingGSheetPage from "@/pages/accounting/gsheet";
 import TaxReportPage from "@/pages/accounting/tax-report";
 import HoldingPage from "@/pages/HoldingPage";
 import ExecutiveDashboardPage from "@/pages/executive/dashboard";
+import ExecutiveLogisticsDashboardPage from "@/pages/executive/logistics-dashboard";
 import HoldingDashboardPage from "@/pages/accounting/holding-dashboard";
 import HoldingPLReportPage from "@/pages/accounting/holding-pl-report";
 import HoldingCashflowReportPage from "@/pages/accounting/holding-cashflow-report";
@@ -153,7 +157,11 @@ import LogisticsRfqComparisonPage from "@/pages/logistics-rfq-comparison";
 import LogisticOrderDetailPage from "@/pages/logistics/order-detail";
 import OrderAuditTrailPage from "@/pages/logistics/order-audit-trail";
 import VendorPerformancePage from "@/pages/logistics/vendor-performance";
+import VendorRecommendationPage from "@/pages/logistics/vendor-recommendation";
+import VendorCommodityIntelligencePage from "@/pages/logistics/vendor-commodity-intelligence";
 import InternalTasksPage from "@/pages/logistics/internal-tasks";
+import LogisticsVendorFulfillmentsPage from "@/pages/logistics-vendor-fulfillments";
+import LogisticsVendorFulfillmentDetailPage from "@/pages/logistics-vendor-fulfillment-detail";
 import ProductFirstAnalyticsPage from "@/pages/logistics/product-first-analytics";
 import ProductFirstAuditPage from "@/pages/logistics/product-first-audit";
 import LogisticsImportAssistantPage from "@/pages/logistics-import-assistant";
@@ -168,6 +176,8 @@ import WaNotificationHistoryPage from "@/pages/wa-notification-history";
 import VendorLeaderboardPage from "@/pages/vendor-leaderboard";
 import AnalyticsDashboardPage from "@/pages/analytics-dashboard";
 import ProfitabilityAnalyticsPage from "@/pages/analytics/profitability";
+import RouteProfitabilityPage from "@/pages/analytics/route-profitability";
+import CommodityProfitabilityPage from "@/pages/analytics/commodity-profitability";
 import CeoDashboardPage from "@/pages/ceo-dashboard";
 import EnterpriseDashboardPage from "@/pages/enterprise-dashboard";
 import OperationalDashboardPage from "@/pages/operational-dashboard";
@@ -185,6 +195,10 @@ import SportCenterPayments from "@/pages/sport-center/payments";
 import SportCenterReports from "@/pages/sport-center/reports";
 import SportCenterSettings from "@/pages/sport-center/settings";
 import SportCenterProfitability from "@/pages/sport-center/profitability";
+import TenantDashboard from "@/pages/tenant/dashboard";
+import TenantList from "@/pages/tenant/tenants";
+import TenantBookings from "@/pages/tenant/bookings";
+import TenantPayments from "@/pages/tenant/payments";
 
 const PR = (C: React.ComponentType) => () => <ProtectedRoute component={C} />;
 
@@ -232,6 +246,10 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/logistics/orders/:orderId/audit-trail" component={PR(OrderAuditTrailPage)} />
       <Route path="/logistics/orders/:orderId" component={PR(LogisticOrderDetailPage)} />
       <Route path="/logistics/vendor-performance" component={PR(VendorPerformancePage)} />
+      <Route path="/logistics/vendor-recommendation" component={PR(VendorRecommendationPage)} />
+      <Route path="/logistics/vendor-commodity-intelligence" component={PR(VendorCommodityIntelligencePage)} />
+      <Route path="/logistics/vendor-fulfillments/:id" component={PR(LogisticsVendorFulfillmentDetailPage)} />
+      <Route path="/logistics/vendor-fulfillments" component={PR(LogisticsVendorFulfillmentsPage)} />
       <Route path="/logistics/internal-tasks" component={PR(InternalTasksPage)} />
       <Route path="/logistics/product-first/analytics" component={PR(ProductFirstAnalyticsPage)} />
       <Route path="/logistics/product-first/audit" component={PR(ProductFirstAuditPage)} />
@@ -297,6 +315,9 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/purchase/landed-costs" component={PR(LandedCostsListPage)} />
       <Route path="/purchase/receive" component={PR(PurchaseReceivePage)} />
       <Route path="/purchase/vendor-catalog" component={PR(VendorCatalogPage)} />
+      <Route path="/purchase/vendor-catalog-engine" component={PR(VendorCatalogEnginePage)} />
+      <Route path="/purchase/marketplace-analytics" component={PR(MarketplaceAnalyticsPage)} />
+      <Route path="/marketplace/ai-images" component={PR(MarketplaceAiImagesPage)} />
       <Route path="/purchase" component={PR(PurchaseDashboardPage)} />
 
       {/* ── Reports ────────────────────────────────────────────────────── */}
@@ -330,6 +351,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/accounting/reports/profit-loss" component={PR(AccountingProfitLossPage)} />
       <Route path="/accounting/reports/balance-sheet" component={PR(AccountingBalanceSheetPage)} />
       <Route path="/accounting/reports/freight-profitability" component={PR(AccountingFreightProfitabilityPage)} />
+      <Route path="/executive/logistics" component={PR(ExecutiveLogisticsDashboardPage)} />
       <Route path="/executive" component={PR(ExecutiveDashboardPage)} />
       <Route path="/holding/groups/:id" component={PR(HoldingGroupDetailPage)} />
       <Route path="/holding/dashboard" component={PR(HoldingDashboardPage)} />
@@ -415,6 +437,8 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/operational-context" component={PR(OperationalContextPage)} />
       <Route path="/analytics" component={PR(AnalyticsDashboardPage)} />
       <Route path="/analytics/profitability" component={PR(ProfitabilityAnalyticsPage)} />
+      <Route path="/analytics/route-profitability" component={PR(RouteProfitabilityPage)} />
+      <Route path="/analytics/commodity-profitability" component={PR(CommodityProfitabilityPage)} />
       <Route path="/enterprise-dashboard" component={PR(EnterpriseDashboardPage)} />
       <Route path="/operational-dashboard" component={PR(OperationalDashboardPage)} />
 
@@ -435,6 +459,11 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/sport-center/profitability" component={PR(SportCenterProfitability)} />
       <Route path="/sport-center/settings" component={PR(SportCenterSettings)} />
       <Route path="/sport-center" component={PR(SportCenterDashboard)} />
+      <Route path="/tenant/dashboard" component={PR(TenantDashboard)} />
+      <Route path="/tenant/tenants" component={PR(TenantList)} />
+      <Route path="/tenant/bookings" component={PR(TenantBookings)} />
+      <Route path="/tenant/payments" component={PR(TenantPayments)} />
+      <Route path="/tenant" component={PR(TenantDashboard)} />
 
       {/* ── Legacy redirects ───────────────────────────────────────────── */}
       <Route path="/expenses/new" component={() => <Redirect to="/expense/new" />} />
