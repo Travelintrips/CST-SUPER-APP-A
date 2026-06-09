@@ -20,17 +20,6 @@ author = "agent"
 task = "workflow.run"
 args = "Gateway"
 
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "API Server"
-
-<<<<<<< HEAD
-=======
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "WA Gateway"
-
->>>>>>> 6caf09af0f9e80b25313a4874a02acd0a091d267
 [[workflows.workflow]]
 name = "Gateway"
 author = "agent"
@@ -66,38 +55,6 @@ outputType = "console"
 task = "shell.exec"
 args = "cd artifacts/customer-portal && PORT=3001 pnpm run dev"
 waitForPort = 3001
-
-[[workflows.workflow]]
-name = "API Server"
-author = "agent"
-
-<<<<<<< HEAD
-=======
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "bash artifacts/api-server/start-dev.sh"
-waitForPort = 8080
-
-[workflows.workflow.metadata]
-outputType = "console"
-
-[[workflows.workflow]]
-name = "WA Gateway"
-author = "agent"
-
->>>>>>> 6caf09af0f9e80b25313a4874a02acd0a091d267
-[workflows.workflow.metadata]
-outputType = "console"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-<<<<<<< HEAD
-args = "cd artifacts/api-server && API_PORT=8080 FORWARDER_PORT=8080 node dev.mjs"
-waitForPort = 8080
-=======
-args = "bash artifacts/wa-gateway/start-dev.sh"
-waitForPort = 8000
->>>>>>> 6caf09af0f9e80b25313a4874a02acd0a091d267
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
@@ -226,7 +183,3 @@ externalPort = 5173
 [[ports]]
 localPort = 23435
 externalPort = 8081
-
-[[ports]]
-localPort = 8080
-externalPort = 8080
