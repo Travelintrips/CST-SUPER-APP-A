@@ -179,15 +179,27 @@ interface CalcResult {
 
 // Trucking
 function TruckingCalc({ item, onChange }: { item: CatalogDetail; onChange: (r: CalcResult | null) => void }) {
-  const [pickupCity, setPickupCity] = useState("");
-  const [destCity, setDestCity] = useState("");
+  const snap = item.templateSnapshot && typeof item.templateSnapshot === "object" ? item.templateSnapshot as Record<string, unknown> : {};
+  const specs = item.specValues && typeof item.specValues === "object" ? item.specValues as Record<string, unknown> : {};
+  const truckOptions: string[] = Array.isArray(snap["truckTypes"]) ? snap["truckTypes"] as string[] : [];
+
+  // Pre-fill from spec values: area_pickup / area_delivery (or areaPickup / areaDelivery)
+  const specPickup = (specs["area_pickup"] ?? specs["areaPickup"] ?? specs["pickup_city"] ?? "") as string;
+  const specDest   = (specs["area_delivery"] ?? specs["areaDelivery"] ?? specs["delivery_city"] ?? "") as string;
+
+  const [pickupCity, setPickupCity] = useState(specPickup);
+  const [destCity, setDestCity] = useState(specDest);
   const [truckType, setTruckType] = useState("");
   const [tripQty, setTripQty] = useState(1);
   const [loadingFee, setLoadingFee] = useState<number | "">(0);
   const [unloadingFee, setUnloadingFee] = useState<number | "">(0);
 
-  const snap = item.templateSnapshot && typeof item.templateSnapshot === "object" ? item.templateSnapshot as Record<string, unknown> : {};
-  const truckOptions: string[] = Array.isArray(snap["truckTypes"]) ? snap["truckTypes"] as string[] : [];
+  // Sync if item changes (e.g. navigation between catalog items)
+  useEffect(() => {
+    setPickupCity((specs["area_pickup"] ?? specs["areaPickup"] ?? specs["pickup_city"] ?? "") as string);
+    setDestCity((specs["area_delivery"] ?? specs["areaDelivery"] ?? specs["delivery_city"] ?? "") as string);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item.id]);
 
   function recalc(p: { pickupCity?: string; destCity?: string; truckType?: string; tripQty?: number; loadingFee?: number | ""; unloadingFee?: number | "" }) {
     const q = p.tripQty ?? tripQty;
