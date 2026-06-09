@@ -4,97 +4,80 @@ import {
   ChevronDown, ChevronLeft, ChevronRight, Calculator,
   Truck, Shield, Clock, Fuel, Users, Info, CheckCircle2,
   MinusCircle, PlusCircle, CalendarDays, Package, MapPin,
-  ArrowRight,
+  ArrowRight, Phone, User, AlarmClock, Boxes,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
-// ─── Vehicle Data ─────────────────────────────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Vehicle {
   id: string;
   name: string;
   description: string;
-  panjang: number;  // cm
-  lebar: number;    // cm
-  tinggi: number;   // cm
+  panjang: number;
+  lebar: number;
+  tinggi: number;
   kapasitasKg: number;
   volumeM3: number;
-  hargaDasar: number; // IDR per trip
+  hargaDasar: number;
   icon: React.ReactNode;
-  svgColor: string;
 }
 
+// ─── SVG ──────────────────────────────────────────────────────────────────────
+
 function TruckSVG({ size = "sm", variant = "default" }: { size?: "sm" | "lg"; variant?: string }) {
-  const w = size === "lg" ? 240 : 44;
-  const h = size === "lg" ? 140 : 28;
+  const w = size === "lg" ? 280 : 44;
+  const h = size === "lg" ? 160 : 28;
 
   const configs: Record<string, { body: string; cab: string; wheels: string }> = {
-    mobil:          { body: "#cbd5e1", cab: "#94a3b8", wheels: "#475569" },
-    "mobil-xl":     { body: "#bfdbfe", cab: "#93c5fd", wheels: "#3b82f6" },
-    van:            { body: "#c7d2fe", cab: "#a5b4fc", wheels: "#6366f1" },
-    "pickup-kecil": { body: "#fde68a", cab: "#fbbf24", wheels: "#d97706" },
-    "box-kecil":    { body: "#bbf7d0", cab: "#86efac", wheels: "#16a34a" },
-    engkel:         { body: "#fed7aa", cab: "#fb923c", wheels: "#ea580c" },
-    "double-engkel":{ body: "#fca5a5", cab: "#f87171", wheels: "#dc2626" },
-    "cdd-long":     { body: "#93c5fd", cab: "#60a5fa", wheels: "#2563eb" },
-    fuso:           { body: "#6ee7b7", cab: "#34d399", wheels: "#059669" },
-    tronton:        { body: "#c4b5fd", cab: "#a78bfa", wheels: "#7c3aed" },
-    "truk-trailer": { body: "#94a3b8", cab: "#64748b", wheels: "#334155" },
-    "truk-reefer":  { body: "#bae6fd", cab: "#38bdf8", wheels: "#0284c7" },
-    default:        { body: "#93c5fd", cab: "#60a5fa", wheels: "#2563eb" },
+    mobil:           { body: "#cbd5e1", cab: "#94a3b8",  wheels: "#475569" },
+    "mobil-xl":      { body: "#bfdbfe", cab: "#93c5fd",  wheels: "#3b82f6" },
+    van:             { body: "#c7d2fe", cab: "#a5b4fc",  wheels: "#6366f1" },
+    "pickup-kecil":  { body: "#fde68a", cab: "#fbbf24",  wheels: "#d97706" },
+    "box-kecil":     { body: "#bbf7d0", cab: "#86efac",  wheels: "#16a34a" },
+    engkel:          { body: "#fed7aa", cab: "#fb923c",  wheels: "#ea580c" },
+    "double-engkel": { body: "#fca5a5", cab: "#f87171",  wheels: "#dc2626" },
+    "cdd-long":      { body: "#93c5fd", cab: "#60a5fa",  wheels: "#2563eb" },
+    fuso:            { body: "#6ee7b7", cab: "#34d399",  wheels: "#059669" },
+    tronton:         { body: "#c4b5fd", cab: "#a78bfa",  wheels: "#7c3aed" },
+    "truk-trailer":  { body: "#94a3b8", cab: "#64748b",  wheels: "#334155" },
+    "truk-reefer":   { body: "#bae6fd", cab: "#38bdf8",  wheels: "#0284c7" },
+    default:         { body: "#93c5fd", cab: "#60a5fa",  wheels: "#2563eb" },
   };
 
   const c = configs[variant] ?? configs.default;
 
   if (size === "sm") {
-    // Simple side-view icon
     return (
       <svg viewBox="0 0 44 28" width={w} height={h} fill="none" xmlns="http://www.w3.org/2000/svg">
-        {/* body */}
         <rect x="2" y="8" width="28" height="14" rx="2" fill={c.body} />
-        {/* cab */}
         <rect x="30" y="12" width="10" height="10" rx="1.5" fill={c.cab} />
-        {/* windshield */}
         <rect x="31" y="13" width="7" height="5" rx="1" fill="white" opacity="0.6" />
-        {/* wheels */}
         <circle cx="10" cy="22" r="4" fill={c.wheels} />
         <circle cx="10" cy="22" r="2" fill="white" opacity="0.4" />
         <circle cx="33" cy="22" r="4" fill={c.wheels} />
         <circle cx="33" cy="22" r="2" fill="white" opacity="0.4" />
-        {/* headlight */}
         <rect x="39" y="16" width="3" height="2" rx="0.5" fill="#fef08a" />
       </svg>
     );
   }
 
-  // Large detailed SVG
   return (
-    <svg viewBox="0 0 280 160" width={280} height={160} fill="none" xmlns="http://www.w3.org/2000/svg">
-      {/* shadow */}
+    <svg viewBox="0 0 280 160" width={w} height={h} fill="none" xmlns="http://www.w3.org/2000/svg">
       <ellipse cx="140" cy="150" rx="120" ry="8" fill="#cbd5e1" opacity="0.4" />
-      {/* trailer/body */}
       <rect x="10" y="45" width="185" height="90" rx="6" fill={c.body} />
-      {/* body highlight */}
       <rect x="10" y="45" width="185" height="20" rx="6" fill="white" opacity="0.2" />
-      {/* body lines */}
       <line x1="10" y1="80" x2="195" y2="80" stroke="white" strokeWidth="1.5" opacity="0.3" />
       <line x1="10" y1="105" x2="195" y2="105" stroke="white" strokeWidth="1.5" opacity="0.15" />
-      {/* cab */}
       <rect x="195" y="55" width="70" height="80" rx="8" fill={c.cab} />
-      {/* windshield */}
       <rect x="202" y="60" width="54" height="42" rx="5" fill="white" opacity="0.55" />
-      {/* door */}
       <rect x="202" y="107" width="25" height="25" rx="3" fill={c.cab} stroke="white" strokeWidth="0.8" opacity="0.6" />
-      {/* door handle */}
       <rect x="221" y="120" width="4" height="1.5" rx="0.5" fill="white" opacity="0.7" />
-      {/* rear door */}
       <rect x="14" y="49" width="2" height="82" fill="white" opacity="0.15" />
-      {/* wheels */}
       <circle cx="50" cy="138" r="18" fill={c.wheels} />
       <circle cx="50" cy="138" r="10" fill="#1e293b" />
       <circle cx="50" cy="138" r="5" fill={c.wheels} opacity="0.5" />
@@ -104,35 +87,34 @@ function TruckSVG({ size = "sm", variant = "default" }: { size?: "sm" | "lg"; va
       <circle cx="228" cy="138" r="18" fill={c.wheels} />
       <circle cx="228" cy="138" r="10" fill="#1e293b" />
       <circle cx="228" cy="138" r="5" fill={c.wheels} opacity="0.5" />
-      {/* headlight */}
       <rect x="260" y="82" width="14" height="8" rx="2" fill="#fef08a" />
-      <rect x="260" y="82" width="14" height="8" rx="2" fill="#fef08a" opacity="0.6" />
-      {/* exhaust */}
       <rect x="200" y="40" width="5" height="18" rx="2" fill="#64748b" />
     </svg>
   );
 }
 
+// ─── Data ─────────────────────────────────────────────────────────────────────
+
 const VEHICLES: Vehicle[] = [
-  { id: "mobil",          name: "Mobil",          description: "Cocok untuk pengiriman kecil dalam kota", panjang: 300,  lebar: 130, tinggi: 130, kapasitasKg: 400,   volumeM3: 0.5,  hargaDasar: 250_000,   icon: <TruckSVG size="sm" variant="mobil" />,          svgColor: "#94a3b8" },
-  { id: "mobil-xl",       name: "Mobil XL",       description: "Kapasitas lebih besar untuk barang medium", panjang: 350, lebar: 150, tinggi: 150, kapasitasKg: 600,   volumeM3: 0.8,  hargaDasar: 350_000,   icon: <TruckSVG size="sm" variant="mobil-xl" />,       svgColor: "#93c5fd" },
-  { id: "van",            name: "Van",             description: "Ideal untuk barang banyak dan tertutup",   panjang: 450, lebar: 170, tinggi: 170, kapasitasKg: 1200,  volumeM3: 1.3,  hargaDasar: 500_000,   icon: <TruckSVG size="sm" variant="van" />,            svgColor: "#a5b4fc" },
-  { id: "pickup-kecil",   name: "Pickup Kecil",   description: "Bak terbuka, cocok untuk material",        panjang: 350, lebar: 170, tinggi: 50,  kapasitasKg: 800,   volumeM3: 0.3,  hargaDasar: 400_000,   icon: <TruckSVG size="sm" variant="pickup-kecil" />,   svgColor: "#fbbf24" },
-  { id: "box-kecil",      name: "Box Kecil",       description: "Box tertutup untuk barang sensitif",       panjang: 380, lebar: 170, tinggi: 170, kapasitasKg: 1500,  volumeM3: 1.1,  hargaDasar: 550_000,   icon: <TruckSVG size="sm" variant="box-kecil" />,      svgColor: "#86efac" },
-  { id: "engkel",         name: "Engkel",          description: "Truk ringan untuk pengiriman antar kota",  panjang: 430, lebar: 185, tinggi: 200, kapasitasKg: 3500,  volumeM3: 8.0,  hargaDasar: 1_200_000, icon: <TruckSVG size="sm" variant="engkel" />,         svgColor: "#fb923c" },
-  { id: "double-engkel",  name: "Double Engkel",  description: "Kapasitas lebih besar dari engkel biasa",  panjang: 480, lebar: 200, tinggi: 210, kapasitasKg: 5000,  volumeM3: 12.0, hargaDasar: 1_800_000, icon: <TruckSVG size="sm" variant="double-engkel" />,  svgColor: "#f87171" },
-  { id: "cdd-long",       name: "CDD Long",       description: "Cocok untuk pengiriman dalam jumlah besar dan jarak jauh", panjang: 530, lebar: 200, tinggi: 210, kapasitasKg: 6000,  volumeM3: 22.3, hargaDasar: 2_500_000, icon: <TruckSVG size="sm" variant="cdd-long" />,       svgColor: "#60a5fa" },
-  { id: "fuso",           name: "Fuso",           description: "Truk medium untuk muatan berat",           panjang: 550, lebar: 230, tinggi: 230, kapasitasKg: 8000,  volumeM3: 29.0, hargaDasar: 3_500_000, icon: <TruckSVG size="sm" variant="fuso" />,           svgColor: "#34d399" },
-  { id: "tronton",        name: "Tronton",        description: "Truk besar untuk kapasitas industri",      panjang: 700, lebar: 240, tinggi: 240, kapasitasKg: 15000, volumeM3: 40.0, hargaDasar: 5_000_000, icon: <TruckSVG size="sm" variant="tronton" />,        svgColor: "#a78bfa" },
-  { id: "truk-trailer",   name: "Truk Trailer",   description: "Untuk pengiriman besar lintas pulau",      panjang: 1200,lebar: 240, tinggi: 260, kapasitasKg: 30000, volumeM3: 75.0, hargaDasar: 9_000_000, icon: <TruckSVG size="sm" variant="truk-trailer" />,   svgColor: "#64748b" },
-  { id: "truk-reefer",    name: "Truk Reefer",    description: "Berpendingin untuk produk segar & farmasi", panjang: 700, lebar: 240, tinggi: 240, kapasitasKg: 15000, volumeM3: 40.0, hargaDasar: 6_500_000, icon: <TruckSVG size="sm" variant="truk-reefer" />,    svgColor: "#38bdf8" },
+  { id: "mobil",          name: "Mobil",         description: "Cocok untuk pengiriman kecil dalam kota",             panjang: 300,  lebar: 130, tinggi: 130, kapasitasKg: 400,   volumeM3: 0.5,  hargaDasar: 250_000,   icon: <TruckSVG size="sm" variant="mobil" /> },
+  { id: "mobil-xl",       name: "Mobil XL",      description: "Kapasitas lebih besar untuk barang medium",           panjang: 350,  lebar: 150, tinggi: 150, kapasitasKg: 600,   volumeM3: 0.8,  hargaDasar: 350_000,   icon: <TruckSVG size="sm" variant="mobil-xl" /> },
+  { id: "van",            name: "Van",            description: "Ideal untuk barang banyak dan tertutup",              panjang: 450,  lebar: 170, tinggi: 170, kapasitasKg: 1200,  volumeM3: 1.3,  hargaDasar: 500_000,   icon: <TruckSVG size="sm" variant="van" /> },
+  { id: "pickup-kecil",   name: "Pickup Kecil",  description: "Bak terbuka, cocok untuk material",                  panjang: 350,  lebar: 170, tinggi: 50,  kapasitasKg: 800,   volumeM3: 0.3,  hargaDasar: 400_000,   icon: <TruckSVG size="sm" variant="pickup-kecil" /> },
+  { id: "box-kecil",      name: "Box Kecil",     description: "Box tertutup untuk barang sensitif",                  panjang: 380,  lebar: 170, tinggi: 170, kapasitasKg: 1500,  volumeM3: 1.1,  hargaDasar: 550_000,   icon: <TruckSVG size="sm" variant="box-kecil" /> },
+  { id: "engkel",         name: "Engkel",         description: "Truk ringan untuk pengiriman antar kota",             panjang: 430,  lebar: 185, tinggi: 200, kapasitasKg: 3500,  volumeM3: 8.0,  hargaDasar: 1_200_000, icon: <TruckSVG size="sm" variant="engkel" /> },
+  { id: "double-engkel",  name: "Double Engkel", description: "Kapasitas lebih besar dari engkel biasa",             panjang: 480,  lebar: 200, tinggi: 210, kapasitasKg: 5000,  volumeM3: 12.0, hargaDasar: 1_800_000, icon: <TruckSVG size="sm" variant="double-engkel" /> },
+  { id: "cdd-long",       name: "CDD Long",      description: "Cocok untuk pengiriman dalam jumlah besar dan jarak jauh", panjang: 530, lebar: 200, tinggi: 210, kapasitasKg: 6000, volumeM3: 22.3, hargaDasar: 2_500_000, icon: <TruckSVG size="sm" variant="cdd-long" /> },
+  { id: "fuso",           name: "Fuso",           description: "Truk medium untuk muatan berat",                     panjang: 550,  lebar: 230, tinggi: 230, kapasitasKg: 8000,  volumeM3: 29.0, hargaDasar: 3_500_000, icon: <TruckSVG size="sm" variant="fuso" /> },
+  { id: "tronton",        name: "Tronton",        description: "Truk besar untuk kapasitas industri",                panjang: 700,  lebar: 240, tinggi: 240, kapasitasKg: 15000, volumeM3: 40.0, hargaDasar: 5_000_000, icon: <TruckSVG size="sm" variant="tronton" /> },
+  { id: "truk-trailer",   name: "Truk Trailer",  description: "Untuk pengiriman besar lintas pulau",                panjang: 1200, lebar: 240, tinggi: 260, kapasitasKg: 30000, volumeM3: 75.0, hargaDasar: 9_000_000, icon: <TruckSVG size="sm" variant="truk-trailer" /> },
+  { id: "truk-reefer",    name: "Truk Reefer",   description: "Berpendingin untuk produk segar & farmasi",          panjang: 700,  lebar: 240, tinggi: 240, kapasitasKg: 15000, volumeM3: 40.0, hargaDasar: 6_500_000, icon: <TruckSVG size="sm" variant="truk-reefer" /> },
 ];
 
 const AREAS = [
-  { value: "jawa-sumatra", label: "Jawa, Sumatra" },
-  { value: "kalimantan", label: "Kalimantan" },
-  { value: "sulawesi", label: "Sulawesi" },
-  { value: "bali-nusra", label: "Bali & Nusa Tenggara" },
+  { value: "jawa-sumatra",  label: "Jawa, Sumatra" },
+  { value: "kalimantan",    label: "Kalimantan" },
+  { value: "sulawesi",      label: "Sulawesi" },
+  { value: "bali-nusra",   label: "Bali & Nusa Tenggara" },
 ];
 
 const JENIS_BARANG = [
@@ -141,11 +123,24 @@ const JENIS_BARANG = [
   "Dokumen & Kertas", "Barang Berbahaya", "Lainnya",
 ];
 
+const ADDON_LIST = [
+  { key: "bantuanMuat",    label: "Bantuan Muat",           price: 150_000, desc: "+Rp 150.000" },
+  { key: "bantuanBongkar", label: "Bantuan Bongkar",        price: 150_000, desc: "+Rp 150.000" },
+  { key: "asuransi",       label: "Asuransi",               price: 100_000, desc: "+Rp 100.000" },
+  { key: "ferry",          label: "Ferry / Penyeberangan",  price: 500_000, desc: "+Rp 500.000" },
+  { key: "tol",            label: "Tol (actual cost)",      price: 0,       desc: "Actual cost" },
+  { key: "multiDrop",      label: "Multi-drop",             price: 50_000,  desc: "+Rp 50.000/titik" },
+  { key: "urgentDelivery", label: "Urgent Delivery",        price: 200_000, desc: "+Rp 200.000" },
+  { key: "overnight",      label: "Overnight / Sewa Seharian", price: 0,   desc: "Harga seharian" },
+] as const;
+
+type AddonKey = (typeof ADDON_LIST)[number]["key"];
+
 function formatRp(n: number) {
   return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
 }
 
-// ─── Vehicle Selector Card ─────────────────────────────────────────────────────
+// ─── Sub-components ───────────────────────────────────────────────────────────
 
 function VehicleCard({ v, selected, onClick }: { v: Vehicle; selected: boolean; onClick: () => void }) {
   return (
@@ -167,8 +162,6 @@ function VehicleCard({ v, selected, onClick }: { v: Vehicle; selected: boolean; 
   );
 }
 
-// ─── Spec Badge ───────────────────────────────────────────────────────────────
-
 function SpecBadge({ label, value, icon }: { label: string; value: string; icon?: React.ReactNode }) {
   return (
     <div className="flex items-center gap-2 bg-slate-50 border border-slate-100 rounded-xl px-3 py-2.5">
@@ -180,8 +173,6 @@ function SpecBadge({ label, value, icon }: { label: string; value: string; icon?
     </div>
   );
 }
-
-// ─── Counter ──────────────────────────────────────────────────────────────────
 
 function Counter({ value, onChange, min = 1 }: { value: number; onChange: (v: number) => void; min?: number }) {
   return (
@@ -199,58 +190,128 @@ function Counter({ value, onChange, min = 1 }: { value: number; onChange: (v: nu
   );
 }
 
+function SectionTitle({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-2 mb-3">
+      <span className="flex items-center justify-center h-7 w-7 rounded-lg bg-blue-50 text-blue-500 shrink-0">{icon}</span>
+      <span className="text-[13px] font-bold text-slate-700 uppercase tracking-wide">{children}</span>
+    </div>
+  );
+}
+
+function FormField({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
+  return (
+    <div className="space-y-1.5">
+      <Label className="text-[11.5px] font-semibold text-slate-600">
+        {label}{required && <span className="text-red-400 ml-0.5">*</span>}
+      </Label>
+      {children}
+    </div>
+  );
+}
+
+const INPUT_CLS = "h-10 text-[13px] rounded-xl border-slate-200 focus-visible:ring-blue-400";
+
+function SelectField({ value, onChange, placeholder, options }: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+  options: { value: string; label: string }[];
+}) {
+  return (
+    <div className="relative">
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full appearance-none border border-slate-200 rounded-xl h-10 pl-3 pr-8 text-[13px] bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-400"
+      >
+        <option value="">{placeholder}</option>
+        {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+      <ChevronDown className="absolute right-2.5 top-3 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function TruckingPage() {
-  const [selectedVehicle, setSelectedVehicle] = useState<Vehicle>(VEHICLES[7]); // CDD Long default
+  const [selectedVehicle, setSelectedVehicle] = useState<Vehicle>(VEHICLES[7]);
   const [selectedArea, setSelectedArea]       = useState(AREAS[0].value);
   const [showCalc, setShowCalc]               = useState(false);
   const [activeTab, setActiveTab]             = useState<"dasar" | "seharian">("dasar");
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const scrollRef  = useRef<HTMLDivElement>(null);
+  const calcRef    = useRef<HTMLDivElement>(null);
 
-  // Calculator state
-  const [areaPickup, setAreaPickup]     = useState("");
-  const [alamatPickup, setAlamatPickup] = useState("");
-  const [areaDel, setAreaDel]           = useState("");
-  const [alamatDel, setAlamatDel]       = useState("");
-  const [jumlahTrip, setJumlahTrip]     = useState(1);
-  const [tanggal, setTanggal]           = useState("");
-  const [jam, setJam]                   = useState("");
-  const [jenisBarang, setJenisBarang]   = useState("");
-  const [berat, setBerat]               = useState("");
-  const [jumlahKoli, setJumlahKoli]     = useState("");
-  const [catatan, setCatatan]           = useState("");
-  const [addons, setAddons] = useState({
+  // ── Form state ──────────────────────────────────────────────────────────────
+  const [areaPickup,    setAreaPickup]    = useState("");
+  const [alamatPickup,  setAlamatPickup]  = useState("");
+  const [picPickup,     setPicPickup]     = useState("");
+  const [hpPickup,      setHpPickup]      = useState("");
+
+  const [areaDel,       setAreaDel]       = useState("");
+  const [alamatDel,     setAlamatDel]     = useState("");
+  const [picPenerima,   setPicPenerima]   = useState("");
+  const [hpPenerima,    setHpPenerima]    = useState("");
+
+  const [jadwalType, setJadwalType]       = useState<"sekarang" | "nanti">("sekarang");
+  const [tanggal,    setTanggal]          = useState("");
+  const [jam,        setJam]              = useState("");
+
+  const [jenisBarang,  setJenisBarang]    = useState("");
+  const [berat,        setBerat]          = useState("");
+  const [jumlahKoli,   setJumlahKoli]     = useState("");
+  const [volume,       setVolume]         = useState("");
+  const [catatan,      setCatatan]        = useState("");
+
+  const [jumlahTrip,   setJumlahTrip]     = useState(1);
+
+  const [addons, setAddons] = useState<Record<AddonKey, boolean>>({
     bantuanMuat: false, bantuanBongkar: false, asuransi: false,
-    ferry: false, multiDrop: false, urgentDelivery: false,
+    ferry: false, tol: false, multiDrop: false, urgentDelivery: false, overnight: false,
   });
+
   const [showEstimasi, setShowEstimasi] = useState(false);
 
+  // ── Helpers ─────────────────────────────────────────────────────────────────
+
   function scrollVehicles(dir: "left" | "right") {
-    if (!scrollRef.current) return;
-    scrollRef.current.scrollBy({ left: dir === "left" ? -200 : 200, behavior: "smooth" });
+    scrollRef.current?.scrollBy({ left: dir === "left" ? -200 : 200, behavior: "smooth" });
   }
 
-  function toggleAddon(key: keyof typeof addons) {
+  function toggleAddon(key: AddonKey) {
     setAddons((p) => ({ ...p, [key]: !p[key] }));
   }
 
-  // Simple estimasi calculation
-  const biayaDasar   = selectedVehicle.hargaDasar;
-  const biayaRute    = areaPickup && areaDel ? Math.round(biayaDasar * 0.72 * jumlahTrip) : 0;
+  function handleCekOngkir() {
+    setShowCalc(true);
+    setTimeout(() => calcRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 120);
+  }
+
+  // ── Calculation ─────────────────────────────────────────────────────────────
+
+  const biayaDasar = addons.overnight
+    ? selectedVehicle.hargaDasar * 3
+    : selectedVehicle.hargaDasar;
+
+  const biayaPerTrip  = biayaDasar * jumlahTrip;
   const biayaTambahan =
-    (addons.bantuanMuat   ? 150_000 : 0) +
+    (addons.bantuanMuat    ? 150_000 : 0) +
     (addons.bantuanBongkar ? 150_000 : 0) +
     (addons.asuransi       ? 100_000 : 0) +
     (addons.ferry          ? 500_000 : 0) +
     (addons.multiDrop      ?  50_000 : 0) +
     (addons.urgentDelivery ? 200_000 : 0);
-  const totalEstimasi = biayaDasar * jumlahTrip + biayaRute + biayaTambahan;
+
+  const totalEstimasi = biayaPerTrip + biayaTambahan;
 
   const selectedAreaLabel = AREAS.find((a) => a.value === selectedArea)?.label ?? "";
 
+  // ─────────────────────────────────────────────────────────────────────────────
+
   return (
     <div className="min-h-screen bg-slate-50">
+
       {/* ── Page Title Bar ── */}
       <div className="bg-white border-b border-slate-100 px-4 py-4">
         <div className="max-w-6xl mx-auto flex items-center gap-3">
@@ -264,11 +325,10 @@ export default function TruckingPage() {
         </div>
       </div>
 
-      {/* ── Top Bar: Lokasi + Vehicle Selector ── */}
+      {/* ── Sticky Top: Lokasi + Vehicle Selector ── */}
       <div className="bg-white shadow-sm sticky top-0 z-30 border-b border-slate-100">
         <div className="max-w-6xl mx-auto px-4 py-3">
 
-          {/* Lokasi Jemput dropdown */}
           <div className="flex items-center gap-3 mb-3">
             <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 uppercase tracking-wider shrink-0">
               <MapPin className="h-3.5 w-3.5 text-blue-500" />
@@ -280,44 +340,27 @@ export default function TruckingPage() {
                 onChange={(e) => setSelectedArea(e.target.value)}
                 className="appearance-none bg-white border border-slate-200 rounded-xl pl-3 pr-8 py-1.5 text-[13px] font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-400 cursor-pointer"
               >
-                {AREAS.map((a) => (
-                  <option key={a.value} value={a.value}>{a.label}</option>
-                ))}
+                {AREAS.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
               </select>
               <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
             </div>
           </div>
 
-          {/* Vehicle scroll row */}
           <div className="relative flex items-center gap-1">
-            <button
-              type="button"
-              onClick={() => scrollVehicles("left")}
-              className="shrink-0 h-8 w-8 flex items-center justify-center rounded-full bg-white border border-slate-200 shadow-sm hover:border-blue-300 transition-colors z-10"
-            >
+            <button type="button" onClick={() => scrollVehicles("left")}
+              className="shrink-0 h-8 w-8 flex items-center justify-center rounded-full bg-white border border-slate-200 shadow-sm hover:border-blue-300 transition-colors z-10">
               <ChevronLeft className="h-4 w-4 text-slate-600" />
             </button>
-
-            <div
-              ref={scrollRef}
-              className="flex gap-2 overflow-x-auto scrollbar-hide flex-1 py-1 px-1"
-              style={{ scrollbarWidth: "none" }}
-            >
+            <div ref={scrollRef}
+              className="flex gap-2 overflow-x-auto flex-1 py-1 px-1"
+              style={{ scrollbarWidth: "none" }}>
               {VEHICLES.map((v) => (
-                <VehicleCard
-                  key={v.id}
-                  v={v}
-                  selected={selectedVehicle.id === v.id}
-                  onClick={() => { setSelectedVehicle(v); setShowCalc(false); setShowEstimasi(false); }}
-                />
+                <VehicleCard key={v.id} v={v} selected={selectedVehicle.id === v.id}
+                  onClick={() => { setSelectedVehicle(v); setShowCalc(false); setShowEstimasi(false); }} />
               ))}
             </div>
-
-            <button
-              type="button"
-              onClick={() => scrollVehicles("right")}
-              className="shrink-0 h-8 w-8 flex items-center justify-center rounded-full bg-white border border-slate-200 shadow-sm hover:border-blue-300 transition-colors z-10"
-            >
+            <button type="button" onClick={() => scrollVehicles("right")}
+              className="shrink-0 h-8 w-8 flex items-center justify-center rounded-full bg-white border border-slate-200 shadow-sm hover:border-blue-300 transition-colors z-10">
               <ChevronRight className="h-4 w-4 text-slate-600" />
             </button>
           </div>
@@ -326,236 +369,320 @@ export default function TruckingPage() {
 
       {/* ── Main Content ── */}
       <div className="max-w-6xl mx-auto px-4 py-6 space-y-5">
-
-        {/* ── Vehicle Detail + Price Panel ── */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
 
-          {/* Left: Vehicle Image + Specs */}
-          <div className="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-slate-100 p-6 space-y-5">
+          {/* ── Left Col: Vehicle Detail + Calculator ── */}
+          <div className="lg:col-span-2 space-y-5">
 
-            {/* Name + description */}
-            <div>
-              <h2 className="text-2xl font-bold text-slate-900">{selectedVehicle.name}</h2>
-              <p className="text-slate-500 text-sm mt-0.5">{selectedVehicle.description}</p>
-            </div>
-
-            {/* Vehicle SVG image */}
-            <div className="flex justify-center items-center bg-gradient-to-br from-slate-50 to-blue-50 rounded-2xl py-6 border border-slate-100">
-              <TruckSVG size="lg" variant={selectedVehicle.id} />
-            </div>
-
-            {/* Specs grid */}
-            <div>
-              <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-3">Spesifikasi Armada</p>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-                <SpecBadge
-                  label="Panjang"
-                  value={`${selectedVehicle.panjang} cm`}
-                  icon={<ArrowRight className="h-3.5 w-3.5" />}
-                />
-                <SpecBadge
-                  label="Lebar"
-                  value={`${selectedVehicle.lebar} cm`}
-                  icon={<ArrowRight className="h-3.5 w-3.5 rotate-90" />}
-                />
-                <SpecBadge
-                  label="Tinggi"
-                  value={`${selectedVehicle.tinggi} cm`}
-                  icon={<ArrowRight className="h-3.5 w-3.5 -rotate-90" />}
-                />
-                <SpecBadge
-                  label="Kapasitas"
-                  value={selectedVehicle.kapasitasKg >= 1000
-                    ? `${(selectedVehicle.kapasitasKg / 1000).toFixed(1)} ton`
-                    : `${selectedVehicle.kapasitasKg.toLocaleString("id-ID")} kg`}
-                  icon={<Package className="h-3.5 w-3.5" />}
-                />
-                <SpecBadge
-                  label="Volume"
-                  value={`${selectedVehicle.volumeM3} m³`}
-                  icon={<Package className="h-3.5 w-3.5 opacity-60" />}
-                />
+            {/* Vehicle Card */}
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 space-y-5">
+              <div>
+                <h2 className="text-2xl font-bold text-slate-900">{selectedVehicle.name}</h2>
+                <p className="text-slate-500 text-sm mt-0.5">{selectedVehicle.description}</p>
               </div>
 
-              {/* Disclaimer */}
-              <div className="flex items-start gap-2 mt-3 bg-blue-50 rounded-xl px-3 py-2.5 border border-blue-100">
-                <Info className="h-4 w-4 text-blue-400 shrink-0 mt-0.5" />
-                <p className="text-[11.5px] text-blue-700 leading-relaxed">
-                  Dimensi ini adalah rata-rata untuk kelas kendaraan ini. Mungkin terdapat variasi.
-                </p>
+              <div className="flex justify-center items-center bg-gradient-to-br from-slate-50 to-blue-50 rounded-2xl py-6 border border-slate-100">
+                <TruckSVG size="lg" variant={selectedVehicle.id} />
+              </div>
+
+              <div>
+                <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-3">Spesifikasi Armada</p>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                  <SpecBadge label="Panjang" value={`${selectedVehicle.panjang} cm`} icon={<ArrowRight className="h-3.5 w-3.5" />} />
+                  <SpecBadge label="Lebar"   value={`${selectedVehicle.lebar} cm`}   icon={<ArrowRight className="h-3.5 w-3.5 rotate-90" />} />
+                  <SpecBadge label="Tinggi"  value={`${selectedVehicle.tinggi} cm`}  icon={<ArrowRight className="h-3.5 w-3.5 -rotate-90" />} />
+                  <SpecBadge label="Kapasitas"
+                    value={selectedVehicle.kapasitasKg >= 1000
+                      ? `${(selectedVehicle.kapasitasKg / 1000).toFixed(1)} ton`
+                      : `${selectedVehicle.kapasitasKg.toLocaleString("id-ID")} kg`}
+                    icon={<Package className="h-3.5 w-3.5" />} />
+                  <SpecBadge label="Volume" value={`${selectedVehicle.volumeM3} m³`} icon={<Package className="h-3.5 w-3.5 opacity-60" />} />
+                </div>
+                <div className="flex items-start gap-2 mt-3 bg-blue-50 rounded-xl px-3 py-2.5 border border-blue-100">
+                  <Info className="h-4 w-4 text-blue-400 shrink-0 mt-0.5" />
+                  <p className="text-[11.5px] text-blue-700 leading-relaxed">
+                    Dimensi ini adalah rata-rata untuk kelas kendaraan ini. Mungkin terdapat variasi.
+                  </p>
+                </div>
               </div>
             </div>
 
-            {/* Calculator panel (shown after Cek Ongkir) */}
+            {/* ── Calculator Form ── */}
             {showCalc && (
-              <div className="border-t border-slate-100 pt-5">
-                <h3 className="text-base font-bold text-slate-800 mb-4 flex items-center gap-2">
-                  <Calculator className="h-4.5 w-4.5 text-blue-500" />
-                  Kalkulator Ongkir
-                </h3>
+              <div ref={calcRef} className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 space-y-6">
+                <div className="flex items-center gap-2.5 pb-4 border-b border-slate-100">
+                  <div className="h-9 w-9 rounded-xl bg-blue-600 flex items-center justify-center">
+                    <Calculator className="h-4.5 w-4.5 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-slate-800">Kalkulator Ongkir</h3>
+                    <p className="text-[11px] text-slate-400">Isi detail pengiriman untuk menghitung estimasi biaya</p>
+                  </div>
+                </div>
 
-                <div className="space-y-4">
-                  {/* Row 1: Area pickup + alamat */}
+                {/* ── 1. Pickup ── */}
+                <div>
+                  <SectionTitle icon={<MapPin className="h-3.5 w-3.5" />}>Pickup</SectionTitle>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div className="space-y-1.5">
-                      <Label className="text-[11px] font-semibold text-slate-600">Area Pickup</Label>
-                      <div className="relative">
-                        <select value={areaPickup} onChange={(e) => setAreaPickup(e.target.value)}
-                          className="w-full appearance-none border border-slate-200 rounded-xl h-10 pl-3 pr-8 text-[13px] bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-400">
-                          <option value="">Pilih area pickup</option>
-                          {AREAS.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
-                        </select>
-                        <ChevronDown className="absolute right-2.5 top-3 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
-                      </div>
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-[11px] font-semibold text-slate-600">Alamat Pickup</Label>
+                    <FormField label="Area Pickup" required>
+                      <SelectField value={areaPickup} onChange={setAreaPickup}
+                        placeholder="Pilih area pickup" options={AREAS} />
+                    </FormField>
+                    <FormField label="Alamat Pickup Lengkap" required>
                       <Input value={alamatPickup} onChange={(e) => setAlamatPickup(e.target.value)}
-                        placeholder="Masukkan alamat lengkap pickup"
-                        className="h-10 text-[13px] rounded-xl border-slate-200" />
-                    </div>
+                        placeholder="Jl. Contoh No.1, Kota" className={INPUT_CLS} />
+                    </FormField>
+                    <FormField label="Nama PIC Pickup" required>
+                      <div className="relative">
+                        <User className="absolute left-3 top-2.5 h-4 w-4 text-slate-300 pointer-events-none" />
+                        <Input value={picPickup} onChange={(e) => setPicPickup(e.target.value)}
+                          placeholder="Nama penanggung jawab pickup"
+                          className={cn(INPUT_CLS, "pl-9")} />
+                      </div>
+                    </FormField>
+                    <FormField label="No. HP Pickup" required>
+                      <div className="relative">
+                        <Phone className="absolute left-3 top-2.5 h-4 w-4 text-slate-300 pointer-events-none" />
+                        <Input type="tel" value={hpPickup} onChange={(e) => setHpPickup(e.target.value)}
+                          placeholder="08xx-xxxx-xxxx"
+                          className={cn(INPUT_CLS, "pl-9")} />
+                      </div>
+                    </FormField>
                   </div>
+                </div>
 
-                  {/* Row 2: Area delivery + alamat */}
+                {/* ── 2. Delivery ── */}
+                <div>
+                  <SectionTitle icon={<MapPin className="h-3.5 w-3.5" />}>Delivery</SectionTitle>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div className="space-y-1.5">
-                      <Label className="text-[11px] font-semibold text-slate-600">Area Delivery</Label>
-                      <div className="relative">
-                        <select value={areaDel} onChange={(e) => setAreaDel(e.target.value)}
-                          className="w-full appearance-none border border-slate-200 rounded-xl h-10 pl-3 pr-8 text-[13px] bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-400">
-                          <option value="">Pilih area delivery</option>
-                          {AREAS.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
-                        </select>
-                        <ChevronDown className="absolute right-2.5 top-3 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
-                      </div>
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-[11px] font-semibold text-slate-600">Alamat Delivery</Label>
+                    <FormField label="Area Delivery" required>
+                      <SelectField value={areaDel} onChange={setAreaDel}
+                        placeholder="Pilih area delivery" options={AREAS} />
+                    </FormField>
+                    <FormField label="Alamat Delivery Lengkap" required>
                       <Input value={alamatDel} onChange={(e) => setAlamatDel(e.target.value)}
-                        placeholder="Masukkan alamat lengkap delivery"
-                        className="h-10 text-[13px] rounded-xl border-slate-200" />
-                    </div>
-                  </div>
-
-                  {/* Row 3: Trip / Tanggal / Jam / Jenis Barang */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    <div className="space-y-1.5">
-                      <Label className="text-[11px] font-semibold text-slate-600">Jumlah Trip</Label>
-                      <Counter value={jumlahTrip} onChange={setJumlahTrip} min={1} />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-[11px] font-semibold text-slate-600">Tanggal Pickup</Label>
+                        placeholder="Jl. Tujuan No.2, Kota" className={INPUT_CLS} />
+                    </FormField>
+                    <FormField label="Nama PIC Penerima" required>
                       <div className="relative">
-                        <Input type="date" value={tanggal} onChange={(e) => setTanggal(e.target.value)}
-                          className="h-10 text-[13px] rounded-xl border-slate-200 pr-8" />
-                        <CalendarDays className="absolute right-3 top-2.5 h-4 w-4 text-slate-300 pointer-events-none" />
+                        <User className="absolute left-3 top-2.5 h-4 w-4 text-slate-300 pointer-events-none" />
+                        <Input value={picPenerima} onChange={(e) => setPicPenerima(e.target.value)}
+                          placeholder="Nama penerima"
+                          className={cn(INPUT_CLS, "pl-9")} />
                       </div>
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-[11px] font-semibold text-slate-600">Jam Pickup</Label>
-                      <Input type="time" value={jam} onChange={(e) => setJam(e.target.value)}
-                        className="h-10 text-[13px] rounded-xl border-slate-200" />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-[11px] font-semibold text-slate-600">Jenis Barang</Label>
+                    </FormField>
+                    <FormField label="No. HP Penerima" required>
                       <div className="relative">
-                        <select value={jenisBarang} onChange={(e) => setJenisBarang(e.target.value)}
-                          className="w-full appearance-none border border-slate-200 rounded-xl h-10 pl-3 pr-8 text-[13px] bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-400">
-                          <option value="">Pilih jenis barang</option>
-                          {JENIS_BARANG.map((j) => <option key={j} value={j}>{j}</option>)}
-                        </select>
-                        <ChevronDown className="absolute right-2.5 top-3 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+                        <Phone className="absolute left-3 top-2.5 h-4 w-4 text-slate-300 pointer-events-none" />
+                        <Input type="tel" value={hpPenerima} onChange={(e) => setHpPenerima(e.target.value)}
+                          placeholder="08xx-xxxx-xxxx"
+                          className={cn(INPUT_CLS, "pl-9")} />
                       </div>
+                    </FormField>
+                  </div>
+                </div>
+
+                {/* ── 3. Jadwal ── */}
+                <div>
+                  <SectionTitle icon={<AlarmClock className="h-3.5 w-3.5" />}>Jadwal Pickup</SectionTitle>
+                  <div className="space-y-3">
+                    <div className="flex gap-2">
+                      {(["sekarang", "nanti"] as const).map((type) => (
+                        <button
+                          key={type}
+                          type="button"
+                          onClick={() => setJadwalType(type)}
+                          className={cn(
+                            "flex-1 h-10 rounded-xl border-2 text-[13px] font-semibold transition-all",
+                            jadwalType === type
+                              ? "border-blue-600 bg-blue-600 text-white"
+                              : "border-slate-200 bg-white text-slate-600 hover:border-blue-300",
+                          )}
+                        >
+                          {type === "sekarang" ? "Pickup Sekarang" : "Jadwalkan Nanti"}
+                        </button>
+                      ))}
+                    </div>
+
+                    {jadwalType === "nanti" && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <FormField label="Tanggal Pickup" required>
+                          <div className="relative">
+                            <CalendarDays className="absolute left-3 top-2.5 h-4 w-4 text-slate-300 pointer-events-none" />
+                            <Input type="date" value={tanggal} onChange={(e) => setTanggal(e.target.value)}
+                              className={cn(INPUT_CLS, "pl-9")} />
+                          </div>
+                        </FormField>
+                        <FormField label="Jam Pickup" required>
+                          <div className="relative">
+                            <Clock className="absolute left-3 top-2.5 h-4 w-4 text-slate-300 pointer-events-none" />
+                            <Input type="time" value={jam} onChange={(e) => setJam(e.target.value)}
+                              className={cn(INPUT_CLS, "pl-9")} />
+                          </div>
+                        </FormField>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* ── 4. Detail Barang ── */}
+                <div>
+                  <SectionTitle icon={<Boxes className="h-3.5 w-3.5" />}>Detail Barang</SectionTitle>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <FormField label="Jenis Barang" required>
+                      <SelectField value={jenisBarang} onChange={setJenisBarang}
+                        placeholder="Pilih jenis barang"
+                        options={JENIS_BARANG.map((j) => ({ value: j, label: j }))} />
+                    </FormField>
+                    <FormField label="Berat Barang (kg)" required>
+                      <Input type="number" min="0" value={berat} onChange={(e) => setBerat(e.target.value)}
+                        placeholder="Masukkan berat" className={INPUT_CLS} />
+                    </FormField>
+                    <FormField label="Jumlah Koli" required>
+                      <Input type="number" min="1" value={jumlahKoli} onChange={(e) => setJumlahKoli(e.target.value)}
+                        placeholder="Masukkan jumlah koli" className={INPUT_CLS} />
+                    </FormField>
+                    <FormField label="Volume (m³) — opsional">
+                      <Input type="number" min="0" step="0.01" value={volume} onChange={(e) => setVolume(e.target.value)}
+                        placeholder="Kosongkan jika tidak tahu" className={INPUT_CLS} />
+                    </FormField>
+                    <div className="sm:col-span-2">
+                      <FormField label="Catatan Khusus">
+                        <Input value={catatan} onChange={(e) => setCatatan(e.target.value)}
+                          placeholder="Contoh: barang mudah pecah, suhu tertentu, dsb." className={INPUT_CLS} />
+                      </FormField>
                     </div>
                   </div>
+                </div>
 
-                  {/* Row 4: Berat / Koli / Catatan */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div className="space-y-1.5">
-                      <Label className="text-[11px] font-semibold text-slate-600">Berat Barang (kg)</Label>
-                      <Input type="number" value={berat} onChange={(e) => setBerat(e.target.value)}
-                        placeholder="Masukkan berat"
-                        className="h-10 text-[13px] rounded-xl border-slate-200" />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-[11px] font-semibold text-slate-600">Jumlah Koli</Label>
-                      <Input type="number" value={jumlahKoli} onChange={(e) => setJumlahKoli(e.target.value)}
-                        placeholder="Masukkan jumlah koli"
-                        className="h-10 text-[13px] rounded-xl border-slate-200" />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-[11px] font-semibold text-slate-600">Catatan Khusus</Label>
-                      <Input value={catatan} onChange={(e) => setCatatan(e.target.value)}
-                        placeholder="Opsional"
-                        className="h-10 text-[13px] rounded-xl border-slate-200" />
-                    </div>
+                {/* ── 5. Jumlah Trip ── */}
+                <div>
+                  <SectionTitle icon={<Truck className="h-3.5 w-3.5" />}>Jumlah Trip</SectionTitle>
+                  <div className="flex items-center gap-4">
+                    <Counter value={jumlahTrip} onChange={setJumlahTrip} min={1} />
+                    <p className="text-[12px] text-slate-400">Minimal 1 trip · {selectedVehicle.name}</p>
                   </div>
+                </div>
 
-                  {/* Addon checkboxes */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    {[
-                      { key: "bantuanMuat",    label: "Bantuan Muat" },
-                      { key: "bantuanBongkar", label: "Bantuan Bongkar" },
-                      { key: "asuransi",       label: "Asuransi" },
-                      { key: "ferry",          label: "Ferry / Penyeberangan" },
-                      { key: "multiDrop",      label: "Multi-drop" },
-                      { key: "urgentDelivery", label: "Urgent Delivery" },
-                    ].map(({ key, label }) => (
-                      <label key={key}
-                        className="flex items-center gap-2.5 border border-slate-200 rounded-xl px-3 py-2.5 cursor-pointer hover:bg-blue-50 hover:border-blue-200 transition-colors">
-                        <Checkbox
-                          checked={addons[key as keyof typeof addons]}
-                          onCheckedChange={() => toggleAddon(key as keyof typeof addons)}
-                          className="border-slate-300" />
-                        <span className="text-[13px] text-slate-700">{label}</span>
+                {/* ── 6. Tambahan Layanan ── */}
+                <div>
+                  <SectionTitle icon={<CheckCircle2 className="h-3.5 w-3.5" />}>Tambahan Layanan</SectionTitle>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {ADDON_LIST.map(({ key, label, desc }) => (
+                      <label
+                        key={key}
+                        className={cn(
+                          "flex items-center justify-between gap-3 border-2 rounded-xl px-3.5 py-3 cursor-pointer transition-all",
+                          addons[key]
+                            ? "border-blue-500 bg-blue-50"
+                            : "border-slate-200 bg-white hover:border-blue-200 hover:bg-blue-50/50",
+                        )}
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <Checkbox
+                            checked={addons[key]}
+                            onCheckedChange={() => toggleAddon(key)}
+                            className="border-slate-300 data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
+                          />
+                          <span className="text-[13px] font-medium text-slate-700">{label}</span>
+                        </div>
+                        <span className="text-[11px] text-slate-400 shrink-0">{desc}</span>
                       </label>
                     ))}
                   </div>
-
-                  {/* Hitung Estimasi */}
-                  <Button
-                    type="button"
-                    onClick={() => setShowEstimasi(true)}
-                    className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold text-sm"
-                  >
-                    Hitung Estimasi
-                  </Button>
-
-                  {/* Estimasi result */}
-                  {showEstimasi && (
-                    <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
-                      <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-3">Estimasi Biaya</p>
-                      <div className="overflow-x-auto">
-                        <div className="flex flex-wrap gap-4 text-sm min-w-[600px] sm:min-w-0">
-                          <div><span className="text-slate-400 text-[11px] block">Armada</span><span className="font-semibold text-slate-800">{selectedVehicle.name}</span></div>
-                          <div><span className="text-slate-400 text-[11px] block">Area Pickup</span><span className="font-semibold text-slate-800">{AREAS.find(a=>a.value===areaPickup)?.label ?? "—"}</span></div>
-                          <div><span className="text-slate-400 text-[11px] block">Area Delivery</span><span className="font-semibold text-slate-800">{AREAS.find(a=>a.value===areaDel)?.label ?? "—"}</span></div>
-                          <div><span className="text-slate-400 text-[11px] block">Harga Dasar</span><span className="font-semibold text-slate-800">{formatRp(biayaDasar * jumlahTrip)}</span></div>
-                          {biayaRute > 0 && <div><span className="text-slate-400 text-[11px] block">Biaya Rute</span><span className="font-semibold text-slate-800">{formatRp(biayaRute)}</span></div>}
-                          {biayaTambahan > 0 && <div><span className="text-slate-400 text-[11px] block">Biaya Tambahan</span><span className="font-semibold text-slate-800">{formatRp(biayaTambahan)}</span></div>}
-                          <div className="ml-auto">
-                            <span className="text-slate-400 text-[11px] block">Total Estimasi</span>
-                            <span className="font-bold text-blue-600 text-xl">{formatRp(totalEstimasi)}</span>
-                          </div>
-                        </div>
-                      </div>
-                      <p className="text-[10.5px] text-slate-400 mt-2">
-                        *Estimasi harga belum termasuk PPN. Harga dapat berubah sewaktu-waktu.
-                      </p>
-                    </div>
-                  )}
+                  <p className="text-[11px] text-slate-400 mt-2 flex items-center gap-1">
+                    <Info className="h-3 w-3 shrink-0" />
+                    Biaya opsional dianggap 0 jika tidak dipilih. Tol dihitung actual cost saat perjalanan.
+                  </p>
                 </div>
+
+                {/* ── 7. Hitung Estimasi Button ── */}
+                <Button
+                  type="button"
+                  onClick={() => setShowEstimasi(true)}
+                  className="w-full h-12 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-[14px] gap-2 shadow-md shadow-blue-200"
+                >
+                  <Calculator className="h-4.5 w-4.5" />
+                  Hitung Estimasi
+                </Button>
+
+                {/* ── Estimasi Result ── */}
+                {showEstimasi && (
+                  <div className="bg-gradient-to-br from-blue-50 to-slate-50 border border-blue-100 rounded-2xl p-5 space-y-4">
+                    <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Ringkasan Estimasi Biaya</p>
+
+                    <div className="space-y-2.5">
+                      {/* Route summary */}
+                      <div className="flex items-center gap-2 text-[13px]">
+                        <MapPin className="h-3.5 w-3.5 text-blue-400 shrink-0" />
+                        <span className="text-slate-500">
+                          {AREAS.find((a) => a.value === areaPickup)?.label || "—"}
+                          {" → "}
+                          {AREAS.find((a) => a.value === areaDel)?.label || "—"}
+                        </span>
+                      </div>
+
+                      <div className="h-px bg-blue-100" />
+
+                      {/* Cost breakdown */}
+                      <div className="space-y-1.5 text-[13px]">
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">
+                            {addons.overnight ? "Biaya Seharian" : "Biaya Dasar"}
+                            {" · "}{selectedVehicle.name}{" × "}{jumlahTrip} trip
+                          </span>
+                          <span className="font-semibold text-slate-800">{formatRp(biayaPerTrip)}</span>
+                        </div>
+
+                        {ADDON_LIST.filter(({ key, price }) => addons[key] && price > 0).map(({ key, label, price }) => (
+                          <div key={key} className="flex justify-between text-slate-500">
+                            <span>{label}</span>
+                            <span className="font-medium text-slate-700">{formatRp(price)}</span>
+                          </div>
+                        ))}
+
+                        {addons.tol && (
+                          <div className="flex justify-between text-slate-500">
+                            <span>Tol (actual cost)</span>
+                            <span className="font-medium text-slate-500 italic">Menyusul</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="h-px bg-blue-200" />
+
+                      <div className="flex items-end justify-between">
+                        <div>
+                          <p className="text-[11px] text-slate-400 font-medium">Total Estimasi</p>
+                          {addons.tol && (
+                            <p className="text-[10px] text-slate-400">*belum termasuk biaya tol</p>
+                          )}
+                        </div>
+                        <span className="text-2xl font-bold text-blue-600">{formatRp(totalEstimasi)}</span>
+                      </div>
+                    </div>
+
+                    <p className="text-[10.5px] text-slate-400 border-t border-blue-100 pt-3">
+                      *Estimasi belum termasuk PPN. Harga akhir dapat berbeda tergantung kondisi aktual.
+                    </p>
+
+                    <Link href="/book">
+                      <Button className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold text-sm gap-2 mt-1">
+                        <Truck className="h-4 w-4" />
+                        Lanjut Pesan Sekarang
+                      </Button>
+                    </Link>
+                  </div>
+                )}
               </div>
             )}
           </div>
 
-          {/* Right: Price + Cek Ongkir + Layanan Standar */}
+          {/* ── Right Col: Price + Cek Ongkir + Layanan Standar ── */}
           <div className="space-y-4">
 
             {/* Price Card */}
             <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-
-              {/* Tabs */}
               <div className="flex border-b border-slate-100">
                 {(["dasar", "seharian"] as const).map((tab) => (
                   <button key={tab} type="button"
@@ -572,28 +699,22 @@ export default function TruckingPage() {
               </div>
 
               <div className="p-5 space-y-4">
-                {/* Price display */}
                 {activeTab === "dasar" ? (
                   <div>
                     <p className="text-[11px] text-slate-400 font-medium mb-1">Mulai dari</p>
-                    <div className="text-2xl font-bold text-slate-900">
-                      {formatRp(selectedVehicle.hargaDasar)}
-                    </div>
+                    <div className="text-2xl font-bold text-slate-900">{formatRp(selectedVehicle.hargaDasar)}</div>
                     <p className="text-[12px] text-slate-400 mt-0.5">/ trip · {selectedAreaLabel}</p>
                   </div>
                 ) : (
                   <div>
                     <p className="text-[11px] text-slate-400 font-medium mb-1">Sewa Harian</p>
-                    <div className="text-2xl font-bold text-slate-900">
-                      {formatRp(selectedVehicle.hargaDasar * 3)}
-                    </div>
+                    <div className="text-2xl font-bold text-slate-900">{formatRp(selectedVehicle.hargaDasar * 3)}</div>
                     <p className="text-[12px] text-slate-400 mt-0.5">/ hari · termasuk sopir</p>
                   </div>
                 )}
 
                 <div className="h-px bg-slate-100" />
 
-                {/* Cek Ongkir block */}
                 <div className="flex items-start gap-3">
                   <div className="h-10 w-10 rounded-xl bg-blue-50 flex items-center justify-center shrink-0">
                     <Calculator className="h-5 w-5 text-blue-500" />
@@ -606,11 +727,8 @@ export default function TruckingPage() {
                   </div>
                 </div>
 
-                <Button
-                  type="button"
-                  onClick={() => { setShowCalc(true); setTimeout(() => { document.getElementById("calc-section")?.scrollIntoView({ behavior: "smooth", block: "start" }); }, 100); }}
-                  className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold text-sm gap-2"
-                >
+                <Button type="button" onClick={handleCekOngkir}
+                  className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold text-sm gap-2">
                   <Calculator className="h-4 w-4" />
                   Cek Ongkir
                 </Button>
@@ -628,8 +746,7 @@ export default function TruckingPage() {
                   { icon: <Package className="h-3.5 w-3.5" />, text: "Ruang kargo khusus" },
                   { icon: <Users className="h-3.5 w-3.5" />,   text: "Pengemudi berpengalaman" },
                   { icon: <Fuel className="h-3.5 w-3.5" />,    text: "Bahan bakar" },
-                  { icon: <Clock className="h-3.5 w-3.5" />,   text: "Waktu tunggu gratis 6 jam/booking" },
-                  { icon: <Truck className="h-3.5 w-3.5" />,   text: "Bongkar/Muat" },
+                  { icon: <Clock className="h-3.5 w-3.5" />,   text: "Waktu tunggu gratis 6 jam" },
                   { icon: <Shield className="h-3.5 w-3.5" />,  text: "Asuransi kargo (limit di aplikasi)" },
                 ].map(({ icon, text }) => (
                   <li key={text} className="flex items-center gap-2 text-[12px] text-slate-600">
@@ -639,13 +756,14 @@ export default function TruckingPage() {
                 ))}
               </ul>
 
-              <p className="text-[11px] font-semibold text-blue-600 mb-2">Tambahan</p>
+              <p className="text-[11px] font-semibold text-blue-600 mb-2">Tambahan (opsional)</p>
               <ul className="space-y-1.5">
                 {[
+                  "Bantuan Muat / Bongkar",
                   "Ferry / Penyeberangan",
+                  "Tol (actual cost)",
                   "Multi-drop",
                   "Urgent Delivery",
-                  "Extra Helper (bantuan muat/bongkar)",
                   "Overnight / Sewa Seharian",
                 ].map((text) => (
                   <li key={text} className="flex items-center gap-2 text-[12px] text-slate-500">
@@ -674,9 +792,6 @@ export default function TruckingPage() {
           </Link>
         </div>
       </div>
-
-      {/* anchor for scroll */}
-      <div id="calc-section" />
     </div>
   );
 }
