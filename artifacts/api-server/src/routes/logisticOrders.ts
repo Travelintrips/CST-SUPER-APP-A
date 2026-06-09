@@ -181,6 +181,7 @@ function toItem(row: typeof logisticOrderItemsTable.$inferSelect) {
     templateSnapshot: row.templateSnapshot ?? null,
     vendorFulfillmentId: (row as any).vendorFulfillmentId ?? null,
     vendorFulfillmentStatus: (row as any).vendorFulfillmentStatus ?? null,
+    vendorFulfillmentCreatedAt: (row as any).vendorFulfillmentCreatedAt ? new Date((row as any).vendorFulfillmentCreatedAt).toISOString() : null,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -665,6 +666,7 @@ logisticOrdersRouter.get(
         createdAt: logisticOrderItemsTable.createdAt,
         vendorFulfillmentId: logisticVendorFulfillmentsTable.id,
         vendorFulfillmentStatus: logisticVendorFulfillmentsTable.status,
+        vendorFulfillmentCreatedAt: logisticVendorFulfillmentsTable.createdAt,
       })
         .from(logisticOrderItemsTable)
         .leftJoin(logisticVendorFulfillmentsTable, eq(logisticVendorFulfillmentsTable.orderItemId, logisticOrderItemsTable.id))
@@ -1515,6 +1517,7 @@ logisticOrdersRouter.get("/:id", async (req: Request, res: Response) => {
       createdAt: logisticOrderItemsTable.createdAt,
       vendorFulfillmentId: logisticVendorFulfillmentsTable.id,
       vendorFulfillmentStatus: logisticVendorFulfillmentsTable.status,
+      vendorFulfillmentCreatedAt: logisticVendorFulfillmentsTable.createdAt,
     })
       .from(logisticOrderItemsTable)
       .leftJoin(logisticVendorFulfillmentsTable, eq(logisticVendorFulfillmentsTable.orderItemId, logisticOrderItemsTable.id))

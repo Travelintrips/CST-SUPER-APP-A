@@ -170,8 +170,8 @@ export default function AdminOrderDetail() {
                   <div className="flex-1 min-w-0">
                     <div className="flex flex-wrap gap-1 mb-1">
                       <Badge variant="outline" className="text-xs">{item.category}</Badge>
-                      {item.itemSource === "marketplace" && (
-                        <Badge className="text-xs bg-blue-100 text-blue-700 border-blue-200">Marketplace</Badge>
+                      {item.itemSource === "vendor_catalog_item" && (
+                        <Badge className="text-xs bg-blue-100 text-blue-700 border-blue-200">Vendor Marketplace</Badge>
                       )}
                       {item.serviceType && (
                         <Badge variant="secondary" className="text-xs">{item.serviceType}</Badge>
@@ -182,7 +182,7 @@ export default function AdminOrderDetail() {
                   </div>
                   <span className="font-bold text-accent text-sm flex-shrink-0">{formatCurrency(item.subtotal)}</span>
                 </div>
-                {item.itemSource === "marketplace" && item.priceSnapshot && typeof item.priceSnapshot === "object" && (
+                {item.itemSource === "vendor_catalog_item" && item.priceSnapshot && typeof item.priceSnapshot === "object" && (
                   <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs bg-blue-50 rounded px-2 py-1.5">
                     {(item.priceSnapshot as Record<string, unknown>).vendorName && (
                       <span><span className="text-muted-foreground">Vendor: </span><span className="font-medium">{String((item.priceSnapshot as Record<string, unknown>).vendorName)}</span></span>

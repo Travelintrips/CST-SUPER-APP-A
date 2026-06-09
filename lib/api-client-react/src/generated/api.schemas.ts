@@ -2244,6 +2244,9 @@ export interface LogisticOrderItem {
   serviceType?: string | null;
   priceSnapshot?: unknown | null;
   calculationInput?: unknown | null;
+  vendorFulfillmentId?: number | null;
+  vendorFulfillmentStatus?: string | null;
+  vendorFulfillmentCreatedAt?: string | null;
   createdAt: string;
 }
 

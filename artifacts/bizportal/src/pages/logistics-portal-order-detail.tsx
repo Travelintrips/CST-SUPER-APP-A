@@ -991,22 +991,31 @@ export default function LogisticsPortalOrderDetailPage() {
                                   <div className="mt-2 flex flex-wrap items-center gap-1.5">
                                     {(item as any).vendorFulfillmentId ? (
                                       <>
-                                        <span className="inline-flex items-center gap-1 text-[10px] font-semibold bg-green-100 text-green-700 border border-green-200 rounded px-2 py-0.5">
-                                          <CheckCircle className="h-3 w-3" /> Vendor Fulfillment Created
-                                        </span>
-                                        {(item as any).vendorFulfillmentStatus && (item as any).vendorFulfillmentStatus !== "pending" && (
-                                          <span className={`inline-flex items-center text-[10px] font-semibold rounded px-2 py-0.5 border ${
-                                            (item as any).vendorFulfillmentStatus === "completed"
-                                              ? "bg-emerald-100 text-emerald-700 border-emerald-200"
-                                              : (item as any).vendorFulfillmentStatus === "in_progress"
-                                              ? "bg-amber-100 text-amber-700 border-amber-200"
-                                              : (item as any).vendorFulfillmentStatus === "cancelled"
-                                              ? "bg-red-100 text-red-700 border-red-200"
-                                              : "bg-slate-100 text-slate-600 border-slate-200"
-                                          }`}>
-                                            {(item as any).vendorFulfillmentStatus}
-                                          </span>
-                                        )}
+                                        {(() => {
+                                          const st: string = (item as any).vendorFulfillmentStatus ?? "pending";
+                                          const label = st === "completed" ? "Completed" : st === "in_progress" ? "In Progress" : st === "cancelled" ? "Cancelled" : "Pending";
+                                          const cls = st === "completed"
+                                            ? "bg-emerald-100 text-emerald-700 border-emerald-200"
+                                            : st === "in_progress"
+                                            ? "bg-amber-100 text-amber-700 border-amber-200"
+                                            : st === "cancelled"
+                                            ? "bg-red-100 text-red-700 border-red-200"
+                                            : "bg-blue-100 text-blue-700 border-blue-200";
+                                          return (
+                                            <span className={`inline-flex items-center gap-1 text-[10px] font-semibold rounded px-2 py-0.5 border ${cls}`}>
+                                              <CheckCircle className="h-3 w-3" /> Vendor Fulfillment: {label}
+                                            </span>
+                                          );
+                                        })()}
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          className="h-6 text-[11px] px-2 gap-1 border-slate-200 text-slate-500"
+                                          disabled
+                                          title="Halaman detail fulfillment belum tersedia"
+                                        >
+                                          <ExternalLink className="h-3 w-3" /> Lihat Fulfillment
+                                        </Button>
                                       </>
                                     ) : (
                                       <Button
