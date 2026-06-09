@@ -9,7 +9,9 @@ const router = Router();
 router.use(requireJwtOrApiKey);
 
 /**
- * POST /api/messages/send  — also aliased via /api/send in index.ts
+ * Shared send handler — used by:
+ *   POST /api/messages/send  (mounted at /api/messages, path=/send)
+ *   POST /api/send           (mounted at /api/send,     path=/)
  *
  * Body:
  *   device_id  number   required
@@ -20,7 +22,7 @@ router.use(requireJwtOrApiKey);
  *   caption    string   optional caption for image
  *   filename   string   optional original filename for document
  */
-router.post("/send", async (req, res) => {
+async function handleSend(req: any, res: any) {
   const { device_id, to, message, type = "text", url, caption, filename } = req.body ?? {};
 
   if (!device_id || !to) {
@@ -65,7 +67,12 @@ router.post("/send", async (req, res) => {
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
-});
+}
+
+// POST /api/messages/send — standard path
+router.post("/send", handleSend);
+// POST / — for when this router is mounted at /api/send (Fonnte-compatible alias)
+router.post("/", handleSend);
 
 router.get("/", async (req, res) => {
   const deviceId = req.query.device_id ? Number(req.query.device_id) : null;

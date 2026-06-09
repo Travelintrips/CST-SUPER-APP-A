@@ -29,7 +29,7 @@ app.get(`${BASE}/api/health`, (_req, res) => {
   res.json({ ok: true, time: new Date().toISOString() });
 });
 
-const staticDir = path.resolve(__dirname, "../../public");
+const staticDir = path.resolve(__dirname, "../public");
 app.use(BASE, express.static(staticDir));
 app.get(`${BASE}`, (_req, res) => {
   const indexPath = path.join(staticDir, "index.html");

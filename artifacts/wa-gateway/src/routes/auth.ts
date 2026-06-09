@@ -60,9 +60,10 @@ router.get("/me", async (req, res) => {
   if (!raw) { res.status(401).json({ error: "Unauthorized" }); return; }
 
   try {
-    const jwt = await import("jsonwebtoken");
-    const secret = process.env.WA_GATEWAY_JWT_SECRET ?? "wa-gateway-secret-change-in-prod";
-    const payload = jwt.default.verify(raw, secret) as any;
+    // Use the shared JWT_SECRET (handles env var + ephemeral dev fallback consistently)
+    const { JWT_SECRET } = await import("../middleware/auth.js");
+    const jwt = (await import("jsonwebtoken")).default;
+    const payload = jwt.verify(raw, JWT_SECRET) as any;
     const [account] = await db.select({ id: waAccounts.id, email: waAccounts.email, name: waAccounts.name })
       .from(waAccounts).where(eq(waAccounts.id, payload.accountId));
     if (!account) { res.status(404).json({ error: "Account not found" }); return; }
