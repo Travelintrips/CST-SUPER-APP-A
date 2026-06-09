@@ -131,6 +131,23 @@ export function buildServiceCategories(items: MarketplaceItem[]): ServiceCategor
   return result;
 }
 
+// ── Province extraction ────────────────────────────────────────────────────────
+// Supports formats: "City, Province", "Province", "city - Province", "Province (code)"
+export function extractProvince(location: string | null | undefined): string | null {
+  if (!location) return null;
+  const cleaned = location.trim();
+  // "City, Province" — take everything after last comma
+  if (cleaned.includes(",")) {
+    return cleaned.split(",").pop()!.trim() || null;
+  }
+  // "City - Province" — take everything after last dash
+  if (cleaned.includes(" - ")) {
+    return cleaned.split(" - ").pop()!.trim() || null;
+  }
+  // Single token — treat the whole string as province
+  return cleaned || null;
+}
+
 export interface ProductMediaItem {
   id: number;
   vendorCatalogItemId: number | null;
@@ -226,12 +243,19 @@ export function buildCatalogFilters(items: MarketplaceItem[]): FilterFieldDef[] 
     filters.push({ key: "__stockStatus", label: "Status Stok", type: "select", options: stockStatuses, source: "standard" });
   }
 
-  const locations = [...new Set(items.map((i) => i.location).filter(Boolean) as string[])];
-  if (locations.length > 1) {
-    filters.push({ key: "__location", label: "Lokasi", type: "select", options: locations, source: "standard" });
+  // ── Provinsi filter: extracted from location field ("City, Province" pattern) ──
+  const provinces = [
+    ...new Set(
+      items
+        .map((i) => extractProvince(i.location))
+        .filter(Boolean) as string[]
+    ),
+  ].sort();
+  if (provinces.length > 1) {
+    filters.push({ key: "__province", label: "Provinsi", type: "select", options: provinces, source: "standard" });
   }
 
-  const origins = [...new Set(items.map((i) => i.origin).filter(Boolean) as string[])];
+  const origins = [...new Set(items.map((i) => i.origin).filter(Boolean) as string[])].sort();
   if (origins.length > 1) {
     filters.push({ key: "__origin", label: "Asal", type: "select", options: origins, source: "standard" });
   }
@@ -349,8 +373,9 @@ export function matchVendorCatalog(item: MarketplaceItem, active: ActiveFilters)
       if (item.stockStatus !== value) return false;
       continue;
     }
-    if (key === "__location") {
-      if (item.location !== value) return false;
+    if (key === "__province") {
+      const itemProvince = extractProvince(item.location);
+      if (!itemProvince || itemProvince.toLowerCase() !== String(value).toLowerCase()) return false;
       continue;
     }
     if (key === "__origin") {
