@@ -1062,6 +1062,7 @@ export default function BookPage() {
         serviceType: c.serviceType ?? null,
         priceSnapshot: c.priceSnapshot ?? null,
         calculationInput: c.calculationInput ?? null,
+        templateSnapshot: c.templateSnapshot ?? (c.inputData?.templateSnapshot as Record<string, unknown> | null | undefined) ?? null,
       })),
     }}, {
       onSuccess: (data: unknown) => {

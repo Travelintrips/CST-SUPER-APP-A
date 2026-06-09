@@ -174,6 +174,7 @@ function toItem(row: typeof logisticOrderItemsTable.$inferSelect) {
     serviceType: row.serviceType ?? null,
     priceSnapshot: row.priceSnapshot ?? null,
     calculationInput: row.calculationInput ?? null,
+    templateSnapshot: row.templateSnapshot ?? null,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -427,6 +428,9 @@ logisticOrdersRouter.post("/", async (req: Request, res: Response) => {
     serviceType: item.serviceType ?? null,
     priceSnapshot: (item.priceSnapshot as Record<string, unknown> | null) ?? null,
     calculationInput: (item.calculationInput as Record<string, unknown> | null) ?? null,
+    templateSnapshot: (item.templateSnapshot as Record<string, unknown> | null)
+      ?? ((item.inputData as Record<string, unknown> | null)?.templateSnapshot as Record<string, unknown> | null)
+      ?? null,
   }));
 
   const items =

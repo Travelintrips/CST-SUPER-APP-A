@@ -913,6 +913,36 @@ export default function LogisticsPortalOrderDetailPage() {
                                       ))}
                                   </div>
                                 )}
+                                {(item as any).itemSource === "vendor_catalog_item" && (() => {
+                                  const snap = (item as any).templateSnapshot ?? (item as any).inputData?.templateSnapshot;
+                                  if (!snap || typeof snap !== "object") return null;
+                                  const fields = (snap as Record<string, unknown>).fields;
+                                  const serviceType = (snap as Record<string, unknown>).serviceType as string | undefined;
+                                  const category = (snap as Record<string, unknown>).category as string | undefined;
+                                  const version = (snap as Record<string, unknown>).version as string | undefined;
+                                  const hasFields = Array.isArray(fields) && fields.length > 0;
+                                  return (
+                                    <details className="mt-1">
+                                      <summary className="text-[10px] text-slate-400 font-semibold cursor-pointer select-none hover:text-slate-600">
+                                        Template Snapshot {version ? `v${version}` : ""}
+                                      </summary>
+                                      <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] bg-violet-50 border border-violet-100 rounded px-2 py-1.5">
+                                        {serviceType && <span><span className="text-slate-400">serviceType: </span><span className="font-medium text-slate-700">{serviceType}</span></span>}
+                                        {category && <span><span className="text-slate-400">category: </span><span className="font-medium text-slate-700">{category}</span></span>}
+                                        {hasFields && (
+                                          <span className="w-full">
+                                            <span className="text-slate-400">fields: </span>
+                                            <span className="font-medium text-slate-700">
+                                              {(fields as Array<{ key?: string; label?: string; required?: boolean }>)
+                                                .map((f) => f.label ?? f.key ?? "?")
+                                                .join(" · ")}
+                                            </span>
+                                          </span>
+                                        )}
+                                      </div>
+                                    </details>
+                                  );
+                                })()}
                               </TableCell>
                               <TableCell className="text-sm text-muted-foreground">{item.category}</TableCell>
                               <TableCell className="text-right text-sm font-mono">{idr(sellingPrice)}</TableCell>

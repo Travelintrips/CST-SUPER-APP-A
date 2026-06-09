@@ -4792,6 +4792,7 @@ export const CreateLogisticOrderBody = zod.object({
       serviceType: zod.string().nullish(),
       priceSnapshot: zod.unknown().nullish(),
       calculationInput: zod.unknown().nullish(),
+      templateSnapshot: zod.unknown().nullish(),
     }),
   ),
 });

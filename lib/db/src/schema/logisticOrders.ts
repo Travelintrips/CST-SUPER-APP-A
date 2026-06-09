@@ -131,6 +131,7 @@ export const logisticOrderItemsTable = pgTable("logistic_order_items", {
   serviceType: text("service_type"),
   priceSnapshot: jsonb("price_snapshot"),
   calculationInput: jsonb("calculation_input"),
+  templateSnapshot: jsonb("template_snapshot"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

@@ -729,6 +729,9 @@ export default function JasaVendorDetail() {
         tax: taxAmount,
         total,
       } : null,
+      templateSnapshot: (item.templateSnapshot && typeof item.templateSnapshot === "object")
+        ? (item.templateSnapshot as Record<string, unknown>)
+        : null,
       tax: taxAmount,
       total,
       // ── inputData (detail lengkap untuk /book) ──
