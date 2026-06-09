@@ -24,6 +24,13 @@ args = "Gateway"
 task = "workflow.run"
 args = "API Server"
 
+<<<<<<< HEAD
+=======
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "WA Gateway"
+
+>>>>>>> 6caf09af0f9e80b25313a4874a02acd0a091d267
 [[workflows.workflow]]
 name = "Gateway"
 author = "agent"
@@ -64,13 +71,33 @@ waitForPort = 3001
 name = "API Server"
 author = "agent"
 
+<<<<<<< HEAD
+=======
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "bash artifacts/api-server/start-dev.sh"
+waitForPort = 8080
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow]]
+name = "WA Gateway"
+author = "agent"
+
+>>>>>>> 6caf09af0f9e80b25313a4874a02acd0a091d267
 [workflows.workflow.metadata]
 outputType = "console"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
+<<<<<<< HEAD
 args = "cd artifacts/api-server && API_PORT=8080 FORWARDER_PORT=8080 node dev.mjs"
 waitForPort = 8080
+=======
+args = "bash artifacts/wa-gateway/start-dev.sh"
+waitForPort = 8000
+>>>>>>> 6caf09af0f9e80b25313a4874a02acd0a091d267
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"

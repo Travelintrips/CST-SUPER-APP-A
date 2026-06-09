@@ -96,3 +96,4 @@ export * from "./expenseApprovals";
 export * from "./productMedia";
 export * from "./vendorCatalogEngine";
 export * from "./logisticVendorFulfillments";
+export * from "./waGateway";

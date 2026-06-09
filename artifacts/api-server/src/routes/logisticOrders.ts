@@ -47,6 +47,7 @@ import { logOrderStatusChange, logOrderAudit } from "../lib/auditTrail.js";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { saveAndBroadcast } from "../lib/notificationStore";
 import { broadcastToPortal } from "../lib/sseManager.js";
+import { broadcastInvalidation } from "../lib/alertsBroadcast.js";
 import { sendPushToOrder } from "../lib/webPush.js";
 import { updateOrderProgress, getOrderProgressEvents, deleteOrderProgress, PROGRESS_STEPS, type StepKey } from "../lib/orderProgress.js";
 import {
@@ -511,6 +512,9 @@ sendLogisticOrderNotification({
     grandTotal: Number(body.grandTotal),
     createdAt: order.createdAt.toISOString(),
   }).catch(() => {});
+
+  // Broadcast ke BizPortal SSE agar dashboard & order list auto-refresh
+  broadcastInvalidation("logistic_orders", order.id);
 
   // Broadcast ke Customer Portal agar logistic-admin page auto-refresh
   broadcastToPortal("new_logistic_order", {
