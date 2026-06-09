@@ -16,11 +16,15 @@ import { eq } from "drizzle-orm";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SESSIONS_ROOT = path.resolve(__dirname, "../../sessions");
 
-const STUB_MODE = process.env.BAILEYS_STUB !== "false";
+// STUB_MODE: enabled only when BAILEYS_STUB=true (or Baileys not installed).
+// Default is real mode; stub kicks in automatically if Baileys is unavailable.
+const STUB_MODE = process.env.BAILEYS_STUB === "true";
 
 if (STUB_MODE) {
-  console.warn("[wa-gateway] Running in STUB mode — WhatsApp sessions are simulated.");
-  console.warn("[wa-gateway] Set BAILEYS_STUB=false + install @whiskeysockets/baileys for real WhatsApp.");
+  console.warn("[wa-gateway] BAILEYS_STUB=true — WhatsApp sessions are simulated (demo mode).");
+} else {
+  console.log("[wa-gateway] Real Baileys mode — attempting live WhatsApp sessions.");
+  console.log("[wa-gateway] If @whiskeysockets/baileys is not installed, sessions will auto-fallback to stub.");
 }
 
 export interface SendPayload {

@@ -2,22 +2,25 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { waDevices } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
-import { requireJwt, JWT_SECRET } from "../middleware/auth.js";
+import { requireJwt, requireJwtOrApiKey, JWT_SECRET } from "../middleware/auth.js";
 import { startSession, disconnectDevice, getSession, getSessionDir } from "../sessions.js";
 import jwt from "jsonwebtoken";
 import type { Response } from "express";
 
 const router = Router();
 
-// NOTE: do NOT put router.use(requireJwt) here — the SSE /qr route
-// uses EventSource which can't send Authorization headers; it passes token
-// via query param and validates it inside the handler.
+// NOTE: do NOT add router.use(requireJwt/requireJwtOrApiKey) globally here —
+// the SSE /qr route validates its own token from ?token= query param because
+// EventSource cannot send Authorization headers.
 
-router.get("/", requireJwt, async (req, res) => {
-  const devices = await db.select().from(waDevices).where(eq(waDevices.accountId, req.auth!.accountId));
+// List devices — API key clients can list devices scoped to their account
+router.get("/", requireJwtOrApiKey, async (req, res) => {
+  const devices = await db.select().from(waDevices)
+    .where(eq(waDevices.accountId, req.auth!.accountId));
   res.json(devices);
 });
 
+// Create device — JWT only (management operation)
 router.post("/", requireJwt, async (req, res) => {
   const { name, webhookUrl } = req.body ?? {};
   if (!name) { res.status(400).json({ error: "Name required" }); return; }
@@ -37,7 +40,8 @@ router.post("/", requireJwt, async (req, res) => {
   res.status(201).json(device);
 });
 
-router.get("/:id", requireJwt, async (req, res) => {
+// Get device — API key clients can read device status
+router.get("/:id", requireJwtOrApiKey, async (req, res) => {
   const id = Number(req.params.id);
   const [device] = await db.select().from(waDevices)
     .where(and(eq(waDevices.id, id), eq(waDevices.accountId, req.auth!.accountId)));
@@ -45,6 +49,7 @@ router.get("/:id", requireJwt, async (req, res) => {
   res.json(device);
 });
 
+// Update / Delete — JWT only (management operations)
 router.put("/:id", requireJwt, async (req, res) => {
   const id = Number(req.params.id);
   const [existing] = await db.select({ id: waDevices.id }).from(waDevices)
@@ -71,6 +76,7 @@ router.delete("/:id", requireJwt, async (req, res) => {
   res.json({ ok: true });
 });
 
+// Connect / Disconnect — JWT only
 router.post("/:id/connect", requireJwt, async (req, res) => {
   const id = Number(req.params.id);
   const [device] = await db.select().from(waDevices)
@@ -100,12 +106,11 @@ router.post("/:id/disconnect", requireJwt, async (req, res) => {
 
 const sseClients = new Map<number, Set<Response>>();
 
-// SSE endpoint — no global requireJwt; validates token from ?token= query param
-// because EventSource cannot send Authorization headers.
+// SSE QR stream — validates token from ?token= query param OR Authorization header.
+// EventSource cannot send Authorization headers, so query param is required for browser use.
 router.get("/:id/qr", async (req, res) => {
   const id = Number(req.params.id);
 
-  // Validate token from query param (SSE) or Authorization header (fallback)
   const header = (req.headers.authorization ?? "");
   const headerToken = header.startsWith("Bearer ") ? header.slice(7) : null;
   const queryToken = req.query.token ? String(req.query.token) : null;
