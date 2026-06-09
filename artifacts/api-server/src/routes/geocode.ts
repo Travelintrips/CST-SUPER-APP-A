@@ -1,8 +1,6 @@
 import { Router } from "express";
 import { rateLimit, ipKeyGenerator } from "express-rate-limit";
 
-const GMAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY ?? "";
-
 const router = Router();
 
 const NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
@@ -83,13 +81,14 @@ router.get("/places/autocomplete", placesRateLimit, async (req, res) => {
   if (!input || input.trim().length < 2) {
     return res.status(400).json({ predictions: [] });
   }
-  if (!GMAPS_API_KEY) {
+  const gmapsKey = process.env.GOOGLE_MAPS_API_KEY ?? "";
+  if (!gmapsKey) {
     return res.status(503).json({ error: "Google Maps API key not configured" });
   }
 
   const params = new URLSearchParams({
     input: input.trim(),
-    key: GMAPS_API_KEY,
+    key: gmapsKey,
     language: "id",
     types: "geocode|establishment",
   });
@@ -151,11 +150,12 @@ router.get("/places/distance", placesRateLimit, async (req, res) => {
 router.get("/places/detail", placesRateLimit, async (req, res) => {
   const { place_id } = req.query as Record<string, string>;
   if (!place_id) return res.status(400).json({ error: "place_id required" });
-  if (!GMAPS_API_KEY) return res.status(503).json({ error: "Google Maps API key not configured" });
+  const gmapsKey = process.env.GOOGLE_MAPS_API_KEY ?? "";
+  if (!gmapsKey) return res.status(503).json({ error: "Google Maps API key not configured" });
 
   const params = new URLSearchParams({
     place_id,
-    key: GMAPS_API_KEY,
+    key: gmapsKey,
     fields: "formatted_address,name",
     language: "id",
   });
