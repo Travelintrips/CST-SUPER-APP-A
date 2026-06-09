@@ -3,9 +3,8 @@ import { db } from "@workspace/db";
 import { waDevices } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { requireJwt, requireJwtOrApiKey, JWT_SECRET } from "../middleware/auth.js";
-import { startSession, disconnectDevice, getSession, getSessionDir } from "../sessions.js";
+import { startSession, disconnectDevice, getSessionDir, addQrListener, addStatusListener } from "../sessions.js";
 import jwt from "jsonwebtoken";
-import type { Response } from "express";
 
 const router = Router();
 
@@ -104,7 +103,7 @@ router.post("/:id/disconnect", requireJwt, async (req, res) => {
   res.json({ ok: true });
 });
 
-const sseClients = new Map<number, Set<Response>>();
+
 
 // SSE QR stream — validates token from ?token= query param OR Authorization header.
 // EventSource cannot send Authorization headers, so query param is required for browser use.
@@ -144,25 +143,16 @@ router.get("/:id/qr", async (req, res) => {
 
   send("status", { status: device.status, phone: device.phoneNumber });
 
-  if (!sseClients.has(id)) sseClients.set(id, new Set());
-  sseClients.get(id)!.add(res);
-
-  const session = getSession(id);
-  const qrHandler = (qr: string) => send("qr", { qr });
-  const statusHandler = (ev: { status: string; phone?: string }) => send("status", ev);
-
-  if (session) {
-    session.qrListeners.add(qrHandler);
-    session.statusListeners.add(statusHandler);
-  }
+  // Register listeners in the GLOBAL registry (not on the session object).
+  // This ensures QR/status events are received even if the session hasn't
+  // started yet or starts after this SSE connection is established —
+  // eliminating the connect→/qr race condition.
+  const removeQr = addQrListener(id, (qr) => send("qr", { qr }));
+  const removeStatus = addStatusListener(id, (ev) => send("status", ev));
 
   const cleanup = () => {
-    sseClients.get(id)?.delete(res);
-    const s = getSession(id);
-    if (s) {
-      s.qrListeners.delete(qrHandler);
-      s.statusListeners.delete(statusHandler);
-    }
+    removeQr();
+    removeStatus();
   };
 
   req.on("close", cleanup);

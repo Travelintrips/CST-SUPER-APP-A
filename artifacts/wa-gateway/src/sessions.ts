@@ -1,9 +1,14 @@
 /**
  * WA Gateway Session Manager
  *
- * STUB_MODE (default on Replit): simulates QR + connection flow with demo data.
- * Real WhatsApp: set BAILEYS_STUB=false and install @whiskeysockets/baileys
- * on a non-Replit host.
+ * Real Baileys mode (default): dynamically imports @whiskeysockets/baileys at
+ * session start. If the package is not installed (e.g. Replit where it's blocked
+ * by the package firewall), the session automatically falls back to stub mode.
+ *
+ * Stub mode (BAILEYS_STUB=true): simulates QR + connection flow for development/demo.
+ *
+ * Security note: always install Baileys from a release that has no spoofing
+ * advisories; pin the version explicitly in package.json when deploying.
  */
 
 import path from "path";
@@ -16,15 +21,14 @@ import { eq } from "drizzle-orm";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SESSIONS_ROOT = path.resolve(__dirname, "../../sessions");
 
-// STUB_MODE: enabled only when BAILEYS_STUB=true (or Baileys not installed).
-// Default is real mode; stub kicks in automatically if Baileys is unavailable.
+// STUB_MODE: opt-in via BAILEYS_STUB=true; default is real mode (with stub fallback).
 const STUB_MODE = process.env.BAILEYS_STUB === "true";
 
 if (STUB_MODE) {
   console.warn("[wa-gateway] BAILEYS_STUB=true — WhatsApp sessions are simulated (demo mode).");
 } else {
-  console.log("[wa-gateway] Real Baileys mode — attempting live WhatsApp sessions.");
-  console.log("[wa-gateway] If @whiskeysockets/baileys is not installed, sessions will auto-fallback to stub.");
+  console.log("[wa-gateway] Real Baileys mode — @whiskeysockets/baileys loaded per-session.");
+  console.log("[wa-gateway] Auto-fallback to stub if Baileys is not installed.");
 }
 
 export interface SendPayload {
@@ -35,17 +39,47 @@ export interface SendPayload {
   filename?: string;
 }
 
+// ── Global listener registry ──────────────────────────────────────────────────
+// Listeners are stored here INDEPENDENTLY of whether a session exists.
+// SSE handlers register here; sessions pull from here when they emit events.
+// This eliminates the race condition where SSE connects before the session starts.
+
+type QrListener = (qr: string) => void;
+type StatusListener = (ev: { status: string; phone?: string }) => void;
+
+const qrRegistry = new Map<number, Set<QrListener>>();
+const statusRegistry = new Map<number, Set<StatusListener>>();
+
+export function addQrListener(deviceId: number, fn: QrListener): () => void {
+  if (!qrRegistry.has(deviceId)) qrRegistry.set(deviceId, new Set());
+  qrRegistry.get(deviceId)!.add(fn);
+  return () => qrRegistry.get(deviceId)?.delete(fn);
+}
+
+export function addStatusListener(deviceId: number, fn: StatusListener): () => void {
+  if (!statusRegistry.has(deviceId)) statusRegistry.set(deviceId, new Set());
+  statusRegistry.get(deviceId)!.add(fn);
+  return () => statusRegistry.get(deviceId)?.delete(fn);
+}
+
+function emitQr(deviceId: number, qr: string) {
+  qrRegistry.get(deviceId)?.forEach((fn) => fn(qr));
+}
+
+function emitStatus(deviceId: number, ev: { status: string; phone?: string }) {
+  statusRegistry.get(deviceId)?.forEach((fn) => fn(ev));
+}
+
+// ── Session socket map (for sending messages) ─────────────────────────────────
 interface SessionEntry {
   socket: any;
-  qrListeners: Set<(qr: string) => void>;
-  statusListeners: Set<(event: { status: string; phone?: string }) => void>;
   reconnectTimer?: NodeJS.Timeout;
   stubTimer?: NodeJS.Timeout;
 }
 
 const sessions = new Map<number, SessionEntry>();
 
-export function getSession(deviceId: number) {
+export function getSession(deviceId: number): SessionEntry | undefined {
   return sessions.get(deviceId);
 }
 
@@ -65,26 +99,25 @@ async function startStubSession(deviceId: number): Promise<void> {
     sessions.delete(deviceId);
   }
 
-  const entry: SessionEntry = { socket: null, qrListeners: new Set(), statusListeners: new Set() };
+  const entry: SessionEntry = { socket: null };
   sessions.set(deviceId, entry);
 
   await db.update(waDevices).set({ status: "connecting", updatedAt: new Date() }).where(eq(waDevices.id, deviceId));
-  entry.statusListeners.forEach((fn) => fn({ status: "connecting" }));
+  emitStatus(deviceId, { status: "connecting" });
 
-  // Emit a demo QR code string after 1s
+  // Emit demo QR string after 1s
   entry.stubTimer = setTimeout(async () => {
     const session = sessions.get(deviceId);
     if (!session) return;
     const qrRaw = `2@WA_GATEWAY_DEMO_${deviceId},${Date.now()},scan_to_link_device`;
-    session.qrListeners.forEach((fn) => fn(qrRaw));
+    emitQr(deviceId, qrRaw);
 
     // Auto-connect after another 14s in demo mode
     session.stubTimer = setTimeout(async () => {
-      const s = sessions.get(deviceId);
-      if (!s) return;
+      if (!sessions.has(deviceId)) return;
       const demoPhone = `62800${String(deviceId).padStart(8, "0")}`;
       await db.update(waDevices).set({ status: "connected", phoneNumber: demoPhone, updatedAt: new Date() }).where(eq(waDevices.id, deviceId));
-      s.statusListeners.forEach((fn) => fn({ status: "connected", phone: demoPhone }));
+      emitStatus(deviceId, { status: "connected", phone: demoPhone });
       console.log(`[wa-gateway][stub] Device ${deviceId} auto-connected (demo phone: ${demoPhone})`);
     }, 14_000);
   }, 1_000);
@@ -97,13 +130,8 @@ async function sendStubMessage(deviceId: number, to: string, payload: SendPayloa
     : `[${payload.type.toUpperCase()}] ${payload.url ?? ""}${payload.caption ? ` — ${payload.caption}` : ""}`;
 
   await db.insert(waMessages).values({
-    deviceId,
-    direction: "outbound",
-    toFrom: to,
-    messageType: payload.type,
-    content,
-    status: "sent",
-    waMessageId: msgId,
+    deviceId, direction: "outbound", toFrom: to,
+    messageType: payload.type, content, status: "sent", waMessageId: msgId,
   });
   console.log(`[wa-gateway][stub] ${payload.type} → ${to}: ${content.slice(0, 60)}`);
   return msgId;
@@ -116,7 +144,7 @@ async function startBaileysSession(deviceId: number, sessionDir: string): Promis
   try {
     baileys = await import("@whiskeysockets/baileys");
   } catch {
-    console.error("[wa-gateway] @whiskeysockets/baileys not installed — falling back to stub");
+    console.warn(`[wa-gateway] @whiskeysockets/baileys not found — falling back to stub for device ${deviceId}`);
     return startStubSession(deviceId);
   }
 
@@ -126,9 +154,8 @@ async function startBaileysSession(deviceId: number, sessionDir: string): Promis
     DisconnectReason,
     fetchLatestBaileysVersion,
   } = baileys;
-  const { Boom } = await import("@hapi/boom").catch(() => ({ Boom: Error }));
-  const pino = (await import("pino")).default;
 
+  const pino = (await import("pino")).default;
   fs.mkdirSync(sessionDir, { recursive: true });
 
   const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
@@ -142,29 +169,28 @@ async function startBaileysSession(deviceId: number, sessionDir: string): Promis
     browser: ["WA-Gateway", "Chrome", "1.0.0"],
   });
 
-  const entry: SessionEntry = { socket: sock, qrListeners: new Set(), statusListeners: new Set() };
+  const entry: SessionEntry = { socket: sock };
   sessions.set(deviceId, entry);
 
   sock.ev.on("creds.update", saveCreds);
 
   sock.ev.on("connection.update", async (update: any) => {
     const { connection, lastDisconnect, qr } = update;
-    const session = sessions.get(deviceId);
-    if (!session) return;
+    if (!sessions.has(deviceId)) return;
 
     if (qr) {
-      session.qrListeners.forEach((fn) => fn(qr));
+      emitQr(deviceId, qr);
       await db.update(waDevices).set({ status: "connecting", updatedAt: new Date() }).where(eq(waDevices.id, deviceId));
-      session.statusListeners.forEach((fn) => fn({ status: "connecting" }));
+      emitStatus(deviceId, { status: "connecting" });
     }
 
     if (connection === "close") {
       const statusCode = (lastDisconnect?.error as any)?.output?.statusCode;
       const loggedOut = statusCode === DisconnectReason.loggedOut;
       await db.update(waDevices).set({ status: "disconnected", updatedAt: new Date() }).where(eq(waDevices.id, deviceId));
-      session.statusListeners.forEach((fn) => fn({ status: "disconnected" }));
+      emitStatus(deviceId, { status: "disconnected" });
       if (!loggedOut) {
-        session.reconnectTimer = setTimeout(() => startBaileysSession(deviceId, sessionDir), 5000);
+        entry.reconnectTimer = setTimeout(() => startBaileysSession(deviceId, sessionDir), 5000);
       } else {
         sessions.delete(deviceId);
       }
@@ -172,7 +198,7 @@ async function startBaileysSession(deviceId: number, sessionDir: string): Promis
       const jid: string = sock.user?.id ?? "";
       const phone = jid.split(":")[0].split("@")[0];
       await db.update(waDevices).set({ status: "connected", phoneNumber: phone || null, updatedAt: new Date() }).where(eq(waDevices.id, deviceId));
-      session.statusListeners.forEach((fn) => fn({ status: "connected", phone }));
+      emitStatus(deviceId, { status: "connected", phone });
     }
   });
 
@@ -249,6 +275,9 @@ export async function disconnectDevice(deviceId: number): Promise<void> {
   clearTimeout(session.reconnectTimer);
   try { await session.socket?.logout?.(); } catch {}
   sessions.delete(deviceId);
+  // Clear all listeners for this device
+  qrRegistry.delete(deviceId);
+  statusRegistry.delete(deviceId);
   await db.update(waDevices).set({ status: "disconnected", updatedAt: new Date() }).where(eq(waDevices.id, deviceId));
 }
 
@@ -269,7 +298,6 @@ async function deliverWebhook(url: string, payload: object): Promise<void> {
 export async function initAllSessions(): Promise<void> {
   const devices = await db.select().from(waDevices).where(eq(waDevices.status, "connected"));
   for (const device of devices) {
-    // In stub mode or if session dir doesn't exist, reset to disconnected
     if (STUB_MODE || !device.sessionDir || !fs.existsSync(device.sessionDir)) {
       await db.update(waDevices)
         .set({ status: "disconnected", updatedAt: new Date() })

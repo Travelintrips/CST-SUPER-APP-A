@@ -27,8 +27,5 @@
     "@types/qrcode": "^1.5.5",
     "tsx": "catalog:",
     "typescript": "~5.9.2"
-  },
-  "optionalDependencies": {
-    "@whiskeysockets/baileys": "^6.7.18"
   }
 }
