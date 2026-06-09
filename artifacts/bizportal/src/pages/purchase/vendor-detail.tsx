@@ -1,6 +1,7 @@
 import { useRef, useState, useMemo, useEffect, useCallback } from "react";
 import { useParams, Link } from "wouter";
 import { AppShell } from "@/components/layout/AppShell";
+import { GooglePlacesAutocomplete } from "@/components/ui/google-places-autocomplete";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1562,7 +1563,11 @@ export default function VendorDetailPage() {
                 </div>
                 <div className="grid gap-1.5">
                   <Label>Alamat</Label>
-                  <Textarea value={vendorForm.address} onChange={(e) => setV("address", e.target.value)} rows={2} />
+                  <GooglePlacesAutocomplete
+                    value={vendorForm.address}
+                    onChange={(v) => setV("address", v)}
+                    placeholder="Ketik alamat vendor..."
+                  />
                 </div>
                 <div className="grid gap-1.5">
                   <Label>Tarif Pajak Default (PPN Pembelian)</Label>
