@@ -22,6 +22,9 @@ app.use(`${BASE}/api/devices`, devicesRouter);
 app.use(`${BASE}/api/messages`, messagesRouter);
 app.use(`${BASE}/api/apikeys`, apikeysRouter);
 
+// Alias: POST /api/send → /api/messages/send (Fonnte-compatible surface)
+app.use(`${BASE}/api/send`, messagesRouter);
+
 app.get(`${BASE}/api/health`, (_req, res) => {
   res.json({ ok: true, time: new Date().toISOString() });
 });
@@ -51,6 +54,7 @@ async function main() {
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`[wa-gateway] API server on port ${PORT}`);
     console.log(`[wa-gateway] Base path: ${BASE}`);
+    console.log(`[wa-gateway] Send API: POST ${BASE}/api/send  OR  POST ${BASE}/api/messages/send`);
   });
 
   try {

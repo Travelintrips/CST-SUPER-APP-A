@@ -2,19 +2,23 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { waDevices } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
-import { requireJwt } from "../middleware/auth.js";
+import { requireJwt, JWT_SECRET } from "../middleware/auth.js";
 import { startSession, disconnectDevice, getSession, getSessionDir } from "../sessions.js";
+import jwt from "jsonwebtoken";
 import type { Response } from "express";
 
 const router = Router();
-router.use(requireJwt);
 
-router.get("/", async (req, res) => {
+// NOTE: do NOT put router.use(requireJwt) here — the SSE /qr route
+// uses EventSource which can't send Authorization headers; it passes token
+// via query param and validates it inside the handler.
+
+router.get("/", requireJwt, async (req, res) => {
   const devices = await db.select().from(waDevices).where(eq(waDevices.accountId, req.auth!.accountId));
   res.json(devices);
 });
 
-router.post("/", async (req, res) => {
+router.post("/", requireJwt, async (req, res) => {
   const { name, webhookUrl } = req.body ?? {};
   if (!name) { res.status(400).json({ error: "Name required" }); return; }
 
@@ -33,7 +37,7 @@ router.post("/", async (req, res) => {
   res.status(201).json(device);
 });
 
-router.get("/:id", async (req, res) => {
+router.get("/:id", requireJwt, async (req, res) => {
   const id = Number(req.params.id);
   const [device] = await db.select().from(waDevices)
     .where(and(eq(waDevices.id, id), eq(waDevices.accountId, req.auth!.accountId)));
@@ -41,7 +45,7 @@ router.get("/:id", async (req, res) => {
   res.json(device);
 });
 
-router.put("/:id", async (req, res) => {
+router.put("/:id", requireJwt, async (req, res) => {
   const id = Number(req.params.id);
   const [existing] = await db.select({ id: waDevices.id }).from(waDevices)
     .where(and(eq(waDevices.id, id), eq(waDevices.accountId, req.auth!.accountId)));
@@ -56,7 +60,7 @@ router.put("/:id", async (req, res) => {
   res.json(device);
 });
 
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", requireJwt, async (req, res) => {
   const id = Number(req.params.id);
   const [existing] = await db.select().from(waDevices)
     .where(and(eq(waDevices.id, id), eq(waDevices.accountId, req.auth!.accountId)));
@@ -67,7 +71,7 @@ router.delete("/:id", async (req, res) => {
   res.json({ ok: true });
 });
 
-router.post("/:id/connect", async (req, res) => {
+router.post("/:id/connect", requireJwt, async (req, res) => {
   const id = Number(req.params.id);
   const [device] = await db.select().from(waDevices)
     .where(and(eq(waDevices.id, id), eq(waDevices.accountId, req.auth!.accountId)));
@@ -84,7 +88,7 @@ router.post("/:id/connect", async (req, res) => {
   res.json({ ok: true, message: "Connecting…" });
 });
 
-router.post("/:id/disconnect", async (req, res) => {
+router.post("/:id/disconnect", requireJwt, async (req, res) => {
   const id = Number(req.params.id);
   const [device] = await db.select({ id: waDevices.id }).from(waDevices)
     .where(and(eq(waDevices.id, id), eq(waDevices.accountId, req.auth!.accountId)));
@@ -96,23 +100,26 @@ router.post("/:id/disconnect", async (req, res) => {
 
 const sseClients = new Map<number, Set<Response>>();
 
+// SSE endpoint — no global requireJwt; validates token from ?token= query param
+// because EventSource cannot send Authorization headers.
 router.get("/:id/qr", async (req, res) => {
   const id = Number(req.params.id);
 
-  // EventSource cannot send headers; accept token from query param for SSE
-  if (!req.auth && req.query.token) {
-    const jwt = await import("jsonwebtoken");
-    const secret = process.env.WA_GATEWAY_JWT_SECRET ?? "wa-gateway-secret-change-in-prod";
-    try {
-      req.auth = jwt.default.verify(String(req.query.token), secret) as any;
-    } catch {
-      res.status(401).json({ error: "Invalid token" });
-      return;
-    }
+  // Validate token from query param (SSE) or Authorization header (fallback)
+  const header = (req.headers.authorization ?? "");
+  const headerToken = header.startsWith("Bearer ") ? header.slice(7) : null;
+  const queryToken = req.query.token ? String(req.query.token) : null;
+  const rawToken = headerToken ?? queryToken;
+
+  if (!rawToken) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
   }
 
-  if (!req.auth) {
-    res.status(401).json({ error: "Unauthorized" });
+  try {
+    req.auth = jwt.verify(rawToken, JWT_SECRET) as any;
+  } catch {
+    res.status(401).json({ error: "Invalid or expired token" });
     return;
   }
 
@@ -136,21 +143,24 @@ router.get("/:id/qr", async (req, res) => {
   sseClients.get(id)!.add(res);
 
   const session = getSession(id);
+  const qrHandler = (qr: string) => send("qr", { qr });
+  const statusHandler = (ev: { status: string; phone?: string }) => send("status", ev);
+
   if (session) {
-    const qrHandler = (qr: string) => send("qr", { qr });
-    const statusHandler = (ev: { status: string; phone?: string }) => send("status", ev);
     session.qrListeners.add(qrHandler);
     session.statusListeners.add(statusHandler);
-
-    req.on("close", () => {
-      session.qrListeners.delete(qrHandler);
-      session.statusListeners.delete(statusHandler);
-      sseClients.get(id)?.delete(res);
-    });
-  } else {
-    req.on("close", () => { sseClients.get(id)?.delete(res); });
   }
 
+  const cleanup = () => {
+    sseClients.get(id)?.delete(res);
+    const s = getSession(id);
+    if (s) {
+      s.qrListeners.delete(qrHandler);
+      s.statusListeners.delete(statusHandler);
+    }
+  };
+
+  req.on("close", cleanup);
   const keepAlive = setInterval(() => { res.write(": ping\n\n"); }, 20000);
   req.on("close", () => clearInterval(keepAlive));
 });

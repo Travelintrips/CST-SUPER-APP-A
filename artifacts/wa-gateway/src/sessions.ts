@@ -1,15 +1,9 @@
 /**
  * WA Gateway Session Manager
  *
- * This file manages WhatsApp device sessions.
- *
- * In Replit dev mode (BAILEYS_STUB=true or Baileys not installed), uses a STUB
- * that simulates the connection flow with a demo QR code.
- *
- * For production with real WhatsApp:
- *   1. Deploy outside Replit
- *   2. Install: npm install @whiskeysockets/baileys
- *   3. Set BAILEYS_STUB=false
+ * STUB_MODE (default on Replit): simulates QR + connection flow with demo data.
+ * Real WhatsApp: set BAILEYS_STUB=false and install @whiskeysockets/baileys
+ * on a non-Replit host.
  */
 
 import path from "path";
@@ -26,7 +20,15 @@ const STUB_MODE = process.env.BAILEYS_STUB !== "false";
 
 if (STUB_MODE) {
   console.warn("[wa-gateway] Running in STUB mode — WhatsApp sessions are simulated.");
-  console.warn("[wa-gateway] To use real WhatsApp, set BAILEYS_STUB=false and install @whiskeysockets/baileys.");
+  console.warn("[wa-gateway] Set BAILEYS_STUB=false + install @whiskeysockets/baileys for real WhatsApp.");
+}
+
+export interface SendPayload {
+  type: "text" | "image" | "document";
+  message?: string;
+  url?: string;
+  caption?: string;
+  filename?: string;
 }
 
 interface SessionEntry {
@@ -49,77 +51,77 @@ export function getSessionDir(deviceId: number): string {
   return dir;
 }
 
-// ── Stub mode ────────────────────────────────────────────────────────────────
+// ── Stub mode ─────────────────────────────────────────────────────────────────
 
 async function startStubSession(deviceId: number): Promise<void> {
-  if (sessions.has(deviceId)) {
-    const ex = sessions.get(deviceId)!;
+  const ex = sessions.get(deviceId);
+  if (ex) {
     clearTimeout(ex.stubTimer);
+    clearTimeout(ex.reconnectTimer);
     sessions.delete(deviceId);
   }
 
-  const entry: SessionEntry = {
-    socket: null,
-    qrListeners: new Set(),
-    statusListeners: new Set(),
-  };
+  const entry: SessionEntry = { socket: null, qrListeners: new Set(), statusListeners: new Set() };
   sessions.set(deviceId, entry);
 
-  await db.update(waDevices)
-    .set({ status: "connecting", updatedAt: new Date() })
-    .where(eq(waDevices.id, deviceId));
-
+  await db.update(waDevices).set({ status: "connecting", updatedAt: new Date() }).where(eq(waDevices.id, deviceId));
   entry.statusListeners.forEach((fn) => fn({ status: "connecting" }));
 
-  // Generate a demo QR code string
-  const { default: QRCode } = await import("qrcode");
-  const demoPayload = `WA_GATEWAY_DEMO,${deviceId},${Date.now()},SCAN_TO_LINK`;
-  const qrDataUrl = await QRCode.toString(demoPayload, { type: "terminal", small: true }).catch(() => demoPayload);
-  const qrRaw = `2@${deviceId},${Date.now()},demo`;
-
-  entry.qrListeners.forEach((fn) => fn(qrRaw));
-
-  // Simulate auto-connect after 15 seconds (demo mode)
+  // Emit a demo QR code string after 1s
   entry.stubTimer = setTimeout(async () => {
     const session = sessions.get(deviceId);
     if (!session) return;
-    const demoPhone = `62800${String(deviceId).padStart(8, "0")}`;
-    await db.update(waDevices)
-      .set({ status: "connected", phoneNumber: demoPhone, updatedAt: new Date() })
-      .where(eq(waDevices.id, deviceId));
-    session.statusListeners.forEach((fn) => fn({ status: "connected", phone: demoPhone }));
-    console.log(`[wa-gateway][stub] Device ${deviceId} auto-connected (demo)`);
-  }, 15_000);
+    const qrRaw = `2@WA_GATEWAY_DEMO_${deviceId},${Date.now()},scan_to_link_device`;
+    session.qrListeners.forEach((fn) => fn(qrRaw));
+
+    // Auto-connect after another 14s in demo mode
+    session.stubTimer = setTimeout(async () => {
+      const s = sessions.get(deviceId);
+      if (!s) return;
+      const demoPhone = `62800${String(deviceId).padStart(8, "0")}`;
+      await db.update(waDevices).set({ status: "connected", phoneNumber: demoPhone, updatedAt: new Date() }).where(eq(waDevices.id, deviceId));
+      s.statusListeners.forEach((fn) => fn({ status: "connected", phone: demoPhone }));
+      console.log(`[wa-gateway][stub] Device ${deviceId} auto-connected (demo phone: ${demoPhone})`);
+    }, 14_000);
+  }, 1_000);
 }
 
-async function sendStubMessage(deviceId: number, to: string, text: string): Promise<string> {
+async function sendStubMessage(deviceId: number, to: string, payload: SendPayload): Promise<string> {
   const msgId = `stub_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  const content = payload.type === "text"
+    ? (payload.message ?? "")
+    : `[${payload.type.toUpperCase()}] ${payload.url ?? ""}${payload.caption ? ` — ${payload.caption}` : ""}`;
+
   await db.insert(waMessages).values({
     deviceId,
     direction: "outbound",
     toFrom: to,
-    messageType: "text",
-    content: text,
+    messageType: payload.type,
+    content,
     status: "sent",
     waMessageId: msgId,
   });
-  console.log(`[wa-gateway][stub] Message to ${to}: ${text.slice(0, 50)}`);
+  console.log(`[wa-gateway][stub] ${payload.type} → ${to}: ${content.slice(0, 60)}`);
   return msgId;
 }
 
 // ── Real Baileys mode ─────────────────────────────────────────────────────────
 
 async function startBaileysSession(deviceId: number, sessionDir: string): Promise<void> {
-  // Dynamic import so missing package doesn't crash the whole server
   let baileys: any;
   try {
     baileys = await import("@whiskeysockets/baileys");
   } catch {
-    console.error("[wa-gateway] @whiskeysockets/baileys not installed — falling back to stub mode");
+    console.error("[wa-gateway] @whiskeysockets/baileys not installed — falling back to stub");
     return startStubSession(deviceId);
   }
 
-  const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = baileys;
+  const {
+    default: makeWASocket,
+    useMultiFileAuthState,
+    DisconnectReason,
+    fetchLatestBaileysVersion,
+  } = baileys;
   const { Boom } = await import("@hapi/boom").catch(() => ({ Boom: Error }));
   const pino = (await import("pino")).default;
 
@@ -194,30 +196,46 @@ async function startBaileysSession(deviceId: number, sessionDir: string): Promis
   });
 }
 
-async function sendBaileysMessage(deviceId: number, to: string, text: string): Promise<string> {
+async function sendBaileysMessage(deviceId: number, to: string, payload: SendPayload): Promise<string> {
   const session = sessions.get(deviceId);
   if (!session?.socket) throw new Error("Device session not active");
   const jid = to.includes("@") ? to : `${to}@s.whatsapp.net`;
-  const result = await session.socket.sendMessage(jid, { text });
+
+  let waPayload: any;
+  if (payload.type === "text") {
+    waPayload = { text: payload.message ?? "" };
+  } else if (payload.type === "image") {
+    waPayload = { image: { url: payload.url }, caption: payload.caption ?? "" };
+  } else if (payload.type === "document") {
+    waPayload = { document: { url: payload.url }, fileName: payload.filename ?? "document", caption: payload.caption ?? "" };
+  } else {
+    throw new Error(`Unsupported message type: ${(payload as any).type}`);
+  }
+
+  const result = await session.socket.sendMessage(jid, waPayload);
   const msgId = result?.key?.id ?? `real_${Date.now()}`;
-  await db.insert(waMessages).values({ deviceId, direction: "outbound", toFrom: to, messageType: "text", content: text, status: "sent", waMessageId: msgId });
+
+  const content = payload.type === "text"
+    ? (payload.message ?? "")
+    : `[${payload.type.toUpperCase()}] ${payload.url ?? ""}${payload.caption ? ` — ${payload.caption}` : ""}`;
+
+  await db.insert(waMessages).values({
+    deviceId, direction: "outbound", toFrom: to,
+    messageType: payload.type, content, status: "sent", waMessageId: msgId,
+  });
   return msgId;
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
 export async function startSession(deviceId: number, sessionDir: string): Promise<void> {
-  if (STUB_MODE) {
-    return startStubSession(deviceId);
-  }
-  return startBaileysSession(deviceId, sessionDir);
+  return STUB_MODE ? startStubSession(deviceId) : startBaileysSession(deviceId, sessionDir);
 }
 
-export async function sendTextMessage(deviceId: number, to: string, text: string): Promise<string> {
+export async function sendMessage(deviceId: number, to: string, payload: SendPayload): Promise<string> {
   const session = sessions.get(deviceId);
   if (!session) throw new Error("Device not connected");
-  if (STUB_MODE) return sendStubMessage(deviceId, to, text);
-  return sendBaileysMessage(deviceId, to, text);
+  return STUB_MODE ? sendStubMessage(deviceId, to, payload) : sendBaileysMessage(deviceId, to, payload);
 }
 
 export async function disconnectDevice(deviceId: number): Promise<void> {
@@ -247,8 +265,11 @@ async function deliverWebhook(url: string, payload: object): Promise<void> {
 export async function initAllSessions(): Promise<void> {
   const devices = await db.select().from(waDevices).where(eq(waDevices.status, "connected"));
   for (const device of devices) {
+    // In stub mode or if session dir doesn't exist, reset to disconnected
     if (STUB_MODE || !device.sessionDir || !fs.existsSync(device.sessionDir)) {
-      await db.update(waDevices).set({ status: "disconnected", updatedAt: new Date() }).where(eq(waDevices.id, device.id));
+      await db.update(waDevices)
+        .set({ status: "disconnected", updatedAt: new Date() })
+        .where(eq(waDevices.id, device.id));
     }
   }
 }

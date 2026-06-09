@@ -2,10 +2,23 @@ import type { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import { db } from "@workspace/db";
-import { waApiKeys, waAccounts } from "@workspace/db";
+import { waApiKeys } from "@workspace/db";
 import { eq } from "drizzle-orm";
 
-const JWT_SECRET = process.env.WA_GATEWAY_JWT_SECRET ?? "wa-gateway-secret-change-in-prod";
+// Fail-fast if the JWT secret is not set in production
+export const JWT_SECRET = (() => {
+  const secret = process.env.WA_GATEWAY_JWT_SECRET;
+  if (!secret) {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("[wa-gateway] WA_GATEWAY_JWT_SECRET must be set in production");
+    }
+    // Dev-only fallback — random per-process, tokens don't survive restarts
+    const fallback = `dev_${Math.random().toString(36).slice(2)}${Date.now()}`;
+    console.warn("[wa-gateway] WA_GATEWAY_JWT_SECRET not set — using ephemeral dev secret (tokens reset on restart)");
+    return fallback;
+  }
+  return secret;
+})();
 
 export interface AuthPayload {
   accountId: number;
