@@ -160,6 +160,7 @@ import VendorPerformancePage from "@/pages/logistics/vendor-performance";
 import VendorRecommendationPage from "@/pages/logistics/vendor-recommendation";
 import VendorCommodityIntelligencePage from "@/pages/logistics/vendor-commodity-intelligence";
 import InternalTasksPage from "@/pages/logistics/internal-tasks";
+import LogisticsVendorFulfillmentsPage from "@/pages/logistics-vendor-fulfillments";
 import ProductFirstAnalyticsPage from "@/pages/logistics/product-first-analytics";
 import ProductFirstAuditPage from "@/pages/logistics/product-first-audit";
 import LogisticsImportAssistantPage from "@/pages/logistics-import-assistant";
@@ -246,6 +247,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/logistics/vendor-performance" component={PR(VendorPerformancePage)} />
       <Route path="/logistics/vendor-recommendation" component={PR(VendorRecommendationPage)} />
       <Route path="/logistics/vendor-commodity-intelligence" component={PR(VendorCommodityIntelligencePage)} />
+      <Route path="/logistics/vendor-fulfillments" component={PR(LogisticsVendorFulfillmentsPage)} />
       <Route path="/logistics/internal-tasks" component={PR(InternalTasksPage)} />
       <Route path="/logistics/product-first/analytics" component={PR(ProductFirstAnalyticsPage)} />
       <Route path="/logistics/product-first/audit" component={PR(ProductFirstAuditPage)} />

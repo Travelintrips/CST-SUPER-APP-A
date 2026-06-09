@@ -1399,6 +1399,91 @@ logisticOrdersRouter.delete("/vendors/:id", async (req: Request, res: Response) 
   return res.json({ success: true });
 });
 
+// GET /vendor-fulfillments — daftar semua vendor fulfillment
+logisticOrdersRouter.get("/vendor-fulfillments", requireClerkUser, async (req: Request, res: Response) => {
+  const { status, vendorId, serviceType, dateFrom, dateTo, search } = req.query as Record<string, string>;
+
+  const conditions: ReturnType<typeof eq>[] = [];
+  if (status && status !== "all") conditions.push(eq(logisticVendorFulfillmentsTable.status, status));
+  if (vendorId) conditions.push(eq(logisticVendorFulfillmentsTable.vendorId, parseInt(vendorId, 10)));
+  if (serviceType && serviceType !== "all") conditions.push(eq(logisticVendorFulfillmentsTable.serviceType, serviceType));
+  if (dateFrom) conditions.push(gte(logisticVendorFulfillmentsTable.createdAt, new Date(dateFrom)));
+  if (dateTo) {
+    const dt = new Date(dateTo);
+    dt.setDate(dt.getDate() + 1);
+    conditions.push(lte(logisticVendorFulfillmentsTable.createdAt, dt));
+  }
+  if (search && search.trim()) {
+    const pat = `%${search.trim()}%`;
+    conditions.push(
+      or(
+        ilike(logisticOrdersTable.customerName, pat),
+        ilike(logisticOrdersTable.companyName, pat),
+        ilike(logisticOrdersTable.orderNumber, pat),
+        ilike(suppliersTable.name, pat),
+      ) as any,
+    );
+  }
+
+  const rows = await db
+    .select({
+      id: logisticVendorFulfillmentsTable.id,
+      orderId: logisticVendorFulfillmentsTable.orderId,
+      orderItemId: logisticVendorFulfillmentsTable.orderItemId,
+      vendorId: logisticVendorFulfillmentsTable.vendorId,
+      vendorName: suppliersTable.name,
+      serviceType: logisticVendorFulfillmentsTable.serviceType,
+      status: logisticVendorFulfillmentsTable.status,
+      adminNotes: logisticVendorFulfillmentsTable.adminNotes,
+      createdAt: logisticVendorFulfillmentsTable.createdAt,
+      orderNumber: logisticOrdersTable.orderNumber,
+      customerName: logisticOrdersTable.customerName,
+      companyName: logisticOrdersTable.companyName,
+      subtotal: logisticOrderItemsTable.subtotal,
+      itemServiceName: logisticOrderItemsTable.serviceName,
+    })
+    .from(logisticVendorFulfillmentsTable)
+    .leftJoin(logisticOrdersTable, eq(logisticOrdersTable.id, logisticVendorFulfillmentsTable.orderId))
+    .leftJoin(suppliersTable, eq(suppliersTable.id, logisticVendorFulfillmentsTable.vendorId))
+    .leftJoin(logisticOrderItemsTable, eq(logisticOrderItemsTable.id, logisticVendorFulfillmentsTable.orderItemId))
+    .where(conditions.length > 0 ? and(...(conditions as any[])) : undefined)
+    .orderBy(desc(logisticVendorFulfillmentsTable.createdAt))
+    .limit(300);
+
+  const allStats = await db
+    .select({
+      status: logisticVendorFulfillmentsTable.status,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(logisticVendorFulfillmentsTable)
+    .groupBy(logisticVendorFulfillmentsTable.status);
+
+  const stats: Record<string, number> = { pending: 0, in_progress: 0, completed: 0, cancelled: 0 };
+  for (const s of allStats) {
+    if (s.status && s.status in stats) stats[s.status] = s.count;
+  }
+
+  return res.json({
+    data: rows.map((r) => ({
+      id: r.id,
+      orderId: r.orderId,
+      orderItemId: r.orderItemId,
+      orderNumber: r.orderNumber ?? "",
+      vendorId: r.vendorId,
+      vendorName: r.vendorName ?? "—",
+      serviceType: r.serviceType ?? "—",
+      itemServiceName: r.itemServiceName ?? "—",
+      status: r.status,
+      adminNotes: r.adminNotes ?? null,
+      customerName: r.customerName ?? "",
+      companyName: r.companyName ?? "",
+      subtotal: r.subtotal ? parseFloat(r.subtotal) : 0,
+      createdAt: r.createdAt?.toISOString() ?? "",
+    })),
+    stats,
+  });
+});
+
 // GET /api/logistic/orders/:id/progress — timeline events untuk order
 logisticOrdersRouter.get("/:id/progress", async (req: Request, res: Response) => {
   const id = parseInt(String(req.params.id), 10);
