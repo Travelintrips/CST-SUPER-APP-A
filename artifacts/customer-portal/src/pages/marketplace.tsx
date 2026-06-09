@@ -16,8 +16,8 @@ import {
   Store, Search, SlidersHorizontal, X, Building2, Package, Truck,
   Tag, MapPin, Clock, ChevronRight, Filter, RefreshCw, GitCompareArrows,
 } from "lucide-react";
-import type { MarketplaceItem, FilterFieldDef, ActiveFilters, ServiceCategoryOption } from "@/lib/catalogFilters";
-import { buildCatalogFilters, matchVendorCatalog, buildServiceCategories } from "@/lib/catalogFilters";
+import type { MarketplaceItem, FilterFieldDef, ActiveFilters } from "@/lib/catalogFilters";
+import { buildCatalogFilters, matchVendorCatalog } from "@/lib/catalogFilters";
 import { CompareTray, CompareModal } from "@/components/VendorComparison";
 
 // ── Category placeholder config (emoji + gradient) ───────────────────────────
@@ -70,15 +70,6 @@ const PRODUCT_CATS = [
   { key: "textile",    label: "Tekstil",        emoji: "🧵" },
 ];
 
-const SERVICE_CATS = [
-  { key: "all",          label: "Semua Jasa",  emoji: "🌐" },
-  { key: "sea_freight",  label: "Sea Freight", emoji: "🚢" },
-  { key: "air_freight",  label: "Air Freight", emoji: "✈️" },
-  { key: "ppjk",         label: "PPJK",        emoji: "📋" },
-  { key: "handling",     label: "Handling",    emoji: "🏭" },
-  { key: "document",     label: "Document",    emoji: "📄" },
-  { key: "exim_service", label: "Exim Service",emoji: "🌍" },
-];
 
 // ── Currency formatter ────────────────────────────────────────────────────────
 function formatPrice(price: number, currency: string): string {
@@ -713,27 +704,28 @@ export default function MarketplacePage() {
     const rawQ        = sp.get("q") ?? "";
     const rawCat      = sp.get("category") ?? "all";
 
-    if (explicitType === "service" || explicitType === "product") {
+    // Always product tab — service tab removed
+    if (explicitType === "product") {
       return {
-        urlTab:      explicitType as "product" | "service",
+        urlTab:      "product" as const,
         urlCategory: rawCat,
         urlQ:        rawQ,
       };
     }
 
-    // No explicit type — try to detect from keyword
+    // No explicit type — try to detect from keyword (product only)
     if (rawQ) {
       const detected = detectTypeFromQ(rawQ);
-      if (detected) {
+      if (detected && detected.tab === "product") {
         return {
-          urlTab:      detected.tab,
+          urlTab:      "product" as const,
           urlCategory: rawCat !== "all" ? rawCat : detected.category,
           urlQ:        rawQ,
         };
       }
     }
 
-    // Fallback: product tab (or keep current default)
+    // Fallback: product tab
     return {
       urlTab:      "product" as const,
       urlCategory: rawCat,
@@ -778,16 +770,7 @@ export default function MarketplacePage() {
     setCurrentPage(1);
   }, [urlTab, urlCategory, urlQ]);
 
-  const categories = activeTab === "product" ? PRODUCT_CATS : SERVICE_CATS;
-
-  // Reset category when tab changes — also update URL
-  function handleTabChange(tab: "product" | "service") {
-    const sp = new URLSearchParams(search);
-    sp.set("type", tab);
-    sp.delete("category");
-    sp.delete("q");
-    setLocation(`/marketplace?${sp.toString()}`);
-  }
+  const categories = PRODUCT_CATS;
 
   function handleCategoryChange(cat: string) {
     const sp = new URLSearchParams(search);
@@ -813,27 +796,15 @@ export default function MarketplacePage() {
   // ── Build filters from fetched items ──────────────────────────────────────
   const filters = useMemo(() => buildCatalogFilters(items), [items]);
 
-  // ── Build service category list from actual item data (service tab only) ──
-  const serviceCategories = useMemo(
-    () => (activeTab === "service"
-      ? buildServiceCategories(items).filter(c => c.key !== "trucking")
-      : []),
-    [activeTab, items],
-  );
+  // Service tab removed — marketplace is product-only
 
   // ── Apply active filters + search ─────────────────────────────────────────
   const visibleItems = useMemo(() => {
     const merged: ActiveFilters = { ...activeFilters };
     if (searchQuery.trim()) merged["__search"] = searchQuery.trim();
     return items
-      .filter((item) => {
-        // Trucking items are handled by the dedicated /trucking page
-        const cat = item.categoryKey ?? item.serviceType ?? "";
-        if (activeTab === "service" && cat === "trucking") return false;
-        return true;
-      })
       .filter((item) => matchVendorCatalog(item, merged));
-  }, [items, activeFilters, searchQuery, activeTab]);
+  }, [items, activeFilters, searchQuery]);
 
   // ── Compare items (resolved from IDs → actual items) ─────────────────────
   const compareItems = useMemo(
@@ -876,34 +847,8 @@ export default function MarketplacePage() {
             </div>
           </div>
           <p className="text-[14px] text-sky-100 max-w-2xl leading-relaxed">
-            Jelajahi produk dan layanan dari vendor kami yang telah terverifikasi. Temukan penawaran terbaik, bandingkan spesifikasi, dan ajukan permintaan penawaran langsung.
+            Jelajahi produk dari vendor kami yang telah terverifikasi. Temukan penawaran terbaik, bandingkan spesifikasi, dan ajukan permintaan penawaran langsung.
           </p>
-
-          {/* ── Tab switcher ────────────────────────────────────────────── */}
-          <div className="flex gap-2 mt-6">
-            <button
-              onClick={() => handleTabChange("product")}
-              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] font-semibold transition-all duration-200 ${
-                activeTab === "product"
-                  ? "bg-white text-sky-700 shadow-md"
-                  : "bg-white/10 text-white hover:bg-white/20"
-              }`}
-            >
-              <Package className="h-4 w-4" />
-              Produk
-            </button>
-            <button
-              onClick={() => handleTabChange("service")}
-              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] font-semibold transition-all duration-200 ${
-                activeTab === "service"
-                  ? "bg-white text-sky-700 shadow-md"
-                  : "bg-white/10 text-white hover:bg-white/20"
-              }`}
-            >
-              <Truck className="h-4 w-4" />
-              Layanan / Jasa
-            </button>
-          </div>
         </div>
       </div>
 
@@ -959,8 +904,8 @@ export default function MarketplacePage() {
               onReset={handleReset}
               searchQuery={searchQuery}
               onSearchChange={setSearchQuery}
-              isService={activeTab === "service"}
-              serviceCategories={serviceCategories}
+              isService={false}
+              serviceCategories={[]}
               activeCategory={activeCategory}
               onCategoryChange={handleCategoryChange}
             />
@@ -996,7 +941,7 @@ export default function MarketplacePage() {
                 <Store className="h-12 w-12 text-slate-300 mb-3" />
                 <p className="text-[16px] font-semibold text-slate-500">
                   {activeFilterCount > 0 || searchQuery.trim()
-                    ? "Tidak ada produk atau layanan yang cocok."
+                    ? "Tidak ada produk yang cocok."
                     : "Belum ada item tersedia"}
                 </p>
                 <p className="text-[13px] text-slate-400 mt-1 max-w-xs">
@@ -1024,11 +969,7 @@ export default function MarketplacePage() {
                       compareDisabled={compareIds.length >= MAX_COMPARE && !compareIds.includes(item.id)}
                       onToggleCompare={handleToggleCompare}
                       onClick={() => {
-                        if (item.templateKind === "service") {
-                          setLocation(`/jasa/vendor/${item.id}`);
-                        } else {
-                          setLocation(`/marketplace/${item.id}`);
-                        }
+                        setLocation(`/marketplace/${item.id}`);
                       }}
                     />
                   ))}
@@ -1082,11 +1023,7 @@ export default function MarketplacePage() {
           onRequestQuote={(item) => {
             setShowCompareModal(false);
             handleClearCompare();
-            if (item.templateKind === "service") {
-              setLocation(`/jasa/vendor/${item.id}`);
-            } else {
-              setLocation(`/marketplace/${item.id}`);
-            }
+            setLocation(`/marketplace/${item.id}`);
           }}
         />
       )}
