@@ -1,9 +1,7 @@
 import { Router } from "express";
 import multer from "multer";
 import { db, productMediaTable, vendorCatalogItemsTable, suppliersTable } from "@workspace/db";
-import { eq, and, asc, inArray, isNull, ne } from "drizzle-orm";
-import { db, productMediaTable, vendorCatalogItemsTable } from "@workspace/db";
-import { eq, and, asc, desc, isNull, sql } from "drizzle-orm";
+import { eq, and, asc, desc, inArray, isNull, ne, sql } from "drizzle-orm";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { uploadToSupabase, deleteFromSupabase } from "../lib/supabaseStorage.js";
 import { compressImageBuffer, isCompressibleImage } from "../lib/imageCompress.js";
