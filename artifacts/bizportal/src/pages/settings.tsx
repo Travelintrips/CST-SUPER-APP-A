@@ -1649,6 +1649,15 @@ function WaTemplatesCard() {
               size="sm"
               variant="outline"
               className="gap-2"
+              onClick={() => { window.location.href = "/bizportal/settings/wa-gateway"; }}
+            >
+              <MessageCircle className="h-4 w-4 text-green-600" />
+              WA Gateway
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-2"
               onClick={() => { window.location.href = "/bizportal/settings/wati"; }}
             >
               <MessageCircle className="h-4 w-4 text-emerald-500" />
