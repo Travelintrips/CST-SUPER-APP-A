@@ -330,6 +330,7 @@ logisticVendorFulfillmentAdminRouter.post(
     const poSnapshot = {
       fulfillmentId:        id,
       orderId:              vf.orderId,
+      orderItemId:          vf.orderItemId,
       orderNumber:          vf.orderNumber ?? null,
       vendorCatalogItemId:  vf.vendorCatalogItemId,
       serviceType:          vf.serviceType ?? null,

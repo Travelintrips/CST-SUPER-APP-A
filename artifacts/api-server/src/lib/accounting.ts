@@ -45,7 +45,8 @@ export interface PostingInput {
     | "sport_center_booking_refund"
     | "sport_center_refund"
     | "sport_center_membership"
-    | "sport_center_operational_expense";
+    | "sport_center_operational_expense"
+    | "logistic_vendor_cost";
   sourceId?: number | null;
   createdById?: string | null;
   companyId?: number | null;
@@ -470,6 +471,181 @@ export async function postLogisticSalesInvoice(args: {
     logger.error(
       { err, logisticOrderId: args.logisticOrderId, salesDocId: args.salesDocId },
       "postLogisticSalesInvoice: gagal post jurnal",
+    );
+  }
+}
+
+// ── Logistic serviceType → COGS COA base code mapping ───────────────────────
+const SERVICE_TYPE_COGS_CODES: Record<string, string> = {
+  trucking:    "5-1023",  // HPP Trucking / Land Freight
+  sea_freight: "5-1021",  // HPP Sea Freight
+  air_freight: "5-1022",  // HPP Air Freight
+  ppjk:        "5-1024",  // HPP PPJK / Kepabeanan
+  handling:    "5-1025",  // HPP Handling Service
+  document:    "5-1026",  // HPP Document Service
+};
+
+/** Resolve COGS account id untuk service type tertentu (company-specific, fallback ke 5-1020). */
+async function resolveServiceTypeCOGSAccountId(
+  serviceType: string | null | undefined,
+  companyId: number | null | undefined,
+  fallbackId: number | null | undefined,
+): Promise<number | null> {
+  const baseCode = serviceType ? SERVICE_TYPE_COGS_CODES[serviceType.toLowerCase().trim()] : null;
+  if (!baseCode) {
+    // Fallback: HPP Jasa Logistik (5-1020)
+    const cFilter = companyId ?? 1;
+    let [row] = await db
+      .select({ id: chartOfAccountsTable.id })
+      .from(chartOfAccountsTable)
+      .where(sql`${chartOfAccountsTable.code} LIKE ${"5-1020%"} AND ${chartOfAccountsTable.companyId} = ${cFilter}`)
+      .limit(1);
+    if (!row) {
+      [row] = await db
+        .select({ id: chartOfAccountsTable.id })
+        .from(chartOfAccountsTable)
+        .where(sql`${chartOfAccountsTable.code} LIKE ${"5-1020%"}`)
+        .limit(1);
+    }
+    return row?.id ?? fallbackId ?? null;
+  }
+
+  const cFilter = companyId ?? 1;
+  let [row] = await db
+    .select({ id: chartOfAccountsTable.id })
+    .from(chartOfAccountsTable)
+    .where(sql`${chartOfAccountsTable.code} LIKE ${baseCode + "%"} AND ${chartOfAccountsTable.companyId} = ${cFilter}`)
+    .limit(1);
+  if (!row) {
+    [row] = await db
+      .select({ id: chartOfAccountsTable.id })
+      .from(chartOfAccountsTable)
+      .where(sql`${chartOfAccountsTable.code} LIKE ${baseCode + "%"}`)
+      .limit(1);
+  }
+  return row?.id ?? fallbackId ?? null;
+}
+
+/**
+ * Post jurnal COGS untuk Vendor PO dari marketplace service.
+ *
+ * Struktur:
+ *   Debit:  HPP per serviceType (dari vendorCostSnapshot.vendorCost — BUKAN priceSell)
+ *   Credit: Hutang Usaha / AP
+ *
+ * Trigger: saat Vendor PO di-confirm (approved) ATAU vendor invoice received (mark_billed).
+ * Deduplication: source="logistic_vendor_cost" + sourceId=vendorPoId — hanya posting sekali.
+ *
+ * Tidak posting jika:
+ *   - vendorCostSnapshot tidak ada
+ *   - vendorCost = 0 (belum ada cost review)
+ */
+export async function postLogisticVendorCostJournal(args: {
+  vendorPoId: number;
+  docNumber: string;
+  supplierName: string;
+  vendorId?: number | null;
+  serviceType?: string | null;
+  vendorCostSnapshot: {
+    vendorCost: number;
+    currency?: string;
+    unit?: string;
+    source?: string;
+  };
+  /** References dari poSnapshot (fulfillmentId, orderId, orderItemId, vendorCatalogItemId) */
+  refs?: {
+    vendorFulfillmentId?: number | null;
+    orderId?: number | null;
+    orderItemId?: number | null;
+    vendorCatalogItemId?: number | null;
+  };
+  companyId?: number | null;
+  createdById?: string | null;
+}): Promise<void> {
+  try {
+    const { vendorCostSnapshot } = args;
+    const vendorCost = Number(vendorCostSnapshot.vendorCost ?? 0);
+
+    // Rule: jangan post jika belum ada cost
+    if (!vendorCost || vendorCost <= 0) {
+      logger.warn(
+        { vendorPoId: args.vendorPoId },
+        "postLogisticVendorCostJournal: skip — vendorCost = 0 (belum ada cost review)",
+      );
+      return;
+    }
+
+    const settings = await ensureAccountingSettings(args.companyId ?? undefined);
+    if (!settings.apAccountId || !settings.purchaseJournalId) {
+      logger.warn(
+        { vendorPoId: args.vendorPoId },
+        "postLogisticVendorCostJournal: skip — accounting settings incomplete (apAccountId atau purchaseJournalId null)",
+      );
+      return;
+    }
+
+    // Resolve COGS account berdasarkan serviceType
+    const cogsAccountId = await resolveServiceTypeCOGSAccountId(
+      args.serviceType,
+      args.companyId,
+      settings.purchaseExpenseAccountId,
+    );
+    if (!cogsAccountId) {
+      logger.warn(
+        { vendorPoId: args.vendorPoId, serviceType: args.serviceType },
+        "postLogisticVendorCostJournal: skip — tidak bisa resolve COGS account",
+      );
+      return;
+    }
+
+    // Bangun reference string untuk description
+    const r = args.refs ?? {};
+    const refParts: string[] = [`poId:${args.vendorPoId}`];
+    if (r.vendorFulfillmentId) refParts.push(`fulfillmentId:${r.vendorFulfillmentId}`);
+    if (args.vendorId)          refParts.push(`vendorId:${args.vendorId}`);
+    if (r.orderId)              refParts.push(`orderId:${r.orderId}`);
+    if (r.orderItemId)          refParts.push(`orderItemId:${r.orderItemId}`);
+    if (r.vendorCatalogItemId)  refParts.push(`catalogId:${r.vendorCatalogItemId}`);
+    const refStr = `[${refParts.join(", ")}]`;
+
+    const stLabel = args.serviceType ? ` ${args.serviceType}` : "";
+
+    await postEntry(
+      {
+        journalId:   settings.purchaseJournalId,
+        date:        new Date(),
+        ref:         args.docNumber,
+        description: `Vendor Cost${stLabel} - ${args.docNumber} ${refStr}`,
+        source:      "logistic_vendor_cost",
+        sourceId:    args.vendorPoId,
+        createdById: args.createdById ?? null,
+        companyId:   args.companyId ?? null,
+        lines: [
+          {
+            accountId:   cogsAccountId,
+            debit:       round2(vendorCost),
+            credit:      0,
+            description: `HPP${stLabel} - ${args.docNumber} - ${args.supplierName} ${refStr}`,
+          },
+          {
+            accountId:   settings.apAccountId,
+            debit:       0,
+            credit:      round2(vendorCost),
+            description: `Hutang ${args.supplierName} - ${args.docNumber} ${refStr}`,
+          },
+        ],
+      },
+      "PUR",
+    );
+
+    logger.info(
+      { vendorPoId: args.vendorPoId, serviceType: args.serviceType, vendorCost, cogsAccountId },
+      "postLogisticVendorCostJournal: jurnal COGS berhasil diposting",
+    );
+  } catch (err) {
+    logger.error(
+      { err, vendorPoId: args.vendorPoId },
+      "postLogisticVendorCostJournal: gagal post jurnal",
     );
   }
 }
