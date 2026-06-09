@@ -11,7 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   ArrowLeft, CheckCircle2, XCircle, Loader2, Send, RefreshCw,
   Wifi, WifiOff, MessageCircle, Info, AlertTriangle, Smartphone,
-  ExternalLink, Eye, EyeOff,
+  ExternalLink, Eye, EyeOff, BookOpen, Terminal, QrCode, Key, Hash,
 } from "lucide-react";
 import { Link } from "wouter";
 
@@ -358,6 +358,120 @@ export default function WaGatewaySettingsPage() {
               <ExternalLink size={14} />
               Buka Dashboard WA Gateway
             </Button>
+          </CardContent>
+        </Card>
+
+        {/* Setup Guide */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <BookOpen size={16} className="text-blue-400" />
+              Panduan Setup WA Gateway
+            </CardTitle>
+            <CardDescription>
+              WA Gateway adalah software terpisah yang dijalankan sendiri — gratis, tanpa biaya per pesan.
+              Notifikasi saat ini dikirim via <strong>Fonnte</strong> (sudah aktif). WA Gateway bersifat opsional.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-5 text-sm">
+
+            {/* Step 1 */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 font-semibold text-foreground">
+                <span className="flex items-center justify-center w-5 h-5 rounded-full bg-primary/20 text-primary text-xs font-bold shrink-0">1</span>
+                <Terminal size={14} className="text-muted-foreground" />
+                Jalankan WA Gateway via Docker
+              </div>
+              <div className="ml-7 space-y-2">
+                <p className="text-muted-foreground text-xs">Jalankan perintah ini di server/komputer Anda:</p>
+                <pre className="bg-muted rounded-lg px-4 py-3 font-mono text-xs overflow-x-auto leading-relaxed select-all">{`docker run -d \\
+  --name waha \\
+  --restart unless-stopped \\
+  -p 8000:3000 \\
+  devlikeapro/waha`}</pre>
+                <p className="text-xs text-muted-foreground">
+                  Butuh Docker? Install di{" "}
+                  <a href="https://docs.docker.com/get-docker/" target="_blank" rel="noreferrer" className="text-primary underline underline-offset-2">
+                    docs.docker.com/get-docker
+                  </a>
+                </p>
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Step 2 */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 font-semibold text-foreground">
+                <span className="flex items-center justify-center w-5 h-5 rounded-full bg-primary/20 text-primary text-xs font-bold shrink-0">2</span>
+                <QrCode size={14} className="text-muted-foreground" />
+                Buka Dashboard &amp; Scan QR
+              </div>
+              <div className="ml-7 space-y-1.5">
+                <p className="text-muted-foreground text-xs">Setelah Docker berjalan, buka browser:</p>
+                <code className="block bg-muted rounded px-3 py-1.5 font-mono text-xs select-all">http://localhost:8000/dashboard</code>
+                <ol className="text-xs text-muted-foreground space-y-1 list-decimal ml-4 mt-2">
+                  <li>Klik <strong className="text-foreground">Start new session</strong></li>
+                  <li>Scan QR code dengan WhatsApp di HP Anda (<em>Linked Devices → Link a Device</em>)</li>
+                  <li>Tunggu status berubah menjadi <strong className="text-emerald-400">WORKING</strong></li>
+                  <li>Catat <strong className="text-foreground">Session Name</strong> — ini adalah Device ID Anda (biasanya <code>default</code> atau angka)</li>
+                </ol>
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Step 3 */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 font-semibold text-foreground">
+                <span className="flex items-center justify-center w-5 h-5 rounded-full bg-primary/20 text-primary text-xs font-bold shrink-0">3</span>
+                <Key size={14} className="text-muted-foreground" />
+                Buat API Key
+              </div>
+              <div className="ml-7 space-y-1.5">
+                <ol className="text-xs text-muted-foreground space-y-1 list-decimal ml-4">
+                  <li>Di dashboard, buka menu <strong className="text-foreground">API Keys</strong></li>
+                  <li>Klik <strong className="text-foreground">Create API Key</strong></li>
+                  <li>Salin key yang dihasilkan (format <code className="bg-muted px-1 rounded">wag_xxx...</code>)</li>
+                </ol>
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Step 4 */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 font-semibold text-foreground">
+                <span className="flex items-center justify-center w-5 h-5 rounded-full bg-primary/20 text-primary text-xs font-bold shrink-0">4</span>
+                <Hash size={14} className="text-muted-foreground" />
+                Isi form Konfigurasi di atas
+              </div>
+              <div className="ml-7">
+                <div className="rounded-lg border border-border overflow-hidden text-xs">
+                  <div className="grid grid-cols-[120px_1fr] divide-y divide-border">
+                    <div className="bg-muted/60 px-3 py-2 font-medium text-foreground">WA Gateway URL</div>
+                    <div className="px-3 py-2 text-muted-foreground font-mono">http://localhost:8000</div>
+                    <div className="bg-muted/60 px-3 py-2 font-medium text-foreground">API Key</div>
+                    <div className="px-3 py-2 text-muted-foreground font-mono">wag_xxx... (dari step 3)</div>
+                    <div className="bg-muted/60 px-3 py-2 font-medium text-foreground">Device ID</div>
+                    <div className="px-3 py-2 text-muted-foreground font-mono">default (dari step 2)</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Info box */}
+            <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-500/10 text-blue-700 dark:text-blue-400 text-xs">
+              <Info size={13} className="mt-0.5 shrink-0" />
+              <span>
+                Jika WA Gateway di-deploy di server cloud (bukan localhost), ganti URL-nya. 
+                Pastikan port 8000 bisa diakses dari server API ini.
+                Jika gateway tidak aktif atau gagal, notifikasi otomatis <strong>fallback ke Fonnte</strong>.
+              </span>
+            </div>
+
           </CardContent>
         </Card>
 
