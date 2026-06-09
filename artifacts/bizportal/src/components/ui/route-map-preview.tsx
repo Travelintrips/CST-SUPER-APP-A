@@ -4,11 +4,12 @@ import { MapPin, Route, Clock, Loader2, Navigation } from "lucide-react";
 interface Props {
   origin: string;
   destination: string;
+  onDistanceFetched?: (km: number | null) => void;
 }
 
 const GMAPS_KEY = (import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string) ?? "";
 
-export function RouteMapPreview({ origin, destination }: Props) {
+export function RouteMapPreview({ origin, destination, onDistanceFetched }: Props) {
   const [distanceKm, setDistanceKm] = useState<number | null>(null);
   const [durationText, setDurationText] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -33,6 +34,7 @@ export function RouteMapPreview({ origin, destination }: Props) {
         .then((d) => {
           setDistanceKm(d.distanceKm ?? null);
           setDurationText(d.durationText ?? null);
+          onDistanceFetched?.(d.distanceKm ?? null);
         })
         .catch(() => {})
         .finally(() => setLoading(false));

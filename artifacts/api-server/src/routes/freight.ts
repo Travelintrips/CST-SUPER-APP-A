@@ -222,7 +222,7 @@ router.post("/freight-shipments", async (req, res) => {
   const { shipperName, shipperAddress, consigneeName, consigneeAddress, commodity,
     grossWeight, netWeight, quantity, packingType, dimensions, hsCode, origin, destination,
     portOfLoading, portOfDischarge, vessel, voyage, notifyParty, marksAndNumbers, measurement, notes,
-    transportMode, cargoType, containerNo, salesDocId, purchaseDocId } = req.body;
+    transportMode, cargoType, containerNo, salesDocId, purchaseDocId, freightCost } = req.body;
   if (!salesDocId) {
     return res.status(400).json({ message: "Sales Order wajib dipilih sebelum membuat shipment." });
   }
@@ -261,6 +261,7 @@ router.post("/freight-shipments", async (req, res) => {
     transportMode: validatedTM,
     cargoType: validatedCT,
     containerNo: containerNo || null,
+    freightCost: freightCost != null ? String(freightCost) : "0",
     salesDocId: salesDocId ? Number(salesDocId) : null,
     purchaseDocId: purchaseDocId ? Number(purchaseDocId) : null,
   }).returning();
@@ -356,7 +357,7 @@ router.put("/freight-shipments/:id", async (req, res) => {
     grossWeight, netWeight, quantity, packingType, dimensions, hsCode, origin, destination,
     portOfLoading, portOfDischarge, vessel, voyage, notifyParty, marksAndNumbers, measurement, status, notes,
     actualCost, departureDate, arrivalDate, trackingNumber, awbNumber,
-    transportMode, cargoType, containerNo, salesDocId, purchaseDocId } = req.body;
+    transportMode, cargoType, containerNo, salesDocId, purchaseDocId, freightCost } = req.body;
   const [existing] = await db.select().from(freightShipmentsTable).where(eq(freightShipmentsTable.id, id));
   if (!existing) return res.status(404).json({ message: "Shipment not found" });
   const patch: Partial<typeof freightShipmentsTable.$inferInsert> = {};
@@ -385,6 +386,7 @@ router.put("/freight-shipments/:id", async (req, res) => {
     catch (e: any) { return res.status(400).json({ message: e.message }); }
   }
   if (notes !== undefined) patch.notes = notes || null;
+  if (freightCost !== undefined) patch.freightCost = freightCost != null ? String(freightCost) : "0";
   if (actualCost !== undefined) patch.actualCost = actualCost != null ? String(actualCost) : null;
   if (departureDate !== undefined) patch.departureDate = departureDate || null;
   if (arrivalDate !== undefined) patch.arrivalDate = arrivalDate || null;
