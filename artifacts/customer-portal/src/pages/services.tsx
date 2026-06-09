@@ -8,7 +8,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Search, ShoppingCart, Truck, ChevronRight, X, Container, ArrowLeft } from "lucide-react";
+import { Search, ShoppingCart, Truck, ChevronRight, X, Container, ArrowLeft, Calculator, ArrowRight } from "lucide-react";
 import { useLocation } from "wouter";
 import { resolveImageUrl } from "@/lib/utils";
 import { getServiceFallbackImage } from "@/lib/categoryImages";
@@ -321,6 +321,52 @@ export default function Services() {
               {realtimeUpdated ? "Diperbarui" : "Live"}
             </span>
           )}
+        </div>
+
+        {/* ── Trucking Booking Banner ── */}
+        <div
+          className="mb-8 rounded-2xl overflow-hidden relative cursor-pointer group"
+          style={{ background: "linear-gradient(135deg, #1e3a5f 0%, #1d4ed8 55%, #2563eb 100%)" }}
+          onClick={() => setLocation("/trucking")}
+        >
+          {/* dot-grid overlay */}
+          <div aria-hidden="true" className="absolute inset-0 pointer-events-none"
+            style={{ backgroundImage: "radial-gradient(rgba(255,255,255,0.10) 1px, transparent 1px)", backgroundSize: "28px 28px" }} />
+          {/* truck silhouette bg */}
+          <div aria-hidden="true" className="absolute right-0 top-0 bottom-0 w-1/2 flex items-center justify-end pr-8 opacity-20 pointer-events-none select-none">
+            <Truck className="w-48 h-48 text-white" strokeWidth={0.6} />
+          </div>
+
+          <div className="relative z-10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 px-6 py-6">
+            <div className="space-y-1.5">
+              <div className="inline-flex items-center gap-1.5 bg-white/15 border border-white/25 rounded-full px-3 py-0.5">
+                <Truck className="w-3 h-3 text-white" />
+                <span className="text-[11px] font-semibold text-white uppercase tracking-wider">Trucking Booking</span>
+              </div>
+              <h3 className="text-xl font-bold text-white leading-tight">
+                Pesan Armada Trucking Langsung
+              </h3>
+              <p className="text-[13px] text-blue-100 max-w-md leading-relaxed">
+                Pilih dari 12 jenis armada, cek ongkir instan, dan tambahkan layanan sesuai kebutuhan. Seperti Deliveree — mudah dan transparan.
+              </p>
+              <div className="flex flex-wrap gap-2 pt-1">
+                {["Pickup Kecil", "Engkel", "CDD Long", "Fuso", "Tronton", "Truk Trailer"].map((v) => (
+                  <span key={v} className="text-[11px] bg-white/15 border border-white/20 text-white rounded-full px-2.5 py-0.5">{v}</span>
+                ))}
+              </div>
+            </div>
+            <div className="shrink-0">
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setLocation("/trucking"); }}
+                className="flex items-center gap-2 bg-white text-blue-700 font-bold text-[13px] rounded-xl px-5 py-3 shadow-lg group-hover:shadow-xl group-hover:scale-105 transition-all duration-200"
+              >
+                <Calculator className="w-4 h-4" />
+                Cek Ongkir & Pesan
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
         </div>
 
         {isLoading ? (

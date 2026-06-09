@@ -22,7 +22,7 @@ const SERVICES_ITEMS = [
   { icon: Ship,      titleKey: "servicesMenu.freight.title",   descKey: "servicesMenu.freight.desc",   href: "/marketplace?type=service&category=sea_freight" },
   { icon: FileCheck, titleKey: "servicesMenu.customs.title",   descKey: "servicesMenu.customs.desc",   href: "/marketplace?type=service&category=ppjk" },
   { icon: Truck,     titleKey: "servicesMenu.domestic.title",  descKey: "servicesMenu.domestic.desc",  href: "/marketplace?type=service&category=trucking" },
-  { icon: Truck,     titleKey: "servicesMenu.trucking.title",  descKey: "servicesMenu.trucking.desc",  href: "/marketplace?type=service&category=trucking" },
+  { icon: Truck,     titleKey: "servicesMenu.trucking.title",  descKey: "servicesMenu.trucking.desc",  href: "/trucking" },
   { icon: Search,    titleKey: "servicesMenu.tracking.title",  descKey: "servicesMenu.tracking.desc",  href: "/track" },
 ];
 
@@ -377,6 +377,7 @@ export function Navbar() {
     location.startsWith("/services") ||
     location === "/freight-forwarding" ||
     location === "/pabean" ||
+    location === "/trucking" ||
     (location.startsWith("/marketplace") && location.includes("type=service"));
 
   const brandName = company?.name
