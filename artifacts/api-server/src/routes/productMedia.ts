@@ -92,7 +92,7 @@ router.get("/generation-status", async (req, res): Promise<void> => {
       ORDER BY vci.is_published DESC, vci.id
     `);
 
-    const items = (rows as any[]).map((r: any) => ({
+    const items = ((rows as any).rows as any[]).map((r: any) => ({
       id: r.id,
       name: r.name,
       templateKind: r.template_kind,
