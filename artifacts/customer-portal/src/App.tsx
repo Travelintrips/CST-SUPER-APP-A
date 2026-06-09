@@ -84,6 +84,7 @@ const JasaVendorDetail          = lazy(() => import("@/pages/jasa-vendor-detail"
 const EscrowConfirmPage         = lazy(() => import("@/pages/escrow-confirm"));
 const ProductApprovePage        = lazy(() => import("@/pages/product-approve"));
 const ShipmentSelectionPage     = lazy(() => import("@/pages/shipment-selection"));
+const TruckingPage              = lazy(() => import("@/pages/trucking"));
 const NotFound                  = lazy(() => import("@/pages/not-found"));
 
 const queryClient = new QueryClient();
@@ -281,6 +282,7 @@ function AppShell() {
         <Route path="/product-approve/:token" component={ProductApprovePage} />
         <Route path="/shipment-selection/:token" component={ShipmentSelectionPage} />
         <Route path="/marketplace/:id" component={MarketplaceDetail} />
+        <Route path="/trucking" component={TruckingPage} />
         <Route component={NotFound} />
       </Switch>
     </Suspense>
