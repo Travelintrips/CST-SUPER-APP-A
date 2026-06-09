@@ -138,6 +138,30 @@ const ADDON_LIST = [
 
 type AddonKey = (typeof ADDON_LIST)[number]["key"];
 
+interface EstimasiEstimate {
+  vehicle_type: string;
+  distance_km: number;
+  distance_source: "provided" | "matrix_estimate" | "unknown";
+  price_per_km: number;
+  minimum_charge: number;
+  base_price: number;
+  base_after_minimum: number;
+  surcharge_breakdown: { out_of_city: number; inter_province: number; inter_island: number; total: number };
+  extras_breakdown: { loading_helper: number; unloading_helper: number; toll: number; ferry: number; waiting: number; multidrop: number; overnight: number; urgent: number; insurance: number; total: number };
+  total_estimate: number;
+}
+interface EstimasiCandidate {
+  vendor_id: number;
+  vendor_name: string;
+  pricing_id: number;
+  estimate: EstimasiEstimate;
+}
+interface EstimasiApiResult {
+  has_data: boolean;
+  cheapest: EstimasiCandidate | null;
+  candidates: EstimasiCandidate[];
+}
+
 function formatRp(n: number) {
   return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
 }
@@ -188,6 +212,24 @@ function Counter({ value, onChange, min = 1 }: { value: number; onChange: (v: nu
         className="text-slate-400 hover:text-blue-600 transition-colors">
         <PlusCircle className="h-5 w-5" />
       </button>
+    </div>
+  );
+}
+
+function BRow({ label, value, note, bold, dim }: {
+  label: string;
+  value: string | React.ReactNode;
+  note?: string;
+  bold?: boolean;
+  dim?: boolean;
+}) {
+  return (
+    <div className={cn("flex items-start justify-between gap-3 py-2 text-[12.5px]", bold && "pt-3")}>
+      <span className={cn("text-slate-500 shrink-0", bold && "font-semibold text-slate-700")}>{label}</span>
+      <div className="text-right">
+        <span className={cn("font-medium text-slate-800 text-right", dim && "text-slate-300", bold && "text-blue-600 text-[17px] font-bold")}>{value}</span>
+        {note && <span className="block text-[10px] text-slate-400 mt-0.5">{note}</span>}
+      </div>
     </div>
   );
 }
@@ -274,10 +316,13 @@ export default function TruckingPage() {
     ferry: false, tol: false, multiDrop: false, urgentDelivery: false, overnight: false,
   });
 
-  const [showEstimasi, setShowEstimasi]   = useState(false);
-  const [submitting, setSubmitting]       = useState(false);
-  const [bookingNumber, setBookingNumber] = useState<string | null>(null);
-  const [submitError, setSubmitError]     = useState<string | null>(null);
+  const [showEstimasi, setShowEstimasi]     = useState(false);
+  const [estimasiLoading, setEstimasiLoading] = useState(false);
+  const [estimasiData, setEstimasiData]     = useState<EstimasiApiResult | null>(null);
+  const [estimasiApiError, setEstimasiApiError] = useState<string | null>(null);
+  const [submitting, setSubmitting]         = useState(false);
+  const [bookingNumber, setBookingNumber]   = useState<string | null>(null);
+  const [submitError, setSubmitError]       = useState<string | null>(null);
 
   // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -287,6 +332,47 @@ export default function TruckingPage() {
 
   function toggleAddon(key: AddonKey) {
     setAddons((p) => ({ ...p, [key]: !p[key] }));
+  }
+
+  async function fetchEstimasi() {
+    if (!areaPickup || !areaDel) {
+      setEstimasiApiError("Pilih area pickup dan delivery terlebih dahulu.");
+      setShowEstimasi(true);
+      return;
+    }
+    setEstimasiLoading(true);
+    setEstimasiApiError(null);
+    setEstimasiData(null);
+    setShowEstimasi(true);
+    try {
+      const res = await fetch("/api/vendor-trucking-pricing/public-estimate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          vehicle_type:          selectedVehicle.id,
+          pickup_area:           areaPickup,
+          delivery_area:         areaDel,
+          pickup_address:        alamatPickup,
+          delivery_address:      alamatDel,
+          is_different_province: areaPickup !== areaDel,
+          is_different_island:   areaPickup !== areaDel,
+          with_loading_helper:   addons.bantuanMuat,
+          with_unloading_helper: addons.bantuanBongkar,
+          extra_drops:           addons.multiDrop ? 1 : 0,
+          overnight_nights:      addons.overnight ? 1 : 0,
+          is_urgent:             addons.urgentDelivery,
+          cargo_value:           0,
+        }),
+      });
+      const data = await res.json() as EstimasiApiResult | { error: string };
+      if (!res.ok) throw new Error((data as { error: string }).error ?? "Gagal menghitung estimasi");
+      setEstimasiData(data as EstimasiApiResult);
+    } catch (e: unknown) {
+      setEstimasiApiError(e instanceof Error ? e.message : "Terjadi kesalahan, coba lagi");
+    } finally {
+      setEstimasiLoading(false);
+      setTimeout(() => calcRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }), 100);
+    }
   }
 
   function handleCekOngkir() {
@@ -322,7 +408,7 @@ export default function TruckingPage() {
           catatan:        catatan || undefined,
           jumlahTrip,
           addons,
-          estimasiTotal:  totalEstimasi,
+          estimasiTotal:  estimasiData?.cheapest?.estimate?.total_estimate ?? totalEstimasi,
         }),
       });
       if (!res.ok) {
@@ -657,85 +743,150 @@ export default function TruckingPage() {
                 {/* ── 7. Hitung Estimasi Button ── */}
                 <Button
                   type="button"
-                  onClick={() => setShowEstimasi(true)}
-                  className="w-full h-12 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-[14px] gap-2 shadow-md shadow-blue-200"
+                  onClick={fetchEstimasi}
+                  disabled={estimasiLoading}
+                  className="w-full h-12 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-[14px] gap-2 shadow-md shadow-blue-200 disabled:opacity-60"
                 >
-                  <Calculator className="h-4.5 w-4.5" />
-                  Hitung Estimasi
+                  {estimasiLoading
+                    ? <><Loader2 className="h-4 w-4 animate-spin" /> Menghitung...</>
+                    : <><Calculator className="h-4.5 w-4.5" /> Hitung Estimasi</>
+                  }
                 </Button>
 
                 {/* ── Estimasi Result ── */}
                 {showEstimasi && !bookingNumber && (
-                  <div className="bg-gradient-to-br from-blue-50 to-slate-50 border border-blue-100 rounded-2xl p-5 space-y-4">
-                    <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Ringkasan Estimasi Biaya</p>
+                  <div className="bg-gradient-to-br from-blue-50 to-slate-50 border border-blue-100 rounded-2xl p-5">
 
-                    <div className="space-y-2.5">
-                      <div className="flex items-center gap-2 text-[13px]">
-                        <MapPin className="h-3.5 w-3.5 text-blue-400 shrink-0" />
-                        <span className="text-slate-500">
-                          {AREAS.find((a) => a.value === areaPickup)?.label || "—"}
-                          {" → "}
-                          {AREAS.find((a) => a.value === areaDel)?.label || "—"}
-                        </span>
-                      </div>
-
-                      <div className="h-px bg-blue-100" />
-
-                      <div className="space-y-1.5 text-[13px]">
-                        <div className="flex justify-between">
-                          <span className="text-slate-500">
-                            {addons.overnight ? "Biaya Seharian" : "Biaya Dasar"}
-                            {" · "}{selectedVehicle.name}{" × "}{jumlahTrip} trip
-                          </span>
-                          <span className="font-semibold text-slate-800">{formatRp(biayaPerTrip)}</span>
-                        </div>
-                        {ADDON_LIST.filter(({ key, price }) => addons[key] && price > 0).map(({ key, label, price }) => (
-                          <div key={key} className="flex justify-between text-slate-500">
-                            <span>{label}</span>
-                            <span className="font-medium text-slate-700">{formatRp(price)}</span>
-                          </div>
-                        ))}
-                        {addons.tol && (
-                          <div className="flex justify-between text-slate-500">
-                            <span>Tol (actual cost)</span>
-                            <span className="font-medium text-slate-500 italic">Menyusul</span>
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="h-px bg-blue-200" />
-
-                      <div className="flex items-end justify-between">
-                        <div>
-                          <p className="text-[11px] text-slate-400 font-medium">Total Estimasi</p>
-                          {addons.tol && <p className="text-[10px] text-slate-400">*belum termasuk biaya tol</p>}
-                        </div>
-                        <span className="text-2xl font-bold text-blue-600">{formatRp(totalEstimasi)}</span>
-                      </div>
-                    </div>
-
-                    <p className="text-[10.5px] text-slate-400 border-t border-blue-100 pt-3">
-                      *Estimasi belum termasuk PPN. Harga akhir dapat berbeda tergantung kondisi aktual.
-                    </p>
-
-                    {submitError && (
-                      <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-3.5 py-3 text-[12.5px] text-red-700">
-                        <Info className="h-4 w-4 shrink-0" />
-                        {submitError}
+                    {/* Loading */}
+                    {estimasiLoading && (
+                      <div className="flex items-center justify-center gap-2 py-8 text-slate-500">
+                        <Loader2 className="h-5 w-5 animate-spin text-blue-500" />
+                        <span className="text-[13px]">Menghitung estimasi harga...</span>
                       </div>
                     )}
 
-                    <Button
-                      type="button"
-                      onClick={submitBooking}
-                      disabled={submitting}
-                      className="w-full h-12 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-[14px] gap-2 shadow-md shadow-blue-200 disabled:opacity-60"
-                    >
-                      {submitting
-                        ? <><Loader2 className="h-4 w-4 animate-spin" /> Mengirim Permintaan...</>
-                        : <><Send className="h-4 w-4" /> Kirim Permintaan Booking</>
-                      }
-                    </Button>
+                    {/* Error */}
+                    {!estimasiLoading && estimasiApiError && (
+                      <div className="space-y-4">
+                        <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl px-3.5 py-3 text-[12.5px] text-red-700">
+                          <Info className="h-4 w-4 shrink-0 mt-0.5" />
+                          {estimasiApiError}
+                        </div>
+                        <Button type="button" onClick={fetchEstimasi}
+                          className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold text-sm gap-2">
+                          <Calculator className="h-4 w-4" /> Coba Lagi
+                        </Button>
+                      </div>
+                    )}
+
+                    {/* No vendor match */}
+                    {!estimasiLoading && estimasiData && !estimasiData.has_data && (
+                      <div className="space-y-4 text-center py-3">
+                        <div className="h-12 w-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto">
+                          <Truck className="h-6 w-6 text-slate-400" />
+                        </div>
+                        <div>
+                          <p className="text-[13px] font-semibold text-slate-700">Belum ada vendor tersedia</p>
+                          <p className="text-[11.5px] text-slate-400 mt-1">
+                            Untuk kombinasi armada dan rute ini, hubungi tim kami untuk penawaran khusus.
+                          </p>
+                        </div>
+                        {submitError && (
+                          <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-3.5 py-3 text-[12.5px] text-red-700 text-left">
+                            <Info className="h-4 w-4 shrink-0" />{submitError}
+                          </div>
+                        )}
+                        <Button type="button" onClick={submitBooking} disabled={submitting}
+                          className="w-full h-12 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-[14px] gap-2 shadow-md shadow-blue-200 disabled:opacity-60">
+                          {submitting
+                            ? <><Loader2 className="h-4 w-4 animate-spin" /> Mengirim...</>
+                            : <><Send className="h-4 w-4" /> Kirim Permintaan (Tanpa Estimasi)</>}
+                        </Button>
+                      </div>
+                    )}
+
+                    {/* Detailed breakdown */}
+                    {!estimasiLoading && estimasiData?.has_data && estimasiData.cheapest && (() => {
+                      const e = estimasiData.cheapest.estimate;
+                      const pickupLabel   = AREAS.find((a) => a.value === areaPickup)?.label  ?? areaPickup;
+                      const deliveryLabel = AREAS.find((a) => a.value === areaDel)?.label ?? areaDel;
+                      return (
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Estimasi Harga Trucking</p>
+                            {estimasiData.candidates.length > 1 && (
+                              <span className="text-[10.5px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
+                                {estimasiData.candidates.length} vendor cocok · harga termurah
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Vendor badge */}
+                          <div className="flex items-center gap-2 text-[12px] text-blue-700 font-medium bg-blue-100/60 px-3 py-2 rounded-xl border border-blue-200">
+                            <Truck className="h-3.5 w-3.5 shrink-0" />
+                            <span>{estimasiData.cheapest.vendor_name}</span>
+                          </div>
+
+                          {/* Breakdown rows */}
+                          <div className="divide-y divide-slate-100">
+                            <BRow label="Armada"        value={e.vehicle_type} />
+                            <BRow label="Area Pickup"   value={pickupLabel} />
+                            <BRow label="Area Delivery" value={deliveryLabel} />
+                            <BRow label="Estimasi KM"
+                              value={`${e.distance_km.toLocaleString("id-ID")} km`}
+                              note={e.distance_source === "matrix_estimate" ? "estimasi dari jarak kota"
+                                : e.distance_source === "provided" ? "jarak aktual" : "jarak tidak diketahui"} />
+                            <BRow label="Tarif per KM"   value={formatRp(e.price_per_km)} />
+                            <BRow label="Minimum Charge" value={formatRp(e.minimum_charge)} />
+                            <BRow label="Harga Dasar"    value={formatRp(e.base_after_minimum)} />
+                            {e.surcharge_breakdown.out_of_city > 0 && (
+                              <BRow label="Surcharge Luar Kota" value={formatRp(e.surcharge_breakdown.out_of_city)} />
+                            )}
+                            {e.surcharge_breakdown.inter_province > 0 && (
+                              <BRow label="Surcharge Antar Provinsi" value={formatRp(e.surcharge_breakdown.inter_province)} />
+                            )}
+                            {e.surcharge_breakdown.inter_island > 0 && (
+                              <BRow label="Surcharge Antar Pulau" value={formatRp(e.surcharge_breakdown.inter_island)} />
+                            )}
+                            <BRow label="Biaya Muat"    value={formatRp(e.extras_breakdown.loading_helper)}   dim={e.extras_breakdown.loading_helper === 0} />
+                            <BRow label="Biaya Bongkar" value={formatRp(e.extras_breakdown.unloading_helper)} dim={e.extras_breakdown.unloading_helper === 0} />
+                            <BRow label="Ferry"         value={formatRp(e.extras_breakdown.ferry)}            dim={e.extras_breakdown.ferry === 0} />
+                            <BRow label="Tol"
+                              value={e.extras_breakdown.toll > 0 ? formatRp(e.extras_breakdown.toll) : "Actual cost"}
+                              dim={e.extras_breakdown.toll === 0} />
+                            <BRow label="Multi-drop"    value={formatRp(e.extras_breakdown.multidrop)}  dim={e.extras_breakdown.multidrop === 0} />
+                            <BRow label="Overnight"     value={formatRp(e.extras_breakdown.overnight)}  dim={e.extras_breakdown.overnight === 0} />
+                            <BRow label="Asuransi"
+                              value={e.extras_breakdown.insurance > 0 ? formatRp(e.extras_breakdown.insurance) : "—"}
+                              dim={e.extras_breakdown.insurance === 0} />
+                            <BRow label="Urgent"        value={formatRp(e.extras_breakdown.urgent)}     dim={e.extras_breakdown.urgent === 0} />
+                          </div>
+
+                          {/* Total */}
+                          <div className="border-t-2 border-blue-200 pt-3 flex items-end justify-between">
+                            <p className="text-[11px] text-slate-500 font-semibold">Total Estimasi</p>
+                            <span className="text-[22px] font-bold text-blue-600">{formatRp(e.total_estimate)}</span>
+                          </div>
+
+                          <p className="text-[10.5px] text-slate-400 italic">
+                            Estimasi belum termasuk PPN dan dapat berubah setelah review admin.
+                          </p>
+
+                          {submitError && (
+                            <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-3.5 py-3 text-[12.5px] text-red-700">
+                              <Info className="h-4 w-4 shrink-0" />{submitError}
+                            </div>
+                          )}
+
+                          <Button type="button" onClick={submitBooking} disabled={submitting}
+                            className="w-full h-12 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-[14px] gap-2 shadow-md shadow-blue-200 disabled:opacity-60">
+                            {submitting
+                              ? <><Loader2 className="h-4 w-4 animate-spin" /> Mengirim Permintaan...</>
+                              : <><Send className="h-4 w-4" /> Pesan Trucking</>}
+                          </Button>
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
 

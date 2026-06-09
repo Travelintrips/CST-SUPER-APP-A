@@ -215,6 +215,84 @@ router.delete("/:id", async (req: Request, res: Response) => {
   }
 });
 
+const AREA_LABELS_MAP: Record<string, string[]> = {
+  "jawa-sumatra": ["Jabodetabek", "Jawa Barat", "Jawa Tengah", "Jawa Timur", "Sumatra"],
+  "kalimantan":   ["Kalimantan"],
+  "sulawesi":     ["Sulawesi"],
+  "bali-nusra":   ["Bali", "Nusa Tenggara"],
+};
+
+router.post("/public-estimate", async (req: Request, res: Response) => {
+  const b = req.body as Record<string, unknown>;
+  const vehicleType     = String(b.vehicle_type   ?? "").trim();
+  const pickupSlug      = String(b.pickup_area     ?? "").trim();
+  const deliverySlug    = String(b.delivery_area   ?? "").trim();
+  const pickupLabels    = AREA_LABELS_MAP[pickupSlug]   ?? [];
+  const deliveryLabels  = AREA_LABELS_MAP[deliverySlug] ?? [];
+  const allLabels       = [...new Set([...pickupLabels, ...deliveryLabels])];
+
+  if (!vehicleType) {
+    res.json({ has_data: false, cheapest: null, candidates: [] });
+    return;
+  }
+  try {
+    let rows;
+    if (allLabels.length > 0) {
+      const arrSql = sql.raw(
+        `ARRAY[${allLabels.map((l) => `'${l.replace(/'/g, "''")}'`).join(",")}]::text[]`,
+      );
+      rows = await db.execute(sql`
+        SELECT vtp.*, s.name AS vendor_name
+        FROM vendor_trucking_pricing vtp
+        JOIN suppliers s ON s.id = vtp.vendor_id
+        WHERE vtp.is_active = TRUE
+          AND lower(vtp.vehicle_type) = lower(${vehicleType})
+          AND (cardinality(vtp.operation_areas) = 0 OR vtp.operation_areas && ${arrSql})
+        ORDER BY vtp.price_per_km ASC
+      `);
+    } else {
+      rows = await db.execute(sql`
+        SELECT vtp.*, s.name AS vendor_name
+        FROM vendor_trucking_pricing vtp
+        JOIN suppliers s ON s.id = vtp.vendor_id
+        WHERE vtp.is_active = TRUE AND lower(vtp.vehicle_type) = lower(${vehicleType})
+        ORDER BY vtp.price_per_km ASC
+      `);
+    }
+
+    if (!rows.rows.length) {
+      res.json({ has_data: false, cheapest: null, candidates: [] });
+      return;
+    }
+
+    const options: TruckingEstimateOptions = {
+      pickupArea:          String(b.pickup_address  ?? pickupLabels[0]  ?? ""),
+      deliveryArea:        String(b.delivery_address ?? deliveryLabels[0] ?? ""),
+      isDifferentProvince: Boolean(b.is_different_province),
+      isDifferentIsland:   Boolean(b.is_different_island),
+      withLoadingHelper:   Boolean(b.with_loading_helper),
+      withUnloadingHelper: Boolean(b.with_unloading_helper),
+      extraDrops:          Number(b.extra_drops      ?? 0),
+      overnightNights:     Number(b.overnight_nights ?? 0),
+      isUrgent:            Boolean(b.is_urgent),
+      cargoValue:          Number(b.cargo_value      ?? 0),
+    };
+
+    const candidates = (rows.rows as Record<string, unknown>[]).map((row) => ({
+      vendor_id:   row.vendor_id,
+      vendor_name: row.vendor_name,
+      pricing_id:  row.id,
+      estimate:    calculateTruckingEstimate(options, pricingRowToInput(row)),
+    }));
+    candidates.sort((a, z) => a.estimate.total_estimate - z.estimate.total_estimate);
+
+    res.json({ has_data: true, cheapest: candidates[0], candidates });
+  } catch (e) {
+    console.error("POST /vendor-trucking-pricing/public-estimate error:", e);
+    res.status(500).json({ error: "Gagal menghitung estimasi" });
+  }
+});
+
 router.post("/estimate", async (req: Request, res: Response) => {
   if (!(await requireAdmin(req, res))) return;
   const b = req.body as {
