@@ -33,7 +33,9 @@ export async function runProductMediaMigration(): Promise<void> {
     ALTER TABLE product_media
       ADD COLUMN IF NOT EXISTS image_source      TEXT DEFAULT 'admin',
       ADD COLUMN IF NOT EXISTS ai_image_status   TEXT,
-      ADD COLUMN IF NOT EXISTS generation_prompt TEXT
+      ADD COLUMN IF NOT EXISTS generation_prompt TEXT,
+      ADD COLUMN IF NOT EXISTS duration          INTEGER,
+      ADD COLUMN IF NOT EXISTS file_size_bytes   INTEGER
   `);
   await db.execute(sql`
     CREATE INDEX IF NOT EXISTS product_media_ai_status_idx ON product_media (ai_image_status)
