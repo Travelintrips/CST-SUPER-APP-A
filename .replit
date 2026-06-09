@@ -104,6 +104,7 @@ GOOGLE_SERVICE_ACCOUNT_JSON = '{   "type": "service_account",   "project_id": "s
 GOOGLE_CLIENT_SECRET = "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"
 SMTP_PASS = " info@cstlogistic.co.id"
 GOOGLE_MAPS_API_KEY = "AIzaSyAG3HNz7V43ZaHvs4XY34iTcaWggfwl9_8"
+VITE-GOOGLE_MAPS_API_KEY = "AIzaSyAG3HNz7V43ZaHvs4XY34iTcaWggfwl9_8"
 
 [userenv.development]
 ADMIN_EMAIL_DOMAINS = "example.com"

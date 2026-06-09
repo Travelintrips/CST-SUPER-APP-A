@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { GooglePlacesAutocomplete } from "@/components/ui/google-places-autocomplete";
+import { RouteMapPreview } from "@/components/ui/route-map-preview";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
@@ -1249,6 +1250,14 @@ export default function BookPage() {
                   />
                   {quickDeliveryAddressError && <p className="text-[11px] text-destructive mt-1">Alamat pengiriman wajib diisi.</p>}
                 </div>
+                {(quickTruckData.pickupAddress || quickTruckData.deliveryAddress) && (
+                  <div className="sm:col-span-2">
+                    <RouteMapPreview
+                      origin={quickTruckData.pickupAddress || ""}
+                      destination={quickTruckData.deliveryAddress || ""}
+                    />
+                  </div>
+                )}
                 <div>
                   <Label className="text-xs">Nama Kontak</Label>
                   <Input placeholder="Nama PIC" value={quickTruckData.contactName||""} onChange={e => setQuickTruckData(p => ({ ...p, contactName: e.target.value }))} />

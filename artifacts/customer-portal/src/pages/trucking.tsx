@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { GooglePlacesAutocomplete } from "@/components/ui/google-places-autocomplete";
+import { RouteMapPreview } from "@/components/ui/route-map-preview";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -625,6 +626,11 @@ export default function TruckingPage() {
                     </FormField>
                   </div>
                 </div>
+
+                {/* ── Mini Map Rute ── */}
+                {(alamatPickup || alamatDel) && (
+                  <RouteMapPreview origin={alamatPickup} destination={alamatDel} />
+                )}
 
                 {/* ── 3. Jadwal ── */}
                 <div>
