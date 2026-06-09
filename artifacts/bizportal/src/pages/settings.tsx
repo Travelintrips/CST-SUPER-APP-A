@@ -2324,6 +2324,27 @@ export default function SettingsPage() {
             <Card className="col-span-1 md:col-span-3 bg-card border-border">
               <CardHeader>
                 <CardTitle className="text-base flex items-center gap-2">
+                  <MessageCircle className="w-4 h-4 text-green-500" /> WA Gateway
+                </CardTitle>
+                <CardDescription>
+                  Konfigurasi WA Gateway (Baileys) sebagai pengirim notifikasi WhatsApp — URL, API Key, dan Device ID.
+                  Jika aktif, semua notifikasi ERP dikirim lewat device ini.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <a href="/bizportal/settings/wa-gateway">
+                  <Button variant="outline" size="sm" className="gap-2">
+                    <MessageCircle className="w-4 h-4 text-green-600" /> Buka WA Gateway Settings
+                  </Button>
+                </a>
+              </CardContent>
+            </Card>
+          )}
+
+          {isAdmin && (
+            <Card className="col-span-1 md:col-span-3 bg-card border-border">
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
                   <Layers className="w-4 h-4 text-primary" /> Product Templates
                 </CardTitle>
                 <CardDescription>
