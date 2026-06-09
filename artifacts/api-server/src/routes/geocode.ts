@@ -111,6 +111,42 @@ router.get("/places/autocomplete", placesRateLimit, async (req, res) => {
   }
 });
 
+// Distance Matrix — return driving distance + duration between two addresses
+router.get("/places/distance", placesRateLimit, async (req, res) => {
+  const { origin, destination } = req.query as Record<string, string>;
+  if (!origin || !destination) {
+    return res.status(400).json({ error: "origin and destination required" });
+  }
+  if (!GMAPS_API_KEY) {
+    return res.status(503).json({ error: "Google Maps API key not configured" });
+  }
+  const params = new URLSearchParams({
+    origins: origin.trim(),
+    destinations: destination.trim(),
+    key: GMAPS_API_KEY,
+    language: "id",
+    units: "metric",
+    mode: "driving",
+  });
+  try {
+    const upstream = await fetch(
+      `https://maps.googleapis.com/maps/api/distancematrix/json?${params.toString()}`,
+      { signal: AbortSignal.timeout(8000) }
+    );
+    if (!upstream.ok) return res.status(502).json({ error: "upstream error" });
+    const data = await upstream.json() as {
+      rows?: Array<{ elements?: Array<{ status: string; distance?: { value: number; text: string }; duration?: { text: string } }> }>;
+    };
+    const el = data.rows?.[0]?.elements?.[0];
+    if (!el || el.status !== "OK") return res.json({ distanceKm: null, durationText: null });
+    const distanceKm = Math.round((el.distance!.value / 1000) * 10) / 10;
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    return res.json({ distanceKm, durationText: el.duration?.text ?? null });
+  } catch {
+    return res.status(502).json({ error: "request failed" });
+  }
+});
+
 // Place Detail — resolve place_id to formatted_address
 router.get("/places/detail", placesRateLimit, async (req, res) => {
   const { place_id } = req.query as Record<string, string>;

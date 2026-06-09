@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { GooglePlacesAutocomplete } from "@/components/ui/google-places-autocomplete";
+import { RouteMapPreview } from "@/components/ui/route-map-preview";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -1140,6 +1141,14 @@ export default function LogisticsFreightEditorPage() {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Mini map — ditampilkan ketika kedua alamat sudah diisi */}
+            {(form.shipperAddress || form.consigneeAddress) && (
+              <RouteMapPreview
+                origin={form.shipperAddress}
+                destination={form.consigneeAddress}
+              />
+            )}
 
             <Card>
               <CardHeader><CardTitle>Detail Kargo</CardTitle></CardHeader>
