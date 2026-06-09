@@ -2,7 +2,13 @@
 cd "$(dirname "$0")"
 
 GW_PORT=${CUSTOMER_PORT:-3001}
-VITE_PORT=${PORT:-23434}
+
+# If PORT is set to the same as GW_PORT (workflow conflict), use a different internal port
+if [ "${PORT:-}" = "${GW_PORT}" ] || [ -z "${PORT:-}" ]; then
+  VITE_PORT=23434
+else
+  VITE_PORT=$PORT
+fi
 
 node "../api-server/kill-port.mjs" "${VITE_PORT}" "${GW_PORT}" 2>/dev/null || true
 sleep 0.3
