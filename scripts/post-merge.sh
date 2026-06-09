@@ -1,6 +1,8 @@
 #!/bin/bash
 set -e
-pnpm install
+# Install all workspace packages except cst-driver (which pulls in react-native ->
+# react-devtools-core -> shell-quote, a package blocked by Replit's package firewall)
+pnpm install --no-frozen-lockfile --filter '!@workspace/cst-driver'
 pnpm --filter db push
 # Build API server
 cd artifacts/api-server && node build.mjs && cd ../..
