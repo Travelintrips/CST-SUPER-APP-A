@@ -284,6 +284,196 @@ export async function postSalesInvoice(args: {
   }
 }
 
+// ── Logistic serviceType → COA base code mapping ────────────────────────────
+const SERVICE_TYPE_COA_CODES: Record<string, string> = {
+  trucking:    "4-1013",  // Pendapatan Land Freight
+  sea_freight: "4-1011",  // Pendapatan Sea Freight
+  air_freight: "4-1012",  // Pendapatan Air Freight
+  ppjk:        "4-1014",  // Pendapatan Custom Clearance
+  handling:    "4-1018",  // Pendapatan Handling Service
+  document:    "4-1019",  // Pendapatan Document Service
+};
+
+/**
+ * Resolve COA account id untuk service type tertentu.
+ * Coba company-specific code dulu (misal "4-1011-CST"), fallback ke global, lalu ke fallbackId.
+ */
+async function resolveServiceTypeAccountId(
+  serviceType: string | null | undefined,
+  companyId: number | null | undefined,
+  fallbackId: number | null | undefined,
+): Promise<number | null> {
+  const baseCode = serviceType ? SERVICE_TYPE_COA_CODES[serviceType.toLowerCase().trim()] : null;
+  if (!baseCode) return fallbackId ?? null;
+
+  const cFilter = companyId ?? 1;
+  // Coba company-specific (code LIKE "4-1011%" + company filter)
+  let [row] = await db
+    .select({ id: chartOfAccountsTable.id })
+    .from(chartOfAccountsTable)
+    .where(sql`${chartOfAccountsTable.code} LIKE ${baseCode + "%"} AND ${chartOfAccountsTable.companyId} = ${cFilter}`)
+    .limit(1);
+  if (!row) {
+    // Fallback: global atau any company
+    [row] = await db
+      .select({ id: chartOfAccountsTable.id })
+      .from(chartOfAccountsTable)
+      .where(sql`${chartOfAccountsTable.code} LIKE ${baseCode + "%"}`)
+      .limit(1);
+  }
+  return row?.id ?? fallbackId ?? null;
+}
+
+/** Normalize shipmentType string ke service type key */
+export function normalizeShipmentServiceType(shipmentType: string | null | undefined): string | null {
+  if (!shipmentType) return null;
+  const s = shipmentType.toLowerCase().replace(/[\s\-]/g, "_");
+  if (s.includes("sea") || s.includes("laut") || s.includes("fcl") || s.includes("lcl")) return "sea_freight";
+  if (s.includes("air") || s.includes("udara")) return "air_freight";
+  if (s.includes("truck") || s.includes("land") || s.includes("darat")) return "trucking";
+  if (s.includes("custom") || s.includes("pabean") || s.includes("ppjk") || s.includes("clearance")) return "ppjk";
+  if (s.includes("handling") || s.includes("stuffing")) return "handling";
+  if (s.includes("document") || s.includes("dokumen")) return "document";
+  return null;
+}
+
+/**
+ * Line input untuk postLogisticSalesInvoice.
+ * Revenue HARUS dari priceSnapshot.subtotal atau subtotal dari order item — BUKAN priceBase.
+ */
+export interface LogisticInvoiceLine {
+  serviceType?: string | null;
+  /** Revenue amount — dari priceSnapshot.subtotal, BUKAN priceBase */
+  subtotal: number;
+  orderItemId?: number | null;
+  vendorCatalogItemId?: number | null;
+  lineName?: string | null;
+}
+
+/**
+ * Post jurnal akuntansi untuk invoice logistik customer.
+ *
+ * Struktur:
+ *   Debit:  Piutang Usaha (grand total)
+ *   Credit: Revenue per serviceType (menggunakan SERVICE_TYPE_COA_CODES mapping)
+ *   Credit: PPN Keluaran (jika ada tax)
+ *
+ * Setiap credit line menyimpan referensi: orderId, salesDocId, orderItemId, vendorCatalogItemId.
+ * Revenue HARUS dari priceSnapshot, bukan priceBase.
+ */
+export async function postLogisticSalesInvoice(args: {
+  logisticOrderId: number;
+  salesDocId: number;
+  docNumber: string;
+  customerName: string;
+  lines: LogisticInvoiceLine[];
+  taxAmount: number;
+  taxAccountId?: number | null;
+  createdById?: string | null;
+  companyId?: number | null;
+}): Promise<void> {
+  try {
+    const settings = await ensureAccountingSettings(args.companyId ?? undefined);
+    if (!settings.arAccountId || !settings.salesIncomeAccountId || !settings.salesJournalId) {
+      logger.warn(
+        { logisticOrderId: args.logisticOrderId },
+        "Skipping logistic invoice journal: accounting settings incomplete",
+      );
+      return;
+    }
+
+    const netAmount = round2(args.lines.reduce((s, l) => s + l.subtotal, 0));
+    const grand = round2(netAmount + args.taxAmount);
+
+    // Agregasi revenue berdasarkan serviceType
+    const revenueGroups = new Map<string | null, { subtotal: number; items: LogisticInvoiceLine[] }>();
+    for (const line of args.lines) {
+      const key = line.serviceType?.toLowerCase().trim() ?? null;
+      const g = revenueGroups.get(key) ?? { subtotal: 0, items: [] };
+      g.subtotal += line.subtotal;
+      g.items.push(line);
+      revenueGroups.set(key, g);
+    }
+
+    const postingLines: PostingLine[] = [];
+
+    // Debit: Piutang Usaha (grand total termasuk PPN)
+    postingLines.push({
+      accountId: settings.arAccountId,
+      debit: grand,
+      credit: 0,
+      description: `Piutang ${args.customerName} - ${args.docNumber} [orderId:${args.logisticOrderId}]`,
+    });
+
+    // Credit: Revenue per serviceType
+    for (const [serviceType, group] of revenueGroups) {
+      const revenueAccountId = await resolveServiceTypeAccountId(
+        serviceType,
+        args.companyId,
+        settings.salesIncomeAccountId,
+      );
+
+      // Referensi per item dalam description
+      const itemRefs = group.items
+        .map((l) => {
+          const parts: string[] = [];
+          if (l.orderItemId)          parts.push(`itemId:${l.orderItemId}`);
+          if (l.vendorCatalogItemId)  parts.push(`catalogId:${l.vendorCatalogItemId}`);
+          return parts.join(",");
+        })
+        .filter(Boolean)
+        .join("; ");
+
+      const desc = [
+        serviceType
+          ? `Pendapatan ${serviceType} - ${args.docNumber}`
+          : `Pendapatan Jasa - ${args.docNumber}`,
+        `[orderId:${args.logisticOrderId}, invId:${args.salesDocId}${itemRefs ? ", " + itemRefs : ""}]`,
+      ].join(" ");
+
+      postingLines.push({
+        accountId: revenueAccountId ?? settings.salesIncomeAccountId!,
+        debit: 0,
+        credit: round2(group.subtotal),
+        description: desc,
+      });
+    }
+
+    // Credit: PPN Keluaran
+    if (args.taxAmount > 0) {
+      const ppnAccountId = args.taxAccountId ?? settings.ppnOutputAccountId;
+      if (ppnAccountId) {
+        postingLines.push({
+          accountId: ppnAccountId,
+          debit: 0,
+          credit: round2(args.taxAmount),
+          description: `PPN Keluaran ${args.docNumber} [orderId:${args.logisticOrderId}, invId:${args.salesDocId}]`,
+        });
+      }
+    }
+
+    await postEntry(
+      {
+        journalId: settings.salesJournalId,
+        date: new Date(),
+        ref: args.docNumber,
+        description: `Invoice Logistik ${args.docNumber} [orderId:${args.logisticOrderId}, invId:${args.salesDocId}]`,
+        source: "sales_invoice",
+        sourceId: args.salesDocId,
+        createdById: args.createdById ?? null,
+        companyId: args.companyId ?? null,
+        lines: postingLines,
+      },
+      "SAL",
+    );
+  } catch (err) {
+    logger.error(
+      { err, logisticOrderId: args.logisticOrderId, salesDocId: args.salesDocId },
+      "postLogisticSalesInvoice: gagal post jurnal",
+    );
+  }
+}
+
 /** Auto-post when a Purchase document gets billed.
  *
  * Debit allocation (per line):

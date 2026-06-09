@@ -9,7 +9,7 @@ import { sendMediaViaService, sendViaService as sendWhatsApp } from "./waTranspo
 import { getAdminGroupWa } from "./adminWa.js";
 import { ensureAccountingSettings } from "./accountingSeed.js";
 import { loadDocTemplate } from "./docTemplateLoader.js";
-import { postSalesInvoice } from "./accounting.js";
+import { postLogisticSalesInvoice, normalizeShipmentServiceType, type LogisticInvoiceLine } from "./accounting.js";
 import { logger } from "./logger.js";
 import { writeAuditLog } from "./auditLog.js";
 import type { LogisticOrderData } from "./orderNotification.js";
@@ -53,6 +53,7 @@ interface CatalogInvoiceLine {
   orderItemId: number;
   vendorCatalogItemId: number | null;
   vendorFulfillmentId: number | null;
+  serviceType: string | null;
   name: string;
   description: string | null;
   quantity: string;
@@ -124,6 +125,7 @@ export async function fetchVendorCatalogLines(orderId: number): Promise<CatalogI
       orderItemId:         item.id,
       vendorCatalogItemId: item.vendorCatalogItemId ?? null,
       vendorFulfillmentId: vfId ?? null,
+      serviceType:         serviceType || null,
       name:                lineName,
       description:         null,
       quantity:            String(qty),
@@ -258,13 +260,40 @@ export async function autoCreateLogisticInvoice(order: LogisticOrderData, compan
         },
       });
 
-      void postSalesInvoice({
-        salesDocId:   docId,
+      // ── Build per-line data untuk jurnal akuntansi ────────────────────────
+      // Revenue HARUS dari priceSnapshot (sudah dipakai di catalogLines.subtotalNum)
+      // bukan priceBase. Freight line pakai freightSubtotal yang sudah dihitung.
+      const accountingLines: LogisticInvoiceLine[] = [];
+
+      if (freightSubtotal > 0 || catalogLines.length === 0) {
+        const freightAmount = catalogLines.length === 0 ? subtotal : freightSubtotal;
+        accountingLines.push({
+          serviceType:        normalizeShipmentServiceType(order.shipmentType),
+          subtotal:           freightAmount,
+          orderItemId:        null,
+          vendorCatalogItemId: null,
+          lineName:           `Jasa Pengiriman ${order.shipmentType ?? ""}`.trim(),
+        });
+      }
+
+      for (const line of catalogLines) {
+        accountingLines.push({
+          serviceType:         line.serviceType,
+          subtotal:            line.subtotalNum,
+          orderItemId:         line.orderItemId,
+          vendorCatalogItemId: line.vendorCatalogItemId,
+          lineName:            line.name,
+        });
+      }
+
+      void postLogisticSalesInvoice({
+        logisticOrderId: order.id,
+        salesDocId:      docId,
         docNumber,
-        customerName: order.customerName,
-        netAmount:    subtotal,
+        customerName:    order.customerName,
+        lines:           accountingLines,
         taxAmount,
-        taxAccountId: null,
+        taxAccountId:    null,
         companyId,
       }).catch((err) => logger.error({ err, docId, docNumber }, "autoCreateLogisticInvoice: jurnal gagal"));
     }
