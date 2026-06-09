@@ -19,6 +19,8 @@ import {
   freightShipmentsTable,
   productTemplatesTable,
   vendorFulfillmentLinksTable,
+  logisticVendorFulfillmentsTable,
+  orderAuditLogsTable,
 } from "@workspace/db";
 import { resolveTemplate } from "@workspace/product-templates";
 import { deleteFromSupabase } from "../lib/supabaseStorage.js";
@@ -178,6 +180,7 @@ function toItem(row: typeof logisticOrderItemsTable.$inferSelect) {
     calculationInput: row.calculationInput ?? null,
     templateSnapshot: row.templateSnapshot ?? null,
     vendorFulfillmentId: (row as any).vendorFulfillmentId ?? null,
+    vendorFulfillmentStatus: (row as any).vendorFulfillmentStatus ?? null,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -643,7 +646,29 @@ logisticOrdersRouter.get(
 
     // Run all independent queries in parallel — eliminates N+1 sequential awaits
     const [items, [driverJob], [latestRfq], orderUpdates, progressEvents, podSubmissionsRaw, invoiceLinksRaw, autoInvoiceRaw] = await Promise.all([
-      db.select().from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, order.id)),
+      db.select({
+        id: logisticOrderItemsTable.id,
+        orderId: logisticOrderItemsTable.orderId,
+        category: logisticOrderItemsTable.category,
+        serviceName: logisticOrderItemsTable.serviceName,
+        calculatorType: logisticOrderItemsTable.calculatorType,
+        inputData: logisticOrderItemsTable.inputData,
+        calculationResult: logisticOrderItemsTable.calculationResult,
+        subtotal: logisticOrderItemsTable.subtotal,
+        itemSource: logisticOrderItemsTable.itemSource,
+        vendorCatalogItemId: logisticOrderItemsTable.vendorCatalogItemId,
+        vendorId: logisticOrderItemsTable.vendorId,
+        serviceType: logisticOrderItemsTable.serviceType,
+        priceSnapshot: logisticOrderItemsTable.priceSnapshot,
+        calculationInput: logisticOrderItemsTable.calculationInput,
+        templateSnapshot: logisticOrderItemsTable.templateSnapshot,
+        createdAt: logisticOrderItemsTable.createdAt,
+        vendorFulfillmentId: logisticVendorFulfillmentsTable.id,
+        vendorFulfillmentStatus: logisticVendorFulfillmentsTable.status,
+      })
+        .from(logisticOrderItemsTable)
+        .leftJoin(logisticVendorFulfillmentsTable, eq(logisticVendorFulfillmentsTable.orderItemId, logisticOrderItemsTable.id))
+        .where(eq(logisticOrderItemsTable.orderId, order.id)),
       db.select().from(driverJobsTable)
         .where(eq(driverJobsTable.logisticOrderId, order.id))
         .orderBy(desc(driverJobsTable.assignedAt))
@@ -1471,7 +1496,29 @@ logisticOrdersRouter.get("/:id", async (req: Request, res: Response) => {
   }
 
   const [items, linkedDocRows] = await Promise.all([
-    db.select().from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, id)),
+    db.select({
+      id: logisticOrderItemsTable.id,
+      orderId: logisticOrderItemsTable.orderId,
+      category: logisticOrderItemsTable.category,
+      serviceName: logisticOrderItemsTable.serviceName,
+      calculatorType: logisticOrderItemsTable.calculatorType,
+      inputData: logisticOrderItemsTable.inputData,
+      calculationResult: logisticOrderItemsTable.calculationResult,
+      subtotal: logisticOrderItemsTable.subtotal,
+      itemSource: logisticOrderItemsTable.itemSource,
+      vendorCatalogItemId: logisticOrderItemsTable.vendorCatalogItemId,
+      vendorId: logisticOrderItemsTable.vendorId,
+      serviceType: logisticOrderItemsTable.serviceType,
+      priceSnapshot: logisticOrderItemsTable.priceSnapshot,
+      calculationInput: logisticOrderItemsTable.calculationInput,
+      templateSnapshot: logisticOrderItemsTable.templateSnapshot,
+      createdAt: logisticOrderItemsTable.createdAt,
+      vendorFulfillmentId: logisticVendorFulfillmentsTable.id,
+      vendorFulfillmentStatus: logisticVendorFulfillmentsTable.status,
+    })
+      .from(logisticOrderItemsTable)
+      .leftJoin(logisticVendorFulfillmentsTable, eq(logisticVendorFulfillmentsTable.orderItemId, logisticOrderItemsTable.id))
+      .where(eq(logisticOrderItemsTable.orderId, id)),
     db.select({ id: salesDocumentsTable.id, docNumber: salesDocumentsTable.docNumber })
       .from(salesDocumentsTable)
       .where(eq(salesDocumentsTable.logisticOrderId, id))
@@ -2351,54 +2398,110 @@ logisticOrdersRouter.post("/export-gsheet", async (req: Request, res: Response) 
 });
 
 // ─── POST /:orderId/items/:itemId/vendor-fulfillment ────────────────────────
-// Buat vendor fulfillment link untuk item vendor marketplace
+// Buat logistic vendor fulfillment untuk item Vendor Marketplace
 logisticOrdersRouter.post(
   "/:orderId/items/:itemId/vendor-fulfillment",
   requireClerkUser,
   async (req: Request, res: Response) => {
     const orderId = parseInt(req.params.orderId ?? "", 10);
     const itemId  = parseInt(req.params.itemId  ?? "", 10);
-    if (isNaN(orderId) || isNaN(itemId)) return res.status(400).json({ message: "Parameter tidak valid" });
+    if (isNaN(orderId) || isNaN(itemId)) {
+      return res.status(400).json({ success: false, message: "Parameter tidak valid" });
+    }
 
+    const body = req.body as { notes?: string } | undefined;
+    const adminNotes = body?.notes?.trim() || null;
+
+    // ── 1. Validasi order ──────────────────────────────────────────────────
     const [order] = await db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
-    if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
+    if (!order) return res.status(404).json({ success: false, message: "Order tidak ditemukan" });
 
+    // ── 2. Validasi item ───────────────────────────────────────────────────
     const [item] = await db.select().from(logisticOrderItemsTable)
       .where(and(eq(logisticOrderItemsTable.id, itemId), eq(logisticOrderItemsTable.orderId, orderId)));
-    if (!item) return res.status(404).json({ message: "Item tidak ditemukan" });
+    if (!item) return res.status(404).json({ success: false, message: "Item tidak ditemukan" });
 
-    if (item.itemSource !== "vendor_catalog_item" || !item.vendorCatalogItemId) {
-      return res.status(400).json({ message: "Item bukan Vendor Marketplace" });
+    if (item.itemSource !== "vendor_catalog_item") {
+      return res.status(400).json({ success: false, message: "Item bukan Vendor Marketplace" });
+    }
+    if (!item.vendorCatalogItemId) {
+      return res.status(400).json({ success: false, message: "vendorCatalogItemId tidak ada pada item ini" });
     }
 
-    if ((item as any).vendorFulfillmentId) {
-      return res.status(409).json({ message: "Vendor fulfillment sudah dibuat untuk item ini" });
+    // ── 3. Resolve vendorId (item atau vendor catalog) ────────────────────
+    let vendorId = item.vendorId ?? null;
+    if (!vendorId && item.vendorCatalogItemId) {
+      const row = await db.execute(sql`
+        SELECT vendor_id FROM vendor_catalog_items WHERE id = ${item.vendorCatalogItemId} LIMIT 1
+      `);
+      const r = (row as { rows?: Array<{ vendor_id?: number | null }> }).rows?.[0];
+      vendorId = r?.vendor_id ?? null;
+    }
+    if (!vendorId) {
+      return res.status(422).json({ success: false, message: "Vendor tidak ditemukan untuk item ini" });
     }
 
-    const vendorId    = item.vendorId ?? null;
-    const serviceType = item.serviceType ?? "Vendor Marketplace";
-    const expiresAt   = new Date(Date.now() + 72 * 3600_000);
-    const token       = randomBytes(24).toString("hex");
+    // ── 4. Cek duplikat via unique constraint ─────────────────────────────
+    const [existing] = await db.select()
+      .from(logisticVendorFulfillmentsTable)
+      .where(eq(logisticVendorFulfillmentsTable.orderItemId, itemId));
+    if (existing) {
+      return res.status(200).json({
+        success: true,
+        message: "already_exists",
+        fulfillment: existing,
+      });
+    }
 
-    const [vfLink] = await db.insert(vendorFulfillmentLinksTable).values({
-      token,
+    // ── 5. Siapkan snapshot payload ───────────────────────────────────────
+    const serviceType = item.serviceType
+      ?? ((item.templateSnapshot as Record<string,unknown> | null)?.serviceType as string | undefined)
+      ?? null;
+
+    const fulfillmentPayload: Record<string, unknown> = {
       orderId,
+      orderNumber: order.orderNumber,
+      itemId,
+      serviceName: item.serviceName,
+      category: item.category,
+      calculatorType: item.calculatorType,
+      serviceType,
+      subtotal: item.subtotal,
+    };
+
+    // ── 6. Insert ──────────────────────────────────────────────────────────
+    const [fulfillment] = await db.insert(logisticVendorFulfillmentsTable).values({
+      orderId,
+      orderItemId: itemId,
+      vendorCatalogItemId: item.vendorCatalogItemId,
       vendorId,
       serviceType,
       status: "pending",
-      expiresAt,
+      fulfillmentPayload,
+      calculationInput: item.calculationInput as Record<string,unknown> | null,
+      templateSnapshot: item.templateSnapshot as Record<string,unknown> | null,
+      priceSnapshot: item.priceSnapshot as Record<string,unknown> | null,
+      adminNotes,
     }).returning();
 
-    await db.execute(sql`UPDATE logistic_order_items SET vendor_fulfillment_id = ${vfLink.id} WHERE id = ${itemId}`);
+    // ── 7. Audit log ───────────────────────────────────────────────────────
+    const actor = req.user as { id?: string; name?: string; username?: string } | undefined;
+    logOrderAudit({
+      orderId,
+      orderNumber: order.orderNumber,
+      actorType: "admin",
+      actorId: actor?.id ?? null,
+      actorName: actor?.name ?? actor?.username ?? null,
+      action: "vendor_fulfillment_created",
+      description: `Vendor fulfillment created from marketplace service item: ${item.serviceName} (item #${itemId})`,
+      newValue: { fulfillmentId: fulfillment.id, vendorId, serviceType, status: "pending" },
+      ipAddress: req.ip ?? null,
+    }).catch(() => {});
 
-    const domain = getPreferredDomain() || req.hostname;
-    const fulfillUrl = `https://${domain}/vendor-fulfillment/${token}`;
-
-    return res.json({
-      ok: true,
-      vendorFulfillmentId: vfLink.id,
-      token,
-      fulfillUrl,
+    return res.status(201).json({
+      success: true,
+      message: "created",
+      fulfillment,
     });
   }
 );

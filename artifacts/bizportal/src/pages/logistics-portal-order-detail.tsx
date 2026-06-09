@@ -139,10 +139,10 @@ export default function LogisticsPortalOrderDetailPage() {
     vendorCatalogItemId: number | null;
     vendorFulfillmentId: number | null;
   }
-  const [vfModal, setVfModal] = useState<{ open: boolean; item: VendorFulfillItem | null }>({ open: false, item: null });
+  const [vfModal, setVfModal] = useState<{ open: boolean; item: VendorFulfillItem | null; notes: string }>({ open: false, item: null, notes: "" });
   const [vfSubmitting, setVfSubmitting] = useState(false);
 
-  async function submitVendorFulfillment() {
+  async function submitVendorFulfillment(notes?: string) {
     if (!vfModal.item) return;
     setVfSubmitting(true);
     try {
@@ -150,13 +150,17 @@ export default function LogisticsPortalOrderDetailPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({}),
+        body: JSON.stringify({ notes: notes ?? "" }),
       });
-      if (!res.ok) {
-        const err = await res.json() as { message?: string };
-        throw new Error(err.message ?? "Gagal membuat vendor fulfillment");
+      const data = await res.json() as { success?: boolean; message?: string; fulfillment?: { id: number; status: string } };
+      if (!res.ok && !data.success) {
+        throw new Error(data.message ?? "Gagal membuat vendor fulfillment");
       }
-      toast({ title: "Vendor Fulfillment berhasil dibuat", description: `Item: ${vfModal.item.serviceName}` });
+      const isNew = data.message !== "already_exists";
+      toast({
+        title: isNew ? "Vendor Fulfillment berhasil dibuat" : "Vendor Fulfillment sudah ada",
+        description: `Item: ${vfModal.item.serviceName}${!isNew ? " — data fulfillment sudah tersedia" : ""}`,
+      });
       setVfModal({ open: false, item: null });
       qc.invalidateQueries({ queryKey: getGetLogisticOrderQueryKey(orderId) });
     } catch (e) {
@@ -984,11 +988,26 @@ export default function LogisticsPortalOrderDetailPage() {
                                   );
                                 })()}
                                 {(item as any).itemSource === "vendor_catalog_item" && (item as any).vendorCatalogItemId && (
-                                  <div className="mt-2">
+                                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
                                     {(item as any).vendorFulfillmentId ? (
-                                      <span className="inline-flex items-center gap-1 text-[10px] font-semibold bg-green-100 text-green-700 border border-green-200 rounded px-2 py-0.5">
-                                        <CheckCircle className="h-3 w-3" /> Vendor Fulfillment Created
-                                      </span>
+                                      <>
+                                        <span className="inline-flex items-center gap-1 text-[10px] font-semibold bg-green-100 text-green-700 border border-green-200 rounded px-2 py-0.5">
+                                          <CheckCircle className="h-3 w-3" /> Vendor Fulfillment Created
+                                        </span>
+                                        {(item as any).vendorFulfillmentStatus && (item as any).vendorFulfillmentStatus !== "pending" && (
+                                          <span className={`inline-flex items-center text-[10px] font-semibold rounded px-2 py-0.5 border ${
+                                            (item as any).vendorFulfillmentStatus === "completed"
+                                              ? "bg-emerald-100 text-emerald-700 border-emerald-200"
+                                              : (item as any).vendorFulfillmentStatus === "in_progress"
+                                              ? "bg-amber-100 text-amber-700 border-amber-200"
+                                              : (item as any).vendorFulfillmentStatus === "cancelled"
+                                              ? "bg-red-100 text-red-700 border-red-200"
+                                              : "bg-slate-100 text-slate-600 border-slate-200"
+                                          }`}>
+                                            {(item as any).vendorFulfillmentStatus}
+                                          </span>
+                                        )}
+                                      </>
                                     ) : (
                                       <Button
                                         size="sm"
@@ -996,6 +1015,7 @@ export default function LogisticsPortalOrderDetailPage() {
                                         className="h-6 text-[11px] px-2 gap-1 border-blue-300 text-blue-700 hover:bg-blue-50"
                                         onClick={() => setVfModal({
                                           open: true,
+                                          notes: "",
                                           item: {
                                             id: item.id,
                                             serviceName: item.serviceName,
@@ -2487,7 +2507,7 @@ export default function LogisticsPortalOrderDetailPage() {
       </Dialog>
 
       {/* ── Modal: Buat Vendor Fulfillment ── */}
-      <Dialog open={vfModal.open} onOpenChange={(o) => { if (!vfSubmitting) setVfModal(s => ({ ...s, open: o })); }}>
+      <Dialog open={vfModal.open} onOpenChange={(o) => { if (!vfSubmitting) setVfModal(s => ({ ...s, open: o, notes: o ? s.notes : "" })); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -2558,16 +2578,27 @@ export default function LogisticsPortalOrderDetailPage() {
                   </div>
                 );
               })()}
+              <div className="space-y-1.5">
+                <Label className="text-xs text-slate-500">Catatan Admin (opsional)</Label>
+                <textarea
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
+                  rows={2}
+                  placeholder="Instruksi atau catatan untuk vendor..."
+                  value={vfModal.notes}
+                  onChange={(e) => setVfModal(s => ({ ...s, notes: e.target.value }))}
+                  disabled={vfSubmitting}
+                />
+              </div>
               <p className="text-xs text-muted-foreground bg-amber-50 border border-amber-100 rounded px-3 py-2">
-                Link fulfillment vendor akan dibuat dan vendor dapat mengisi detail pengerjaan melalui portal.
+                Vendor fulfillment akan dibuat dengan status <strong>pending</strong>. Data snapshot order item akan tersimpan untuk referensi vendor.
               </p>
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setVfModal({ open: false, item: null })} disabled={vfSubmitting}>Batal</Button>
+            <Button variant="outline" onClick={() => setVfModal({ open: false, item: null, notes: "" })} disabled={vfSubmitting}>Batal</Button>
             <Button
               className="gap-2 bg-blue-600 hover:bg-blue-700 text-white"
-              onClick={submitVendorFulfillment}
+              onClick={() => submitVendorFulfillment(vfModal.notes)}
               disabled={vfSubmitting}
             >
               {vfSubmitting

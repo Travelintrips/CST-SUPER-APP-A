@@ -59,6 +59,7 @@ import { runOrderProgressMigration } from "./lib/orderProgress.js";
 import { runExceptionEnumMigration, runOrderExceptionsMigration } from "./lib/services/exceptionService.js";
 import { runVendorCompanyAssignmentsMigration } from "./lib/vendorCompanyAssignmentsMigration.js";
 import { runVendorCatalogSchemaMigration } from "./lib/vendorCatalogSchemaMigration.js";
+import { runLogisticVendorFulfillmentsMigration } from "./lib/logisticVendorFulfillmentsMigration.js";
 import { runProductFirstFlowMigration } from "./lib/productFirstFlowMigration.js";
 import { runStep4TemplateMigration } from "./lib/step4TemplateMigration.js";
 import { runServiceTemplateMigration } from "./lib/serviceTemplateMigration.js";
@@ -620,6 +621,7 @@ async function startServer() {
     .then(() => runWithRetry("Driver assignment migration", runDriverAssignmentMigration))
     .then(() => runWithRetry("Vendor company assignments migration", runVendorCompanyAssignmentsMigration))
     .then(() => runWithRetry("Vendor catalog schema migration", runVendorCatalogSchemaMigration))
+    .then(() => runWithRetry("Logistic vendor fulfillments migration", runLogisticVendorFulfillmentsMigration))
     .then(() => runWithRetry("Product media migration", runProductMediaMigration))
     .then(() => enableRealtimeTables().catch((err) => {
       logger.warn({ err }, "Supabase Realtime table enable failed (non-fatal)");

@@ -95,3 +95,4 @@ export * from "./fixedAssets";
 export * from "./expenseApprovals";
 export * from "./productMedia";
 export * from "./vendorCatalogEngine";
+export * from "./logisticVendorFulfillments";
