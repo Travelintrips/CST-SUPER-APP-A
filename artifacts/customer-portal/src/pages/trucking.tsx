@@ -1,10 +1,11 @@
 import { useState, useRef } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import {
   ChevronDown, ChevronLeft, ChevronRight, Calculator,
   Truck, Shield, Clock, Fuel, Users, Info, CheckCircle2,
   MinusCircle, PlusCircle, CalendarDays, Package, MapPin,
-  ArrowRight, Phone, User, AlarmClock, Boxes,
+  ArrowRight, Phone, User, AlarmClock, Boxes, Send, Loader2,
+  PartyPopper,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -236,6 +237,7 @@ function SelectField({ value, onChange, placeholder, options }: {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function TruckingPage() {
+  const [, setLocation] = useLocation();
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle>(VEHICLES[7]);
   const [selectedArea, setSelectedArea]       = useState(AREAS[0].value);
   const [showCalc, setShowCalc]               = useState(false);
@@ -271,7 +273,10 @@ export default function TruckingPage() {
     ferry: false, tol: false, multiDrop: false, urgentDelivery: false, overnight: false,
   });
 
-  const [showEstimasi, setShowEstimasi] = useState(false);
+  const [showEstimasi, setShowEstimasi]   = useState(false);
+  const [submitting, setSubmitting]       = useState(false);
+  const [bookingNumber, setBookingNumber] = useState<string | null>(null);
+  const [submitError, setSubmitError]     = useState<string | null>(null);
 
   // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -286,6 +291,50 @@ export default function TruckingPage() {
   function handleCekOngkir() {
     setShowCalc(true);
     setTimeout(() => calcRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 120);
+  }
+
+  async function submitBooking() {
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      const res = await fetch("/api/trucking/bookings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          vehicleType:    selectedVehicle.id,
+          vehicleName:    selectedVehicle.name,
+          areaPickup,
+          alamatPickup,
+          picPickup,
+          hpPickup,
+          areaDelivery:   areaDel,
+          alamatDelivery: alamatDel,
+          picPenerima,
+          hpPenerima,
+          jadwalType,
+          tanggalPickup:  jadwalType === "nanti" ? tanggal : undefined,
+          jamPickup:      jadwalType === "nanti" ? jam : undefined,
+          jenisBarang:    jenisBarang || undefined,
+          beratKg:        berat ? parseFloat(berat) : undefined,
+          jumlahKoli:     jumlahKoli ? parseInt(jumlahKoli) : undefined,
+          volumeM3:       volume ? parseFloat(volume) : undefined,
+          catatan:        catatan || undefined,
+          jumlahTrip,
+          addons,
+          estimasiTotal:  totalEstimasi,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as { message?: string }).message ?? "Gagal mengirim permintaan");
+      }
+      const data = await res.json() as { bookingNumber: string };
+      setBookingNumber(data.bookingNumber);
+    } catch (e: unknown) {
+      setSubmitError(e instanceof Error ? e.message : "Terjadi kesalahan, coba lagi");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   // ── Calculation ─────────────────────────────────────────────────────────────
@@ -607,12 +656,11 @@ export default function TruckingPage() {
                 </Button>
 
                 {/* ── Estimasi Result ── */}
-                {showEstimasi && (
+                {showEstimasi && !bookingNumber && (
                   <div className="bg-gradient-to-br from-blue-50 to-slate-50 border border-blue-100 rounded-2xl p-5 space-y-4">
                     <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Ringkasan Estimasi Biaya</p>
 
                     <div className="space-y-2.5">
-                      {/* Route summary */}
                       <div className="flex items-center gap-2 text-[13px]">
                         <MapPin className="h-3.5 w-3.5 text-blue-400 shrink-0" />
                         <span className="text-slate-500">
@@ -624,7 +672,6 @@ export default function TruckingPage() {
 
                       <div className="h-px bg-blue-100" />
 
-                      {/* Cost breakdown */}
                       <div className="space-y-1.5 text-[13px]">
                         <div className="flex justify-between">
                           <span className="text-slate-500">
@@ -633,14 +680,12 @@ export default function TruckingPage() {
                           </span>
                           <span className="font-semibold text-slate-800">{formatRp(biayaPerTrip)}</span>
                         </div>
-
                         {ADDON_LIST.filter(({ key, price }) => addons[key] && price > 0).map(({ key, label, price }) => (
                           <div key={key} className="flex justify-between text-slate-500">
                             <span>{label}</span>
                             <span className="font-medium text-slate-700">{formatRp(price)}</span>
                           </div>
                         ))}
-
                         {addons.tol && (
                           <div className="flex justify-between text-slate-500">
                             <span>Tol (actual cost)</span>
@@ -654,9 +699,7 @@ export default function TruckingPage() {
                       <div className="flex items-end justify-between">
                         <div>
                           <p className="text-[11px] text-slate-400 font-medium">Total Estimasi</p>
-                          {addons.tol && (
-                            <p className="text-[10px] text-slate-400">*belum termasuk biaya tol</p>
-                          )}
+                          {addons.tol && <p className="text-[10px] text-slate-400">*belum termasuk biaya tol</p>}
                         </div>
                         <span className="text-2xl font-bold text-blue-600">{formatRp(totalEstimasi)}</span>
                       </div>
@@ -666,12 +709,60 @@ export default function TruckingPage() {
                       *Estimasi belum termasuk PPN. Harga akhir dapat berbeda tergantung kondisi aktual.
                     </p>
 
-                    <Link href="/book">
-                      <Button className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold text-sm gap-2 mt-1">
-                        <Truck className="h-4 w-4" />
-                        Lanjut Pesan Sekarang
-                      </Button>
-                    </Link>
+                    {submitError && (
+                      <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-3.5 py-3 text-[12.5px] text-red-700">
+                        <Info className="h-4 w-4 shrink-0" />
+                        {submitError}
+                      </div>
+                    )}
+
+                    <Button
+                      type="button"
+                      onClick={submitBooking}
+                      disabled={submitting}
+                      className="w-full h-12 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-[14px] gap-2 shadow-md shadow-blue-200 disabled:opacity-60"
+                    >
+                      {submitting
+                        ? <><Loader2 className="h-4 w-4 animate-spin" /> Mengirim Permintaan...</>
+                        : <><Send className="h-4 w-4" /> Kirim Permintaan Booking</>
+                      }
+                    </Button>
+                  </div>
+                )}
+
+                {/* ── Success State ── */}
+                {bookingNumber && (
+                  <div className="bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-200 rounded-2xl p-6 text-center space-y-4">
+                    <div className="flex justify-center">
+                      <div className="h-16 w-16 rounded-full bg-green-100 flex items-center justify-center">
+                        <PartyPopper className="h-8 w-8 text-green-600" />
+                      </div>
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-bold text-green-800">Permintaan Terkirim!</h3>
+                      <p className="text-[13px] text-green-700 mt-1">Tim kami akan segera menghubungi Anda.</p>
+                    </div>
+                    <div className="bg-white rounded-xl border border-green-200 px-4 py-3">
+                      <p className="text-[11px] text-slate-400 font-medium">No. Booking</p>
+                      <p className="text-xl font-bold text-slate-800 tracking-wide mt-0.5">{bookingNumber}</p>
+                    </div>
+                    <div className="text-[12px] text-green-700 space-y-1">
+                      <div className="flex items-center gap-2 justify-center">
+                        <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+                        Notifikasi WA dikirim ke tim operasional
+                      </div>
+                      <div className="flex items-center gap-2 justify-center">
+                        <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+                        Konfirmasi & detail harga final menyusul
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      onClick={() => setLocation("/")}
+                      className="w-full h-10 bg-green-600 hover:bg-green-700 text-white rounded-xl font-semibold text-sm"
+                    >
+                      Kembali ke Beranda
+                    </Button>
                   </div>
                 )}
               </div>
