@@ -815,7 +815,9 @@ export default function MarketplacePage() {
 
   // ── Build service category list from actual item data (service tab only) ──
   const serviceCategories = useMemo(
-    () => (activeTab === "service" ? buildServiceCategories(items) : []),
+    () => (activeTab === "service"
+      ? buildServiceCategories(items).filter(c => c.key !== "trucking")
+      : []),
     [activeTab, items],
   );
 
@@ -823,8 +825,15 @@ export default function MarketplacePage() {
   const visibleItems = useMemo(() => {
     const merged: ActiveFilters = { ...activeFilters };
     if (searchQuery.trim()) merged["__search"] = searchQuery.trim();
-    return items.filter((item) => matchVendorCatalog(item, merged));
-  }, [items, activeFilters, searchQuery]);
+    return items
+      .filter((item) => {
+        // Trucking items are handled by the dedicated /trucking page
+        const cat = item.categoryKey ?? item.serviceType ?? "";
+        if (activeTab === "service" && cat === "trucking") return false;
+        return true;
+      })
+      .filter((item) => matchVendorCatalog(item, merged));
+  }, [items, activeFilters, searchQuery, activeTab]);
 
   // ── Compare items (resolved from IDs → actual items) ─────────────────────
   const compareItems = useMemo(
