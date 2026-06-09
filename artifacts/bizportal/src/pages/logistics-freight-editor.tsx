@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { GooglePlacesAutocomplete } from "@/components/ui/google-places-autocomplete";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -1050,7 +1051,12 @@ export default function LogisticsFreightEditorPage() {
                         <AutofillRestoreMarker source="catalog" fieldKey="shipperAddress" originalValue={shipperCatalogAddressValue} currentValue={form.shipperAddress} onRestore={() => { setForm((f) => ({ ...f, shipperAddress: shipperCatalogAddressValue })); clearDismissedBadges("shipperAddress:catalog"); }} />
                       )}
                     </div>
-                    <Input id="shipperAddress" value={form.shipperAddress} onChange={set("shipperAddress")} placeholder="Jl. ..." className={`${scannedFields.has("shipperAddress") ? "ring-1 ring-green-400" : ""} ${(shipperAddressAutoFilled && dismissedBadges.has("shipperAddress:po")) ? "border-l-2 border-l-blue-300" : (shipperVendorAddressFilled && dismissedBadges.has("shipperAddress:vendor")) ? "border-l-2 border-l-purple-300" : (shipperCatalogAddressFilled && dismissedBadges.has("shipperAddress:catalog")) ? "border-l-2 border-l-amber-300" : ""}`.trim()} />
+                    <GooglePlacesAutocomplete
+                      value={form.shipperAddress}
+                      onChange={(v) => setForm((f) => ({ ...f, shipperAddress: v }))}
+                      placeholder="Jl. ..."
+                      className={`${scannedFields.has("shipperAddress") ? "ring-1 ring-green-400" : ""} ${(shipperAddressAutoFilled && dismissedBadges.has("shipperAddress:po")) ? "border-l-2 border-l-blue-300" : (shipperVendorAddressFilled && dismissedBadges.has("shipperAddress:vendor")) ? "border-l-2 border-l-purple-300" : (shipperCatalogAddressFilled && dismissedBadges.has("shipperAddress:catalog")) ? "border-l-2 border-l-amber-300" : ""}`.trim()}
+                    />
                     {((shipperAddressAutoFilled && !dismissedBadges.has("shipperAddress:po")) || (shipperVendorAddressFilled && !dismissedBadges.has("shipperAddress:vendor")) || (shipperCatalogAddressFilled && !dismissedBadges.has("shipperAddress:catalog")) || scannedFields.has("shipperAddress")) && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
                         {shipperAddressAutoFilled && !dismissedBadges.has("shipperAddress:po") && <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari PO<button type="button" onClick={() => dismissBadge("shipperAddress:po")} className="hover:text-blue-900 leading-none" aria-label="Tutup">×</button></span>}
@@ -1104,7 +1110,12 @@ export default function LogisticsFreightEditorPage() {
                         <AutofillRestoreMarker source="so" fieldKey="consigneeAddress" originalValue={consigneeAddressAutoFilledValue} currentValue={form.consigneeAddress} onRestore={() => { setForm((f) => ({ ...f, consigneeAddress: consigneeAddressAutoFilledValue })); clearDismissedBadges("consigneeAddress:so"); setScannedFields((prev) => { const next = new Set(prev); next.delete("consigneeAddress"); return next; }); }} />
                       )}
                     </div>
-                    <Input id="consigneeAddress" value={form.consigneeAddress} onChange={set("consigneeAddress")} placeholder="Jl. ..." className={`${scannedFields.has("consigneeAddress") ? "ring-1 ring-green-400" : ""} ${(consigneeAddressAutoFilled && dismissedBadges.has("consigneeAddress:so")) ? "border-l-2 border-l-blue-300" : ""}`.trim()} />
+                    <GooglePlacesAutocomplete
+                      value={form.consigneeAddress}
+                      onChange={(v) => setForm((f) => ({ ...f, consigneeAddress: v }))}
+                      placeholder="Jl. ..."
+                      className={`${scannedFields.has("consigneeAddress") ? "ring-1 ring-green-400" : ""} ${(consigneeAddressAutoFilled && dismissedBadges.has("consigneeAddress:so")) ? "border-l-2 border-l-blue-300" : ""}`.trim()}
+                    />
                     {((consigneeAddressAutoFilled && !dismissedBadges.has("consigneeAddress:so")) || scannedFields.has("consigneeAddress")) && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
                         {consigneeAddressAutoFilled && !dismissedBadges.has("consigneeAddress:so") && <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari SO<button type="button" onClick={() => dismissBadge("consigneeAddress:so")} className="hover:text-blue-900 leading-none" aria-label="Tutup">×</button></span>}
