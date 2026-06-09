@@ -274,6 +274,7 @@ export function AppShell({ children, noPadding }: AppShellProps) {
         { titleKey: "purchaseOrders", href: "/purchase/orders", icon: ShoppingBag },
         { titleKey: "vendors", href: "/purchase/vendors", icon: UserCircle },
         { titleKey: "Vendor Catalog", href: "/purchase/vendor-catalog", icon: Store },
+        { titleKey: "Trucking Pricing", href: "/purchase/trucking-pricing", icon: Truck },
         { titleKey: "AI Image Generator", href: "/marketplace/ai-images", icon: ImageIcon, roles: ["admin", "owner"] },
         { titleKey: "Approvals Pembelian", href: "/purchase/payment-requests", icon: ClipboardCheck },
         { titleKey: "Terima Barang (GRN)", href: "/purchase/gr", icon: PackageCheck },

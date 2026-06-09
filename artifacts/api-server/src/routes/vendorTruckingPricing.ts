@@ -30,22 +30,30 @@ db.execute(sql`
     multidrop_fee_per_drop         NUMERIC(15,2) NOT NULL DEFAULT 0,
     overnight_fee_per_night        NUMERIC(15,2) NOT NULL DEFAULT 0,
     daily_rental_price             NUMERIC(15,2) NOT NULL DEFAULT 0,
+    operation_areas                TEXT[] NOT NULL DEFAULT '{}',
     is_active                      BOOLEAN NOT NULL DEFAULT TRUE,
     created_at                     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at                     TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )
-`).catch(() => {});
+`).then(() =>
+  db.execute(sql`ALTER TABLE vendor_trucking_pricing ADD COLUMN IF NOT EXISTS operation_areas TEXT[] NOT NULL DEFAULT '{}'`)
+).catch(() => {});
 
 router.get("/", async (req: Request, res: Response) => {
   if (!(await requireAdmin(req, res))) return;
   try {
     const vendorId = req.query.vendor_id ? Number(req.query.vendor_id) : null;
+    const vehicleType = (req.query.vehicle_type as string) || null;
+    const area = (req.query.area as string) || null;
+    const activeOnly = req.query.active_only !== "false";
     const rows = await db.execute(sql`
       SELECT vtp.*, s.name AS vendor_name
       FROM vendor_trucking_pricing vtp
       JOIN suppliers s ON s.id = vtp.vendor_id
       WHERE (${vendorId}::int IS NULL OR vtp.vendor_id = ${vendorId})
-        AND vtp.is_active = TRUE
+        AND (${vehicleType}::text IS NULL OR vtp.vehicle_type = ${vehicleType})
+        AND (${area}::text IS NULL OR ${area} = ANY(vtp.operation_areas))
+        AND (NOT ${activeOnly} OR vtp.is_active = TRUE)
       ORDER BY s.name, vtp.vehicle_type
     `);
     res.json(rows.rows);
@@ -59,11 +67,17 @@ router.get("/all", async (req: Request, res: Response) => {
   if (!(await requireAdmin(req, res))) return;
   try {
     const vendorId = req.query.vendor_id ? Number(req.query.vendor_id) : null;
+    const vehicleType = (req.query.vehicle_type as string) || null;
+    const area = (req.query.area as string) || null;
+    const isActive = req.query.is_active;
     const rows = await db.execute(sql`
       SELECT vtp.*, s.name AS vendor_name
       FROM vendor_trucking_pricing vtp
       JOIN suppliers s ON s.id = vtp.vendor_id
       WHERE (${vendorId}::int IS NULL OR vtp.vendor_id = ${vendorId})
+        AND (${vehicleType}::text IS NULL OR vtp.vehicle_type = ${vehicleType})
+        AND (${area}::text IS NULL OR ${area} = ANY(vtp.operation_areas))
+        AND (${isActive == null ? null : isActive === "true"}::boolean IS NULL OR vtp.is_active = ${isActive == null ? null : isActive === "true"}::boolean)
       ORDER BY s.name, vtp.vehicle_type
     `);
     res.json(rows.rows);
@@ -96,7 +110,15 @@ router.post("/", async (req: Request, res: Response) => {
   if (!(await requireAdmin(req, res))) return;
   const b = req.body as Record<string, unknown>;
   const n = (v: unknown, def = 0) => v != null && v !== "" ? Number(v) : def;
+  const areas = Array.isArray(b.operation_areas) ? (b.operation_areas as string[]) : [];
+  if (n(b.price_per_km) <= 0) { res.status(400).json({ error: "price_per_km harus > 0" }); return; }
+  if (n(b.minimum_charge) <= 0) { res.status(400).json({ error: "minimum_charge harus > 0" }); return; }
+  const feeFields = ["loading_helper_fee","unloading_helper_fee","waiting_fee_per_hour","multidrop_fee_per_drop","overnight_fee_per_night","daily_rental_price","toll_flat_amount","ferry_flat_amount"] as const;
+  for (const f of feeFields) { if (n(b[f]) < 0) { res.status(400).json({ error: `${f} tidak boleh negatif` }); return; } }
+  const pctFields = ["out_of_city_surcharge_percent","inter_province_surcharge_percent","inter_island_surcharge_percent","insurance_percent","urgent_surcharge_percent"] as const;
+  for (const f of pctFields) { if (n(b[f]) < 0) { res.status(400).json({ error: `${f} tidak boleh negatif` }); return; } }
   try {
+    const areasLiteral = sql.raw(`ARRAY[${areas.map((a) => `'${a.replace(/'/g, "''")}'`).join(",")}]::text[]`);
     const rows = await db.execute(sql`
       INSERT INTO vendor_trucking_pricing (
         vendor_id, vehicle_type, price_per_km, minimum_charge,
@@ -106,7 +128,8 @@ router.post("/", async (req: Request, res: Response) => {
         loading_helper_fee, unloading_helper_fee,
         insurance_percent, urgent_surcharge_percent,
         waiting_free_hours, waiting_fee_per_hour,
-        multidrop_fee_per_drop, overnight_fee_per_night, daily_rental_price, is_active
+        multidrop_fee_per_drop, overnight_fee_per_night, daily_rental_price,
+        operation_areas, is_active
       ) VALUES (
         ${Number(b.vendor_id)}, ${String(b.vehicle_type ?? "")},
         ${n(b.price_per_km)}, ${n(b.minimum_charge)},
@@ -118,7 +141,7 @@ router.post("/", async (req: Request, res: Response) => {
         ${n(b.insurance_percent)}, ${n(b.urgent_surcharge_percent)},
         ${n(b.waiting_free_hours, 2)}, ${n(b.waiting_fee_per_hour)},
         ${n(b.multidrop_fee_per_drop)}, ${n(b.overnight_fee_per_night)},
-        ${n(b.daily_rental_price)}, ${b.is_active !== false}
+        ${n(b.daily_rental_price)}, ${areasLiteral}, ${b.is_active !== false}
       ) RETURNING *
     `);
     res.status(201).json(rows.rows[0]);
@@ -138,7 +161,11 @@ router.put("/:id", async (req: Request, res: Response) => {
   if (isNaN(id)) { res.status(400).json({ error: "ID tidak valid" }); return; }
   const b = req.body as Record<string, unknown>;
   const n = (v: unknown, def = 0) => v != null && v !== "" ? Number(v) : def;
+  const areas = Array.isArray(b.operation_areas) ? (b.operation_areas as string[]) : [];
+  if (n(b.price_per_km) <= 0) { res.status(400).json({ error: "price_per_km harus > 0" }); return; }
+  if (n(b.minimum_charge) <= 0) { res.status(400).json({ error: "minimum_charge harus > 0" }); return; }
   try {
+    const areasLiteral = sql.raw(`ARRAY[${areas.map((a) => `'${a.replace(/'/g, "''")}'`).join(",")}]::text[]`);
     const rows = await db.execute(sql`
       UPDATE vendor_trucking_pricing SET
         vehicle_type                     = ${String(b.vehicle_type ?? "")},
@@ -161,6 +188,7 @@ router.put("/:id", async (req: Request, res: Response) => {
         multidrop_fee_per_drop           = ${n(b.multidrop_fee_per_drop)},
         overnight_fee_per_night          = ${n(b.overnight_fee_per_night)},
         daily_rental_price               = ${n(b.daily_rental_price)},
+        operation_areas                  = ${areasLiteral},
         is_active                        = ${b.is_active !== false},
         updated_at                       = NOW()
       WHERE id = ${id}
