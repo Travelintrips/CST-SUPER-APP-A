@@ -24,6 +24,10 @@ args = "Gateway"
 task = "workflow.run"
 args = "API Server"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "WA Gateway"
+
 [[workflows.workflow]]
 name = "Gateway"
 author = "agent"
@@ -71,6 +75,18 @@ waitForPort = 8080
 
 [workflows.workflow.metadata]
 outputType = "console"
+
+[[workflows.workflow]]
+name = "WA Gateway"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "bash artifacts/wa-gateway/start-dev.sh"
+waitForPort = 8000
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
@@ -151,6 +167,10 @@ externalPort = 80
 [[ports]]
 localPort = 6800
 externalPort = 3002
+
+[[ports]]
+localPort = 8000
+externalPort = 8000
 
 [[ports]]
 localPort = 8080
