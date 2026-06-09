@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
+import { GooglePlacesAutocomplete } from "@/components/ui/google-places-autocomplete";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -478,8 +479,12 @@ export default function TruckingPage() {
                         placeholder="Pilih area pickup" options={AREAS} />
                     </FormField>
                     <FormField label="Alamat Pickup Lengkap" required>
-                      <Input value={alamatPickup} onChange={(e) => setAlamatPickup(e.target.value)}
-                        placeholder="Jl. Contoh No.1, Kota" className={INPUT_CLS} />
+                      <GooglePlacesAutocomplete
+                        value={alamatPickup}
+                        onChange={setAlamatPickup}
+                        placeholder="Jl. Contoh No.1, Kota"
+                        className={INPUT_CLS}
+                      />
                     </FormField>
                     <FormField label="Nama PIC Pickup" required>
                       <div className="relative">
@@ -509,8 +514,12 @@ export default function TruckingPage() {
                         placeholder="Pilih area delivery" options={AREAS} />
                     </FormField>
                     <FormField label="Alamat Delivery Lengkap" required>
-                      <Input value={alamatDel} onChange={(e) => setAlamatDel(e.target.value)}
-                        placeholder="Jl. Tujuan No.2, Kota" className={INPUT_CLS} />
+                      <GooglePlacesAutocomplete
+                        value={alamatDel}
+                        onChange={setAlamatDel}
+                        placeholder="Jl. Tujuan No.2, Kota"
+                        className={INPUT_CLS}
+                      />
                     </FormField>
                     <FormField label="Nama PIC Penerima" required>
                       <div className="relative">

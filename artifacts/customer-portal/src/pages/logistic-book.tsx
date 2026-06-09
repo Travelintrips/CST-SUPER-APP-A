@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { GooglePlacesAutocomplete } from "@/components/ui/google-places-autocomplete";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
@@ -1232,13 +1233,20 @@ export default function BookPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="sm:col-span-2">
                   <Label className="text-xs">Alamat Pickup <span className="text-destructive">*</span></Label>
-                  <Textarea rows={2} placeholder="Jl. ..., Kota, Provinsi" value={quickTruckData.pickupAddress||""} onChange={e => setQuickTruckData(p => ({ ...p, pickupAddress: e.target.value }))} />
+                  <GooglePlacesAutocomplete
+                    value={quickTruckData.pickupAddress || ""}
+                    onChange={v => setQuickTruckData(p => ({ ...p, pickupAddress: v }))}
+                    placeholder="Jl. ..., Kota, Provinsi"
+                  />
                 </div>
                 <div className="sm:col-span-2">
                   <Label className="text-xs">Alamat Pengiriman <span className="text-destructive">*</span></Label>
-                  <Textarea rows={2} placeholder="Jl. ..., Kota, Provinsi" value={quickTruckData.deliveryAddress||""}
+                  <GooglePlacesAutocomplete
+                    value={quickTruckData.deliveryAddress || ""}
+                    onChange={v => { setQuickDeliveryAddressError(false); setQuickTruckData(p => ({ ...p, deliveryAddress: v })); }}
+                    placeholder="Jl. ..., Kota, Provinsi"
                     className={quickDeliveryAddressError ? "border-destructive focus-visible:ring-destructive" : ""}
-                    onChange={e => { setQuickDeliveryAddressError(false); setQuickTruckData(p => ({ ...p, deliveryAddress: e.target.value })); }} />
+                  />
                   {quickDeliveryAddressError && <p className="text-[11px] text-destructive mt-1">Alamat pengiriman wajib diisi.</p>}
                 </div>
                 <div>

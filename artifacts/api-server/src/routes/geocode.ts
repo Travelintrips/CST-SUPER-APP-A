@@ -1,6 +1,8 @@
 import { Router } from "express";
 import { rateLimit, ipKeyGenerator } from "express-rate-limit";
 
+const GMAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY ?? "";
+
 const router = Router();
 
 const NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
@@ -57,6 +59,83 @@ router.get("/geocode", geocodeRateLimit, async (req, res) => {
     return res.json(data);
   } catch {
     return res.status(502).json({ error: "Geocoding request failed" });
+  }
+});
+
+// Places Autocomplete proxy — keeps GOOGLE_MAPS_API_KEY server-side
+const placesRateLimit = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Terlalu banyak permintaan, coba lagi nanti." },
+  keyGenerator: (req) => {
+    const raw =
+      (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() ??
+      req.socket.remoteAddress ??
+      "unknown";
+    return ipKeyGenerator(raw);
+  },
+});
+
+router.get("/places/autocomplete", placesRateLimit, async (req, res) => {
+  const { input, country } = req.query as Record<string, string>;
+  if (!input || input.trim().length < 2) {
+    return res.status(400).json({ predictions: [] });
+  }
+  if (!GMAPS_API_KEY) {
+    return res.status(503).json({ error: "Google Maps API key not configured" });
+  }
+
+  const params = new URLSearchParams({
+    input: input.trim(),
+    key: GMAPS_API_KEY,
+    language: "id",
+    types: "geocode|establishment",
+  });
+  if (country) params.set("components", `country:${country}`);
+
+  try {
+    const upstream = await fetch(
+      `https://maps.googleapis.com/maps/api/place/autocomplete/json?${params.toString()}`,
+      { signal: AbortSignal.timeout(6000) }
+    );
+    if (!upstream.ok) {
+      return res.status(502).json({ predictions: [] });
+    }
+    const data = await upstream.json() as { predictions?: unknown[]; status?: string };
+    res.setHeader("Cache-Control", "public, max-age=60");
+    return res.json({ predictions: data.predictions ?? [] });
+  } catch {
+    return res.status(502).json({ predictions: [] });
+  }
+});
+
+// Place Detail — resolve place_id to formatted_address
+router.get("/places/detail", placesRateLimit, async (req, res) => {
+  const { place_id } = req.query as Record<string, string>;
+  if (!place_id) return res.status(400).json({ error: "place_id required" });
+  if (!GMAPS_API_KEY) return res.status(503).json({ error: "Google Maps API key not configured" });
+
+  const params = new URLSearchParams({
+    place_id,
+    key: GMAPS_API_KEY,
+    fields: "formatted_address,name",
+    language: "id",
+  });
+
+  try {
+    const upstream = await fetch(
+      `https://maps.googleapis.com/maps/api/place/details/json?${params.toString()}`,
+      { signal: AbortSignal.timeout(6000) }
+    );
+    if (!upstream.ok) return res.status(502).json({ error: "upstream error" });
+    const data = await upstream.json() as { result?: { formatted_address?: string; name?: string } };
+    const address = data.result?.formatted_address || data.result?.name || "";
+    res.setHeader("Cache-Control", "public, max-age=300");
+    return res.json({ address });
+  } catch {
+    return res.status(502).json({ error: "request failed" });
   }
 });
 
