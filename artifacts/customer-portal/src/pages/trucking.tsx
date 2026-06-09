@@ -1,5 +1,6 @@
 import { useState, useRef } from "react";
 import { Link, useLocation } from "wouter";
+import { getAuthHeaders } from "@/lib/auth";
 import {
   ChevronDown, ChevronLeft, ChevronRight, Calculator,
   Truck, Shield, Clock, Fuel, Users, Info, CheckCircle2,
@@ -385,38 +386,45 @@ export default function TruckingPage() {
     setSubmitting(true);
     setSubmitError(null);
     try {
+      const cheapest = estimasiData?.cheapest ?? null;
       const res = await fetch("/api/trucking/bookings", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
         body: JSON.stringify({
-          vehicleType:    selectedVehicle.id,
-          vehicleName:    selectedVehicle.name,
+          vehicleType:          selectedVehicle.id,
+          vehicleName:          selectedVehicle.name,
           areaPickup,
           alamatPickup,
           picPickup,
           hpPickup,
-          areaDelivery:   areaDel,
-          alamatDelivery: alamatDel,
+          areaDelivery:         areaDel,
+          alamatDelivery:       alamatDel,
           picPenerima,
           hpPenerima,
           jadwalType,
-          tanggalPickup:  jadwalType === "nanti" ? tanggal : undefined,
-          jamPickup:      jadwalType === "nanti" ? jam : undefined,
-          jenisBarang:    jenisBarang || undefined,
-          beratKg:        berat ? parseFloat(berat) : undefined,
-          jumlahKoli:     jumlahKoli ? parseInt(jumlahKoli) : undefined,
-          volumeM3:       volume ? parseFloat(volume) : undefined,
-          catatan:        catatan || undefined,
+          tanggalPickup:        jadwalType === "nanti" ? tanggal : undefined,
+          jamPickup:            jadwalType === "nanti" ? jam : undefined,
+          jenisBarang:          jenisBarang || undefined,
+          beratKg:              berat ? parseFloat(berat) : undefined,
+          jumlahKoli:           jumlahKoli ? parseInt(jumlahKoli) : undefined,
+          volumeM3:             volume ? parseFloat(volume) : undefined,
+          catatan:              catatan || undefined,
           jumlahTrip,
           addons,
-          estimasiTotal:  estimasiData?.cheapest?.estimate?.total_estimate ?? totalEstimasi,
+          estimasiTotal:        cheapest?.estimate?.total_estimate ?? totalEstimasi,
+          estimatedDistanceKm:  cheapest?.estimate?.distance_km,
+          estimatedPrice:       cheapest?.estimate?.total_estimate,
+          pricingBreakdown:     cheapest?.estimate ?? undefined,
+          candidateVendorIds:   estimasiData?.candidates?.map((c) => c.vendor_id),
+          selectedVendorId:     cheapest?.vendor_id,
+          source:               "customer_portal",
         }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error((err as { message?: string }).message ?? "Gagal mengirim permintaan");
+        throw new Error((err as { message?: string }).message ?? "Gagal mengirim order");
       }
-      const data = await res.json() as { bookingNumber: string };
+      const data = await res.json() as { bookingNumber: string; status: string };
       setBookingNumber(data.bookingNumber);
     } catch (e: unknown) {
       setSubmitError(e instanceof Error ? e.message : "Terjadi kesalahan, coba lagi");
@@ -898,34 +906,49 @@ export default function TruckingPage() {
 
                 {/* ── Success State ── */}
                 {bookingNumber && (
-                  <div className="bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-200 rounded-2xl p-6 text-center space-y-4">
+                  <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-2xl p-6 text-center space-y-4">
                     <div className="flex justify-center">
-                      <div className="h-16 w-16 rounded-full bg-green-100 flex items-center justify-center">
-                        <PartyPopper className="h-8 w-8 text-green-600" />
+                      <div className="h-16 w-16 rounded-full bg-blue-100 flex items-center justify-center">
+                        <PartyPopper className="h-8 w-8 text-blue-600" />
                       </div>
                     </div>
                     <div>
-                      <h3 className="text-lg font-bold text-green-800">Permintaan Terkirim!</h3>
-                      <p className="text-[13px] text-green-700 mt-1">Tim kami akan segera menghubungi Anda.</p>
+                      <h3 className="text-lg font-bold text-blue-900">Order Trucking Berhasil Dibuat!</h3>
+                      <p className="text-[13px] text-blue-700 mt-1">Order Anda telah masuk ke sistem dan sedang diproses.</p>
                     </div>
-                    <div className="bg-white rounded-xl border border-green-200 px-4 py-3">
-                      <p className="text-[11px] text-slate-400 font-medium">No. Booking</p>
+
+                    {/* Order Number */}
+                    <div className="bg-white rounded-xl border border-blue-200 px-4 py-3">
+                      <p className="text-[11px] text-slate-400 font-medium">No. Order</p>
                       <p className="text-xl font-bold text-slate-800 tracking-wide mt-0.5">{bookingNumber}</p>
                     </div>
-                    <div className="text-[12px] text-green-700 space-y-1">
-                      <div className="flex items-center gap-2 justify-center">
-                        <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
-                        Notifikasi WA dikirim ke tim operasional
+
+                    {/* Status Badge */}
+                    <div className="flex items-center justify-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
+                      <div className="h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
+                      <span className="text-[13px] font-semibold text-amber-800">Menunggu Review Admin</span>
+                    </div>
+
+                    {/* Info checklist */}
+                    <div className="text-[12px] text-slate-600 space-y-2">
+                      <div className="flex items-start gap-2 text-left">
+                        <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0 mt-0.5" />
+                        <span>Notifikasi dikirim ke tim operasional</span>
                       </div>
-                      <div className="flex items-center gap-2 justify-center">
-                        <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
-                        Konfirmasi & detail harga final menyusul
+                      <div className="flex items-start gap-2 text-left">
+                        <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0 mt-0.5" />
+                        <span>Admin akan mereview dan menetapkan harga final</span>
+                      </div>
+                      <div className="flex items-start gap-2 text-left">
+                        <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0 mt-0.5" />
+                        <span>Simpan nomor order di atas untuk konfirmasi lebih lanjut</span>
                       </div>
                     </div>
+
                     <Button
                       type="button"
                       onClick={() => setLocation("/")}
-                      className="w-full h-10 bg-green-600 hover:bg-green-700 text-white rounded-xl font-semibold text-sm"
+                      className="w-full h-10 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold text-sm"
                     >
                       Kembali ke Beranda
                     </Button>
