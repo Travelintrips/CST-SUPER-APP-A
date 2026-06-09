@@ -18,6 +18,7 @@ import {
   rfqVendorLinksTable,
   freightShipmentsTable,
   productTemplatesTable,
+  vendorFulfillmentLinksTable,
 } from "@workspace/db";
 import { resolveTemplate } from "@workspace/product-templates";
 import { deleteFromSupabase } from "../lib/supabaseStorage.js";
@@ -82,7 +83,8 @@ db.execute(sql`
     ADD COLUMN IF NOT EXISTS vendor_id INTEGER REFERENCES suppliers(id) ON DELETE SET NULL,
     ADD COLUMN IF NOT EXISTS service_type TEXT,
     ADD COLUMN IF NOT EXISTS price_snapshot JSONB,
-    ADD COLUMN IF NOT EXISTS calculation_input JSONB
+    ADD COLUMN IF NOT EXISTS calculation_input JSONB,
+    ADD COLUMN IF NOT EXISTS vendor_fulfillment_id INTEGER
 `).catch(() => {});
 
 // [C4-FIX] IP-based rate limit for public order creation: max 10 orders per IP per hour
@@ -175,6 +177,7 @@ function toItem(row: typeof logisticOrderItemsTable.$inferSelect) {
     priceSnapshot: row.priceSnapshot ?? null,
     calculationInput: row.calculationInput ?? null,
     templateSnapshot: row.templateSnapshot ?? null,
+    vendorFulfillmentId: (row as any).vendorFulfillmentId ?? null,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -2346,5 +2349,58 @@ logisticOrdersRouter.post("/export-gsheet", async (req: Request, res: Response) 
 
   return res.json({ ok: true, total: orders.length, ...result });
 });
+
+// ─── POST /:orderId/items/:itemId/vendor-fulfillment ────────────────────────
+// Buat vendor fulfillment link untuk item vendor marketplace
+logisticOrdersRouter.post(
+  "/:orderId/items/:itemId/vendor-fulfillment",
+  requireClerkUser,
+  async (req: Request, res: Response) => {
+    const orderId = parseInt(req.params.orderId ?? "", 10);
+    const itemId  = parseInt(req.params.itemId  ?? "", 10);
+    if (isNaN(orderId) || isNaN(itemId)) return res.status(400).json({ message: "Parameter tidak valid" });
+
+    const [order] = await db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
+    if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
+
+    const [item] = await db.select().from(logisticOrderItemsTable)
+      .where(and(eq(logisticOrderItemsTable.id, itemId), eq(logisticOrderItemsTable.orderId, orderId)));
+    if (!item) return res.status(404).json({ message: "Item tidak ditemukan" });
+
+    if (item.itemSource !== "vendor_catalog_item" || !item.vendorCatalogItemId) {
+      return res.status(400).json({ message: "Item bukan Vendor Marketplace" });
+    }
+
+    if ((item as any).vendorFulfillmentId) {
+      return res.status(409).json({ message: "Vendor fulfillment sudah dibuat untuk item ini" });
+    }
+
+    const vendorId    = item.vendorId ?? null;
+    const serviceType = item.serviceType ?? "Vendor Marketplace";
+    const expiresAt   = new Date(Date.now() + 72 * 3600_000);
+    const token       = randomBytes(24).toString("hex");
+
+    const [vfLink] = await db.insert(vendorFulfillmentLinksTable).values({
+      token,
+      orderId,
+      vendorId,
+      serviceType,
+      status: "pending",
+      expiresAt,
+    }).returning();
+
+    await db.execute(sql`UPDATE logistic_order_items SET vendor_fulfillment_id = ${vfLink.id} WHERE id = ${itemId}`);
+
+    const domain = getPreferredDomain() || req.hostname;
+    const fulfillUrl = `https://${domain}/vendor-fulfillment/${token}`;
+
+    return res.json({
+      ok: true,
+      vendorFulfillmentId: vfLink.id,
+      token,
+      fulfillUrl,
+    });
+  }
+);
 
 // NOTE: create-paylabs-link & payment-proof endpoints are registered ABOVE the auth wall (public).

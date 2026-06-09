@@ -126,6 +126,46 @@ export default function LogisticsPortalOrderDetailPage() {
   const [convertForm, setConvertForm] = useState({ transportMode: "", cargoType: "" });
   const [converting, setConverting] = useState(false);
 
+  // ── Vendor Fulfillment Modal ───────────────────────────────────────────────
+  interface VendorFulfillItem {
+    id: number;
+    serviceName: string;
+    serviceType: string | null;
+    category: string | null;
+    subtotal: number;
+    priceSnapshot: Record<string, unknown> | null;
+    calculationInput: Record<string, unknown> | null;
+    templateSnapshot: Record<string, unknown> | null;
+    vendorCatalogItemId: number | null;
+    vendorFulfillmentId: number | null;
+  }
+  const [vfModal, setVfModal] = useState<{ open: boolean; item: VendorFulfillItem | null }>({ open: false, item: null });
+  const [vfSubmitting, setVfSubmitting] = useState(false);
+
+  async function submitVendorFulfillment() {
+    if (!vfModal.item) return;
+    setVfSubmitting(true);
+    try {
+      const res = await fetch(`/api/logistic/orders/${orderId}/items/${vfModal.item.id}/vendor-fulfillment`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) {
+        const err = await res.json() as { message?: string };
+        throw new Error(err.message ?? "Gagal membuat vendor fulfillment");
+      }
+      toast({ title: "Vendor Fulfillment berhasil dibuat", description: `Item: ${vfModal.item.serviceName}` });
+      setVfModal({ open: false, item: null });
+      qc.invalidateQueries({ queryKey: getGetLogisticOrderQueryKey(orderId) });
+    } catch (e) {
+      toast({ title: "Gagal", description: (e as Error).message, variant: "destructive" });
+    } finally {
+      setVfSubmitting(false);
+    }
+  }
+
   function openEditDetail() {
     if (!order) return;
     setEditDetailForm({
@@ -943,6 +983,38 @@ export default function LogisticsPortalOrderDetailPage() {
                                     </details>
                                   );
                                 })()}
+                                {(item as any).itemSource === "vendor_catalog_item" && (item as any).vendorCatalogItemId && (
+                                  <div className="mt-2">
+                                    {(item as any).vendorFulfillmentId ? (
+                                      <span className="inline-flex items-center gap-1 text-[10px] font-semibold bg-green-100 text-green-700 border border-green-200 rounded px-2 py-0.5">
+                                        <CheckCircle className="h-3 w-3" /> Vendor Fulfillment Created
+                                      </span>
+                                    ) : (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-6 text-[11px] px-2 gap-1 border-blue-300 text-blue-700 hover:bg-blue-50"
+                                        onClick={() => setVfModal({
+                                          open: true,
+                                          item: {
+                                            id: item.id,
+                                            serviceName: item.serviceName,
+                                            serviceType: (item as any).serviceType ?? null,
+                                            category: item.category ?? null,
+                                            subtotal: item.subtotal ?? 0,
+                                            priceSnapshot: (item as any).priceSnapshot ?? null,
+                                            calculationInput: (item as any).calculationInput ?? null,
+                                            templateSnapshot: (item as any).templateSnapshot ?? null,
+                                            vendorCatalogItemId: (item as any).vendorCatalogItemId ?? null,
+                                            vendorFulfillmentId: (item as any).vendorFulfillmentId ?? null,
+                                          },
+                                        })}
+                                      >
+                                        <Truck className="h-3 w-3" /> Proses Vendor
+                                      </Button>
+                                    )}
+                                  </div>
+                                )}
                               </TableCell>
                               <TableCell className="text-sm text-muted-foreground">{item.category}</TableCell>
                               <TableCell className="text-right text-sm font-mono">{idr(sellingPrice)}</TableCell>
@@ -2409,6 +2481,98 @@ export default function LogisticsPortalOrderDetailPage() {
               disabled={converting}
             >
               {converting ? <><Loader2 className="h-4 w-4 animate-spin" /> Memproses...</> : <><Truck className="h-4 w-4" /> Konversi</>}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Modal: Buat Vendor Fulfillment ── */}
+      <Dialog open={vfModal.open} onOpenChange={(o) => { if (!vfSubmitting) setVfModal(s => ({ ...s, open: o })); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Truck className="h-5 w-5 text-blue-600" /> Buat Vendor Fulfillment
+            </DialogTitle>
+          </DialogHeader>
+          {vfModal.item && (
+            <div className="space-y-3 py-1 text-sm">
+              <div className="rounded-lg border bg-blue-50 border-blue-100 p-3 space-y-1.5">
+                <div className="flex justify-between gap-4">
+                  <span className="text-muted-foreground shrink-0">Layanan</span>
+                  <span className="text-right font-semibold">{vfModal.item.serviceName}</span>
+                </div>
+                {vfModal.item.priceSnapshot && (vfModal.item.priceSnapshot as Record<string,unknown>).vendorName && (
+                  <div className="flex justify-between gap-4">
+                    <span className="text-muted-foreground shrink-0">Vendor</span>
+                    <span className="text-right font-semibold text-slate-700">{String((vfModal.item.priceSnapshot as Record<string,unknown>).vendorName)}</span>
+                  </div>
+                )}
+                {vfModal.item.serviceType && (
+                  <div className="flex justify-between gap-4">
+                    <span className="text-muted-foreground shrink-0">Service Type</span>
+                    <span className="text-right">{vfModal.item.serviceType}</span>
+                  </div>
+                )}
+                {vfModal.item.category && (
+                  <div className="flex justify-between gap-4">
+                    <span className="text-muted-foreground shrink-0">Kategori</span>
+                    <span className="text-right">{vfModal.item.category}</span>
+                  </div>
+                )}
+                <div className="flex justify-between gap-4">
+                  <span className="text-muted-foreground shrink-0">Total Harga Customer</span>
+                  <span className="text-right font-semibold text-sky-700">{idr(vfModal.item.subtotal)}</span>
+                </div>
+                {vfModal.item.priceSnapshot && (vfModal.item.priceSnapshot as Record<string,unknown>).unit && (
+                  <div className="flex justify-between gap-4">
+                    <span className="text-muted-foreground shrink-0">Unit</span>
+                    <span className="text-right">/ {String((vfModal.item.priceSnapshot as Record<string,unknown>).unit)}</span>
+                  </div>
+                )}
+              </div>
+              {vfModal.item.calculationInput && Object.keys(vfModal.item.calculationInput).length > 0 && (
+                <div className="rounded-lg border bg-slate-50 p-3 space-y-1">
+                  <p className="text-[11px] font-semibold text-slate-500 mb-1">Input Kalkulator</p>
+                  {Object.entries(vfModal.item.calculationInput)
+                    .filter(([, v]) => v !== undefined && v !== null && v !== "")
+                    .map(([k, v]) => (
+                      <div key={k} className="flex justify-between gap-4 text-xs">
+                        <span className="text-muted-foreground shrink-0">{k}</span>
+                        <span className="text-right font-medium">{String(v)}</span>
+                      </div>
+                    ))}
+                </div>
+              )}
+              {vfModal.item.templateSnapshot && (() => {
+                const snap = vfModal.item!.templateSnapshot as Record<string,unknown>;
+                const st = snap.serviceType as string | undefined;
+                const cat = snap.category as string | undefined;
+                const ver = snap.version as string | undefined;
+                if (!st && !cat && !ver) return null;
+                return (
+                  <div className="rounded-lg border bg-violet-50 border-violet-100 p-3 space-y-1">
+                    <p className="text-[11px] font-semibold text-slate-500 mb-1">Template Snapshot</p>
+                    {st && <div className="flex justify-between gap-4 text-xs"><span className="text-muted-foreground">serviceType</span><span className="font-medium">{st}</span></div>}
+                    {cat && <div className="flex justify-between gap-4 text-xs"><span className="text-muted-foreground">category</span><span className="font-medium">{cat}</span></div>}
+                    {ver && <div className="flex justify-between gap-4 text-xs"><span className="text-muted-foreground">version</span><span className="font-medium">{ver}</span></div>}
+                  </div>
+                );
+              })()}
+              <p className="text-xs text-muted-foreground bg-amber-50 border border-amber-100 rounded px-3 py-2">
+                Link fulfillment vendor akan dibuat dan vendor dapat mengisi detail pengerjaan melalui portal.
+              </p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setVfModal({ open: false, item: null })} disabled={vfSubmitting}>Batal</Button>
+            <Button
+              className="gap-2 bg-blue-600 hover:bg-blue-700 text-white"
+              onClick={submitVendorFulfillment}
+              disabled={vfSubmitting}
+            >
+              {vfSubmitting
+                ? <><Loader2 className="h-4 w-4 animate-spin" /> Memproses...</>
+                : <><Truck className="h-4 w-4" /> Buat Vendor Fulfillment</>}
             </Button>
           </DialogFooter>
         </DialogContent>
