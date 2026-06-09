@@ -250,11 +250,27 @@ logisticVendorFulfillmentAdminRouter.post(
       });
     }
 
-    // ── 4. Ambil priceBase dari vendor_catalog_items ───────────────────────────
+    // ── 4. Parse body override ─────────────────────────────────────────────────
+    const body = req.body as {
+      vendorCostOverride?: number | null;
+      currency?: string;
+      unit?: string;
+      notes?: string;
+    } | undefined;
+
+    const vendorCostOverride =
+      typeof body?.vendorCostOverride === "number" && body.vendorCostOverride > 0
+        ? body.vendorCostOverride
+        : null;
+    const overrideCurrency = body?.currency?.trim() || "IDR";
+    const overrideUnit     = body?.unit?.trim() || null;
+    const overrideNotes    = body?.notes?.trim() || null;
+
+    // ── 5. Ambil priceBase dari vendor_catalog_items ───────────────────────────
     let priceBase = 0;
     let catalogItemName = vf.itemServiceName ?? "Layanan Logistik";
     let catalogItemUnit: string | null = null;
-    let needCostReview = false;
+    let costSource: string;
 
     if (vf.vendorCatalogItemId) {
       const [ci] = await db
@@ -273,48 +289,72 @@ logisticVendorFulfillmentAdminRouter.post(
       }
     }
 
-    if (priceBase <= 0) {
-      needCostReview = true;
+    // ── 6. Tentukan vendor cost final & source ─────────────────────────────────
+    let vendorCost: number;
+
+    if (priceBase > 0) {
+      // Pakai priceBase dari catalog
+      vendorCost = priceBase;
+      costSource = "vendor_catalog_items.priceBase";
+    } else if (vendorCostOverride !== null) {
+      // Pakai admin override
+      vendorCost = vendorCostOverride;
+      costSource = "admin_override";
+    } else {
+      // Tidak ada cost sama sekali → minta admin input
+      return res.status(200).json({
+        ok: false,
+        needCostReview: true,
+        po: null,
+        message: "Harga dasar vendor tidak tersedia. Silakan input vendor cost secara manual.",
+      });
     }
 
-    // ── 5. Hitung margin snapshot ──────────────────────────────────────────────
+    // ── 7. Hitung margin snapshot ──────────────────────────────────────────────
     const customerPrice = vf.itemSubtotal ? parseFloat(vf.itemSubtotal) : 0;
-    const marginAmount = priceBase > 0 && customerPrice > 0
-      ? customerPrice - priceBase
+    const marginAmount = vendorCost > 0 && customerPrice > 0
+      ? customerPrice - vendorCost
       : null;
-    const marginPct = marginAmount !== null && priceBase > 0
-      ? ((marginAmount / priceBase) * 100).toFixed(2)
+    const marginPct = marginAmount !== null && vendorCost > 0
+      ? ((marginAmount / vendorCost) * 100).toFixed(2)
       : null;
 
-    const poSnapshot = {
-      fulfillmentId:      id,
-      orderId:            vf.orderId,
-      orderNumber:        vf.orderNumber ?? null,
-      vendorCatalogItemId: vf.vendorCatalogItemId,
-      serviceType:        vf.serviceType ?? null,
-      vendorCostSnapshot:     priceBase > 0 ? priceBase : null,
-      customerPriceSnapshot:  customerPrice > 0 ? customerPrice : null,
-      marginSnapshot:         marginAmount,
-      marginPctSnapshot:      marginPct ? parseFloat(marginPct) : null,
-      needCostReview,
-      templateSnapshot:   vf.templateSnapshot ?? null,
-      calculationInput:   vf.calculationInput ?? null,
-      priceSnapshot:      vf.priceSnapshot ?? null,
-      createdFrom:        "vendor_fulfillment",
+    const vendorCostSnapshot = {
+      source:    costSource,
+      vendorCost,
+      currency:  costSource === "admin_override" ? overrideCurrency : "IDR",
+      unit:      costSource === "admin_override" ? (overrideUnit ?? catalogItemUnit) : catalogItemUnit,
+      notes:     costSource === "admin_override" ? overrideNotes : null,
     };
 
-    // ── 6. Generate PO number ─────────────────────────────────────────────────
+    const poSnapshot = {
+      fulfillmentId:        id,
+      orderId:              vf.orderId,
+      orderNumber:          vf.orderNumber ?? null,
+      vendorCatalogItemId:  vf.vendorCatalogItemId,
+      serviceType:          vf.serviceType ?? null,
+      vendorCostSnapshot,
+      customerPriceSnapshot: customerPrice > 0 ? customerPrice : null,
+      marginSnapshot:        marginAmount,
+      marginPctSnapshot:     marginPct ? parseFloat(marginPct) : null,
+      templateSnapshot:      vf.templateSnapshot ?? null,
+      calculationInput:      vf.calculationInput ?? null,
+      priceSnapshot:         vf.priceSnapshot ?? null,
+      createdFrom:           "vendor_fulfillment",
+    };
+
+    // ── 8. Generate PO number ─────────────────────────────────────────────────
     const docNumber = await nextVendorPoNumber();
 
-    // ── 7. Notes jika perlu review cost ──────────────────────────────────────
-    const notes = [
+    // ── 9. Notes PO ──────────────────────────────────────────────────────────
+    const poNotes = [
       `Dibuat otomatis dari Vendor Fulfillment #${id} (Order: ${vf.orderNumber ?? vf.orderId})`,
-      needCostReview
-        ? "⚠️ PERLU REVIEW: harga dasar vendor tidak tersedia — harap input vendor cost secara manual sebelum konfirmasi PO ini."
+      costSource === "admin_override" && overrideNotes
+        ? `Catatan vendor cost: ${overrideNotes}`
         : null,
     ].filter(Boolean).join("\n");
 
-    // ── 8. Insert purchase_documents ─────────────────────────────────────────
+    // ── 10. Insert purchase_documents ─────────────────────────────────────────
     const [po] = await db
       .insert(purchaseDocumentsTable)
       .values({
@@ -325,33 +365,33 @@ logisticVendorFulfillmentAdminRouter.post(
         supplierId:      vf.vendorId,
         supplierName:    vf.vendorName ?? "—",
         supplierAddress: vf.vendorAddress ?? null,
-        totalAmount:     String(priceBase),
+        totalAmount:     String(vendorCost),
         taxAmount:       "0",
-        grandTotal:      String(priceBase),
-        notes,
+        grandTotal:      String(vendorCost),
+        notes:           poNotes,
         templateSnapshot: poSnapshot as Record<string, unknown>,
         createdById:     ((req as any).clerkUser?.id ?? null) as string | null,
       })
       .returning();
 
-    // ── 9. Insert purchase_document_lines ─────────────────────────────────────
+    // ── 11. Insert purchase_document_lines ─────────────────────────────────────
     await db.insert(purchaseDocumentLinesTable).values({
-      documentId: po.id,
-      name:       catalogItemName,
+      documentId:  po.id,
+      name:        catalogItemName,
       description: `Layanan ${vf.serviceType ?? ""} — fulfillment #${id}`,
-      quantity:   "1",
-      unit:       catalogItemUnit ?? "unit",
-      unitCost:   String(priceBase),
-      subtotal:   String(priceBase),
+      quantity:    "1",
+      unit:        (costSource === "admin_override" ? overrideUnit : null) ?? catalogItemUnit ?? "unit",
+      unitCost:    String(vendorCost),
+      subtotal:    String(vendorCost),
     });
 
-    // ── 10. Update fulfillment.vendorPoId ─────────────────────────────────────
+    // ── 12. Update fulfillment.vendorPoId ─────────────────────────────────────
     await db
       .update(logisticVendorFulfillmentsTable)
       .set({ vendorPoId: po.id, updatedAt: new Date() })
       .where(eq(logisticVendorFulfillmentsTable.id, id));
 
-    // ── 11. Audit log ─────────────────────────────────────────────────────────
+    // ── 13. Audit log ─────────────────────────────────────────────────────────
     const actor = (req as any).clerkUser;
     await logOrderAudit({
       orderId:     vf.orderId,
@@ -360,15 +400,16 @@ logisticVendorFulfillmentAdminRouter.post(
       actorId:     actor?.id ?? null,
       actorName:   actor?.name ?? actor?.email ?? "Admin",
       action:      "vendor_po_created",
-      description: `Vendor PO created from marketplace service fulfillment VF#${id}: ${docNumber}${needCostReview ? " [PERLU REVIEW COST]" : ""}`,
-      newValue:    { fulfillmentId: id, poId: po.id, docNumber, needCostReview },
+      description: `Vendor PO created from marketplace service fulfillment VF#${id}: ${docNumber} [cost source: ${costSource}]`,
+      newValue:    { fulfillmentId: id, poId: po.id, docNumber, costSource, vendorCost },
       ipAddress:   req.ip ?? null,
     }).catch(() => {});
 
-    logger.info({ fulfillmentId: id, poId: po.id, docNumber, needCostReview }, "vendor PO created from fulfillment");
+    logger.info({ fulfillmentId: id, poId: po.id, docNumber, costSource, vendorCost }, "vendor PO created from fulfillment");
 
     return res.status(201).json({
       ok: true,
+      needCostReview: false,
       alreadyExists: false,
       po: {
         id:        po.id,

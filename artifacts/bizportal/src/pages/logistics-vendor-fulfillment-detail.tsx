@@ -6,11 +6,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import {
   ArrowLeft, CheckCircle2, XCircle, Clock, Loader2,
@@ -234,6 +238,11 @@ export default function LogisticsVendorFulfillmentDetailPage() {
   const [actionDialog, setActionDialog] = useState<{ status: string; label: string } | null>(null);
   const [notes, setNotes] = useState("");
   const [createPoDialog, setCreatePoDialog] = useState(false);
+  const [costInputDialog, setCostInputDialog] = useState(false);
+  const [vendorCostInput, setVendorCostInput] = useState("");
+  const [costCurrency, setCostCurrency] = useState("IDR");
+  const [costUnit, setCostUnit] = useState("");
+  const [costNotes, setCostNotes] = useState("");
 
   const { data, isLoading, error } = useQuery<VendorFulfillmentDetail>({
     queryKey: ["vendor-fulfillment-detail", id],
@@ -274,34 +283,54 @@ export default function LogisticsVendorFulfillmentDetailPage() {
   });
 
   const createPoMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (body?: {
+      vendorCostOverride: number;
+      currency: string;
+      unit: string;
+      notes: string;
+    }) => {
       const res = await fetch(`/api/logistic/vendor-fulfillments/${id}/create-vendor-po`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        body: body ? JSON.stringify(body) : undefined,
       });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.message ?? "Gagal membuat Vendor PO");
-      }
-      return res.json();
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.message ?? "Gagal membuat Vendor PO");
+      return json;
     },
     onSuccess: (result) => {
+      if (result.needCostReview && !result.po) {
+        // Backend minta admin input cost manual
+        setCreatePoDialog(false);
+        setCostInputDialog(true);
+        return;
+      }
       qc.invalidateQueries({ queryKey: ["vendor-fulfillment-detail", id] });
       setCreatePoDialog(false);
-      if (result.needCostReview) {
-        toast({
-          title: `PO ${result.po?.docNumber} dibuat`,
-          description: "⚠️ Harap input vendor cost secara manual sebelum konfirmasi PO ini.",
-          variant: "default",
-        });
-      } else {
-        toast({ title: `PO ${result.po?.docNumber} berhasil dibuat` });
-      }
+      setCostInputDialog(false);
+      setVendorCostInput("");
+      setCostUnit("");
+      setCostNotes("");
+      toast({ title: `PO ${result.po?.docNumber} berhasil dibuat` });
     },
     onError: (err: Error) => {
       toast({ variant: "destructive", title: "Gagal membuat Vendor PO", description: err.message });
     },
   });
+
+  function submitCostOverride() {
+    const cost = parseFloat(vendorCostInput.replace(/[^0-9.]/g, ""));
+    if (!cost || cost <= 0) {
+      toast({ variant: "destructive", title: "Vendor cost tidak valid", description: "Masukkan angka lebih dari 0" });
+      return;
+    }
+    createPoMutation.mutate({
+      vendorCostOverride: cost,
+      currency: costCurrency,
+      unit: costUnit.trim() || "unit",
+      notes: costNotes.trim(),
+    });
+  }
 
   if (isLoading) {
     return (
@@ -742,7 +771,7 @@ export default function LogisticsVendorFulfillmentDetailPage() {
               <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg flex gap-2">
                 <AlertCircle className="h-4 w-4 text-amber-500 flex-shrink-0 mt-0.5" />
                 <p className="text-xs text-amber-700">
-                  Harga dasar vendor tidak tersedia. PO akan dibuat dengan status <strong>Draft</strong> — harap input vendor cost secara manual sebelum konfirmasi.
+                  Harga dasar vendor belum tersedia di katalog. Anda akan diminta mengisi vendor cost secara manual.
                 </p>
               </div>
             )}
@@ -757,7 +786,107 @@ export default function LogisticsVendorFulfillmentDetailPage() {
             <Button
               className="bg-purple-600 hover:bg-purple-700 text-white"
               disabled={createPoMutation.isPending}
-              onClick={() => createPoMutation.mutate()}
+              onClick={() => createPoMutation.mutate(undefined)}
+            >
+              {createPoMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+              Buat Vendor PO
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Cost Input Dialog (muncul jika priceBase tidak tersedia) ─────── */}
+      <Dialog open={costInputDialog} onOpenChange={(o) => { if (!o) setCostInputDialog(false); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-amber-500" />
+              Input Vendor Cost
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+              <p className="text-xs text-amber-700">
+                Harga dasar vendor tidak ditemukan di katalog. Harap isi vendor cost secara manual untuk membuat PO.
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Vendor Cost <span className="text-red-500">*</span></Label>
+              <div className="flex gap-2">
+                <Select value={costCurrency} onValueChange={setCostCurrency}>
+                  <SelectTrigger className="w-24 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="IDR">IDR</SelectItem>
+                    <SelectItem value="USD">USD</SelectItem>
+                    <SelectItem value="EUR">EUR</SelectItem>
+                    <SelectItem value="SGD">SGD</SelectItem>
+                    <SelectItem value="MYR">MYR</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Input
+                  type="number"
+                  min={0}
+                  placeholder="0"
+                  value={vendorCostInput}
+                  onChange={(e) => setVendorCostInput(e.target.value)}
+                  className="text-sm"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Unit / Satuan</Label>
+              <Input
+                placeholder="contoh: unit, trip, kg, m³"
+                value={costUnit}
+                onChange={(e) => setCostUnit(e.target.value)}
+                className="text-sm"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Catatan (opsional)</Label>
+              <Textarea
+                placeholder="Keterangan tambahan tentang vendor cost ini..."
+                value={costNotes}
+                onChange={(e) => setCostNotes(e.target.value)}
+                rows={2}
+                className="text-sm"
+              />
+            </div>
+
+            {vendorCostInput && parseFloat(vendorCostInput) > 0 && data.item.subtotal > 0 && (
+              <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg space-y-1.5">
+                <div className="flex justify-between text-xs">
+                  <span className="text-gray-500">Vendor Cost</span>
+                  <span className="font-semibold tabular-nums">
+                    {costCurrency} {parseFloat(vendorCostInput).toLocaleString("id-ID")}
+                  </span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-gray-500">Harga Customer</span>
+                  <span className="font-semibold tabular-nums">{idr(data.item.subtotal)}</span>
+                </div>
+                <div className="flex justify-between text-xs border-t border-purple-200 pt-1.5 mt-1.5">
+                  <span className="text-gray-500">Estimasi Margin</span>
+                  <span className={`font-semibold tabular-nums ${data.item.subtotal - parseFloat(vendorCostInput) >= 0 ? "text-green-700" : "text-red-600"}`}>
+                    {idr(data.item.subtotal - parseFloat(vendorCostInput))}
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCostInputDialog(false)}>
+              Batal
+            </Button>
+            <Button
+              className="bg-purple-600 hover:bg-purple-700 text-white"
+              disabled={createPoMutation.isPending || !vendorCostInput || parseFloat(vendorCostInput) <= 0}
+              onClick={submitCostOverride}
             >
               {createPoMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
               Buat Vendor PO
