@@ -22,6 +22,7 @@ const _upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10
 
 const CALC_RATES_KEY = "calculator_rates";
 const VEHICLE_IMAGES_KEY = "vehicle_images";
+const VEHICLE_ORDER_KEY  = "vehicle_order";
 const CARGO_TYPES_KEY = "cargo_types";
 const DEFAULT_CARGO_TYPES = ["Electronics", "Textiles", "Furniture", "Food & Beverage", "Chemicals", "Machinery", "Automotive Parts", "Medical Supplies", "Paper & Printing", "Raw Materials"];
 const LOGISTICS_SUBCATEGORIES_KEY = "logistics_subcategories";
@@ -1276,6 +1277,24 @@ router.get("/quick-stats", async (req: Request, res: Response) => {
   } catch (err) {
     return res.status(500).json({ message: String(err) });
   }
+});
+
+// ── Vehicle Order ─────────────────────────────────────────────────────────────
+
+// GET /api/settings/vehicle-order — public, returns string[] of vehicleIds
+router.get("/vehicle-order", async (_req: Request, res: Response) => {
+  const [row] = await db.select().from(portalContentTable).where(eq(portalContentTable.key, VEHICLE_ORDER_KEY));
+  return res.json(row ? JSON.parse(row.value) : []);
+});
+
+// PUT /api/settings/vehicle-order — admin only, save ordered array
+router.put("/vehicle-order", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const order = Array.isArray(req.body) ? req.body : [];
+  await db.insert(portalContentTable)
+    .values({ key: VEHICLE_ORDER_KEY, value: JSON.stringify(order) })
+    .onConflictDoUpdate({ target: portalContentTable.key, set: { value: JSON.stringify(order), updatedAt: new Date() } });
+  return res.json({ ok: true });
 });
 
 // ── Vehicle Images ────────────────────────────────────────────────────────────

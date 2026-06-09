@@ -299,6 +299,21 @@ export default function TruckingPage() {
     queryFn: () => fetch("/api/settings/vehicle-images").then(r => r.json()),
     staleTime: 5 * 60 * 1000,
   });
+
+  const { data: vehicleOrder = [] } = useQuery<string[]>({
+    queryKey: ["/api/settings/vehicle-order"],
+    queryFn: () => fetch("/api/settings/vehicle-order").then(r => r.json()),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Apply saved order: saved IDs first, remaining vehicles appended at end
+  const orderedVehicles = (() => {
+    if (!vehicleOrder.length) return VEHICLES;
+    const byId = Object.fromEntries(VEHICLES.map(v => [v.id, v]));
+    const ordered = vehicleOrder.map(id => byId[id]).filter(Boolean);
+    const rest = VEHICLES.filter(v => !vehicleOrder.includes(v.id));
+    return [...ordered, ...rest];
+  })();
   const [selectedArea, setSelectedArea]       = useState(AREAS[0].value);
   const [showCalc, setShowCalc]               = useState(false);
   const [activeTab, setActiveTab]             = useState<"dasar" | "seharian">("dasar");
@@ -514,7 +529,7 @@ export default function TruckingPage() {
             <div ref={scrollRef}
               className="flex gap-2 overflow-x-auto flex-1 py-1 px-1"
               style={{ scrollbarWidth: "none" }}>
-              {VEHICLES.map((v) => (
+              {orderedVehicles.map((v) => (
                 <VehicleCard key={v.id} v={v} selected={selectedVehicle.id === v.id}
                   imageUrl={vehicleImages[v.id]}
                   onClick={() => { setSelectedVehicle(v); setShowCalc(false); setShowEstimasi(false); }} />
