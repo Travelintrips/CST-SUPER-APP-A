@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import {
   RefreshCw, Package, ClipboardList, Clock, Users, Truck,
   CheckCircle2, MessageSquareX, AlertTriangle, ArrowRight,
-  Ship, Plane, Container, Wifi, WifiOff,
+  Ship, Plane, Container, Wifi, WifiOff, Volume2, VolumeX,
 } from "lucide-react";
 import { useCompany } from "@/contexts/CompanyContext";
 import { Link } from "wouter";
@@ -177,8 +177,36 @@ export default function OperationalDashboardPage() {
   // ── Real-time state ──────────────────────────────────────────────────────────
   const [isLive, setIsLive] = useState(false);
   const [newOrderNums, setNewOrderNums] = useState<Set<string>>(new Set());
+  const [soundEnabled, setSoundEnabled] = useState(true);
   const seenRef = useRef<Set<string>>(new Set());
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+
+  function playOrderAlert() {
+    try {
+      if (!audioCtxRef.current || audioCtxRef.current.state === "closed") {
+        audioCtxRef.current = new AudioContext();
+      }
+      const ctx = audioCtxRef.current;
+      if (ctx.state === "suspended") ctx.resume();
+      // Two-tone notification beep
+      [[880, 0, 0.12], [1100, 0.15, 0.12]].forEach(([freq, delay, dur]) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = "sine";
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0, ctx.currentTime + delay);
+        gain.gain.linearRampToValueAtTime(0.25, ctx.currentTime + delay + 0.02);
+        gain.gain.linearRampToValueAtTime(0, ctx.currentTime + delay + dur);
+        osc.start(ctx.currentTime + delay);
+        osc.stop(ctx.currentTime + delay + dur + 0.01);
+      });
+    } catch {
+      // AudioContext not available — silently ignore
+    }
+  }
 
   // Subscribe to SSE connection status
   useEffect(() => {
@@ -210,12 +238,13 @@ export default function OperationalDashboardPage() {
 
     if (brandNew.length > 0) {
       setNewOrderNums(new Set(brandNew));
+      if (soundEnabled) playOrderAlert();
       if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
       flashTimerRef.current = setTimeout(() => {
         setNewOrderNums(new Set());
       }, 12_000);
     }
-  }, [dataUpdatedAt]);
+  }, [dataUpdatedAt, soundEnabled]);
 
   useEffect(() => () => {
     if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
@@ -240,6 +269,16 @@ export default function OperationalDashboardPage() {
           </div>
           <div className="flex items-center gap-2">
             <LiveIndicator isLive={isLive} />
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSoundEnabled((v) => !v)}
+              title={soundEnabled ? "Matikan suara notifikasi" : "Aktifkan suara notifikasi"}
+            >
+              {soundEnabled
+                ? <Volume2 className="h-4 w-4 text-emerald-600" />
+                : <VolumeX className="h-4 w-4 text-muted-foreground" />}
+            </Button>
             <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
               <RefreshCw className={`h-4 w-4 mr-1.5 ${isFetching ? "animate-spin" : ""}`} />
               Refresh
