@@ -114,6 +114,7 @@ import expenseBudgetsRouter from "./expenseBudgets.js";
 import { watiRouter } from "./wati.js";
 import { escrowAdminRouter, escrowPublicRouter } from "./escrow.js";
 import orderCostsRouter from "./orderCosts.js";
+import vendorTruckingPricingRouter from "./vendorTruckingPricing.js";
 
 import type { Request, Response } from "express";
 
@@ -263,6 +264,7 @@ router.use("/expense-config", expenseBudgetsRouter);
 router.use("/wati", watiRouter);
 router.use("/sales/escrow", escrowPublicRouter);
 router.use("/sales/escrow", escrowAdminRouter);
+router.use("/vendor-trucking-pricing", vendorTruckingPricingRouter);
 
 router.get("/alerts/stream", async (req: Request, res: Response) => {
   const ok = await requireAdmin(req, res);
