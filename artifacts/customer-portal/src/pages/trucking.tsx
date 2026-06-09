@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { getAuthHeaders } from "@/lib/auth";
 import {
@@ -170,7 +171,7 @@ function formatRp(n: number) {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function VehicleCard({ v, selected, onClick }: { v: Vehicle; selected: boolean; onClick: () => void }) {
+function VehicleCard({ v, selected, onClick, imageUrl }: { v: Vehicle; selected: boolean; onClick: () => void; imageUrl?: string }) {
   return (
     <button
       type="button"
@@ -182,7 +183,15 @@ function VehicleCard({ v, selected, onClick }: { v: Vehicle; selected: boolean; 
           : "border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50",
       )}
     >
-      <div className={cn("opacity-90", selected && "brightness-200 invert")}>{v.icon}</div>
+      {imageUrl ? (
+        <img
+          src={imageUrl}
+          alt={v.name}
+          className={cn("w-11 h-7 object-contain", selected && "brightness-0 invert")}
+        />
+      ) : (
+        <div className={cn("opacity-90", selected && "brightness-200 invert")}>{v.icon}</div>
+      )}
       <span className={cn("text-[10px] font-semibold leading-tight text-center", selected ? "text-white" : "text-slate-600")}>
         {v.name}
       </span>
@@ -284,6 +293,12 @@ function SelectField({ value, onChange, placeholder, options }: {
 export default function TruckingPage() {
   const [, setLocation] = useLocation();
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle>(VEHICLES[7]);
+
+  const { data: vehicleImages = {} } = useQuery<Record<string, string>>({
+    queryKey: ["/api/settings/vehicle-images"],
+    queryFn: () => fetch("/api/settings/vehicle-images").then(r => r.json()),
+    staleTime: 5 * 60 * 1000,
+  });
   const [selectedArea, setSelectedArea]       = useState(AREAS[0].value);
   const [showCalc, setShowCalc]               = useState(false);
   const [activeTab, setActiveTab]             = useState<"dasar" | "seharian">("dasar");
@@ -501,6 +516,7 @@ export default function TruckingPage() {
               style={{ scrollbarWidth: "none" }}>
               {VEHICLES.map((v) => (
                 <VehicleCard key={v.id} v={v} selected={selectedVehicle.id === v.id}
+                  imageUrl={vehicleImages[v.id]}
                   onClick={() => { setSelectedVehicle(v); setShowCalc(false); setShowEstimasi(false); }} />
               ))}
             </div>
@@ -527,7 +543,15 @@ export default function TruckingPage() {
               </div>
 
               <div className="flex justify-center items-center bg-gradient-to-br from-slate-50 to-blue-50 rounded-2xl py-6 border border-slate-100">
-                <TruckSVG size="lg" variant={selectedVehicle.id} />
+                {vehicleImages[selectedVehicle.id] ? (
+                  <img
+                    src={vehicleImages[selectedVehicle.id]}
+                    alt={selectedVehicle.name}
+                    className="max-h-52 max-w-full object-contain"
+                  />
+                ) : (
+                  <TruckSVG size="lg" variant={selectedVehicle.id} />
+                )}
               </div>
 
               <div>

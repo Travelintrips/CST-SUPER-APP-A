@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from "express";
+import multer from "multer";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { invalidateAppConfig } from "../lib/appConfig.js";
 import { getAdminWa, setAdminWa, getAdminGroupWa, setAdminGroupWa, getAdminPhones, setAdminPhones } from "../lib/adminWa.js";
@@ -14,10 +15,13 @@ import { resolveCompanyId } from "../lib/resolveCompany.js";
 import { getAiIntakeSettings, saveAiIntakeSettings, type VendorFilterMode } from "../lib/aiOrderIntake.js";
 import { LOGISTICS_SUBCATEGORIES } from "@workspace/logistics-constants";
 import { SECRETS_CATALOG, getSetting, setSetting, maskSecret, invalidateSettingCache } from "../lib/appSecrets.js";
+import { uploadToSupabase } from "../lib/supabaseStorage.js";
 
 const router = Router();
+const _upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 const CALC_RATES_KEY = "calculator_rates";
+const VEHICLE_IMAGES_KEY = "vehicle_images";
 const CARGO_TYPES_KEY = "cargo_types";
 const DEFAULT_CARGO_TYPES = ["Electronics", "Textiles", "Furniture", "Food & Beverage", "Chemicals", "Machinery", "Automotive Parts", "Medical Supplies", "Paper & Printing", "Raw Materials"];
 const LOGISTICS_SUBCATEGORIES_KEY = "logistics_subcategories";
@@ -1271,6 +1275,38 @@ router.get("/quick-stats", async (req: Request, res: Response) => {
     });
   } catch (err) {
     return res.status(500).json({ message: String(err) });
+  }
+});
+
+// ── Vehicle Images ────────────────────────────────────────────────────────────
+
+// GET /api/settings/vehicle-images — public, returns { vehicleId: imageUrl }
+router.get("/vehicle-images", async (_req: Request, res: Response) => {
+  const [row] = await db.select().from(portalContentTable).where(eq(portalContentTable.key, VEHICLE_IMAGES_KEY));
+  return res.json(row ? JSON.parse(row.value) : {});
+});
+
+// PUT /api/settings/vehicle-images — admin only, save full map
+router.put("/vehicle-images", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const images = req.body ?? {};
+  await db.insert(portalContentTable)
+    .values({ key: VEHICLE_IMAGES_KEY, value: JSON.stringify(images) })
+    .onConflictDoUpdate({ target: portalContentTable.key, set: { value: JSON.stringify(images), updatedAt: new Date() } });
+  return res.json({ ok: true });
+});
+
+// POST /api/settings/vehicle-images/upload — admin only, upload single image
+router.post("/vehicle-images/upload", _upload.single("file"), async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  if (!req.file) return res.status(400).json({ error: "Tidak ada file" });
+  const mime = req.file.mimetype;
+  if (!mime.startsWith("image/")) return res.status(400).json({ error: "Hanya file gambar yang diizinkan" });
+  try {
+    const { publicUrl } = await uploadToSupabase(req.file.buffer, mime, "vehicle-images");
+    return res.json({ url: publicUrl });
+  } catch (err) {
+    return res.status(500).json({ error: String(err) });
   }
 });
 

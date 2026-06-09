@@ -132,6 +132,7 @@ import WaTemplatesPage from "@/pages/settings/wa-templates";
 import EnterpriseWaTemplatesPage from "@/pages/settings/enterprise-wa-templates";
 import LogisticsUnitsPage from "@/pages/settings/logistics-units";
 import TruckingRatesPage from "@/pages/settings/trucking-rates";
+import VehicleImagesPage from "@/pages/settings/vehicle-images";
 import SettingsRolesPage from "@/pages/settings-roles";
 import SettingsApprovalRulesPage from "@/pages/settings-approval-rules";
 import UsersPage from "@/pages/users";
@@ -396,6 +397,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/settings/enterprise-wa-templates" component={PR(EnterpriseWaTemplatesPage)} />
       <Route path="/settings/logistics-units" component={PR(LogisticsUnitsPage)} />
       <Route path="/settings/trucking-rates" component={PR(TruckingRatesPage)} />
+      <Route path="/settings/vehicle-images" component={PR(VehicleImagesPage)} />
       <Route path="/settings/ai-chatbot/knowledge" component={PR(AiChatbotKnowledgePage)} />
       <Route path="/settings/ai-chatbot" component={PR(AiChatbotSettingsPage)} />
       <Route path="/settings/ai-scan" component={PR(AiScanSettingsPage)} />

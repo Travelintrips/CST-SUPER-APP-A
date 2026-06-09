@@ -2373,6 +2373,27 @@ export default function SettingsPage() {
             </Card>
           )}
 
+          {isAdmin && (
+            <Card className="col-span-1 md:col-span-3 bg-card border-border">
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Truck className="w-4 h-4 text-blue-500" /> Gambar Armada Trucking
+                </CardTitle>
+                <CardDescription>
+                  Upload foto atau ilustrasi nyata per jenis kendaraan (Mobil, Van, CDD Long, Fuso, Tronton, dll).
+                  Gambar yang diupload akan tampil di halaman Trucking Customer Portal menggantikan ilustrasi SVG bawaan.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <a href="/bizportal/settings/vehicle-images">
+                  <Button variant="outline" size="sm">
+                    <Truck className="w-4 h-4 mr-2 text-blue-500" /> Kelola Gambar Armada
+                  </Button>
+                </a>
+              </CardContent>
+            </Card>
+          )}
+
           <Card className="col-span-1 md:col-span-3 bg-card border-border">
             <CardHeader>
               <CardTitle className="text-xl">Authentication</CardTitle>
