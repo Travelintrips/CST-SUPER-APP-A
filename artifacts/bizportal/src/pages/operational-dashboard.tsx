@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import {
   RefreshCw, Package, ClipboardList, Clock, Users, Truck,
   CheckCircle2, MessageSquareX, AlertTriangle, ArrowRight,
-  Ship, Plane, Container, Wifi, WifiOff, Volume2, VolumeX,
+  Ship, Plane, Container, Wifi, WifiOff, Volume2, VolumeX, Bell, BellOff,
 } from "lucide-react";
 import { useCompany } from "@/contexts/CompanyContext";
 import { Link } from "wouter";
@@ -178,9 +178,29 @@ export default function OperationalDashboardPage() {
   const [isLive, setIsLive] = useState(false);
   const [newOrderNums, setNewOrderNums] = useState<Set<string>>(new Set());
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [notifPermission, setNotifPermission] = useState<NotificationPermission>(
+    () => (typeof Notification !== "undefined" ? Notification.permission : "denied")
+  );
   const seenRef = useRef<Set<string>>(new Set());
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
+
+  async function requestNotifPermission() {
+    if (typeof Notification === "undefined") return;
+    const result = await Notification.requestPermission();
+    setNotifPermission(result);
+  }
+
+  function sendPushNotification(count: number, orderNums: string[]) {
+    if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
+    const label = count === 1 ? orderNums[0] : `${count} order baru`;
+    new Notification("📦 Order Baru Masuk", {
+      body: label,
+      icon: "/bizportal/favicon.svg",
+      tag: "new-logistic-order",
+      renotify: true,
+    });
+  }
 
   function playOrderAlert() {
     try {
@@ -239,6 +259,7 @@ export default function OperationalDashboardPage() {
     if (brandNew.length > 0) {
       setNewOrderNums(new Set(brandNew));
       if (soundEnabled) playOrderAlert();
+      sendPushNotification(brandNew.length, brandNew);
       if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
       flashTimerRef.current = setTimeout(() => {
         setNewOrderNums(new Set());
@@ -279,6 +300,25 @@ export default function OperationalDashboardPage() {
                 ? <Volume2 className="h-4 w-4 text-emerald-600" />
                 : <VolumeX className="h-4 w-4 text-muted-foreground" />}
             </Button>
+            {typeof Notification !== "undefined" && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={notifPermission === "granted" ? undefined : requestNotifPermission}
+                title={
+                  notifPermission === "granted"
+                    ? "Notifikasi browser aktif"
+                    : notifPermission === "denied"
+                    ? "Notifikasi diblokir browser — ubah di pengaturan browser"
+                    : "Aktifkan notifikasi browser"
+                }
+                className={notifPermission === "denied" ? "opacity-40 cursor-not-allowed" : ""}
+              >
+                {notifPermission === "granted"
+                  ? <Bell className="h-4 w-4 text-emerald-600" />
+                  : <BellOff className="h-4 w-4 text-muted-foreground" />}
+              </Button>
+            )}
             <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
               <RefreshCw className={`h-4 w-4 mr-1.5 ${isFetching ? "animate-spin" : ""}`} />
               Refresh
