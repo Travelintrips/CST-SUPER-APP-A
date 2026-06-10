@@ -1,8 +1,4 @@
 import { Router, type Request, type Response } from "express";
-import { logger } from "../lib/logger.js";
-import { rateLimit } from "express-rate-limit";
-import { db } from "@workspace/db";
-import { sql } from "drizzle-orm";
 import { rateLimit } from "express-rate-limit";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
@@ -14,154 +10,66 @@ import multer from "multer";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 const storage = new ObjectStorageService();
-
-const submitLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false });
-
-export const oceanFreightVendorFormRouter = Router();
 const submitLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false });
 
 export const oceanFreightVendorFormRouter = Router();
 
-// ── GET /:token — get RFQ info for vendor form ────────────────────────────────
-oceanFreightVendorFormRouter.get("/:token", async (req: Request, res: Response) => {
-  try {
-    const { token } = req.params;
-
-    const rfqRes = await db.execute(sql.raw(`
-      SELECT r.*, o.origin_city, o.origin_port, o.destination_city, o.destination_port,
-             o.trade_type, o.service_mode, o.shipment_type, o.container_type, o.container_qty,
-             o.total_cbm, o.gross_weight, o.koli, o.commodity, o.hs_code, o.cargo_condition,
-             o.incoterm, o.etd_preferred, o.eta_target, o.selected_additional_services,
-             o.order_number, o.customer_name
-      FROM ocean_freight_rfqs r
-      JOIN ocean_freight_orders o ON o.id = r.order_id
-      WHERE r.rfq_token = '${token.replace(/'/g, "''")}'
-    `));
-
-    const rfq = rfqRes.rows[0] as any;
-    if (!rfq) return res.status(404).json({ error: "RFQ tidak ditemukan atau link tidak valid" });
-
-    const now = new Date();
-    if (rfq.expires_at && new Date(rfq.expires_at) < now) {
-      return res.status(410).json({ error: "Link RFQ sudah kadaluarsa" });
-    }
-    if (rfq.status === "submitted") {
-      return res.status(200).json({ rfq, already_submitted: true });
-    }
-
-    // Mark as opened
-    if (rfq.status === "sent") {
-      await db.execute(sql.raw(`UPDATE ocean_freight_rfqs SET status = 'opened', updated_at = NOW() WHERE rfq_token = '${token.replace(/'/g, "''")}'`));
-    }
-
-    res.json({ rfq, already_submitted: false });
-  } catch (err) {
-    logger.error({ err }, "[ocean-freight-vendor-form] GET /:token");
-    res.status(500).json({ error: "Gagal memuat RFQ" });
-  }
-});
-
-// ── POST /:token — vendor submit rate ────────────────────────────────────────
-oceanFreightVendorFormRouter.post("/:token", async (req: Request, res: Response) => {
-  try {
-    const { token } = req.params;
-    const b = req.body;
-
-    const rfqRes = await db.execute(sql.raw(`
-      SELECT r.*, o.shipment_type, o.container_qty, o.total_cbm
-      FROM ocean_freight_rfqs r
-      JOIN ocean_freight_orders o ON o.id = r.order_id
-      WHERE r.rfq_token = '${token.replace(/'/g, "''")}'
-    `));
-    const rfq = rfqRes.rows[0] as any;
-    if (!rfq) return res.status(404).json({ error: "RFQ tidak ditemukan" });
-
-    const now = new Date();
-    if (rfq.expires_at && new Date(rfq.expires_at) < now) {
-      return res.status(410).json({ error: "Link RFQ sudah kadaluarsa" });
-    }
-    if (rfq.status === "submitted") {
-      return res.status(400).json({ error: "Rate sudah pernah disubmit untuk RFQ ini" });
-    }
-
-    // Validate
-    if (!b.ocean_freight_amount || Number(b.ocean_freight_amount) <= 0)
-      return res.status(400).json({ error: "Ocean freight amount wajib diisi" });
-    if (!b.validity_date)
-      return res.status(400).json({ error: "Validity date wajib diisi" });
-    if (!b.carrier)
-      return res.status(400).json({ error: "Carrier/Shipping Line wajib diisi" });
-
-    const er = Number(b.exchange_rate_to_idr ?? 1) || 1;
-    const cur = String(b.currency ?? "USD");
-
-    // Calculate totals
-    const qty = rfq.container_qty ? Number(rfq.container_qty) : 1;
-    const cbm = rfq.total_cbm ? Number(rfq.total_cbm) : 0;
-    const baseOcean = rfq.shipment_type === "FCL"
-      ? Number(b.ocean_freight_amount) * qty
-      : Number(b.ocean_freight_amount) * Math.max(cbm, 1);
-
-    // Calculation handled by updated implementation below
-    return res.status(501).json({ error: "Gunakan endpoint terbaru" });
-  } catch (err) {
-    res.status(500).json({ error: "Error" });
-  }
-});
-
-// ── GET /api/ocean-freight-form/:token ───────────────────────────────────────
+// ── GET /:token ───────────────────────────────────────────────────────────────
 oceanFreightVendorFormRouter.get("/:token", async (req: Request, res: Response) => {
   const { token } = req.params;
   if (!token || !/^[a-f0-9]{48}$/i.test(token)) {
     return res.status(400).json({ error: "Token tidak valid" });
   }
-
-  const { rows: subs } = await db.execute(sql`
-    SELECT s.*, v.name AS vendor_name_db, v.phone AS vendor_phone
-    FROM ocean_freight_rate_submissions s
-    LEFT JOIN suppliers v ON v.id = s.vendor_id
-    WHERE s.token = ${token}
-  `);
-
-  if (!subs.length) return res.status(404).json({ error: "Link tidak ditemukan" });
-  const sub = subs[0] as any;
-  if (!sub.is_active) return res.status(410).json({ error: "Link sudah tidak aktif" });
-
-  const { rows: rfqs } = await db.execute(sql`SELECT * FROM ocean_freight_rfqs WHERE id = ${sub.rfq_id}`);
-  if (!rfqs.length) return res.status(404).json({ error: "RFQ tidak ditemukan" });
-  const rfq = rfqs[0] as any;
-
-  if (rfq.response_deadline && new Date() > new Date(rfq.response_deadline)) {
-    return res.status(410).json({ error: "Batas waktu pengisian sudah lewat" });
-  }
-
-  const { rows: orders } = await db.execute(sql`
-    SELECT id, order_number, origin_city, origin_port, destination_city, destination_port,
-           trade_type, service_mode, shipment_type, container_type, container_qty,
-           total_cbm, gross_weight, koli, commodity, cargo_condition,
-           selected_additional_services, etd_preferred
-    FROM ocean_freight_orders WHERE id = ${sub.order_id}
-  `);
-
-  if (!orders.length) return res.status(404).json({ error: "Order tidak ditemukan" });
-
-  // Mark opened
-  if (!sub.form_opened_at) {
-    await db.execute(sql`
-      UPDATE ocean_freight_rate_submissions SET form_opened_at = NOW() WHERE token = ${token}
+  try {
+    const { rows: subs } = await db.execute(sql`
+      SELECT s.*, v.name AS vendor_name_db, v.phone AS vendor_phone
+      FROM ocean_freight_rate_submissions s
+      LEFT JOIN suppliers v ON v.id = s.vendor_id
+      WHERE s.token = ${token}
     `);
-  }
 
-  return res.json({
-    token,
-    submission: sub,
-    rfq,
-    order: orders[0],
-    vendor_name: sub.vendor_name_db ?? sub.vendor_name,
-  });
+    if (!subs.length) return res.status(404).json({ error: "Link tidak ditemukan" });
+    const sub = subs[0] as any;
+    if (!sub.is_active) return res.status(410).json({ error: "Link sudah tidak aktif" });
+
+    const { rows: rfqs } = await db.execute(sql`SELECT * FROM ocean_freight_rfqs WHERE id = ${sub.rfq_id}`);
+    if (!rfqs.length) return res.status(404).json({ error: "RFQ tidak ditemukan" });
+    const rfq = rfqs[0] as any;
+
+    if (rfq.response_deadline && new Date() > new Date(rfq.response_deadline)) {
+      return res.status(410).json({ error: "Batas waktu pengisian sudah lewat" });
+    }
+
+    const { rows: orders } = await db.execute(sql`
+      SELECT id, order_number, origin_city, origin_port, destination_city, destination_port,
+             trade_type, service_mode, shipment_type, container_type, container_qty,
+             total_cbm, gross_weight, koli, commodity, cargo_condition,
+             selected_additional_services, etd_preferred
+      FROM ocean_freight_orders WHERE id = ${sub.order_id}
+    `);
+
+    if (!orders.length) return res.status(404).json({ error: "Order tidak ditemukan" });
+
+    if (!sub.form_opened_at) {
+      await db.execute(sql`
+        UPDATE ocean_freight_rate_submissions SET form_opened_at = NOW() WHERE token = ${token}
+      `);
+    }
+
+    return res.json({
+      token,
+      submission: sub,
+      rfq,
+      order: orders[0],
+      vendor_name: sub.vendor_name_db ?? sub.vendor_name,
+    });
+  } catch (err) {
+    logger.error({ err }, "[ocean-freight-vendor-form] GET /:token");
+    return res.status(500).json({ error: "Gagal memuat form" });
+  }
 });
 
-// ── POST /api/ocean-freight-form/:token ──────────────────────────────────────
+// ── POST /:token ──────────────────────────────────────────────────────────────
 oceanFreightVendorFormRouter.post(
   "/:token",
   submitLimit,
@@ -171,157 +79,109 @@ oceanFreightVendorFormRouter.post(
     if (!token || !/^[a-f0-9]{48}$/i.test(token)) {
       return res.status(400).json({ error: "Token tidak valid" });
     }
-
     try {
-    const { rows: subs } = await db.execute(sql`
-      SELECT * FROM ocean_freight_rate_submissions WHERE token = ${token}
-    `);
-    if (!subs.length) return res.status(404).json({ error: "Link tidak ditemukan" });
-    const sub = subs[0] as any;
-    if (!sub.is_active) return res.status(410).json({ error: "Link sudah tidak aktif" });
-    if (sub.status === "submitted") return res.status(409).json({ error: "Rate sudah pernah disubmit" });
+      const { rows: subs } = await db.execute(sql`
+        SELECT * FROM ocean_freight_rate_submissions WHERE token = ${token}
+      `);
+      if (!subs.length) return res.status(404).json({ error: "Link tidak ditemukan" });
+      const sub = subs[0] as any;
+      if (!sub.is_active) return res.status(410).json({ error: "Link sudah tidak aktif" });
+      if (sub.status === "submitted") return res.status(409).json({ error: "Rate sudah pernah disubmit" });
 
-    const b = req.body ?? {};
-    if (!b.ocean_freight_amount || Number(b.ocean_freight_amount) <= 0)
-      return res.status(400).json({ error: "ocean_freight_amount wajib > 0" });
-    if (!b.currency) return res.status(400).json({ error: "currency wajib" });
-    if (String(b.currency) !== "IDR" && (!b.exchange_rate || Number(b.exchange_rate) <= 0))
-      return res.status(400).json({ error: "exchange_rate wajib jika currency bukan IDR" });
+      const b = req.body ?? {};
+      if (!b.ocean_freight_amount || Number(b.ocean_freight_amount) <= 0)
+        return res.status(400).json({ error: "ocean_freight_amount wajib > 0" });
+      if (!b.currency) return res.status(400).json({ error: "currency wajib" });
+      if (String(b.currency) !== "IDR" && (!b.exchange_rate || Number(b.exchange_rate) <= 0))
+        return res.status(400).json({ error: "exchange_rate wajib jika currency bukan IDR" });
 
-    try {
-    // Handle attachment upload
-    let attachmentUrl: string | null = null;
-    if (req.file) {
-      try {
-        const key = `ocean-freight-submissions/${sub.order_id}/${token}-${req.file.originalname}`;
-        attachmentUrl = await storage.uploadFile(key, req.file.buffer, req.file.mimetype, true);
-      } catch (_) {}
-    }
-
-    const oceanAmt = Number(b.ocean_freight_amount);
-    const exr      = Number(b.exchange_rate ?? 16500);
-    const curr     = String(b.currency ?? "USD");
-
-    const totalAmt = oceanAmt
-      + Number(b.thc_origin ?? 0)
-      + Number(b.thc_destination ?? 0)
-      + Number(b.doc_fee ?? 0)
-      + Number(b.bl_fee ?? 0)
-      + Number(b.do_fee ?? 0)
-      + Number(b.handling_fee ?? 0)
-      + Number(b.trucking_pickup_estimate ?? 0)
-      + Number(b.trucking_delivery_estimate ?? 0)
-      + Number(b.customs_clearance_fee ?? 0)
-      + Number(b.surcharge_amount ?? 0);
-
-
-    const totalIdr = curr === "IDR" ? totalAmt : totalAmt * exr;
-
-    await db.execute(sql`
-      UPDATE ocean_freight_rate_submissions SET
-        rate_source_type = ${b.rate_source_type ?? "forwarder_partner"},
-        rate_source_name = ${b.rate_source_name ?? null},
-        carrier = ${b.carrier ?? null},
-        ocean_freight_amount = ${oceanAmt},
-        currency = ${curr},
-        exchange_rate = ${exr},
-        validity_date = ${b.validity_date ?? null},
-        vessel_name = ${b.vessel_name ?? null},
-        voyage = ${b.voyage ?? null},
-        etd = ${b.etd ?? null},
-        eta = ${b.eta ?? null},
-        transit_days = ${b.transit_days ? Number(b.transit_days) : null},
-        direct_or_transshipment = ${b.direct_or_transshipment ?? "direct"},
-        thc_origin = ${Number(b.thc_origin ?? 0)},
-        thc_destination = ${Number(b.thc_destination ?? 0)},
-        doc_fee = ${Number(b.doc_fee ?? 0)},
-        bl_fee = ${Number(b.bl_fee ?? 0)},
-        do_fee = ${Number(b.do_fee ?? 0)},
-        handling_fee = ${Number(b.handling_fee ?? 0)},
-        trucking_pickup = ${Number(b.trucking_pickup ?? 0)},
-        trucking_delivery = ${Number(b.trucking_delivery ?? 0)},
-        customs_clearance_fee = ${Number(b.customs_clearance_fee ?? 0)},
-        surcharge_amount = ${Number(b.surcharge_amount ?? 0)},
-        notes = ${b.notes ?? null},
-        attachment_url = ${attachmentUrl},
-        total_amount = ${totalAmt},
-        total_amount_idr = ${totalIdr},
-        status = 'submitted',
-        submitted_at = NOW(),
-        submitter_ip = ${req.ip ?? null},
-        updated_at = NOW()
-      WHERE token = ${token}
-    `);
-
-    // Update order status to rate_received
-    await db.execute(sql`
-      UPDATE ocean_freight_orders SET status = 'rate_received', updated_at = NOW()
-      WHERE id = ${sub.order_id} AND status NOT IN ('quoted','approved','booked','completed','cancelled')
-    `);
-
-    // Notify admin
-    try {
-      const adminGroup = await getAdminGroupWa();
-      if (adminGroup) {
-        const msg = [
-          `📦 *Rate Submission Ocean Freight*`,
-          `Vendor: ${b.rate_source_name ?? sub.vendor_name ?? "Unknown"}`,
-          `Carrier: ${b.carrier ?? "-"}`,
-          `Ocean Freight: ${curr} ${Number(oceanAmt).toLocaleString("id-ID")}`,
-          `Total IDR: ${Number(totalIdr).toLocaleString("id-ID")}`,
-          `Transit: ${b.transit_days ?? "-"} hari`,
-          `ETD: ${b.etd ?? "-"}`,
-        ].join("\n");
-        await sendWhatsApp(adminGroup, msg);
+      let attachmentUrl: string | null = null;
+      if (req.file) {
+        try {
+          const key = `ocean-freight-submissions/${sub.order_id}/${token}-${req.file.originalname}`;
+          attachmentUrl = await storage.uploadFile(key, req.file.buffer, req.file.mimetype, true);
+        } catch (_) {}
       }
-    } catch (_) {}
 
-    return res.json({ ok: true, message: "Rate berhasil disubmit. Terima kasih." });
-    const totalIdr = cur === "IDR" ? totalOrig : totalOrig * er;
+      const oceanAmt = Number(b.ocean_freight_amount);
+      const exr      = Number(b.exchange_rate ?? 16500);
+      const curr     = String(b.currency ?? "USD");
 
-    await db.execute(sql.raw(`
-      INSERT INTO ocean_freight_rate_submissions (
-        rfq_id, order_id, vendor_id, rate_source_type, rate_source_name,
-        carrier, ocean_freight_amount, currency, exchange_rate_to_idr,
-        validity_date, vessel_name, voyage, etd, eta, transit_days,
-        direct_or_transshipment, thc_origin, thc_destination, doc_fee, bl_fee, do_fee,
-        handling_fee, trucking_pickup_estimate, trucking_delivery_estimate,
-        customs_clearance_fee, surcharge_amount, notes, attachment_url,
-        total_amount, total_amount_idr, status, submitted_at
-      ) VALUES (
-        ${rfq.id}, ${rfq.order_id}, ${rfq.vendor_id ?? "NULL"},
-        'vendor_rate',
-        '${String(b.rate_source_name ?? rfq.contact_name ?? "Vendor").replace(/'/g, "''")}',
-        '${String(b.carrier ?? "").replace(/'/g, "''")}',
-        ${Number(b.ocean_freight_amount)}, '${cur}', ${er},
-        '${String(b.validity_date).replace(/'/g, "''")}',
-        ${b.vessel_name ? `'${String(b.vessel_name).replace(/'/g, "''")}'` : "NULL"},
-        ${b.voyage ? `'${String(b.voyage).replace(/'/g, "''")}'` : "NULL"},
-        ${b.etd ? `'${String(b.etd).replace(/'/g, "''")}'` : "NULL"},
-        ${b.eta ? `'${String(b.eta).replace(/'/g, "''")}'` : "NULL"},
-        ${b.transit_days ? Number(b.transit_days) : "NULL"},
-        '${String(b.direct_or_transshipment ?? "direct").replace(/'/g, "''")}',
-        ${Number(b.thc_origin ?? 0)}, ${Number(b.thc_destination ?? 0)},
-        ${Number(b.doc_fee ?? 0)}, ${Number(b.bl_fee ?? 0)}, ${Number(b.do_fee ?? 0)},
-        ${Number(b.handling_fee ?? 0)},
-        ${Number(b.trucking_pickup_estimate ?? 0)}, ${Number(b.trucking_delivery_estimate ?? 0)},
-        ${Number(b.customs_clearance_fee ?? 0)}, ${Number(b.surcharge_amount ?? 0)},
-        ${b.notes ? `'${String(b.notes).replace(/'/g, "''")}'` : "NULL"},
-        ${b.attachment_url ? `'${String(b.attachment_url).replace(/'/g, "''")}'` : "NULL"},
-        ${totalOrig}, ${totalIdr}, 'submitted', NOW()
-      )
-    `));
+      const totalAmt = oceanAmt
+        + Number(b.thc_origin ?? 0)
+        + Number(b.thc_destination ?? 0)
+        + Number(b.doc_fee ?? 0)
+        + Number(b.bl_fee ?? 0)
+        + Number(b.do_fee ?? 0)
+        + Number(b.handling_fee ?? 0)
+        + Number(b.trucking_pickup ?? 0)
+        + Number(b.trucking_delivery ?? 0)
+        + Number(b.customs_clearance_fee ?? 0)
+        + Number(b.surcharge_amount ?? 0);
 
-    await db.execute(sql.raw(`UPDATE ocean_freight_rfqs SET status = 'submitted', updated_at = NOW() WHERE id = ${rfq.id}`));
-    await db.execute(sql.raw(`UPDATE ocean_freight_orders SET status = 'rate_received', updated_at = NOW() WHERE id = ${rfq.order_id}`));
+      const totalIdr = curr === "IDR" ? totalAmt : totalAmt * exr;
 
-    res.json({ ok: true, message: "Rate berhasil disubmit. Terima kasih!" });
-  } catch (err) {
-    logger.error({ err }, "[ocean-freight-vendor-form] POST /:token");
-    res.status(500).json({ error: "Gagal submit rate" });
-  }
+      await db.execute(sql`
+        UPDATE ocean_freight_rate_submissions SET
+          rate_source_type = ${b.rate_source_type ?? "forwarder_partner"},
+          rate_source_name = ${b.rate_source_name ?? null},
+          carrier = ${b.carrier ?? null},
+          ocean_freight_amount = ${oceanAmt},
+          currency = ${curr},
+          exchange_rate = ${exr},
+          validity_date = ${b.validity_date ?? null},
+          vessel_name = ${b.vessel_name ?? null},
+          voyage = ${b.voyage ?? null},
+          etd = ${b.etd ?? null},
+          eta = ${b.eta ?? null},
+          transit_days = ${b.transit_days ? Number(b.transit_days) : null},
+          direct_or_transshipment = ${b.direct_or_transshipment ?? "direct"},
+          thc_origin = ${Number(b.thc_origin ?? 0)},
+          thc_destination = ${Number(b.thc_destination ?? 0)},
+          doc_fee = ${Number(b.doc_fee ?? 0)},
+          bl_fee = ${Number(b.bl_fee ?? 0)},
+          do_fee = ${Number(b.do_fee ?? 0)},
+          handling_fee = ${Number(b.handling_fee ?? 0)},
+          trucking_pickup = ${Number(b.trucking_pickup ?? 0)},
+          trucking_delivery = ${Number(b.trucking_delivery ?? 0)},
+          customs_clearance_fee = ${Number(b.customs_clearance_fee ?? 0)},
+          surcharge_amount = ${Number(b.surcharge_amount ?? 0)},
+          notes = ${b.notes ?? null},
+          attachment_url = ${attachmentUrl},
+          total_amount = ${totalAmt},
+          total_amount_idr = ${totalIdr},
+          status = 'submitted',
+          submitted_at = NOW(),
+          submitter_ip = ${req.ip ?? null},
+          updated_at = NOW()
+        WHERE token = ${token}
+      `);
+
+      await db.execute(sql`
+        UPDATE ocean_freight_orders SET status = 'rate_received', updated_at = NOW()
+        WHERE id = ${sub.order_id} AND status NOT IN ('quoted','approved','booked','completed','cancelled')
+      `);
+
+      try {
+        const adminGroup = await getAdminGroupWa();
+        if (adminGroup) {
+          const msg = [
+            `📦 *Rate Submission Ocean Freight*`,
+            `Vendor: ${b.rate_source_name ?? sub.vendor_name ?? "Unknown"}`,
+            `Carrier: ${b.carrier ?? "-"}`,
+            `Ocean Freight: ${curr} ${Number(oceanAmt).toLocaleString("id-ID")}`,
+            `Total IDR: ${Number(totalIdr).toLocaleString("id-ID")}`,
+            `Transit: ${b.transit_days ?? "-"} hari`,
+            `ETD: ${b.etd ?? "-"}`,
+          ].join("\n");
+          await sendWhatsApp(adminGroup, msg);
+        }
+      } catch (_) {}
+
+      return res.json({ ok: true, message: "Rate berhasil disubmit. Terima kasih." });
+    } catch (err) {
+      logger.error({ err }, "[ocean-freight-vendor-form] POST /:token");
+      return res.status(500).json({ error: "Gagal submit rate" });
+    }
   }
 );
-});
-
-export { oceanFreightVendorFormRouter as default };

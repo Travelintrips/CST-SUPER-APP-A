@@ -563,7 +563,6 @@ oceanFreightRouter.get("/orders/:id/vendors", async (req: Request, res: Response
   }
 });
 
-export default oceanFreightRouter;
 const router = Router();
 
 // ── Boot: create supporting tables (sequentially to respect FK deps) ──────────

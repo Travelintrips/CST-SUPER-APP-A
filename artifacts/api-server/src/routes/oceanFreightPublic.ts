@@ -73,8 +73,6 @@ oceanFreightPublicRouter.get("/options", async (_req: Request, res: Response) =>
   });
 });
 
-const router = Router();
-
 const estimateLimit = rateLimit({ windowMs: 60_000, max: 30, standardHeaders: true, legacyHeaders: false });
 const submitLimit   = rateLimit({ windowMs: 60_000, max: 10, standardHeaders: true, legacyHeaders: false });
 
@@ -526,7 +524,6 @@ oceanFreightPublicRouter.post("/estimate", estimateLimit, async (req: Request, r
 oceanFreightPublicRouter.post("/inquiry", submitLimit, async (req: Request, res: Response) => {
   try {
     const b = req.body ?? {};
-    const additionalSvc    = b.selected_additional_services ? JSON.stringify(b.selected_additional_services) : "[]";
 
     // Validasi wajib
     if (!b.origin_port || !b.destination_port) return res.status(400).json({ error: "origin_port dan destination_port wajib" });
@@ -539,9 +536,6 @@ oceanFreightPublicRouter.post("/inquiry", submitLimit, async (req: Request, res:
     const quoteToken  = randomBytes(24).toString("hex");
     const pricingBreakdown = b.pricing_breakdown ? JSON.stringify(b.pricing_breakdown) : null;
     const additionalSvc    = b.selected_additional_services ? JSON.stringify(b.selected_additional_services) : "[]";
-    const candidateRateIds = b.candidate_rate_ids ? JSON.stringify(b.candidate_rate_ids) : "[]";
-
-    const pricingBreakdown = b.pricing_breakdown ? JSON.stringify(b.pricing_breakdown) : null;
     const candidateRateIds = b.candidate_rate_ids ? JSON.stringify(b.candidate_rate_ids) : "[]";
 
     const { rows } = await db.execute(sql`
@@ -689,8 +683,3 @@ oceanFreightPublicRouter.post("/quote/:token/decline", async (req: Request, res:
   }
 });
 
-export default oceanFreightPublicRouter;
-// Gabungkan legacy oceanFreightPublicRouter ke router utama
-router.use(oceanFreightPublicRouter);
-
-export default router;
