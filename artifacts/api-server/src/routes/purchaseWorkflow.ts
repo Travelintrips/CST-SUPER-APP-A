@@ -647,12 +647,14 @@ router.post("/gr/:id/confirm", async (req, res) => {
 
   // Post accounting journal: Dr Inventory / Cr GR/IR (proper 3-way match accrual)
   // GR/IR (2-1045) acts as clearing account; cleared when vendor invoice (bill) is posted.
+  // PENTING: Jika grirAccountId tidak dikonfigurasi, GRN TIDAK membuat jurnal accrual ke AP.
+  // Hal ini mencegah double-AP: AP akan diposting penuh saat Vendor Invoice diterima.
   try {
     const settings = await ensureAccountingSettings(gr.companyId ?? 1);
     const totalCost = lines.reduce((s, l) => s + num(l.qtyReceived) * num(l.unitCost), 0);
-    const creditAccountId = settings.grirAccountId ?? settings.apAccountId; // fallback to AP if no GR/IR
-    if (totalCost > 0 && settings.inventoryAccountId && settings.purchaseJournalId && creditAccountId) {
-      const isGrir = !!settings.grirAccountId;
+    if (!settings.grirAccountId) {
+      console.warn(`[GRN ${gr.grNumber}] grirAccountId tidak dikonfigurasi — lewati GRN accrual. Jurnal DR Persediaan / CR Hutang akan dipost saat Vendor Invoice.`);
+    } else if (totalCost > 0 && settings.inventoryAccountId && settings.purchaseJournalId) {
       const entry = await postEntry({
         journalId: settings.purchaseJournalId,
         date: new Date(),
@@ -663,7 +665,7 @@ router.post("/gr/:id/confirm", async (req, res) => {
         companyId: gr.companyId ?? 1,
         lines: [
           { accountId: settings.inventoryAccountId, debit: totalCost, credit: 0, description: `Persediaan masuk: ${gr.grNumber}` },
-          { accountId: creditAccountId, debit: 0, credit: totalCost, description: isGrir ? `GR/IR accrual: ${gr.grNumber}` : `AP accrual: ${gr.grNumber}` },
+          { accountId: settings.grirAccountId, debit: 0, credit: totalCost, description: `GR/IR accrual: ${gr.grNumber}` },
         ],
       }, "PUR");
       if (entry?.id) {
@@ -1121,8 +1123,18 @@ router.post("/vendor-invoices/:id/post", async (req, res) => {
       }
     } else {
       // Standard purchase bill posting
-      const debitAccId = (vi.grId && settings.grirAccountId) ? settings.grirAccountId : settings.purchaseExpenseAccountId;
-      const debitDesc = (vi.grId && settings.grirAccountId) ? `GR/IR clearing ${vi.invoiceNumber}` : "Purchase expense";
+      // Jika ada GRN terkait:
+      //   - grirAccountId ada → DR GR/IR (clearing accrual dari GRN)
+      //   - grirAccountId tidak ada → GRN tidak membuat accrual, jadi DR Persediaan langsung
+      // Jika tidak ada GRN: DR Beban Pembelian (service/expense)
+      const debitAccId = vi.grId
+        ? (settings.grirAccountId ?? settings.inventoryAccountId ?? settings.purchaseExpenseAccountId)
+        : settings.purchaseExpenseAccountId;
+      const debitDesc = vi.grId
+        ? (settings.grirAccountId
+          ? `GR/IR clearing ${vi.invoiceNumber}`
+          : `Persediaan barang (tanpa GR/IR): ${vi.invoiceNumber}`)
+        : "Purchase expense";
       if (debitAccId) lines.push({ accountId: debitAccId, debit: netAmount, credit: 0, description: debitDesc });
       if (taxAmount > 0 && settings.ppnInputAccountId) lines.push({ accountId: settings.ppnInputAccountId!, debit: taxAmount, credit: 0, description: "VAT in" });
       if (settings.apAccountId) lines.push({ accountId: settings.apAccountId!, debit: 0, credit: grandTotal, description: "AP vendor invoice" });

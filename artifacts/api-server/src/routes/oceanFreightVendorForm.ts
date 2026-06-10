@@ -3,10 +3,6 @@ import { logger } from "../lib/logger.js";
 import { rateLimit } from "express-rate-limit";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
-import { rateLimit } from "express-rate-limit";
-import { db } from "@workspace/db";
-import { sql } from "drizzle-orm";
-import { logger } from "../lib/logger.js";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getAdminGroupWa } from "../lib/adminWa.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
@@ -15,9 +11,6 @@ import multer from "multer";
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 const storage = new ObjectStorageService();
 
-const submitLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false });
-
-export const oceanFreightVendorFormRouter = Router();
 const submitLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false });
 
 export const oceanFreightVendorFormRouter = Router();
@@ -277,51 +270,14 @@ oceanFreightVendorFormRouter.post(
     } catch (_) {}
 
     return res.json({ ok: true, message: "Rate berhasil disubmit. Terima kasih." });
-    const totalIdr = cur === "IDR" ? totalOrig : totalOrig * er;
-
-    await db.execute(sql.raw(`
-      INSERT INTO ocean_freight_rate_submissions (
-        rfq_id, order_id, vendor_id, rate_source_type, rate_source_name,
-        carrier, ocean_freight_amount, currency, exchange_rate_to_idr,
-        validity_date, vessel_name, voyage, etd, eta, transit_days,
-        direct_or_transshipment, thc_origin, thc_destination, doc_fee, bl_fee, do_fee,
-        handling_fee, trucking_pickup_estimate, trucking_delivery_estimate,
-        customs_clearance_fee, surcharge_amount, notes, attachment_url,
-        total_amount, total_amount_idr, status, submitted_at
-      ) VALUES (
-        ${rfq.id}, ${rfq.order_id}, ${rfq.vendor_id ?? "NULL"},
-        'vendor_rate',
-        '${String(b.rate_source_name ?? rfq.contact_name ?? "Vendor").replace(/'/g, "''")}',
-        '${String(b.carrier ?? "").replace(/'/g, "''")}',
-        ${Number(b.ocean_freight_amount)}, '${cur}', ${er},
-        '${String(b.validity_date).replace(/'/g, "''")}',
-        ${b.vessel_name ? `'${String(b.vessel_name).replace(/'/g, "''")}'` : "NULL"},
-        ${b.voyage ? `'${String(b.voyage).replace(/'/g, "''")}'` : "NULL"},
-        ${b.etd ? `'${String(b.etd).replace(/'/g, "''")}'` : "NULL"},
-        ${b.eta ? `'${String(b.eta).replace(/'/g, "''")}'` : "NULL"},
-        ${b.transit_days ? Number(b.transit_days) : "NULL"},
-        '${String(b.direct_or_transshipment ?? "direct").replace(/'/g, "''")}',
-        ${Number(b.thc_origin ?? 0)}, ${Number(b.thc_destination ?? 0)},
-        ${Number(b.doc_fee ?? 0)}, ${Number(b.bl_fee ?? 0)}, ${Number(b.do_fee ?? 0)},
-        ${Number(b.handling_fee ?? 0)},
-        ${Number(b.trucking_pickup_estimate ?? 0)}, ${Number(b.trucking_delivery_estimate ?? 0)},
-        ${Number(b.customs_clearance_fee ?? 0)}, ${Number(b.surcharge_amount ?? 0)},
-        ${b.notes ? `'${String(b.notes).replace(/'/g, "''")}'` : "NULL"},
-        ${b.attachment_url ? `'${String(b.attachment_url).replace(/'/g, "''")}'` : "NULL"},
-        ${totalOrig}, ${totalIdr}, 'submitted', NOW()
-      )
-    `));
-
-    await db.execute(sql.raw(`UPDATE ocean_freight_rfqs SET status = 'submitted', updated_at = NOW() WHERE id = ${rfq.id}`));
-    await db.execute(sql.raw(`UPDATE ocean_freight_orders SET status = 'rate_received', updated_at = NOW() WHERE id = ${rfq.order_id}`));
-
-    res.json({ ok: true, message: "Rate berhasil disubmit. Terima kasih!" });
   } catch (err) {
-    logger.error({ err }, "[ocean-freight-vendor-form] POST /:token");
+    logger.error({ err }, "[ocean-freight-vendor-form] POST /:token inner");
     res.status(500).json({ error: "Gagal submit rate" });
   }
+  } catch (outerErr) {
+    logger.error({ err: outerErr }, "[ocean-freight-vendor-form] POST /:token");
+    res.status(500).json({ error: "Gagal submit rate" });
   }
-);
 });
 
 export { oceanFreightVendorFormRouter as default };

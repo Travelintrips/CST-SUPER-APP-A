@@ -541,6 +541,11 @@ export async function postQuickExpenseJournal(expId: number) {
   const settings = await ensureAccountingSettings(companyId);
   const txType: string = e.transaction_type ?? "expense";
   const amountN = Number(e.total ?? 0);
+  // Pisahkan PPN Masukan agar masuk ke akun COA tersendiri (bukan digabung ke akun beban)
+  const taxAmountN = Math.round(Number(e.tax_amount ?? 0) * 100) / 100;
+  const netAmountN = Math.round((amountN - taxAmountN) * 100) / 100;
+  const ppnInputAcctId: number | null =
+    taxAmountN > 0 ? (Number(e.ppn_input_account_id) || settings.ppnInputAccountId || null) : null;
 
   // Resolve akun beban/pendapatan — dari expense itu sendiri, fallback ke kategori
   const expenseAccountId: number | null =
@@ -595,11 +600,18 @@ export async function postQuickExpenseJournal(expId: number) {
           { accountId: counterAccountId, debit: amountN, credit: 0, description: `Penerimaan — ${label}` },
           { accountId: expenseAccountId, debit: 0, credit: amountN, description: label },
         ]
-      : [
-          // Expense biasa: Debit Beban → Credit Kas/Bank atau Hutang
-          { accountId: expenseAccountId, debit: amountN, credit: 0, description: label },
-          { accountId: counterAccountId, debit: 0, credit: amountN, description: counterLabel },
-        ];
+      : ppnInputAcctId && taxAmountN > 0
+        ? [
+            // Expense kena PPN: Debit Beban (DPP) + Debit PPN Masukan → Credit Kas/Bank/Hutang (total)
+            { accountId: expenseAccountId, debit: netAmountN, credit: 0, description: label },
+            { accountId: ppnInputAcctId, debit: taxAmountN, credit: 0, description: `PPN Masukan — ${label}` },
+            { accountId: counterAccountId, debit: 0, credit: amountN, description: counterLabel },
+          ]
+        : [
+            // Expense tanpa PPN: Debit Beban → Credit Kas/Bank atau Hutang
+            { accountId: expenseAccountId, debit: amountN, credit: 0, description: label },
+            { accountId: counterAccountId, debit: 0, credit: amountN, description: counterLabel },
+          ];
 
   const entry = await postEntry(
     {
