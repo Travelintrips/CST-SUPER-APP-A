@@ -72,7 +72,18 @@ const router = Router();
     END $$
   `)).catch((e: unknown) => console.warn("ofr rate_code constraint:", e));
 
-  // ── Seed: delete stale anonymous seeds, insert full set with rate_code ──────
+  // Fix old 'Westport' destination_port → 'Port Klang'
+  await db.execute(sql.raw(`
+    UPDATE ocean_freight_rates SET destination_port = 'Port Klang', destination_city = 'Port Klang'
+    WHERE destination_port = 'Westport'
+  `)).catch(() => {});
+
+  // Cleanup old anonymous seed records (rate_code IS NULL = seeded before uniqueness was added)
+  await db.execute(sql.raw(`
+    DELETE FROM ocean_freight_rates WHERE rate_code IS NULL
+  `)).catch(() => {});
+
+  // ── Seed: insert full set with rate_code ──────────────────────────────────
   const today = new Date().toISOString().slice(0, 10);
   const in90  = new Date(Date.now() + 90 * 86400_000).toISOString().slice(0, 10);
 
@@ -110,12 +121,12 @@ const router = Router();
        'USD',16500,0,28,1,80,100,50,35,45,55,100,7,'transshipment','estimate',TRUE,'${today}','${in90}'),
 
       ('PRIOK-PKG-20FT','shipping_line','Evergreen','Evergreen',
-       'Jakarta','Tanjung Priok','Port Klang','Westport',
+       'Jakarta','Tanjung Priok','Port Klang','Port Klang',
        'export','FCL','port_to_port','20ft',
        'USD',16500,280,NULL,NULL,160,160,50,35,45,75,100,5,'direct','estimate',TRUE,'${today}','${in90}'),
 
       ('PRIOK-PKG-40FT','shipping_line','Evergreen','Evergreen',
-       'Jakarta','Tanjung Priok','Port Klang','Westport',
+       'Jakarta','Tanjung Priok','Port Klang','Port Klang',
        'export','FCL','port_to_port','40ft',
        'USD',16500,480,NULL,NULL,160,160,50,35,45,75,100,5,'direct','estimate',TRUE,'${today}','${in90}'),
 
