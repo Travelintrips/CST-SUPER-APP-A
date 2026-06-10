@@ -1,4 +1,4 @@
-import { Router, type Request, type Response } from "express";
+import { Router, type Request, type Response, type NextFunction } from "express";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
@@ -477,6 +477,258 @@ router.delete("/route-matrix/:id", requireAdmin, async (req: Request, res: Respo
   } catch (e) {
     return res.status(500).json({ error: "Gagal hapus route matrix" });
   }
+});
+
+router.delete("/carriers/:id", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    await db.execute(sql`DELETE FROM freight_carriers WHERE id = ${Number(req.params.id)}`);
+    return res.json({ ok: true });
+  } catch (e) {
+    return res.status(500).json({ error: "Gagal hapus carrier" });
+  }
+});
+
+router.delete("/container-types/:id", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    await db.execute(sql`DELETE FROM freight_container_types WHERE id = ${Number(req.params.id)}`);
+    return res.json({ ok: true });
+  } catch (e) {
+    return res.status(500).json({ error: "Gagal hapus container type" });
+  }
+});
+
+router.delete("/ports/:id", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    await db.execute(sql`DELETE FROM freight_ports WHERE id = ${Number(req.params.id)}`);
+    return res.json({ ok: true });
+  } catch (e) {
+    return res.status(500).json({ error: "Gagal hapus port" });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CSV Utilities
+// ─────────────────────────────────────────────────────────────────────────────
+function csvEsc(v: unknown): string {
+  if (v === null || v === undefined) return "";
+  const s = String(v);
+  if (s.includes(",") || s.includes('"') || s.includes("\n") || s.includes("\r"))
+    return '"' + s.replace(/"/g, '""') + '"';
+  return s;
+}
+function toCsvRow(fields: unknown[]): string { return fields.map(csvEsc).join(","); }
+
+function parseCsvRowM(line: string): string[] {
+  const result: string[] = [];
+  let i = 0;
+  while (i < line.length) {
+    if (line[i] === '"') {
+      i++; let val = "";
+      while (i < line.length) {
+        if (line[i] === '"' && line[i + 1] === '"') { val += '"'; i += 2; }
+        else if (line[i] === '"') { i++; break; }
+        else { val += line[i++]; }
+      }
+      result.push(val);
+      if (line[i] === ",") i++;
+    } else {
+      const end = line.indexOf(",", i);
+      if (end === -1) { result.push(line.slice(i)); break; }
+      result.push(line.slice(i, end)); i = end + 1;
+    }
+  }
+  return result;
+}
+
+function parseCsvTextM(text: string): Record<string, string>[] {
+  const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n").filter(l => l.trim());
+  if (lines.length < 2) return [];
+  const headers = parseCsvRowM(lines[0]);
+  return lines.slice(1).map(line => {
+    const vals = parseCsvRowM(line);
+    const obj: Record<string, string> = {};
+    headers.forEach((h, idx) => { obj[h.trim()] = vals[idx] ?? ""; });
+    return obj;
+  }).filter(r => Object.values(r).some(v => v.trim()));
+}
+
+function csvTextParserM(req: Request, _res: Response, next: NextFunction) {
+  const ct = String(req.headers["content-type"] ?? "");
+  if (!ct.includes("text/csv") && !ct.includes("text/plain") && !ct.includes("application/octet-stream")) return next();
+  let data = ""; req.setEncoding("utf8");
+  req.on("data", (chunk: string) => { data += chunk; });
+  req.on("end", () => { (req as any).body = data; next(); });
+  req.on("error", () => next(new Error("Failed to read CSV body")));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Ports Export / Import
+// ─────────────────────────────────────────────────────────────────────────────
+const PORT_HEADERS = ["code","name","city","country","country_code","region","port_type","timezone","is_active","sort_order","notes"];
+
+router.get("/ports/export", requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const { rows } = await db.execute(sql`SELECT * FROM freight_ports ORDER BY sort_order, code`);
+    const lines = [PORT_HEADERS.join(",")];
+    for (const r of rows as Record<string, unknown>[]) lines.push(toCsvRow(PORT_HEADERS.map(h => r[h])));
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="freight-ports-${new Date().toISOString().slice(0,10)}.csv"`);
+    return res.send("\uFEFF" + lines.join("\n"));
+  } catch (e) { return res.status(500).json({ error: "Gagal export ports" }); }
+});
+
+router.post("/ports/import", requireAdmin, csvTextParserM, async (req: Request, res: Response) => {
+  try {
+    const csvRows = parseCsvTextM(String(req.body ?? ""));
+    if (!csvRows.length) return res.status(400).json({ error: "File CSV kosong" });
+    let processed = 0; const errors: string[] = [];
+    for (const r of csvRows) {
+      try {
+        await db.execute(sql`
+          INSERT INTO freight_ports (code,name,city,country,country_code,region,port_type,timezone,is_active,sort_order,notes,updated_at)
+          VALUES (${String(r.code||"").toUpperCase()},${r.name||""},${r.city||""},${r.country||""},${String(r.country_code||"").toUpperCase()},
+            ${r.region||""},${r.port_type||"sea"},${r.timezone||"Asia/Jakarta"},
+            ${r.is_active!=="false"&&r.is_active!=="0"},${Number(r.sort_order)||0},${r.notes||null},NOW())
+          ON CONFLICT (code) DO UPDATE SET
+            name=EXCLUDED.name,city=EXCLUDED.city,country=EXCLUDED.country,country_code=EXCLUDED.country_code,
+            region=EXCLUDED.region,port_type=EXCLUDED.port_type,timezone=EXCLUDED.timezone,
+            is_active=EXCLUDED.is_active,sort_order=EXCLUDED.sort_order,notes=EXCLUDED.notes,updated_at=NOW()
+        `);
+        processed++;
+      } catch (e: any) { errors.push(`${r.code}: ${e.message}`); }
+    }
+    return res.json({ total: csvRows.length, processed, errors });
+  } catch (e) { return res.status(500).json({ error: "Gagal import ports" }); }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Carriers Export / Import
+// ─────────────────────────────────────────────────────────────────────────────
+const CARRIER_HEADERS = ["code","name","carrier_type","country","country_code","logo_url","is_active","sort_order","notes"];
+
+router.get("/carriers/export", requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const { rows } = await db.execute(sql`SELECT * FROM freight_carriers ORDER BY sort_order, code`);
+    const lines = [CARRIER_HEADERS.join(",")];
+    for (const r of rows as Record<string, unknown>[]) lines.push(toCsvRow(CARRIER_HEADERS.map(h => r[h])));
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="freight-carriers-${new Date().toISOString().slice(0,10)}.csv"`);
+    return res.send("\uFEFF" + lines.join("\n"));
+  } catch (e) { return res.status(500).json({ error: "Gagal export carriers" }); }
+});
+
+router.post("/carriers/import", requireAdmin, csvTextParserM, async (req: Request, res: Response) => {
+  try {
+    const csvRows = parseCsvTextM(String(req.body ?? ""));
+    if (!csvRows.length) return res.status(400).json({ error: "File CSV kosong" });
+    let processed = 0; const errors: string[] = [];
+    for (const r of csvRows) {
+      try {
+        await db.execute(sql`
+          INSERT INTO freight_carriers (code,name,carrier_type,country,country_code,logo_url,is_active,sort_order,notes,updated_at)
+          VALUES (${String(r.code||"").toUpperCase()},${r.name||""},${r.carrier_type||"shipping_line"},
+            ${r.country||""},${String(r.country_code||"").toUpperCase()},${r.logo_url||null},
+            ${r.is_active!=="false"&&r.is_active!=="0"},${Number(r.sort_order)||0},${r.notes||null},NOW())
+          ON CONFLICT (code) DO UPDATE SET
+            name=EXCLUDED.name,carrier_type=EXCLUDED.carrier_type,country=EXCLUDED.country,
+            country_code=EXCLUDED.country_code,logo_url=EXCLUDED.logo_url,
+            is_active=EXCLUDED.is_active,sort_order=EXCLUDED.sort_order,notes=EXCLUDED.notes,updated_at=NOW()
+        `);
+        processed++;
+      } catch (e: any) { errors.push(`${r.code}: ${e.message}`); }
+    }
+    return res.json({ total: csvRows.length, processed, errors });
+  } catch (e) { return res.status(500).json({ error: "Gagal import carriers" }); }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Container Types Export / Import
+// ─────────────────────────────────────────────────────────────────────────────
+const CT_HEADERS = ["code","name","teu","max_cbm","max_payload_kg","is_reefer","is_special","is_active","sort_order","notes"];
+
+router.get("/container-types/export", requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const { rows } = await db.execute(sql`SELECT * FROM freight_container_types ORDER BY sort_order, code`);
+    const lines = [CT_HEADERS.join(",")];
+    for (const r of rows as Record<string, unknown>[]) lines.push(toCsvRow(CT_HEADERS.map(h => r[h])));
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="freight-container-types-${new Date().toISOString().slice(0,10)}.csv"`);
+    return res.send("\uFEFF" + lines.join("\n"));
+  } catch (e) { return res.status(500).json({ error: "Gagal export container types" }); }
+});
+
+router.post("/container-types/import", requireAdmin, csvTextParserM, async (req: Request, res: Response) => {
+  try {
+    const csvRows = parseCsvTextM(String(req.body ?? ""));
+    if (!csvRows.length) return res.status(400).json({ error: "File CSV kosong" });
+    let processed = 0; const errors: string[] = [];
+    for (const r of csvRows) {
+      try {
+        await db.execute(sql`
+          INSERT INTO freight_container_types (code,name,teu,max_cbm,max_payload_kg,is_reefer,is_special,is_active,sort_order,notes)
+          VALUES (${r.code||""},${r.name||""},${Number(r.teu)||1},
+            ${r.max_cbm?Number(r.max_cbm):null},${r.max_payload_kg?Number(r.max_payload_kg):null},
+            ${r.is_reefer==="true"||r.is_reefer==="1"},${r.is_special==="true"||r.is_special==="1"},
+            ${r.is_active!=="false"&&r.is_active!=="0"},${Number(r.sort_order)||0},${r.notes||null})
+          ON CONFLICT (code) DO UPDATE SET
+            name=EXCLUDED.name,teu=EXCLUDED.teu,max_cbm=EXCLUDED.max_cbm,max_payload_kg=EXCLUDED.max_payload_kg,
+            is_reefer=EXCLUDED.is_reefer,is_special=EXCLUDED.is_special,
+            is_active=EXCLUDED.is_active,sort_order=EXCLUDED.sort_order,notes=EXCLUDED.notes
+        `);
+        processed++;
+      } catch (e: any) { errors.push(`${r.code}: ${e.message}`); }
+    }
+    return res.json({ total: csvRows.length, processed, errors });
+  } catch (e) { return res.status(500).json({ error: "Gagal import container types" }); }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Route Matrix Export / Import
+// ─────────────────────────────────────────────────────────────────────────────
+const RM_HEADERS = ["origin_port_code","destination_port_code","carrier_code","service_name","transit_days_min","transit_days_max","frequency","direct_or_transshipment","pol","pod","transshipment_port","is_active","notes"];
+
+router.get("/route-matrix/export", requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const { rows } = await db.execute(sql`SELECT * FROM ocean_freight_route_matrix ORDER BY origin_port_code, destination_port_code, carrier_code`);
+    const lines = [RM_HEADERS.join(",")];
+    for (const r of rows as Record<string, unknown>[]) lines.push(toCsvRow(RM_HEADERS.map(h => r[h])));
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="ocean-route-matrix-${new Date().toISOString().slice(0,10)}.csv"`);
+    return res.send("\uFEFF" + lines.join("\n"));
+  } catch (e) { return res.status(500).json({ error: "Gagal export route matrix" }); }
+});
+
+router.post("/route-matrix/import", requireAdmin, csvTextParserM, async (req: Request, res: Response) => {
+  try {
+    const csvRows = parseCsvTextM(String(req.body ?? ""));
+    if (!csvRows.length) return res.status(400).json({ error: "File CSV kosong" });
+    let processed = 0; const errors: string[] = [];
+    for (const r of csvRows) {
+      try {
+        await db.execute(sql`
+          INSERT INTO ocean_freight_route_matrix
+            (origin_port_code,destination_port_code,carrier_code,service_name,
+             transit_days_min,transit_days_max,frequency,direct_or_transshipment,
+             pol,pod,transshipment_port,is_active,notes,updated_at)
+          VALUES (
+            ${String(r.origin_port_code||"").toUpperCase()},${String(r.destination_port_code||"").toUpperCase()},
+            ${String(r.carrier_code||"").toUpperCase()},${r.service_name||""},
+            ${r.transit_days_min?Number(r.transit_days_min):null},${r.transit_days_max?Number(r.transit_days_max):null},
+            ${r.frequency||"weekly"},${r.direct_or_transshipment||"direct"},
+            ${r.pol||null},${r.pod||null},${r.transshipment_port||null},
+            ${r.is_active!=="false"&&r.is_active!=="0"},${r.notes||null},NOW())
+          ON CONFLICT (origin_port_code,destination_port_code,carrier_code) DO UPDATE SET
+            service_name=EXCLUDED.service_name,transit_days_min=EXCLUDED.transit_days_min,
+            transit_days_max=EXCLUDED.transit_days_max,frequency=EXCLUDED.frequency,
+            direct_or_transshipment=EXCLUDED.direct_or_transshipment,pol=EXCLUDED.pol,pod=EXCLUDED.pod,
+            transshipment_port=EXCLUDED.transshipment_port,is_active=EXCLUDED.is_active,
+            notes=EXCLUDED.notes,updated_at=NOW()
+        `);
+        processed++;
+      } catch (e: any) { errors.push(`${r.origin_port_code}-${r.destination_port_code}-${r.carrier_code}: ${e.message}`); }
+    }
+    return res.json({ total: csvRows.length, processed, errors });
+  } catch (e) { return res.status(500).json({ error: "Gagal import route matrix" }); }
 });
 
 export default router;

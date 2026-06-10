@@ -1,4 +1,4 @@
-import { Router, type Request, type Response } from "express";
+import { Router, type Request, type Response, type NextFunction } from "express";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
@@ -355,6 +355,73 @@ const router = Router();
   `)).catch((e: unknown) => console.warn("ofr rates seed:", e));
 })();
 
+// ── CSV utilities ──────────────────────────────────────────────────────────────
+function csvEsc(v: unknown): string {
+  if (v === null || v === undefined) return "";
+  const s = String(v);
+  if (s.includes(",") || s.includes('"') || s.includes("\n") || s.includes("\r"))
+    return '"' + s.replace(/"/g, '""') + '"';
+  return s;
+}
+function toCsvRow(fields: unknown[]): string { return fields.map(csvEsc).join(","); }
+
+function parseCsvRow(line: string): string[] {
+  const result: string[] = [];
+  let i = 0;
+  while (i < line.length) {
+    if (line[i] === '"') {
+      i++; let val = "";
+      while (i < line.length) {
+        if (line[i] === '"' && line[i + 1] === '"') { val += '"'; i += 2; }
+        else if (line[i] === '"') { i++; break; }
+        else { val += line[i++]; }
+      }
+      result.push(val);
+      if (line[i] === ",") i++;
+    } else {
+      const end = line.indexOf(",", i);
+      if (end === -1) { result.push(line.slice(i)); break; }
+      result.push(line.slice(i, end)); i = end + 1;
+    }
+  }
+  return result;
+}
+
+function parseCsvText(text: string): Record<string, string>[] {
+  const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n").filter(l => l.trim());
+  if (lines.length < 2) return [];
+  const headers = parseCsvRow(lines[0]);
+  return lines.slice(1).map(line => {
+    const vals = parseCsvRow(line);
+    const obj: Record<string, string> = {};
+    headers.forEach((h, idx) => { obj[h.trim()] = vals[idx] ?? ""; });
+    return obj;
+  }).filter(r => Object.values(r).some(v => v.trim()));
+}
+
+function csvTextParser(req: Request, _res: Response, next: NextFunction) {
+  const ct = String(req.headers["content-type"] ?? "");
+  if (!ct.includes("text/csv") && !ct.includes("text/plain") && !ct.includes("application/octet-stream")) return next();
+  let data = ""; req.setEncoding("utf8");
+  req.on("data", (chunk: string) => { data += chunk; });
+  req.on("end", () => { (req as any).body = data; next(); });
+  req.on("error", () => next(new Error("Failed to read CSV body")));
+}
+
+const RATE_HEADERS = [
+  "rate_code","rate_source_type","rate_source_name","carrier_name",
+  "origin_city","origin_port","destination_city","destination_port",
+  "trade_type","shipment_type","service_mode","container_type",
+  "currency","exchange_rate_to_idr","ocean_freight_amount",
+  "lcl_rate_per_cbm","lcl_minimum_cbm",
+  "thc_origin","thc_destination","doc_fee","bl_fee","do_fee","handling_fee",
+  "customs_clearance_fee","trucking_pickup_estimate","trucking_delivery_estimate",
+  "insurance_percent","dg_surcharge_percent","reefer_surcharge",
+  "peak_season_surcharge","emergency_bunker_surcharge","currency_adjustment_factor",
+  "valid_from","valid_until","transit_days","carrier","vessel_name","voyage",
+  "direct_or_transshipment","price_status","notes","is_active",
+];
+
 // ── Validation ─────────────────────────────────────────────────────────────────
 function validateRate(b: Record<string, unknown>): string | null {
   if (!b.currency) return "currency wajib diisi";
@@ -532,6 +599,9 @@ router.patch("/rates/:id/toggle", async (req: Request, res: Response) => {
   }
 });
 
+const today = new Date().toISOString().slice(0, 10);
+const in90  = new Date(Date.now() + 90 * 86400_000).toISOString().slice(0, 10);
+
 // GET /api/ocean-freight-rates — list
 router.get("/", requireAdmin, async (req: Request, res: Response) => {
   try {
@@ -549,6 +619,126 @@ router.get("/", requireAdmin, async (req: Request, res: Response) => {
   } catch (e) {
     console.error("[ocean-freight-rates/list]", e);
     return res.status(500).json({ error: "Gagal ambil data rate" });
+  }
+});
+
+// GET /api/ocean-freight-rates/export
+router.get("/export", requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const { rows } = await db.execute(sql`SELECT * FROM ocean_freight_rates ORDER BY origin_port, destination_port, shipment_type, container_type`);
+    const lines = [RATE_HEADERS.join(",")];
+    for (const r of rows as Record<string, unknown>[]) lines.push(toCsvRow(RATE_HEADERS.map(h => r[h])));
+    const filename = `ocean-freight-rates-${new Date().toISOString().slice(0, 10)}.csv`;
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    return res.send("\uFEFF" + lines.join("\n"));
+  } catch (e) {
+    console.error("[ofr/export]", e);
+    return res.status(500).json({ error: "Gagal export rates" });
+  }
+});
+
+// POST /api/ocean-freight-rates/import
+router.post("/import", requireAdmin, csvTextParser, async (req: Request, res: Response) => {
+  try {
+    const csvRows = parseCsvText(String(req.body ?? ""));
+    if (!csvRows.length) return res.status(400).json({ error: "File CSV kosong atau format tidak valid" });
+    let processed = 0;
+    const errors: string[] = [];
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const in90Str  = new Date(Date.now() + 90 * 86400_000).toISOString().slice(0, 10);
+    for (const r of csvRows) {
+      try {
+        const isActive = r.is_active !== "false" && r.is_active !== "0" && r.is_active !== "";
+        if (r.rate_code) {
+          await db.execute(sql`
+            INSERT INTO ocean_freight_rates (
+              rate_code,rate_source_type,rate_source_name,carrier_name,
+              origin_city,origin_port,destination_city,destination_port,
+              trade_type,shipment_type,service_mode,container_type,
+              currency,exchange_rate_to_idr,ocean_freight_amount,
+              lcl_rate_per_cbm,lcl_minimum_cbm,
+              thc_origin,thc_destination,doc_fee,bl_fee,do_fee,handling_fee,
+              customs_clearance_fee,trucking_pickup_estimate,trucking_delivery_estimate,
+              insurance_percent,dg_surcharge_percent,reefer_surcharge,
+              peak_season_surcharge,emergency_bunker_surcharge,currency_adjustment_factor,
+              valid_from,valid_until,transit_days,carrier,vessel_name,voyage,
+              direct_or_transshipment,price_status,notes,is_active,updated_at
+            ) VALUES (
+              ${r.rate_code},${r.rate_source_type||"shipping_line"},${r.rate_source_name||""},${r.carrier_name||null},
+              ${r.origin_city||""},${r.origin_port||""},${r.destination_city||""},${r.destination_port||""},
+              ${r.trade_type||"export"},${r.shipment_type||"FCL"},${r.service_mode||"port_to_port"},${r.container_type||null},
+              ${r.currency||"USD"},${Number(r.exchange_rate_to_idr)||16500},${Number(r.ocean_freight_amount)||0},
+              ${r.lcl_rate_per_cbm?Number(r.lcl_rate_per_cbm):null},${r.lcl_minimum_cbm?Number(r.lcl_minimum_cbm):null},
+              ${Number(r.thc_origin)||0},${Number(r.thc_destination)||0},${Number(r.doc_fee)||0},${Number(r.bl_fee)||0},
+              ${Number(r.do_fee)||0},${Number(r.handling_fee)||0},${Number(r.customs_clearance_fee)||0},
+              ${Number(r.trucking_pickup_estimate)||0},${Number(r.trucking_delivery_estimate)||0},
+              ${Number(r.insurance_percent)||0},${Number(r.dg_surcharge_percent)||0},${Number(r.reefer_surcharge)||0},
+              ${Number(r.peak_season_surcharge)||0},${Number(r.emergency_bunker_surcharge)||0},${Number(r.currency_adjustment_factor)||0},
+              ${r.valid_from||todayStr}::date,${r.valid_until||in90Str}::date,
+              ${r.transit_days?Number(r.transit_days):null},${r.carrier||null},${r.vessel_name||null},${r.voyage||null},
+              ${r.direct_or_transshipment||"direct"},${r.price_status||"estimate"},${r.notes||null},${isActive},NOW()
+            )
+            ON CONFLICT (rate_code) DO UPDATE SET
+              rate_source_type=EXCLUDED.rate_source_type,rate_source_name=EXCLUDED.rate_source_name,
+              carrier_name=EXCLUDED.carrier_name,origin_city=EXCLUDED.origin_city,origin_port=EXCLUDED.origin_port,
+              destination_city=EXCLUDED.destination_city,destination_port=EXCLUDED.destination_port,
+              trade_type=EXCLUDED.trade_type,shipment_type=EXCLUDED.shipment_type,service_mode=EXCLUDED.service_mode,
+              container_type=EXCLUDED.container_type,currency=EXCLUDED.currency,
+              exchange_rate_to_idr=EXCLUDED.exchange_rate_to_idr,ocean_freight_amount=EXCLUDED.ocean_freight_amount,
+              lcl_rate_per_cbm=EXCLUDED.lcl_rate_per_cbm,lcl_minimum_cbm=EXCLUDED.lcl_minimum_cbm,
+              thc_origin=EXCLUDED.thc_origin,thc_destination=EXCLUDED.thc_destination,
+              doc_fee=EXCLUDED.doc_fee,bl_fee=EXCLUDED.bl_fee,do_fee=EXCLUDED.do_fee,
+              handling_fee=EXCLUDED.handling_fee,customs_clearance_fee=EXCLUDED.customs_clearance_fee,
+              trucking_pickup_estimate=EXCLUDED.trucking_pickup_estimate,trucking_delivery_estimate=EXCLUDED.trucking_delivery_estimate,
+              insurance_percent=EXCLUDED.insurance_percent,dg_surcharge_percent=EXCLUDED.dg_surcharge_percent,
+              reefer_surcharge=EXCLUDED.reefer_surcharge,peak_season_surcharge=EXCLUDED.peak_season_surcharge,
+              emergency_bunker_surcharge=EXCLUDED.emergency_bunker_surcharge,currency_adjustment_factor=EXCLUDED.currency_adjustment_factor,
+              valid_from=EXCLUDED.valid_from,valid_until=EXCLUDED.valid_until,transit_days=EXCLUDED.transit_days,
+              carrier=EXCLUDED.carrier,vessel_name=EXCLUDED.vessel_name,voyage=EXCLUDED.voyage,
+              direct_or_transshipment=EXCLUDED.direct_or_transshipment,price_status=EXCLUDED.price_status,
+              notes=EXCLUDED.notes,is_active=EXCLUDED.is_active,updated_at=NOW()
+          `);
+        } else {
+          await db.execute(sql`
+            INSERT INTO ocean_freight_rates (
+              rate_source_type,rate_source_name,carrier_name,
+              origin_city,origin_port,destination_city,destination_port,
+              trade_type,shipment_type,service_mode,container_type,
+              currency,exchange_rate_to_idr,ocean_freight_amount,
+              lcl_rate_per_cbm,lcl_minimum_cbm,
+              thc_origin,thc_destination,doc_fee,bl_fee,do_fee,handling_fee,
+              customs_clearance_fee,trucking_pickup_estimate,trucking_delivery_estimate,
+              insurance_percent,dg_surcharge_percent,reefer_surcharge,
+              peak_season_surcharge,emergency_bunker_surcharge,currency_adjustment_factor,
+              valid_from,valid_until,transit_days,carrier,vessel_name,voyage,
+              direct_or_transshipment,price_status,notes,is_active,updated_at
+            ) VALUES (
+              ${r.rate_source_type||"shipping_line"},${r.rate_source_name||""},${r.carrier_name||null},
+              ${r.origin_city||""},${r.origin_port||""},${r.destination_city||""},${r.destination_port||""},
+              ${r.trade_type||"export"},${r.shipment_type||"FCL"},${r.service_mode||"port_to_port"},${r.container_type||null},
+              ${r.currency||"USD"},${Number(r.exchange_rate_to_idr)||16500},${Number(r.ocean_freight_amount)||0},
+              ${r.lcl_rate_per_cbm?Number(r.lcl_rate_per_cbm):null},${r.lcl_minimum_cbm?Number(r.lcl_minimum_cbm):null},
+              ${Number(r.thc_origin)||0},${Number(r.thc_destination)||0},${Number(r.doc_fee)||0},${Number(r.bl_fee)||0},
+              ${Number(r.do_fee)||0},${Number(r.handling_fee)||0},${Number(r.customs_clearance_fee)||0},
+              ${Number(r.trucking_pickup_estimate)||0},${Number(r.trucking_delivery_estimate)||0},
+              ${Number(r.insurance_percent)||0},${Number(r.dg_surcharge_percent)||0},${Number(r.reefer_surcharge)||0},
+              ${Number(r.peak_season_surcharge)||0},${Number(r.emergency_bunker_surcharge)||0},${Number(r.currency_adjustment_factor)||0},
+              ${r.valid_from||todayStr}::date,${r.valid_until||in90Str}::date,
+              ${r.transit_days?Number(r.transit_days):null},${r.carrier||null},${r.vessel_name||null},${r.voyage||null},
+              ${r.direct_or_transshipment||"direct"},${r.price_status||"estimate"},${r.notes||null},${isActive},NOW()
+            )
+          `);
+        }
+        processed++;
+      } catch (e: any) {
+        errors.push(`${r.rate_code || "(no code)"}: ${e.message}`);
+      }
+    }
+    return res.json({ total: csvRows.length, processed, errors });
+  } catch (e) {
+    console.error("[ofr/import]", e);
+    return res.status(500).json({ error: "Gagal import rates" });
   }
 });
 

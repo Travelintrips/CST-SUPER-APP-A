@@ -175,6 +175,7 @@ import AirFreightVendorFormPage from "@/pages/air-freight-vendor-form";
 import OceanFreightOrdersPage from "@/pages/logistics/ocean-freight-orders";
 import OceanFreightOrderDetailPage from "@/pages/logistics/ocean-freight-order-detail";
 import OceanFreightRatesPage from "@/pages/logistics/ocean-freight-rates";
+import OceanFreightMasterDataPage from "@/pages/logistics/ocean-freight-master-data";
 import ExceptionsPage from "@/pages/exceptions/index";
 // Misc
 import NotificationsPage from "@/pages/notifications";
@@ -210,14 +211,12 @@ import TenantList from "@/pages/tenant/tenants";
 import TenantUnits from "@/pages/tenant/units";
 import TenantBookings from "@/pages/tenant/bookings";
 import TenantPayments from "@/pages/tenant/payments";
+import TenantInvoices from "@/pages/tenant/invoices";
 import AirFreightNewOrdersPage from "@/pages/air-freight/orders";
 import AirFreightRatesPage from "@/pages/air-freight/rates";
 import AirFreightNewOrderDetailPage from "@/pages/air-freight/order-detail";
 import AirFreightApprovalPage from "@/pages/air-freight/approval";
 import AirFreightTrackPage from "@/pages/air-freight/track";
-import OceanFreightOrdersPage from "@/pages/ocean-freight/orders";
-import OceanFreightRatesPage from "@/pages/ocean-freight/rates";
-import OceanFreightOrderDetailPage from "@/pages/ocean-freight/order-detail";
 
 const PR = (C: React.ComponentType) => () => <ProtectedRoute component={C} />;
 
@@ -490,12 +489,14 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/tenant/units" component={PR(TenantUnits)} />
       <Route path="/tenant/bookings" component={PR(TenantBookings)} />
       <Route path="/tenant/payments" component={PR(TenantPayments)} />
+      <Route path="/tenant/invoices" component={PR(TenantInvoices)} />
       <Route path="/tenant" component={PR(TenantDashboard)} />
 
       {/* ── Ocean Freight ───────────────────────────────────────────────── */}
       <Route path="/logistics/ocean-freight-orders" component={PR(OceanFreightOrdersPage)} />
       <Route path="/logistics/ocean-freight/:id" component={PR(OceanFreightOrderDetailPage)} />
       <Route path="/logistics/ocean-freight-rates" component={PR(OceanFreightRatesPage)} />
+      <Route path="/ocean-freight-master-data" component={PR(OceanFreightMasterDataPage)} />
 
       {/* ── Air Freight ─────────────────────────────────────────────────── */}
       <Route path="/air-freight/orders/:id" component={PR(AirFreightNewOrderDetailPage)} />

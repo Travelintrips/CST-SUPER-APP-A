@@ -528,4 +528,181 @@ router.post("/payments/:id/confirm", async (req, res) => {
   }
 });
 
+/* ───────────────────────── INVOICES ───────────────────────── */
+async function nextInvoiceNumber(): Promise<string> {
+  const year = new Date().getFullYear();
+  const pattern = `INV-TNT/${year}/%`;
+  const { rows } = (await db.execute(
+    sql`SELECT COALESCE(MAX(CAST(SPLIT_PART(invoice_number, '/', 3) AS INTEGER)), 0) AS max_seq
+        FROM tenant_invoices WHERE invoice_number LIKE ${pattern}`,
+  )) as unknown as { rows: { max_seq: number }[] };
+  const seq = (Number(rows[0]?.max_seq ?? 0) + 1).toString().padStart(4, "0");
+  return `INV-TNT/${year}/${seq}`;
+}
+
+router.get("/invoices", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  const companyId = companyOf(req);
+  const status = String(req.query.status ?? "all");
+  const search = String(req.query.search ?? "").trim();
+  try {
+    const conds: ReturnType<typeof sql>[] = [];
+    if (companyId) conds.push(sql`i.company_id = ${companyId}`);
+    if (status !== "all") conds.push(sql`i.status = ${status}`);
+    if (search) conds.push(sql`(i.invoice_number ILIKE ${"%" + search + "%"} OR t.business_name ILIKE ${"%" + search + "%"} OR t.owner_name ILIKE ${"%" + search + "%"})`);
+    const where = conds.length ? sql`WHERE ${sql.join(conds, sql` AND `)}` : sql``;
+    const { rows } = (await db.execute(sql`
+      SELECT i.*, t.business_name, t.owner_name, t.phone AS tenant_phone, t.email AS tenant_email,
+             b.order_number, u.unit_code, u.name AS unit_name, u.area_name
+      FROM tenant_invoices i
+      JOIN tenants t ON t.id = i.tenant_id
+      LEFT JOIN tenant_bookings b ON b.id = i.tenant_booking_id
+      LEFT JOIN tenant_units u ON u.id = b.unit_id
+      ${where} ORDER BY i.created_at DESC`)) as unknown as { rows: any[] };
+    res.json({ data: rows, total: rows.length });
+  } catch (err) {
+    logger.error({ err }, "list invoices failed");
+    res.status(500).json({ error: "Gagal memuat invoice" });
+  }
+});
+
+router.get("/invoices/:id", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  const id = Number(req.params.id);
+  const companyId = companyOf(req);
+  const cf = companyId ? sql`AND i.company_id = ${companyId}` : sql``;
+  try {
+    const { rows } = (await db.execute(sql`
+      SELECT i.*, t.business_name, t.owner_name, t.phone AS tenant_phone, t.email AS tenant_email,
+             t.address AS tenant_address, t.business_category,
+             b.order_number, b.start_date, b.end_date, b.payment_period_type,
+             u.unit_code, u.name AS unit_name, u.area_name, u.area_sqm
+      FROM tenant_invoices i
+      JOIN tenants t ON t.id = i.tenant_id
+      LEFT JOIN tenant_bookings b ON b.id = i.tenant_booking_id
+      LEFT JOIN tenant_units u ON u.id = b.unit_id
+      WHERE i.id = ${id} ${cf} LIMIT 1`)) as unknown as { rows: any[] };
+    if (!rows[0]) return void res.status(404).json({ error: "Invoice tidak ditemukan" });
+    res.json(rows[0]);
+  } catch (err) {
+    logger.error({ err }, "get invoice failed");
+    res.status(500).json({ error: "Gagal memuat invoice" });
+  }
+});
+
+router.post("/invoices", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  const b = req.body ?? {};
+  if (!b.tenant_id || !b.amount) return void res.status(400).json({ error: "Penyewa dan jumlah wajib diisi" });
+  const companyId = companyOf(req) ?? 1;
+  try {
+    const invoiceNumber = await nextInvoiceNumber();
+    const amount = Number(b.amount);
+    const taxAmount = Number(b.tax_amount ?? 0);
+    const totalAmount = amount + taxAmount;
+    const { rows } = (await db.execute(sql`
+      INSERT INTO tenant_invoices
+        (company_id, invoice_number, tenant_id, tenant_booking_id, tenant_payment_id,
+         title, period_label, amount, tax_amount, total_amount,
+         due_date, issued_date, status, notes, created_by)
+      VALUES
+        (${companyId}, ${invoiceNumber}, ${Number(b.tenant_id)},
+         ${b.tenant_booking_id ? Number(b.tenant_booking_id) : null},
+         ${b.tenant_payment_id ? Number(b.tenant_payment_id) : null},
+         ${b.title ?? "Invoice Sewa"}, ${b.period_label ?? null},
+         ${amount}, ${taxAmount}, ${totalAmount},
+         ${b.due_date ?? null}, ${b.issued_date ?? "CURRENT_DATE"},
+         ${b.status ?? "draft"}, ${b.notes ?? null},
+         ${(req as any).user?.id ?? null})
+      RETURNING *`)) as unknown as { rows: any[] };
+    await writeAuditLog("CREATE", "tenant_invoice", rows[0]?.id ?? null, { invoice_number: rows[0]?.invoice_number }, req);
+    res.json(rows[0]);
+  } catch (err: any) {
+    logger.error({ err }, "create invoice failed");
+    res.status(500).json({ error: "Gagal membuat invoice" });
+  }
+});
+
+router.put("/invoices/:id", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  const id = Number(req.params.id);
+  const b = req.body ?? {};
+  const companyId = companyOf(req);
+  const cf = companyId ? sql`AND company_id = ${companyId}` : sql``;
+  try {
+    const amount = b.amount != null ? Number(b.amount) : null;
+    const taxAmount = b.tax_amount != null ? Number(b.tax_amount) : null;
+    const { rows } = (await db.execute(sql`
+      UPDATE tenant_invoices SET
+        title = COALESCE(${b.title ?? null}, title),
+        period_label = ${b.period_label ?? null},
+        amount = COALESCE(${amount}, amount),
+        tax_amount = COALESCE(${taxAmount}, tax_amount),
+        total_amount = COALESCE(${amount != null ? amount + (taxAmount ?? 0) : null}, total_amount),
+        due_date = ${b.due_date ?? null},
+        issued_date = COALESCE(${b.issued_date ?? null}, issued_date),
+        status = COALESCE(${b.status ?? null}, status),
+        notes = ${b.notes ?? null},
+        updated_at = NOW()
+      WHERE id = ${id} ${cf} RETURNING *`)) as unknown as { rows: any[] };
+    if (!rows[0]) return void res.status(404).json({ error: "Invoice tidak ditemukan" });
+    await writeAuditLog("UPDATE", "tenant_invoice", id, { changes: b }, req);
+    res.json(rows[0]);
+  } catch (err) {
+    logger.error({ err }, "update invoice failed");
+    res.status(500).json({ error: "Gagal memperbarui invoice" });
+  }
+});
+
+router.delete("/invoices/:id", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  const id = Number(req.params.id);
+  const companyId = companyOf(req);
+  const cf = companyId ? sql`AND company_id = ${companyId}` : sql``;
+  try {
+    const { rows } = (await db.execute(sql`
+      UPDATE tenant_invoices SET status = 'cancelled', updated_at = NOW()
+      WHERE id = ${id} ${cf} RETURNING id`)) as unknown as { rows: any[] };
+    if (!rows[0]) return void res.status(404).json({ error: "Invoice tidak ditemukan" });
+    res.json({ ok: true });
+  } catch (err) {
+    logger.error({ err }, "cancel invoice failed");
+    res.status(500).json({ error: "Gagal membatalkan invoice" });
+  }
+});
+
+router.post("/invoices/:id/send", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  const id = Number(req.params.id);
+  const companyId = companyOf(req);
+  const cf = companyId ? sql`AND company_id = ${companyId}` : sql``;
+  try {
+    const { rows } = (await db.execute(sql`
+      UPDATE tenant_invoices SET status = 'sent', updated_at = NOW()
+      WHERE id = ${id} AND status = 'draft' ${cf} RETURNING *`)) as unknown as { rows: any[] };
+    if (!rows[0]) return void res.status(404).json({ error: "Invoice tidak ditemukan atau sudah dikirim" });
+    res.json(rows[0]);
+  } catch (err) {
+    logger.error({ err }, "send invoice failed");
+    res.status(500).json({ error: "Gagal mengirim invoice" });
+  }
+});
+
+router.post("/invoices/:id/mark-paid", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  const id = Number(req.params.id);
+  const companyId = companyOf(req);
+  const cf = companyId ? sql`AND company_id = ${companyId}` : sql``;
+  try {
+    const { rows } = (await db.execute(sql`
+      UPDATE tenant_invoices SET status = 'paid', updated_at = NOW()
+      WHERE id = ${id} AND status NOT IN ('cancelled') ${cf} RETURNING *`)) as unknown as { rows: any[] };
+    if (!rows[0]) return void res.status(404).json({ error: "Invoice tidak ditemukan" });
+    res.json(rows[0]);
+  } catch (err) {
+    logger.error({ err }, "mark invoice paid failed");
+    res.status(500).json({ error: "Gagal menandai invoice lunas" });
+  }
+});
+
 export default router;
