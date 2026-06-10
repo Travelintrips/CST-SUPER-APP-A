@@ -4,7 +4,7 @@ import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import {
   Menu, X, LogOut, LayoutDashboard, ShoppingCart, Shield,
-  ChevronDown, Ship, FileCheck, Truck,
+  ChevronDown, Ship, Anchor, FileCheck, Truck,
   Search, Calculator, ChevronRight, MapPin, Phone, Info,
   ImagePlus, Loader2, ClipboardList,
   Package, Wind, Globe, FileText, Factory, Coffee, Flame,
@@ -19,8 +19,9 @@ import { useLanguage } from "@/i18n/LanguageContext";
 import { useEditMode } from "@/contexts/EditModeContext";
 
 const SERVICES_ITEMS = [
-  { icon: Ship,      titleKey: "servicesMenu.freight.title",   descKey: "servicesMenu.freight.desc",   href: "/marketplace?type=service&category=sea_freight" },
-  { icon: FileCheck, titleKey: "servicesMenu.customs.title",   descKey: "servicesMenu.customs.desc",   href: "/marketplace?type=service&category=ppjk" },
+  { icon: Ship,      titleKey: "servicesMenu.freight.title",   descKey: "servicesMenu.freight.desc",   href: "/freight-forwarding" },
+  { icon: Anchor,    titleKey: "servicesMenu.ocean.title",     descKey: "servicesMenu.ocean.desc",     href: "/ocean-freight" },
+  { icon: FileCheck, titleKey: "servicesMenu.customs.title",   descKey: "servicesMenu.customs.desc",   href: "/pabean" },
   { icon: Truck,     titleKey: "servicesMenu.trucking.title",  descKey: "servicesMenu.trucking.desc",  href: "/trucking" },
   { icon: Search,    titleKey: "servicesMenu.tracking.title",  descKey: "servicesMenu.tracking.desc",  href: "/track" },
 ];
@@ -52,22 +53,28 @@ const AUTOCOMPLETE_MAP: AutocompleteEntry[] = [
     href: "/trucking",
   },
   {
-    icon: Ship, label: "Sea Freight",
-    description: "Pengiriman laut internasional FCL / LCL",
-    kind: "Layanan", terms: ["sea", "freight", "fcl", "lcl", "kapal", "laut", "forwarding", "ekspedisi"],
-    href: "/marketplace?type=service&category=sea_freight&q=sea+freight",
+    icon: Ship, label: "Freight Forwarding",
+    description: "Pengiriman udara & laut internasional ke seluruh dunia",
+    kind: "Layanan", terms: ["sea", "freight", "fcl", "lcl", "forwarding", "ekspedisi", "ekspor", "impor", "international"],
+    href: "/freight-forwarding",
+  },
+  {
+    icon: Anchor, label: "Ocean Freight",
+    description: "Pengiriman laut FCL / LCL internasional",
+    kind: "Layanan", terms: ["ocean", "laut", "kapal", "fcl", "lcl", "sea freight"],
+    href: "/ocean-freight",
   },
   {
     icon: Wind, label: "Air Freight",
     description: "Pengiriman udara cepat domestik & internasional",
-    kind: "Layanan", terms: ["air", "udara", "pesawat", "fly"],
+    kind: "Layanan", terms: ["air", "udara", "pesawat", "fly", "airfreight"],
     href: "/marketplace?type=service&category=air_freight&q=air+freight",
   },
   {
     icon: FileCheck, label: "PPJK / Customs Clearance",
     description: "Pengurusan kepabeanan, bea cukai & dokumen",
-    kind: "Layanan", terms: ["ppjk", "custom", "kepabeanan", "bea", "cukai", "pabean", "customs"],
-    href: "/marketplace?type=service&category=ppjk&q=ppjk",
+    kind: "Layanan", terms: ["ppjk", "custom", "kepabeanan", "bea", "cukai", "pabean", "customs", "clearance"],
+    href: "/pabean",
   },
   {
     icon: Factory, label: "Cargo Handling",
