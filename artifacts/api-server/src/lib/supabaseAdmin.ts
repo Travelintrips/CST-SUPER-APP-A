@@ -1,5 +1,7 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
-import WebSocket from "ws";
+import { createRequire as _cr } from "module";
+const _ws = (() => { try { return _cr(import.meta.url)("ws"); } catch { return globalThis.WebSocket; } })();
+type WsType = typeof globalThis.WebSocket;
 
 function normalizeSupabaseUrl(raw: string): string {
   if (!raw) return "";
