@@ -404,6 +404,23 @@ export function AppShell({ children, noPadding }: AppShellProps) {
       ],
     },
 
+    // ── 7.5 TAX MANAGEMENT ────────────────────────────────────────────
+    {
+      type: "group",
+      titleKey: "Manajemen Pajak",
+      basePath: "/tax",
+      icon: Calculator,
+      roles: ["admin", "owner"],
+      children: [
+        { titleKey: "Dashboard Pajak", href: "/tax/dashboard", icon: BarChart2 },
+        { titleKey: "PPN Masukan / Keluaran", href: "/tax/ppn", icon: Receipt },
+        { titleKey: "PPh Witholding", href: "/tax/pph", icon: FileText },
+        { titleKey: "SPT Masa", href: "/tax/spt", icon: FileSpreadsheet },
+        { titleKey: "Semua Transaksi Pajak", href: "/tax/transactions", icon: ClipboardList },
+        { titleKey: "Master Aturan Pajak", href: "/tax/rules", icon: Shield },
+      ],
+    },
+
     // ── 8. AI CENTER ──────────────────────────────────────────────────
     {
       type: "group",

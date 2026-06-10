@@ -1,0 +1,119 @@
+Buat modul TAX ENGINE terpusat untuk semua transaksi aplikasi.
+
+Tujuan:
+Semua transaksi penjualan, pembelian, penerimaan, pengeluaran, invoice, expense, payroll, sewa, sport center, POS, logistic order, vendor payment, dan customer payment harus otomatis dihitung pajaknya.
+
+Scope utama:
+1. Buat master tax_types:
+- PPN_KELUARAN
+- PPN_MASUKAN
+- PPH_21
+- PPH_23
+- PPH_4_AYAT_2
+- PPH_FINAL_UMKM
+- PPH_BADAN
+- NON_TAXABLE
+
+2. Buat table tax_rules:
+- company_id
+- transaction_type
+- module_source
+- partner_type
+- partner_pkp_status
+- partner_has_npwp
+- tax_type
+- tax_rate
+- tax_base_type
+- is_active
+- effective_from
+- effective_to
+
+3. Buat table transaction_taxes:
+- transaction_id
+- transaction_source
+- company_id
+- tax_type
+- tax_base_amount
+- tax_rate
+- tax_amount
+- direction: input/output/withholding
+- status: draft/calculated/reviewed/reported/paid
+- journal_id
+- notes
+
+4. Tambahkan tax calculation service:
+- calculateTransactionTax(transaction)
+- recalculateTransactionTax(transactionId, source)
+- postTaxJournal(transactionTaxId)
+- voidTax(transactionTaxId)
+
+5. Semua transaksi wajib memanggil tax engine setelah create/update:
+- Sales Invoice
+- Purchase Invoice
+- Expense
+- Vendor Payment
+- Customer Payment
+- Sport Center Payment
+- POS Sales
+- Logistic Invoice
+- Tenant Invoice
+- Payroll
+
+6. Buat jurnal otomatis:
+PPN Keluaran:
+Debit AR/Kas
+Kredit Revenue
+Kredit PPN Keluaran
+
+PPN Masukan:
+Debit Expense/Inventory
+Debit PPN Masukan
+Kredit AP/Kas
+
+PPh Potong:
+Debit Expense/AP
+Kredit Hutang PPh
+
+7. Buat halaman BizPortal:
+Menu: Tax Management
+Submenu:
+- Dashboard Pajak
+- Master Tax Rules
+- Transaksi Pajak
+- PPN Masukan
+- PPN Keluaran
+- PPh 21
+- PPh 23
+- PPh 4 Ayat 2
+- SPT Masa
+- SPT Tahunan
+- Tax Reconciliation
+- Export Pajak
+
+8. Dashboard pajak menampilkan:
+- PPN Keluaran bulan ini
+- PPN Masukan bulan ini
+- PPN kurang/lebih bayar
+- PPh yang harus disetor
+- transaksi belum direview
+- transaksi belum ada NPWP/NIK
+- transaksi belum ada faktur/bukti potong
+
+9. Buat laporan:
+- Rekap SPT Masa PPN
+- Rekap PPh 21
+- Rekap PPh 23
+- Rekap PPh 4 Ayat 2
+- Rekap PPh Badan Tahunan
+- Export Excel/CSV
+
+10. Tambahkan validasi:
+- Jika lawan transaksi PKP maka wajib input NPWP dan faktur pajak
+- Jika transaksi jasa tertentu maka cek PPh 23
+- Jika transaksi sewa tanah/bangunan maka cek PPh 4 ayat 2
+- Jika payroll maka cek PPh 21
+- Jika transaksi non-taxable jangan hitung pajak tapi tetap masuk audit log
+
+11. Jangan merusak modul yang sudah ada.
+Gunakan service layer agar semua modul cukup memanggil tax engine.
+Tambahkan migration, route API, frontend page, dan test minimal.

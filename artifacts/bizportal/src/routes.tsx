@@ -50,6 +50,12 @@ import GoodsReceiptEditorPage from "@/pages/purchase/gr-editor";
 import QcListPage from "@/pages/purchase/qc-list";
 import QcEditorPage from "@/pages/purchase/qc-editor";
 import { PurchaseReturnsListPage, PurchaseReturnEditorPage } from "@/pages/purchase/purchase-returns";
+import TaxDashboardPage from "@/pages/tax/dashboard";
+import TaxRulesPage from "@/pages/tax/rules";
+import TaxTransactionsPage from "@/pages/tax/transactions";
+import TaxPpnPage from "@/pages/tax/ppn";
+import TaxPphPage from "@/pages/tax/pph";
+import TaxSptPage from "@/pages/tax/spt";
 import ProductTemplatesPage from "@/pages/product-templates/index";
 import ProductTemplateDetailPage from "@/pages/product-templates/detail";
 import { VendorInvoicesListPage, VendorInvoiceEditorPage } from "@/pages/purchase/vendor-invoices";
@@ -510,6 +516,15 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/ocean-freight/orders/:id" component={PR(OceanFreightOrderDetailPage)} />
       <Route path="/ocean-freight/orders" component={PR(OceanFreightOrdersPage)} />
       <Route path="/ocean-freight/rates" component={PR(OceanFreightRatesPage)} />
+
+      {/* ── Tax Management ─────────────────────────────────────────────── */}
+      <Route path="/tax/dashboard" component={PR(TaxDashboardPage)} />
+      <Route path="/tax/rules" component={PR(TaxRulesPage)} />
+      <Route path="/tax/transactions" component={PR(TaxTransactionsPage)} />
+      <Route path="/tax/ppn" component={PR(TaxPpnPage)} />
+      <Route path="/tax/pph" component={PR(TaxPphPage)} />
+      <Route path="/tax/spt" component={PR(TaxSptPage)} />
+      <Route path="/tax" component={PR(TaxDashboardPage)} />
 
       {/* ── Legacy redirects ───────────────────────────────────────────── */}
       <Route path="/expenses/new" component={() => <Redirect to="/expense/new" />} />

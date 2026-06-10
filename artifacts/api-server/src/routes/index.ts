@@ -32,6 +32,7 @@ import geocodeRouter from "./geocode";
 import { whatsappRouter } from "./whatsapp";
 import { vendorResponseRouter } from "./vendorResponse";
 import mediaRouter from "./media";
+import taxRouter from "./tax.js";
 
 import warehouseRouter from "./warehouse";
 import inventoryReceiveRouter from "./inventoryReceive";
@@ -301,6 +302,7 @@ router.use("/wati", watiRouter);
 router.use("/sales/escrow", escrowPublicRouter);
 router.use("/sales/escrow", escrowAdminRouter);
 router.use("/vendor-trucking-pricing", vendorTruckingPricingRouter);
+router.use("/tax", taxRouter);
 
 router.get("/alerts/stream", async (req: Request, res: Response) => {
   const ok = await requireAdmin(req, res);
