@@ -19,6 +19,9 @@ const app = express();
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: "50mb" }));
 
+// Redirect /wa-gateway → /wa-gateway/
+app.get(BASE, (_req, res) => res.redirect(301, `${BASE}/`));
+
 app.use(`${BASE}/api/auth`, authRouter);
 app.use(`${BASE}/api/devices`, devicesRouter);
 app.use(`${BASE}/api/messages`, messagesRouter);
