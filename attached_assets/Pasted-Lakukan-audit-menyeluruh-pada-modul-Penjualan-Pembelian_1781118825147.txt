@@ -1,0 +1,95 @@
+Lakukan audit menyeluruh pada modul Penjualan, Pembelian, Penerimaan, Pengeluaran, Accounting, Pajak, dan Laporan Pajak.
+
+Tujuan utama:
+Pastikan semua transaksi sudah sesuai alur bisnis, masuk ke accounting dengan jurnal yang benar, membentuk piutang/hutang/kas/bank/revenue/expense/inventory jika relevan, menghitung pajak dengan benar, dan muncul pada laporan pajak.
+
+Audit yang harus dilakukan:
+
+1. Audit Alur Penjualan
+- Cek flow penjualan dari draft/order/invoice/payment sampai closed.
+- Pastikan invoice penjualan membentuk jurnal:
+  Debit Piutang / Kas Bank
+  Kredit Pendapatan
+  Kredit PPN Keluaran jika kena PPN
+- Jika ada stok, pastikan membentuk COGS dan pengurangan inventory.
+- Cek status invoice: draft, approved, unpaid, partial, paid, cancelled.
+- Cek apakah invoice cancelled membalik jurnal dengan reversal journal.
+
+2. Audit Alur Pembelian
+- Cek flow purchase order, purchase invoice, goods received, vendor bill, payment.
+- Pastikan pembelian membentuk jurnal:
+  Debit Persediaan / Expense / Asset
+  Debit PPN Masukan jika ada
+  Kredit Hutang Vendor / Kas Bank
+- Cek apakah barang masuk menambah stok.
+- Cek apakah vendor payment mengurangi hutang.
+- Cek retur pembelian dan pembatalan.
+
+3. Audit Penerimaan
+- Cek semua penerimaan uang dari customer, penerimaan lain, kasbon return, refund vendor, dan modal.
+- Pastikan setiap penerimaan punya source transaksi.
+- Jika penerimaan dari invoice, harus mengurangi piutang.
+- Jika penerimaan lain, harus masuk ke akun pendapatan lain-lain atau akun yang dipilih.
+- Tidak boleh ada penerimaan tanpa jurnal.
+
+4. Audit Pengeluaran
+- Cek semua expense, kasbon, dana talangan, vendor payment, asset purchase, operational cost.
+- Pastikan pengeluaran membentuk jurnal:
+  Debit Expense / Asset / Hutang
+  Kredit Kas Bank
+- Jika pengeluaran terkait vendor bill, harus mengurangi hutang.
+- Jika pengeluaran kena PPh potong, buat pencatatan PPh payable.
+- Jika ada PPN Masukan, masuk ke laporan PPN Masukan.
+
+5. Audit Accounting Posting
+- Cari semua transaksi yang belum punya journal_entries.
+- Buat audit report: transaksi tanpa jurnal, jurnal tidak balance, akun kosong, COA tidak valid, company_id tidak cocok, tanggal jurnal tidak sesuai tanggal transaksi.
+- Pastikan total debit = total kredit pada semua jurnal.
+- Pastikan multi-company tidak tercampur.
+
+6. Audit Pajak
+- Cek tax engine untuk PPN, PPh 21, PPh 23, PPh 4 ayat 2, dan pajak lain yang sudah tersedia.
+- Pastikan setiap transaksi bisa memilih tax type, tax rate, DPP, tax amount, tax account.
+- Tambahkan tax_rules jika belum ada.
+- Tambahkan tax_transactions sebagai ledger pajak.
+- Pastikan PPN Keluaran dari sales dan PPN Masukan dari purchase terpisah.
+- Pastikan ada status: draft, calculated, posted, reported, paid.
+
+7. Audit Laporan Pajak
+- Buat/cek laporan:
+  a. Rekap PPN Keluaran
+  b. Rekap PPN Masukan
+  c. Rekap SPT Masa PPN
+  d. Rekap PPh 23/26
+  e. Rekap PPh 21
+  f. Rekap PPh 4 ayat 2
+  g. Daftar transaksi belum ada NPWP/NIK
+  h. Daftar transaksi belum ada faktur pajak/bukti potong
+  i. Daftar pajak belum diposting
+  j. Daftar pajak belum dibayar
+- Tambahkan export Excel/PDF jika belum ada.
+
+8. Audit Rekonsiliasi
+- Cek apakah pembayaran customer match dengan invoice.
+- Cek apakah pembayaran vendor match dengan purchase invoice.
+- Cek apakah mutasi bank bisa direkonsiliasi dengan penerimaan/pengeluaran.
+- Tambahkan report unmatched, duplicate match, partial match, dan manual approval.
+
+9. Audit Trail
+- Pastikan setiap transaksi menyimpan created_by, approved_by, posted_by, cancelled_by, updated_by.
+- Buat audit_logs untuk perubahan penting.
+- Simpan old_value dan new_value saat transaksi diedit.
+- Tambahkan alasan edit/cancel/reversal.
+
+10. Output yang saya mau
+- Jangan langsung ubah semua file besar-besaran.
+- Pertama buat laporan audit dalam bentuk markdown:
+  AUDIT_ACCOUNTING_TAX_REPORT.md
+- Isinya:
+  a. Modul yang sudah benar
+  b. Modul yang belum lengkap
+  c. Bug/risiko
+  d. File yang perlu diubah
+  e. Tabel rekomendasi prioritas
+  f. Rencana implementasi fase 1-5
+- Setelah laporan selesai, baru lanjut implementasi per fase.

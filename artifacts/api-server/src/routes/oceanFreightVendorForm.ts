@@ -270,7 +270,11 @@ oceanFreightVendorFormRouter.post(
 
     return res.json({ ok: true, message: "Rate berhasil disubmit. Terima kasih." });
   } catch (err) {
-    logger.error({ err }, "[ocean-freight-vendor-form] POST /:token");
+    logger.error({ err }, "[ocean-freight-vendor-form] POST /:token inner");
+    res.status(500).json({ error: "Gagal submit rate" });
+  }
+  } catch (outerErr) {
+    logger.error({ err: outerErr }, "[ocean-freight-vendor-form] POST /:token");
     res.status(500).json({ error: "Gagal submit rate" });
   }
 });
