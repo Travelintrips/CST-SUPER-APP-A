@@ -132,6 +132,7 @@ import oceanFreightRouter from "./oceanFreight.js";
 import oceanFreightRatesRouter from "./oceanFreightRates.js";
 import oceanFreightPublicRouter from "./oceanFreightPublic.js";
 import { oceanFreightVendorFormRouter } from "./oceanFreightVendorForm.js";
+import oceanFreightMasterRouter from "./oceanFreightMaster.js";
 
 import type { Request, Response } from "express";
 
@@ -295,6 +296,7 @@ router.use("/ocean-freight-rates", oceanFreightRatesRouter);
 router.use("/ocean-freight", oceanFreightRouter);
 router.use("/ocean-freight-public", oceanFreightPublicRouter);
 router.use("/ocean-freight-form", oceanFreightVendorFormRouter);
+router.use("/ocean-freight-master", oceanFreightMasterRouter);
 router.use("/wati", watiRouter);
 router.use("/sales/escrow", escrowPublicRouter);
 router.use("/sales/escrow", escrowAdminRouter);
