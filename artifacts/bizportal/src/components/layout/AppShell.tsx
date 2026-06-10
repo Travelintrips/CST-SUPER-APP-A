@@ -997,7 +997,7 @@ export function AppShell({ children, noPadding }: AppShellProps) {
   ) : null;
 
   return (
-    <SidebarProvider style={{ "--sidebar-width": `${sidebarWidth}px` } as React.CSSProperties}>
+    <SidebarProvider defaultOpen={true} style={{ "--sidebar-width": `${sidebarWidth}px` } as React.CSSProperties}>
       {shortcutsOverlay}
       <div className="flex min-h-[100dvh] w-full bg-background text-foreground">
         <Sidebar className="border-r border-border">
