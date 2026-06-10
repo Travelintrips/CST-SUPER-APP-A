@@ -70,21 +70,21 @@ const SETTINGS: SettingRow[] = [
   {
     key: "wa_gateway_url",
     label: "WA Gateway URL",
-    description: "Base URL WA Gateway. Contoh: http://localhost:8000 (jika di-deploy sendiri: https://wa.domain.com)",
-    placeholder: "http://localhost:8000",
+    description: "Base URL WA Gateway built-in ini. Klik \"Auto-isi\" di bawah untuk mengisi otomatis.",
+    placeholder: window.location.origin,
     type: "url",
   },
   {
     key: "wa_gateway_api_key",
     label: "API Key",
-    description: "API key bertipe wag_xxx dari dashboard WA Gateway (/wa-gateway → API Keys)",
+    description: "API key bertipe wag_xxx — buat di dashboard WA Gateway → API Keys",
     placeholder: "wag_xxxxxxxxxxxxxxxxxxxxxxxx",
     sensitive: true,
   },
   {
     key: "wa_gateway_device_id",
     label: "Device ID",
-    description: "ID device WA yang sudah terhubung (angka, lihat di /wa-gateway → Devices)",
+    description: "ID device WA yang sudah terhubung (angka, lihat di dashboard WA Gateway → Devices)",
     placeholder: "1",
     type: "number",
   },
@@ -353,7 +353,7 @@ export default function WaGatewaySettingsPage() {
             <Button
               variant="outline"
               className="gap-2"
-              onClick={() => window.open("/wa-gateway", "_blank")}
+              onClick={() => window.open("/wa-gateway/", "_blank")}
             >
               <ExternalLink size={14} />
               Buka Dashboard WA Gateway
@@ -369,8 +369,8 @@ export default function WaGatewaySettingsPage() {
               Panduan Setup WA Gateway
             </CardTitle>
             <CardDescription>
-              WA Gateway adalah software terpisah yang dijalankan sendiri — gratis, tanpa biaya per pesan.
-              Notifikasi saat ini dikirim via <strong>Fonnte</strong> (sudah aktif). WA Gateway bersifat opsional.
+              WA Gateway sudah <strong>built-in</strong> di sistem ini — tidak perlu Docker atau server eksternal.
+              Ikuti langkah berikut untuk mengaktifkannya.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-5 text-sm">
@@ -379,22 +379,21 @@ export default function WaGatewaySettingsPage() {
             <div className="space-y-2">
               <div className="flex items-center gap-2 font-semibold text-foreground">
                 <span className="flex items-center justify-center w-5 h-5 rounded-full bg-primary/20 text-primary text-xs font-bold shrink-0">1</span>
-                <Terminal size={14} className="text-muted-foreground" />
-                Jalankan WA Gateway via Docker
+                <ExternalLink size={14} className="text-muted-foreground" />
+                Buka Dashboard WA Gateway
               </div>
               <div className="ml-7 space-y-2">
-                <p className="text-muted-foreground text-xs">Jalankan perintah ini di server/komputer Anda:</p>
-                <pre className="bg-muted rounded-lg px-4 py-3 font-mono text-xs overflow-x-auto leading-relaxed select-all">{`docker run -d \\
-  --name waha \\
-  --restart unless-stopped \\
-  -p 8000:3000 \\
-  devlikeapro/waha`}</pre>
-                <p className="text-xs text-muted-foreground">
-                  Butuh Docker? Install di{" "}
-                  <a href="https://docs.docker.com/get-docker/" target="_blank" rel="noreferrer" className="text-primary underline underline-offset-2">
-                    docs.docker.com/get-docker
-                  </a>
-                </p>
+                <p className="text-muted-foreground text-xs">Klik tombol di bawah (atau di card Dashboard di atas) untuk membuka dashboard:</p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-2 text-xs"
+                  onClick={() => window.open("/wa-gateway/", "_blank")}
+                >
+                  <ExternalLink size={12} />
+                  Buka /wa-gateway/
+                </Button>
+                <p className="text-xs text-muted-foreground">Daftar akun baru jika belum punya (klik <strong className="text-foreground">Register</strong>).</p>
               </div>
             </div>
 
@@ -405,16 +404,17 @@ export default function WaGatewaySettingsPage() {
               <div className="flex items-center gap-2 font-semibold text-foreground">
                 <span className="flex items-center justify-center w-5 h-5 rounded-full bg-primary/20 text-primary text-xs font-bold shrink-0">2</span>
                 <QrCode size={14} className="text-muted-foreground" />
-                Buka Dashboard &amp; Scan QR
+                Tambah Device &amp; Scan QR
               </div>
               <div className="ml-7 space-y-1.5">
-                <p className="text-muted-foreground text-xs">Setelah Docker berjalan, buka browser:</p>
-                <code className="block bg-muted rounded px-3 py-1.5 font-mono text-xs select-all">http://localhost:8000/dashboard</code>
-                <ol className="text-xs text-muted-foreground space-y-1 list-decimal ml-4 mt-2">
-                  <li>Klik <strong className="text-foreground">Start new session</strong></li>
-                  <li>Scan QR code dengan WhatsApp di HP Anda (<em>Linked Devices → Link a Device</em>)</li>
-                  <li>Tunggu status berubah menjadi <strong className="text-emerald-400">WORKING</strong></li>
-                  <li>Catat <strong className="text-foreground">Session Name</strong> — ini adalah Device ID Anda (biasanya <code>default</code> atau angka)</li>
+                <ol className="text-xs text-muted-foreground space-y-1 list-decimal ml-4">
+                  <li>Di dashboard, klik <strong className="text-foreground">Add Device</strong></li>
+                  <li>Beri nama device (contoh: "WA BizPortal"), klik <strong className="text-foreground">Create</strong></li>
+                  <li>Klik <strong className="text-foreground">Manage</strong> pada device yang dibuat</li>
+                  <li>Klik <strong className="text-foreground">Connect</strong> → QR code akan muncul</li>
+                  <li>Scan QR dengan WhatsApp di HP (<em>Linked Devices → Link a Device</em>)</li>
+                  <li>Tunggu status berubah menjadi <strong className="text-emerald-400">connected</strong></li>
+                  <li>Catat <strong className="text-foreground">Device ID</strong> (angka di URL atau info device)</li>
                 </ol>
               </div>
             </div>
@@ -450,11 +450,11 @@ export default function WaGatewaySettingsPage() {
                 <div className="rounded-lg border border-border overflow-hidden text-xs">
                   <div className="grid grid-cols-[120px_1fr] divide-y divide-border">
                     <div className="bg-muted/60 px-3 py-2 font-medium text-foreground">WA Gateway URL</div>
-                    <div className="px-3 py-2 text-muted-foreground font-mono">http://localhost:8000</div>
+                    <div className="px-3 py-2 text-muted-foreground font-mono break-all">{window.location.origin}</div>
                     <div className="bg-muted/60 px-3 py-2 font-medium text-foreground">API Key</div>
                     <div className="px-3 py-2 text-muted-foreground font-mono">wag_xxx... (dari step 3)</div>
                     <div className="bg-muted/60 px-3 py-2 font-medium text-foreground">Device ID</div>
-                    <div className="px-3 py-2 text-muted-foreground font-mono">default (dari step 2)</div>
+                    <div className="px-3 py-2 text-muted-foreground font-mono">angka ID device (dari step 2)</div>
                   </div>
                 </div>
               </div>
@@ -463,12 +463,11 @@ export default function WaGatewaySettingsPage() {
             <Separator />
 
             {/* Info box */}
-            <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-500/10 text-blue-700 dark:text-blue-400 text-xs">
-              <Info size={13} className="mt-0.5 shrink-0" />
+            <div className="flex items-start gap-2 p-3 rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 text-xs">
+              <CheckCircle2 size={13} className="mt-0.5 shrink-0" />
               <span>
-                Jika WA Gateway di-deploy di server cloud (bukan localhost), ganti URL-nya. 
-                Pastikan port 8000 bisa diakses dari server API ini.
-                Jika gateway tidak aktif atau gagal, notifikasi otomatis <strong>fallback ke Fonnte</strong>.
+                WA Gateway sudah berjalan di sistem ini. URL yang perlu diisi adalah <strong>{window.location.origin}</strong>.
+                Jika gateway gagal kirim, notifikasi otomatis <strong>fallback ke Fonnte</strong>.
               </span>
             </div>
 

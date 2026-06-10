@@ -82,9 +82,7 @@ export default function RegisterPage() {
 
         <p className="text-center text-sm text-slate-500 mt-4">
           Already have an account?{" "}
-          <Link href="/wa-gateway/login">
-            <a className="text-emerald-400 hover:text-emerald-300">Sign in</a>
-          </Link>
+          <Link href="/wa-gateway/login" className="text-emerald-400 hover:text-emerald-300">Sign in</Link>
         </p>
       </div>
     </div>

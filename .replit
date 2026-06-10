@@ -20,6 +20,10 @@ author = "agent"
 task = "workflow.run"
 args = "Gateway"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "artifacts/wa-gateway: WA Gateway"
+
 [[workflows.workflow]]
 name = "Gateway"
 author = "agent"
@@ -55,6 +59,18 @@ outputType = "console"
 task = "shell.exec"
 args = "cd artifacts/customer-portal && PORT=3001 pnpm run dev"
 waitForPort = 3001
+
+[[workflows.workflow]]
+name = "artifacts/wa-gateway: WA Gateway"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "pnpm --filter @workspace/wa-gateway run dev"
+waitForPort = 8000
+
+[workflows.workflow.metadata]
+outputType = "console"
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
