@@ -1163,7 +1163,12 @@ router.post("/documents/:id/return", async (req, res) => {
     for (const l of productLines) {
       const rQty = returnQtyMap.get(l.productId!) ?? 0;
       if (rQty > 0) {
-        returnNetAmount += rQty * Number(l.unitPrice ?? 0);
+        // Fallback: jika unitPrice null/0, hitung dari subtotal/qty
+        const qty = Math.max(Number(l.quantity ?? 1), 1);
+        const unitPriceN =
+          Number(l.unitPrice ?? 0) ||
+          (Number((l as any).subtotal ?? 0) / qty);
+        returnNetAmount += rQty * unitPriceN;
       }
     }
     // Hitung PPN proporsional

@@ -718,14 +718,25 @@ export async function postPurchaseBill(args: {
 
     // DR GR/IR (clears GRN accrual) or DR Persediaan for product lines
     if (inventoryAmount > 0) {
-      // Prefer GR/IR account — clears the liability posted when GRN was confirmed
-      const productDebitAccountId = settings.grirAccountId ?? settings.inventoryAccountId;
+      // Prefer GR/IR account — clears the liability posted when GRN was confirmed.
+      // Fallback chain: settings.grirAccountId → direct lookup 2-1045 → settings.inventoryAccountId
+      let grirAccountId: number | null = settings.grirAccountId ?? null;
+      if (!grirAccountId) {
+        const grirRows = await db.execute(sql`
+          SELECT id FROM chart_of_accounts
+          WHERE code LIKE '2-1045%' AND company_id = ${args.companyId ?? 1}
+          ORDER BY code LIMIT 1
+        `);
+        const grirRow = (grirRows as unknown as Record<string, unknown>[])[0];
+        if (grirRow?.["id"]) grirAccountId = Number(grirRow["id"]);
+      }
+      const productDebitAccountId = grirAccountId ?? settings.inventoryAccountId;
       if (!productDebitAccountId) {
         logger.warn({ purchaseDocId: args.purchaseDocId }, "grirAccountId & inventoryAccountId missing — falling back to expense account for product lines");
         expenseAmount = round2(expenseAmount + inventoryAmount);
         inventoryAmount = 0;
       } else {
-        const isGrir = !!settings.grirAccountId;
+        const isGrir = !!grirAccountId;
         lines.push({
           accountId: productDebitAccountId,
           debit: inventoryAmount,

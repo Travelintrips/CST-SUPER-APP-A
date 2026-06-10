@@ -28,7 +28,9 @@ async function ensureExpenseColumns() {
   try {
     await db.execute(sql.raw(`
       ALTER TABLE expense_categories ADD COLUMN IF NOT EXISTS category_type TEXT NOT NULL DEFAULT 'both';
+      ALTER TABLE expense_categories ADD COLUMN IF NOT EXISTS ppn_input_account_id INTEGER REFERENCES chart_of_accounts(id) ON DELETE SET NULL;
       ALTER TABLE expenses ADD COLUMN IF NOT EXISTS transaction_type TEXT NOT NULL DEFAULT 'expense';
+      ALTER TABLE expenses ADD COLUMN IF NOT EXISTS ppn_input_account_id INTEGER REFERENCES chart_of_accounts(id) ON DELETE SET NULL;
     `));
   } catch {}
 }
@@ -529,7 +531,9 @@ router.post("/bulk-repost", async (req: Request, res) => {
 // ─── Helper: post journal untuk expense / penerimaan lain ────────────────────
 export async function postQuickExpenseJournal(expId: number) {
   const result = await db.execute(sql.raw(`
-    SELECT e.*, ec.expense_account_id AS cat_expense_account_id
+    SELECT e.*,
+           ec.expense_account_id AS cat_expense_account_id,
+           ec.ppn_input_account_id AS cat_ppn_input_account_id
     FROM expenses e
     LEFT JOIN expense_categories ec ON ec.id = e.category_id
     WHERE e.id = ${expId}
@@ -545,7 +549,9 @@ export async function postQuickExpenseJournal(expId: number) {
   const taxAmountN = Math.round(Number(e.tax_amount ?? 0) * 100) / 100;
   const netAmountN = Math.round((amountN - taxAmountN) * 100) / 100;
   const ppnInputAcctId: number | null =
-    taxAmountN > 0 ? (Number(e.ppn_input_account_id) || settings.ppnInputAccountId || null) : null;
+    taxAmountN > 0
+      ? (Number(e.ppn_input_account_id) || Number(e.cat_ppn_input_account_id) || settings.ppnInputAccountId || null)
+      : null;
 
   // Resolve akun beban/pendapatan — dari expense itu sendiri, fallback ke kategori
   const expenseAccountId: number | null =

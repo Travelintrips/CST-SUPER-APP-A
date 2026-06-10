@@ -647,13 +647,24 @@ router.post("/gr/:id/confirm", async (req, res) => {
 
   // Post accounting journal: Dr Inventory / Cr GR/IR (proper 3-way match accrual)
   // GR/IR (2-1045) acts as clearing account; cleared when vendor invoice (bill) is posted.
-  // PENTING: Jika grirAccountId tidak dikonfigurasi, GRN TIDAK membuat jurnal accrual ke AP.
-  // Hal ini mencegah double-AP: AP akan diposting penuh saat Vendor Invoice diterima.
   try {
     const settings = await ensureAccountingSettings(gr.companyId ?? 1);
     const totalCost = lines.reduce((s, l) => s + num(l.qtyReceived) * num(l.unitCost), 0);
-    if (!settings.grirAccountId) {
-      console.warn(`[GRN ${gr.grNumber}] grirAccountId tidak dikonfigurasi — lewati GRN accrual. Jurnal DR Persediaan / CR Hutang akan dipost saat Vendor Invoice.`);
+
+    // Resolve GR/IR account — settings first, fallback: langsung cari akun 2-1045
+    let effectiveGrirId: number | null = settings.grirAccountId ?? null;
+    if (!effectiveGrirId) {
+      const grirRow = (await db.execute(sql`
+        SELECT id FROM chart_of_accounts
+        WHERE code LIKE '2-1045%'
+          AND (company_id = ${gr.companyId ?? null} OR company_id IS NULL)
+        ORDER BY id LIMIT 1
+      `)).rows[0] as { id: number } | undefined;
+      effectiveGrirId = grirRow?.id ?? null;
+    }
+
+    if (!effectiveGrirId) {
+      console.warn(`[GRN ${gr.grNumber}] grirAccountId & akun 2-1045 tidak ditemukan — lewati GRN accrual.`);
     } else if (totalCost > 0 && settings.inventoryAccountId && settings.purchaseJournalId) {
       const entry = await postEntry({
         journalId: settings.purchaseJournalId,
@@ -665,7 +676,7 @@ router.post("/gr/:id/confirm", async (req, res) => {
         companyId: gr.companyId ?? 1,
         lines: [
           { accountId: settings.inventoryAccountId, debit: totalCost, credit: 0, description: `Persediaan masuk: ${gr.grNumber}` },
-          { accountId: settings.grirAccountId, debit: 0, credit: totalCost, description: `GR/IR accrual: ${gr.grNumber}` },
+          { accountId: effectiveGrirId, debit: 0, credit: totalCost, description: `GR/IR accrual: ${gr.grNumber}` },
         ],
       }, "PUR");
       if (entry?.id) {
