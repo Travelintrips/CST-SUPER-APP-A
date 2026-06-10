@@ -37,17 +37,17 @@ async function nextPaymentNumber(): Promise<string> {
 
 async function writeAuditLog(
   action: string,
-  entity: string,
-  entityId: number | null,
+  module: string,
+  referenceId: number | null,
   payload: unknown,
   req: Request,
 ): Promise<void> {
   try {
     const userId = (req as any).user?.id ?? null;
+    const companyId = companyOf(req);
     await db.execute(sql`
-      INSERT INTO erp_audit_logs (action, entity, entity_id, payload, user_id, created_at)
-      VALUES (${action}, ${entity}, ${entityId}, ${JSON.stringify(payload)}::jsonb, ${userId}, NOW())
-      ON CONFLICT DO NOTHING
+      INSERT INTO erp_audit_logs (action, module, reference_id, new_data, user_id, company_id, created_at)
+      VALUES (${action}, ${module}, ${referenceId?.toString() ?? null}, ${JSON.stringify(payload)}::jsonb, ${userId}, ${companyId}, NOW())
     `);
   } catch {
     /* audit log failure must not break main flow */
@@ -339,9 +339,10 @@ router.post("/bookings", async (req, res) => {
   const companyId = companyOf(req) ?? 1;
   try {
     const { rows: tRows } = (await db.execute(
-      sql`SELECT id FROM tenants WHERE id = ${Number(b.tenant_id)} AND company_id = ${companyId} LIMIT 1`,
-    )) as unknown as { rows: any[] };
+      sql`SELECT id, site_id FROM tenants WHERE id = ${Number(b.tenant_id)} AND company_id = ${companyId} LIMIT 1`,
+    )) as unknown as { rows: { id: number; site_id: number | null }[] };
     if (!tRows[0]) return res.status(400).json({ error: "Penyewa tidak valid untuk perusahaan ini" });
+    const siteId = tRows[0].site_id;
 
     if (b.unit_id) {
       const unitId = Number(b.unit_id);
@@ -368,11 +369,11 @@ router.post("/bookings", async (req, res) => {
     const orderNumber = await nextNumber("TNT", "tenant_bookings");
     const { rows } = (await db.execute(sql`
       INSERT INTO tenant_bookings
-        (company_id, order_number, tenant_id, unit_id, booking_type, start_date, end_date, duration_months,
+        (company_id, site_id, order_number, tenant_id, unit_id, booking_type, start_date, end_date, duration_months,
          requested_area, description, price, payment_status, status, admin_notes,
          payment_period_type, total_months, monthly_price, yearly_price, total_price)
       VALUES
-        (${companyId}, ${orderNumber}, ${Number(b.tenant_id)}, ${b.unit_id ? Number(b.unit_id) : null},
+        (${companyId}, ${siteId}, ${orderNumber}, ${Number(b.tenant_id)}, ${b.unit_id ? Number(b.unit_id) : null},
          ${b.booking_type ?? "rental"},
          ${b.start_date ?? null}, ${b.end_date ?? null}, ${b.duration_months ?? null},
          ${b.requested_area ?? null}, ${b.description ?? null}, ${Number(b.price ?? b.total_price ?? 0)},
