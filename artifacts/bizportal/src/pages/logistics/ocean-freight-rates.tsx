@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent } from "@/components/ui/card";
@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/table";
 import {
   DollarSign, Plus, Pencil, Trash2, Search, RefreshCw,
-  Copy, Power, Eye, ChevronDown, ChevronUp,
+  Copy, Power, Eye, ChevronDown, ChevronUp, Download, Upload,
 } from "lucide-react";
 
 const IDR = (n: number) =>
@@ -91,6 +91,8 @@ export default function OceanFreightRatesPage() {
   const [saving,          setSaving]          = useState(false);
   const [sortCol,         setSortCol]         = useState<string>("origin_port");
   const [sortDir,         setSortDir]         = useState<"asc"|"desc">("asc");
+  const [importing,       setImporting]       = useState(false);
+  const importRef = useRef<HTMLInputElement>(null);
 
   const { data: rates = [], isLoading, refetch } = useQuery<Rate[]>({
     queryKey: ["ocean-freight-rates"],
@@ -271,6 +273,44 @@ export default function OceanFreightRatesPage() {
     };
   }
 
+  async function handleExport() {
+    try {
+      const res = await fetch("/api/ocean-freight-rates/export", { credentials: "include" });
+      if (!res.ok) throw new Error("Gagal export");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `ocean-freight-rates-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      toast({ title: "Export gagal", description: e.message, variant: "destructive" });
+    }
+  }
+
+  async function handleImport(file: File) {
+    setImporting(true);
+    try {
+      const text = await file.text();
+      const res = await fetch("/api/ocean-freight-rates/import", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "text/csv" },
+        body: text,
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error ?? "Gagal import");
+      qc.invalidateQueries({ queryKey: ["ocean-freight-rates"] });
+      const errMsg = d.errors?.length ? ` (${d.errors.length} error)` : "";
+      toast({ title: `Import selesai: ${d.processed ?? d.total} baris diproses${errMsg}` });
+    } catch (e: any) {
+      toast({ title: "Import gagal", description: e.message, variant: "destructive" });
+    } finally {
+      setImporting(false);
+      if (importRef.current) importRef.current.value = "";
+    }
+  }
+
   const stats = {
     total:    rates.length,
     active:   rates.filter((r: Rate) => r.is_active).length,
@@ -295,6 +335,14 @@ export default function OceanFreightRatesPage() {
             <Button variant="outline" size="sm" onClick={() => refetch()}>
               <RefreshCw className="w-4 h-4" />
             </Button>
+            <Button variant="outline" size="sm" onClick={handleExport} title="Export CSV">
+              <Download className="w-4 h-4 mr-1" /> Export
+            </Button>
+            <Button variant="outline" size="sm" disabled={importing} onClick={() => importRef.current?.click()} title="Import CSV">
+              <Upload className="w-4 h-4 mr-1" /> {importing ? "Importing..." : "Import"}
+            </Button>
+            <input ref={importRef} type="file" accept=".csv,text/csv" className="hidden"
+              onChange={e => { const f = e.target.files?.[0]; if (f) handleImport(f); }} />
             <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white" onClick={openCreate}>
               <Plus className="w-4 h-4 mr-1" /> Tambah Rate
             </Button>

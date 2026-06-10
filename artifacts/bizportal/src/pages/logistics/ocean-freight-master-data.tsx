@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppShell } from "@/components/layout/AppShell";
 import { Badge } from "@/components/ui/badge";
@@ -22,7 +22,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Anchor, Ship, Box, Route, Plus, Pencil, Trash2, Search, RefreshCw } from "lucide-react";
+import { Anchor, Ship, Box, Route, Plus, Pencil, Trash2, Search, RefreshCw, Download, Upload } from "lucide-react";
 
 type Port = { id: number; code: string; name: string; city: string; country: string; country_code: string; region: string; port_type: string; timezone: string; is_active: boolean; sort_order: number; notes?: string };
 type Carrier = { id: number; code: string; name: string; carrier_type: string; country: string; country_code: string; logo_url?: string; is_active: boolean; sort_order: number; notes?: string };
@@ -50,6 +50,48 @@ function ActiveBadge({ v }: { v: boolean }) {
   );
 }
 
+function useCsvIE(exportUrl: string, importUrl: string, exportFilename: string, queryKey: string) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const importRef = useRef<HTMLInputElement>(null);
+  const [importing, setImporting] = useState(false);
+
+  async function handleExport() {
+    try {
+      const res = await fetch(exportUrl, { credentials: "include" });
+      if (!res.ok) throw new Error("Gagal export");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a"); a.href = url; a.download = exportFilename; a.click();
+      URL.revokeObjectURL(url);
+    } catch (e: any) { toast({ title: "Export gagal", description: e.message, variant: "destructive" }); }
+  }
+
+  async function handleImport(file: File) {
+    setImporting(true);
+    try {
+      const text = await file.text();
+      const res = await fetch(importUrl, { method: "POST", credentials: "include", headers: { "Content-Type": "text/csv" }, body: text });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error ?? "Gagal import");
+      qc.invalidateQueries({ queryKey: [queryKey] });
+      const errMsg = d.errors?.length ? ` (${d.errors.length} error)` : "";
+      toast({ title: `Import selesai: ${d.processed ?? d.total} baris diproses${errMsg}` });
+    } catch (e: any) { toast({ title: "Import gagal", description: e.message, variant: "destructive" }); }
+    finally { setImporting(false); if (importRef.current) importRef.current.value = ""; }
+  }
+
+  const CsvButtons = () => (
+    <>
+      <Button variant="outline" size="sm" onClick={handleExport} title="Export CSV"><Download className="w-4 h-4 mr-1" />Export</Button>
+      <Button variant="outline" size="sm" disabled={importing} onClick={() => importRef.current?.click()} title="Import CSV"><Upload className="w-4 h-4 mr-1" />{importing ? "Importing..." : "Import"}</Button>
+      <input ref={importRef} type="file" accept=".csv,text/csv" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) handleImport(f); }} />
+    </>
+  );
+
+  return { CsvButtons };
+}
+
 // ─── Route Matrix Tab ──────────────────────────────────────────────────────────
 
 type RouteForm = { origin_port_code: string; destination_port_code: string; carrier_code: string; service_name: string; transit_days_min: string; transit_days_max: string; frequency: string; direct_or_transshipment: string; pol: string; pod: string; transshipment_port: string; notes: string; is_active: boolean };
@@ -68,6 +110,12 @@ function RouteMatrixTab() {
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [form, setForm]         = useState<RouteForm>(emptyRouteForm());
   const [saving, setSaving]     = useState(false);
+  const { CsvButtons } = useCsvIE(
+    "/api/ocean-freight-master/route-matrix/export",
+    "/api/ocean-freight-master/route-matrix/import",
+    `ocean-route-matrix-${new Date().toISOString().slice(0,10)}.csv`,
+    "of-route-matrix"
+  );
 
   const { data: rows = [], isLoading, refetch } = useQuery<RouteMatrix[]>({
     queryKey: ["of-route-matrix"],
@@ -175,6 +223,7 @@ function RouteMatrixTab() {
         </div>
         <div className="flex gap-2 ml-3">
           <Button variant="outline" size="sm" onClick={() => refetch()}><RefreshCw className="w-4 h-4" /></Button>
+          <CsvButtons />
           <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white" onClick={openCreate}><Plus className="w-4 h-4 mr-1" /> Tambah</Button>
         </div>
       </div>
@@ -341,6 +390,12 @@ function PortsTab() {
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [form, setForm]       = useState<PortForm>(emptyPortForm());
   const [saving, setSaving]   = useState(false);
+  const { CsvButtons } = useCsvIE(
+    "/api/ocean-freight-master/ports/export",
+    "/api/ocean-freight-master/ports/import",
+    `freight-ports-${new Date().toISOString().slice(0,10)}.csv`,
+    "of-ports"
+  );
 
   const { data: rows = [], isLoading, refetch } = useQuery<Port[]>({
     queryKey: ["of-ports"],
@@ -420,6 +475,7 @@ function PortsTab() {
         </div>
         <div className="flex gap-2 ml-3">
           <Button variant="outline" size="sm" onClick={() => refetch()}><RefreshCw className="w-4 h-4" /></Button>
+          <CsvButtons />
           <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white" onClick={openCreate}><Plus className="w-4 h-4 mr-1" /> Tambah</Button>
         </div>
       </div>
@@ -556,6 +612,12 @@ function CarriersTab() {
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [form, setForm]         = useState<CarrierForm>(emptyCarrierForm());
   const [saving, setSaving]     = useState(false);
+  const { CsvButtons } = useCsvIE(
+    "/api/ocean-freight-master/carriers/export",
+    "/api/ocean-freight-master/carriers/import",
+    `freight-carriers-${new Date().toISOString().slice(0,10)}.csv`,
+    "of-carriers"
+  );
 
   const { data: rows = [], isLoading, refetch } = useQuery<Carrier[]>({
     queryKey: ["of-carriers"],
@@ -633,6 +695,7 @@ function CarriersTab() {
         </div>
         <div className="flex gap-2 ml-3">
           <Button variant="outline" size="sm" onClick={() => refetch()}><RefreshCw className="w-4 h-4" /></Button>
+          <CsvButtons />
           <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white" onClick={openCreate}><Plus className="w-4 h-4 mr-1" /> Tambah</Button>
         </div>
       </div>
@@ -756,6 +819,12 @@ function ContainerTypesTab() {
   const [deleteId, setDeleteId]   = useState<number | null>(null);
   const [form, setForm]           = useState<ContainerForm>(emptyContainerForm());
   const [saving, setSaving]       = useState(false);
+  const { CsvButtons } = useCsvIE(
+    "/api/ocean-freight-master/container-types/export",
+    "/api/ocean-freight-master/container-types/import",
+    `freight-container-types-${new Date().toISOString().slice(0,10)}.csv`,
+    "of-container-types"
+  );
 
   const { data: rows = [], isLoading, refetch } = useQuery<ContainerType[]>({
     queryKey: ["of-container-types"],
@@ -825,6 +894,7 @@ function ContainerTypesTab() {
         </div>
         <div className="flex gap-2 ml-3">
           <Button variant="outline" size="sm" onClick={() => refetch()}><RefreshCw className="w-4 h-4" /></Button>
+          <CsvButtons />
           <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white" onClick={openCreate}><Plus className="w-4 h-4 mr-1" /> Tambah</Button>
         </div>
       </div>
