@@ -85,6 +85,9 @@ const EscrowConfirmPage         = lazy(() => import("@/pages/escrow-confirm"));
 const ProductApprovePage        = lazy(() => import("@/pages/product-approve"));
 const ShipmentSelectionPage     = lazy(() => import("@/pages/shipment-selection"));
 const TruckingPage              = lazy(() => import("@/pages/trucking"));
+const AirFreightBookingPage     = lazy(() => import("@/pages/air-freight-booking"));
+const AirFreightApprovalPage    = lazy(() => import("@/pages/air-freight-approval"));
+const AirFreightTrackPage       = lazy(() => import("@/pages/air-freight-track"));
 const NotFound                  = lazy(() => import("@/pages/not-found"));
 
 const queryClient = new QueryClient();
@@ -112,6 +115,8 @@ const NO_SHELL_PREFIXES = [
   "/product-approve",
   "/shipment-selection",
   "/escrow-confirm",
+  "/air-freight/approval",
+  "/air-freight/track",
   "/q/",
 ];
 
@@ -283,6 +288,9 @@ function AppShell() {
         <Route path="/shipment-selection/:token" component={ShipmentSelectionPage} />
         <Route path="/marketplace/:id" component={MarketplaceDetail} />
         <Route path="/trucking" component={TruckingPage} />
+        <Route path="/air-freight-booking" component={AirFreightBookingPage} />
+        <Route path="/air-freight/approval/:token" component={AirFreightApprovalPage} />
+        <Route path="/air-freight/track/:orderNumber" component={AirFreightTrackPage} />
         <Route component={NotFound} />
       </Switch>
     </Suspense>
