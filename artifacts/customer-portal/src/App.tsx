@@ -88,6 +88,9 @@ const TruckingPage              = lazy(() => import("@/pages/trucking"));
 const AirFreightBookingPage     = lazy(() => import("@/pages/air-freight-booking"));
 const AirFreightApprovalPage    = lazy(() => import("@/pages/air-freight-approval"));
 const AirFreightTrackPage       = lazy(() => import("@/pages/air-freight-track"));
+const OceanFreightBookingPage   = lazy(() => import("@/pages/ocean-freight-booking"));
+const OceanFreightApprovalPage  = lazy(() => import("@/pages/ocean-freight-approval"));
+const OceanFreightTrackPage     = lazy(() => import("@/pages/ocean-freight-track"));
 const OceanFreightPage          = lazy(() => import("@/pages/ocean-freight"));
 const OceanFreightVendorForm    = lazy(() => import("@/pages/ocean-freight-vendor-form"));
 const OceanFreightQuotePage     = lazy(() => import("@/pages/ocean-freight-quote"));
@@ -120,6 +123,9 @@ const NO_SHELL_PREFIXES = [
   "/escrow-confirm",
   "/air-freight/approval",
   "/air-freight/track",
+  "/ocean-freight/approval",
+  "/ocean-freight/track",
+  "/ocean-freight-booking",
   "/ocean-freight-vendor-form",
   "/ocean-freight-quote",
   "/q/",
@@ -142,6 +148,9 @@ const NO_AUTH_CHECK_PREFIXES = [
   "/product-approve",
   "/shipment-selection",
   "/escrow-confirm",
+  "/ocean-freight-booking",
+  "/ocean-freight/approval",
+  "/ocean-freight/track",
   "/ocean-freight-vendor-form",
   "/ocean-freight-quote",
 ];
@@ -298,6 +307,9 @@ function AppShell() {
         <Route path="/air-freight-booking" component={AirFreightBookingPage} />
         <Route path="/air-freight/approval/:token" component={AirFreightApprovalPage} />
         <Route path="/air-freight/track/:orderNumber" component={AirFreightTrackPage} />
+        <Route path="/ocean-freight-booking" component={OceanFreightBookingPage} />
+        <Route path="/ocean-freight/approval/:token" component={OceanFreightApprovalPage} />
+        <Route path="/ocean-freight/track/:orderNumber" component={OceanFreightTrackPage} />
         <Route path="/ocean-freight" component={OceanFreightPage} />
         <Route path="/ocean-freight-vendor-form/:token" component={OceanFreightVendorForm} />
         <Route path="/ocean-freight-quote/:token" component={OceanFreightQuotePage} />
