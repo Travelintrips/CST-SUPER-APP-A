@@ -1314,8 +1314,8 @@ router.post("/orders/:id/send-final-quote", async (req: Request, res: Response) 
 
     // build approval URL
     const domain = process.env.REPLIT_DEV_DOMAIN ?? "localhost:5000";
-    const approvalUrl = `https://${domain}/bizportal/air-freight/approval/${token}`;
-    const trackUrl    = `https://${domain}/bizportal/air-freight/track/${updated.order_number}`;
+    const approvalUrl = `https://${domain}/air-freight/approval/${token}`;
+    const trackUrl    = `https://${domain}/air-freight/track/${updated.order_number}`;
 
     const idr = (v: number) => new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(v);
 

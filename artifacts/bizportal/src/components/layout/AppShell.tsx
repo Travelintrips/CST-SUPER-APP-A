@@ -459,16 +459,17 @@ export function AppShell({ children, noPadding }: AppShellProps) {
       ],
     },
 
-    // ── TENANT / PENYEWA ──────────────────────────────────────────────
+    // ── TENANT POS ──────────────────────────────────────────────────
     {
       type: "group",
-      titleKey: "Tenant / Penyewa",
+      titleKey: "Tenant POS",
       basePath: "/tenant",
       icon: Store,
       roles: ["admin", "owner", "manager"],
       children: [
         { titleKey: "Dashboard", href: "/tenant/dashboard", icon: LayoutDashboard },
-        { titleKey: "Penyewa", href: "/tenant/tenants", icon: Store },
+        { titleKey: "Data Tenant", href: "/tenant/tenants", icon: Store },
+        { titleKey: "Unit Kantin", href: "/tenant/units", icon: LayoutGrid },
         { titleKey: "Penyewaan", href: "/tenant/bookings", icon: FileText },
         { titleKey: "Pembayaran Sewa", href: "/tenant/payments", icon: DollarSign },
       ],

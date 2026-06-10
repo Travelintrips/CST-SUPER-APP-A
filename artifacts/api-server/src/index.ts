@@ -3,7 +3,7 @@ import { logger } from "./lib/logger";
 import { seedAccountingDefaults, seedAdditionalTaxes } from "./lib/accountingSeed";
 import { seedLogisticsServiceItems } from "./lib/seedLogisticsItems";
 import { seedCatalogProducts } from "./lib/seedCatalogProducts";
-import { seedDemoData, seedDemoDrivers } from "./lib/seedDemoData";
+import { seedDemoData, seedDemoDrivers, seedAirFreightRates } from "./lib/seedDemoData";
 import { startImapPoller } from "./lib/imapPoller";
 import { startOcrTempCleanup } from "./lib/ocrTempCleanup";
 import { startVmfGapNotifier, runVmfGapCheck } from "./lib/vmfGapNotifier";
@@ -643,6 +643,7 @@ async function startServer() {
         .then(() => seedCatalogProducts())
         .then(() => seedDemoData())
         .then(() => seedDemoDrivers())
+        .then(() => seedAirFreightRates())
         .then(() => remediateOrphanProducts())
         .catch((seedErr) => {
           logger.error({ err: seedErr }, "Logistics/demo seed failed");
