@@ -88,6 +88,9 @@ const TruckingPage              = lazy(() => import("@/pages/trucking"));
 const AirFreightBookingPage     = lazy(() => import("@/pages/air-freight-booking"));
 const AirFreightApprovalPage    = lazy(() => import("@/pages/air-freight-approval"));
 const AirFreightTrackPage       = lazy(() => import("@/pages/air-freight-track"));
+const OceanFreightPage          = lazy(() => import("@/pages/ocean-freight"));
+const OceanFreightVendorForm    = lazy(() => import("@/pages/ocean-freight-vendor-form"));
+const OceanFreightQuotePage     = lazy(() => import("@/pages/ocean-freight-quote"));
 const NotFound                  = lazy(() => import("@/pages/not-found"));
 
 const queryClient = new QueryClient();
@@ -117,6 +120,8 @@ const NO_SHELL_PREFIXES = [
   "/escrow-confirm",
   "/air-freight/approval",
   "/air-freight/track",
+  "/ocean-freight-vendor-form",
+  "/ocean-freight-quote",
   "/q/",
 ];
 
@@ -137,6 +142,8 @@ const NO_AUTH_CHECK_PREFIXES = [
   "/product-approve",
   "/shipment-selection",
   "/escrow-confirm",
+  "/ocean-freight-vendor-form",
+  "/ocean-freight-quote",
 ];
 
 const BASE_PREFIX = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -291,6 +298,9 @@ function AppShell() {
         <Route path="/air-freight-booking" component={AirFreightBookingPage} />
         <Route path="/air-freight/approval/:token" component={AirFreightApprovalPage} />
         <Route path="/air-freight/track/:orderNumber" component={AirFreightTrackPage} />
+        <Route path="/ocean-freight" component={OceanFreightPage} />
+        <Route path="/ocean-freight-vendor-form/:token" component={OceanFreightVendorForm} />
+        <Route path="/ocean-freight-quote/:token" component={OceanFreightQuotePage} />
         <Route component={NotFound} />
       </Switch>
     </Suspense>
