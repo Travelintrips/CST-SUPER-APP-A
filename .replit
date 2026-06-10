@@ -1,8 +1,10 @@
-modules = ["nodejs-20", "web", "bash", "python-3.11", "postgresql-16"]
+modules = ["nodejs-20", "web", "bash", "python-3.11"]
 
 [deployment]
 router = "application"
-deploymentTarget = "gce"
+deploymentTarget = "autoscale"
+run = ["bash", "-c", "PORT=5000 node artifacts/api-server/dist/index.mjs"]
+build = ["bash", "scripts/post-merge.sh"]
 
 [deployment.postBuild]
 args = ["pnpm", "store", "prune"]
@@ -22,7 +24,23 @@ args = "Gateway"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
+<<<<<<< HEAD
 args = "artifacts/wa-gateway: WA Gateway"
+=======
+args = "API Server"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "BizPortal"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Customer Portal"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Logistic Order"
+>>>>>>> 5e67b121452a984c7291115d8426b7bb687b663c
 
 [[workflows.workflow]]
 name = "Gateway"
@@ -33,7 +51,7 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "fuser -k 5000/tcp 2>/dev/null; sleep 0.3; BIZPORTAL_PORT=6800 PORT=5000 node gateway.mjs"
+args = "node artifacts/api-server/kill-port.mjs 5000 2>/dev/null; sleep 0.3; API_PORT=8080 BIZPORTAL_PORT=6800 CUSTOMER_PORT=3001 LOGISTIC_ORDER_PORT=6000 PORT=5000 node gateway.mjs"
 waitForPort = 5000
 
 [[workflows.workflow]]
@@ -42,11 +60,52 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
+<<<<<<< HEAD
 args = "pnpm --filter @workspace/wa-gateway run dev"
+=======
+args = "BIZPORTAL_PORT=6800 PORT=3000 bash artifacts/bizportal/start-dev.sh"
+waitForPort = 6800
+
+[[workflows.workflow]]
+name = "Customer Portal"
+author = "agent"
+>>>>>>> 5e67b121452a984c7291115d8426b7bb687b663c
 
 [workflows.workflow.metadata]
 outputType = "console"
 
+<<<<<<< HEAD
+=======
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "CUSTOMER_PORT=3001 PORT=3002 bash artifacts/customer-portal/start-dev.sh"
+waitForPort = 3001
+
+[[workflows.workflow]]
+name = "API Server"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "API_PORT=8080 bash artifacts/api-server/start-dev.sh"
+waitForPort = 8080
+
+[[workflows.workflow]]
+name = "Logistic Order"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd artifacts/logistic-order && node ../api-server/kill-port.mjs 19368 6000 2>/dev/null; sleep 0.3 && pnpm exec vite --config vite.config.ts --host 0.0.0.0 --port 6000"
+waitForPort = 6000
+
+>>>>>>> 5e67b121452a984c7291115d8426b7bb687b663c
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
 expertMode = true
@@ -117,19 +176,28 @@ externalPort = 3001
 
 [[ports]]
 localPort = 3002
-externalPort = 8008
+externalPort = 3002
 
 [[ports]]
 localPort = 5000
 externalPort = 80
 
 [[ports]]
+<<<<<<< HEAD
 localPort = 8082
 externalPort = 3002
+=======
+localPort = 6000
+externalPort = 6000
+>>>>>>> 5e67b121452a984c7291115d8426b7bb687b663c
 
 [[ports]]
-localPort = 8083
-externalPort = 3001
+localPort = 6800
+externalPort = 6800
+
+[[ports]]
+localPort = 8080
+externalPort = 8080
 
 [[ports]]
 localPort = 8084
