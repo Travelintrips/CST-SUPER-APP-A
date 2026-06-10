@@ -1,11 +1,11 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 import { LOGISTICS_SUBCATEGORIES as LOGISTICS_SUBCATEGORIES_FALLBACK } from "@workspace/logistics-constants";
 import { rateLimit, ipKeyGenerator } from "express-rate-limit";
-import { db, productsTable, productCategoryMapTable, productCategoriesTable, portalCustomersTable, portalCustomerServicesTable, portalContentTable, accountingSettingsTable, salesDocumentsTable, salesDocumentLinesTable, customersTable, logisticOrdersTable, suppliersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, quoteRequestsTable, userProfilesTable, identityDocumentsTable, ocrResultsTable, vendorProfilesTable, driverProfilesTable, employeeProfilesTable, onboardingApprovalsTable, waOtpCodesTable, trustedDevicesTable, vendorMiniFormLinksTable, vendorMiniFormSubmissionsTable, vendorCatalogItemsTable, productTemplatesTable, serviceTemplatesTable } from "@workspace/db";
-import { db, productsTable, productCategoryMapTable, productCategoriesTable, portalCustomersTable, portalCustomerServicesTable, portalContentTable, accountingSettingsTable, salesDocumentsTable, salesDocumentLinesTable, customersTable, logisticOrdersTable, suppliersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, quoteRequestsTable, userProfilesTable, identityDocumentsTable, ocrResultsTable, vendorProfilesTable, driverProfilesTable, employeeProfilesTable, onboardingApprovalsTable, waOtpCodesTable, trustedDevicesTable, vendorMiniFormLinksTable, vendorMiniFormSubmissionsTable, vendorCatalogItemsTable, portalProductOrdersTable, portalProductOrderItemsTable } from "@workspace/db";
-import { deleteFromSupabase } from "../lib/supabaseStorage.js";
+import { db, productsTable, productCategoryMapTable, productCategoriesTable, portalCustomersTable, portalCustomerServicesTable, portalContentTable, accountingSettingsTable, salesDocumentsTable, salesDocumentLinesTable, customersTable, logisticOrdersTable, suppliersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, quoteRequestsTable, userProfilesTable, identityDocumentsTable, ocrResultsTable, vendorProfilesTable, driverProfilesTable, employeeProfilesTable, onboardingApprovalsTable, waOtpCodesTable, trustedDevicesTable, vendorMiniFormLinksTable, vendorMiniFormSubmissionsTable, vendorCatalogItemsTable, productTemplatesTable, serviceTemplatesTable, portalProductOrdersTable, portalProductOrderItemsTable, vendorPerformanceTable } from "@workspace/db";
+import { deleteFromSupabase, uploadToSupabase } from "../lib/supabaseStorage.js";
 import { invalidateTokenCache, SERVICE_SCHEMAS } from "./vendorMiniForm";
-import { eq, inArray, and, ne, isNull, sql, desc, gte, lte, ilike, or } from "drizzle-orm";
+import { eq, inArray, and, ne, isNull, sql, desc, gte, lte, ilike, or, asc } from "drizzle-orm";
+import { productMediaTable } from "@workspace/db";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getAdminWa } from "../lib/adminWa.js";
@@ -14,14 +14,16 @@ import { getWaTemplateConfig, renderTemplate } from "../lib/orderNotification.js
 import { sendMail, isSmtpConfigured } from "../lib/mailer";
 import { requirePortalAuth, requirePortalAdmin, type PortalAuthReq } from "../lib/supabaseAuth";
 import { requireClerkUser } from "../lib/requireAdmin";
+import { isCatalogItemPublic, catalogPublicConditions } from "../lib/catalogVisibility.js";
 import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStatusService.js";
 import { broadcastToAdmins, broadcastToPortal } from "../lib/sseManager";
 import { saveAndBroadcast } from "../lib/notificationStore";
 import multer from "multer";
 import { randomUUID } from "crypto";
-import { compressImageBuffer } from "../lib/imageCompress.js";
+import { compressImageBuffer, isCompressibleImage } from "../lib/imageCompress.js";
 import bcrypt from "bcryptjs";
 import { signPortalJwt } from "../lib/portalJwt.js";
+import { isCatalogItemPublic, catalogPublicConditions } from "../lib/catalogVisibility.js";
 import OpenAI from "openai";
 
 const router = Router();
@@ -116,24 +118,148 @@ router.get("/products", async (_req, res) => {
   return res.json(await listByType("barang"));
 });
 
-// GET /api/portal/marketplace — public vendor catalog (published only, NO priceBase)
+// ── Service category normalisation ───────────────────────────────────────────
+
+const SERVICE_CATEGORY_ALIASES: Record<string, string> = {
+  // trucking
+  trucking:          "trucking",
+  truck:             "trucking",
+  "land freight":    "trucking",
+  land_freight:      "trucking",
+  darat:             "trucking",
+  pengiriman_darat:  "trucking",
+  "pengiriman darat":"trucking",
+  // sea_freight
+  "sea freight":     "sea_freight",
+  sea_freight:       "sea_freight",
+  sea:               "sea_freight",
+  ocean:             "sea_freight",
+  ocean_freight:     "sea_freight",
+  "ocean freight":   "sea_freight",
+  fcl:               "sea_freight",
+  lcl:               "sea_freight",
+  laut:              "sea_freight",
+  pengiriman_laut:   "sea_freight",
+  "pengiriman laut": "sea_freight",
+  // air_freight
+  "air freight":     "air_freight",
+  air_freight:       "air_freight",
+  air:               "air_freight",
+  udara:             "air_freight",
+  cargo_udara:       "air_freight",
+  "cargo udara":     "air_freight",
+  pengiriman_udara:  "air_freight",
+  "pengiriman udara":"air_freight",
+  // ppjk
+  ppjk:              "ppjk",
+  customs:           "ppjk",
+  custom:            "ppjk",
+  pabean:            "ppjk",
+  kepabeanan:        "ppjk",
+  pib:               "ppjk",
+  peb:               "ppjk",
+  // handling
+  handling:          "handling",
+  warehouse:         "handling",
+  warehousing:       "handling",
+  gudang:            "handling",
+  stuffing:          "handling",
+  stripping:         "handling",
+  loading:           "handling",
+  unloading:         "handling",
+  // document
+  document:          "document",
+  documents:         "document",
+  dokumen:           "document",
+  legal_doc:         "document",
+  "legal doc":       "document",
+  perizinan:         "document",
+};
+
+/** Normalize a category value to a canonical key.
+ *  - empty/null → null
+ *  - lowercase + trim
+ *  - replace spaces AND dashes with underscore
+ *  - apply alias map
+ */
+export function normalizeServiceCategory(value: string | null | undefined): string | null {
+  if (!value) return null;
+  // Replace both spaces and dashes with underscore, then lowercase+trim
+  const normalized = value.toLowerCase().trim().replace(/[\s-]+/g, "_");
+  // Try lookup with spaces (some alias keys use spaces)
+  const withSpaces = normalized.replace(/_/g, " ");
+  const result =
+    SERVICE_CATEGORY_ALIASES[withSpaces] ??
+    SERVICE_CATEGORY_ALIASES[normalized] ??
+    normalized;
+  if (process.env.NODE_ENV !== "production") {
+    // Service marketplace category filter normalized
+    console.debug(`[marketplace] normalizeServiceCategory: "${value}" → "${result}"`);
+  }
+  return result;
+}
+
+export const SERVICE_CATEGORY_LABELS: Record<string, string> = {
+  trucking: "Trucking",
+  sea_freight: "Sea Freight",
+  air_freight: "Air Freight",
+  ppjk: "PPJK / Customs",
+  handling: "Handling",
+  document: "Document",
+};
+
+// ── GET /api/portal/marketplace ───────────────────────────────────────────────
+// public vendor catalog (published only, NO priceBase)
 router.get("/marketplace", async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
   const { kind, category } = req.query as { kind?: string; category?: string };
 
-  const conditions: ReturnType<typeof eq>[] = [eq(vendorCatalogItemsTable.isPublished, true)];
+  const conditions: ReturnType<typeof eq>[] = [
+    ...catalogPublicConditions(),
+    or(isNull(vendorCatalogItemsTable.validityDate), gte(vendorCatalogItemsTable.validityDate, sql`CURRENT_DATE`)) as ReturnType<typeof eq>,
+  ];
 
   if (kind === "product" || kind === "service") {
     conditions.push(eq(vendorCatalogItemsTable.templateKind, kind));
   }
+
   if (category && category !== "all") {
-    // match categoryKey (products) OR serviceType (services)
-    conditions.push(
-      or(
-        eq(vendorCatalogItemsTable.categoryKey, category),
-        eq(vendorCatalogItemsTable.serviceType, category),
-      ) as ReturnType<typeof eq>,
-    );
+    const normCategory = normalizeServiceCategory(category);
+    if (normCategory) {
+      // Collect all alias keys that map to the same canonical value
+      const matchKeys = Object.entries(SERVICE_CATEGORY_ALIASES)
+        .filter(([, v]) => v === normCategory)
+        .map(([k]) => k);
+      // Build full variant set: canonical + raw query + all aliases (with/without underscore/dash/space)
+      const rawLower = category.toLowerCase().trim();
+      const allVariants = Array.from(new Set([
+        normCategory,
+        rawLower,
+        rawLower.replace(/[\s-]+/g, "_"),
+        rawLower.replace(/[\s_]+/g, "-"),
+        rawLower.replace(/[\s_-]+/g, " "),
+        ...matchKeys,
+        ...matchKeys.map((k) => k.replace(/[\s-]+/g, "_")),
+        ...matchKeys.map((k) => k.replace(/[\s_]+/g, "-")),
+        ...matchKeys.map((k) => k.replace(/[\s_-]+/g, " ")),
+      ]));
+
+      // Build OR across: serviceType, categoryKey, kategori, templateSnapshot fields.
+      // Normalize DB values by replacing dashes AND spaces with underscore before comparing,
+      // so entries stored as e.g. "Trucking", "trucking", "sea-freight" all match correctly.
+      const normalizeDbExpr = (col: ReturnType<typeof sql>) =>
+        sql`lower(trim(replace(replace(${col}::text, '-', '_'), ' ', '_')))`;
+
+      const variantConditions = allVariants.flatMap((v) => [
+        sql`${normalizeDbExpr(sql`${vendorCatalogItemsTable.serviceType}`)} = ${v}`,
+        sql`${normalizeDbExpr(sql`${vendorCatalogItemsTable.categoryKey}`)} = ${v}`,
+        sql`${normalizeDbExpr(sql`${vendorCatalogItemsTable.kategori}`)} = ${v}`,
+        sql`${normalizeDbExpr(sql`${vendorCatalogItemsTable.templateSnapshot}::text::jsonb->>'serviceType'`)} = ${v}`,
+        sql`${normalizeDbExpr(sql`${vendorCatalogItemsTable.templateSnapshot}::text::jsonb->>'category'`)} = ${v}`,
+      ]);
+
+      conditions.push(or(...variantConditions) as ReturnType<typeof eq>);
+    }
   }
 
   const rows = await db
@@ -141,6 +267,7 @@ router.get("/marketplace", async (req, res) => {
       id: vendorCatalogItemsTable.id,
       vendorId: vendorCatalogItemsTable.vendorId,
       vendorName: vendorCatalogItemsTable.vendorName,
+      supplierName: suppliersTable.name,
       templateKind: vendorCatalogItemsTable.templateKind,
       categoryKey: vendorCatalogItemsTable.categoryKey,
       serviceType: vendorCatalogItemsTable.serviceType,
@@ -161,19 +288,76 @@ router.get("/marketplace", async (req, res) => {
       location: vendorCatalogItemsTable.location,
       origin: vendorCatalogItemsTable.origin,
       publishedAt: vendorCatalogItemsTable.publishedAt,
+      validityDate: vendorCatalogItemsTable.validityDate,
+      isFeatured: vendorCatalogItemsTable.isFeatured,
       sortOrder: vendorCatalogItemsTable.sortOrder,
+      primaryImageUrl: productMediaTable.fileUrl,
+      mediaAssets: vendorCatalogItemsTable.mediaAssets,
     })
     .from(vendorCatalogItemsTable)
+    .leftJoin(
+      productMediaTable,
+      and(
+        eq(productMediaTable.vendorCatalogItemId, vendorCatalogItemsTable.id),
+        eq(productMediaTable.isPrimary, true),
+        eq(productMediaTable.isActive, true),
+        eq(productMediaTable.mediaType, "image"),
+      ),
+    )
+    .leftJoin(suppliersTable, eq(vendorCatalogItemsTable.vendorId, suppliersTable.id))
     .where(and(...conditions))
-    .orderBy(vendorCatalogItemsTable.sortOrder, desc(vendorCatalogItemsTable.publishedAt));
+    .orderBy(desc(vendorCatalogItemsTable.isFeatured), vendorCatalogItemsTable.sortOrder, desc(vendorCatalogItemsTable.publishedAt));
 
+  // Post-process: if no category filter, enrich each item with its resolved category label
   return res.json(
-    rows.map((r) => ({
-      ...r,
-      priceSell: r.priceSell !== null ? Number(r.priceSell) : null,
-    })),
+    rows.map((r) => {
+      const rawCat = r.serviceType || r.kategori || r.categoryKey;
+      const resolvedCategory = normalizeServiceCategory(rawCat);
+      // Fallback: jika tidak ada primaryImageUrl dari productMedia, ambil dari mediaAssets kolom
+      const mediaAssets = Array.isArray(r.mediaAssets)
+        ? r.mediaAssets as { type: string; url: string; isPrimary?: boolean }[]
+        : [];
+      const fallbackImageUrl = mediaAssets.find((m) => m.type === "image" && m.isPrimary)?.url
+        ?? mediaAssets.find((m) => m.type === "image")?.url
+        ?? null;
+      return {
+        ...r,
+        vendorName: r.vendorName || r.supplierName || null,
+        priceSell: r.priceSell !== null ? Number(r.priceSell) : null,
+        stockStatus: normalizeMarketplaceStockStatus(r.stockStatus),
+        primaryImageUrl: r.primaryImageUrl ?? null,
+        validityDate: r.validityDate ?? null,
+        isFeatured: r.isFeatured ?? false,
+        primaryImageUrl: r.primaryImageUrl ?? fallbackImageUrl,
+        resolvedCategory,
+        resolvedCategoryLabel: resolvedCategory
+          ? (SERVICE_CATEGORY_LABELS[resolvedCategory] ?? resolvedCategory)
+          : null,
+      };
+    }),
   );
 });
+
+// ── Marketplace rate limiting + bot protection ────────────────────────────────
+const marketplaceSubmitLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  keyGenerator: ipKeyGenerator,
+  message: { error: "Terlalu banyak permintaan. Coba lagi dalam 15 menit." },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+function normalizeMarketplaceStockStatus(raw: string | null): string | null {
+  if (!raw) return null;
+  const MAP: Record<string, string> = {
+    "ready stock": "available", "ready": "available", "in_stock": "available",
+    "indent": "limited",
+    "pre-order": "pre_order", "preorder": "pre_order", "pre order": "pre_order",
+    "out of stock": "out_of_stock", "kosong": "out_of_stock",
+  };
+  return MAP[raw.toLowerCase().trim()] ?? raw;
+}
 
 // ── Marketplace helpers ───────────────────────────────────────────────────────
 function mkMarketplaceOrderNumber(): string {
@@ -218,7 +402,8 @@ async function getCatalogItemPublic(id: number) {
       isPublished: vendorCatalogItemsTable.isPublished,
     })
     .from(vendorCatalogItemsTable)
-    .where(and(eq(vendorCatalogItemsTable.id, id), eq(vendorCatalogItemsTable.isPublished, true)));
+    // Publik: isPublished=true && isActive!=false (via catalogPublicConditions)
+    .where(and(eq(vendorCatalogItemsTable.id, id), ...catalogPublicConditions()));
   if (!row) return null;
   return { ...row, priceSell: row.priceSell !== null ? Number(row.priceSell) : null };
 }
@@ -230,16 +415,72 @@ router.get("/marketplace/:id", async (req, res) => {
   if (isNaN(id)) return res.status(400).json({ error: "id tidak valid" });
   const item = await getCatalogItemPublic(id);
   if (!item) return res.status(404).json({ error: "Item tidak ditemukan atau belum dipublikasikan" });
-  return res.json(item);
+  db.execute(sql`UPDATE vendor_catalog_items SET view_count = view_count + 1 WHERE id = ${id}`).catch(() => {});
+
+  let media: unknown[] = [];
+  try {
+    const mediaResult = await db.execute(sql`
+      SELECT * FROM product_media
+      WHERE vendor_catalog_item_id = ${id}
+        AND is_active = true
+        AND (image_source IS NULL OR image_source != 'ai' OR ai_image_status = 'approved')
+      ORDER BY sort_order ASC, created_at ASC
+    `);
+    media = Array.isArray(mediaResult) ? mediaResult : ((mediaResult as any).rows ?? []);
+  } catch {
+    // non-fatal jika tabel belum ada
+  }
+
+  const primaryMedia = (media as Array<Record<string, unknown>>).find((m) => m.is_primary) ?? (media.length > 0 ? media[0] : null);
+  const primaryImageUrl = (primaryMedia as any)?.media_type === "image" ? (primaryMedia as any)?.file_url ?? null : null;
+  return res.json({
+    ...item,
+    media: (media as any[]).map((m) => ({
+      id: m.id,
+      vendorCatalogItemId: m.vendor_catalog_item_id,
+      vendorId: m.vendor_id,
+      mediaType: m.media_type,
+      fileUrl: m.file_url,
+      thumbnailUrl: m.thumbnail_url,
+      externalUrl: m.external_url,
+      title: m.title,
+      description: m.description,
+      sortOrder: m.sort_order,
+      isPrimary: m.is_primary,
+      isActive: m.is_active,
+      uploadedBy: m.uploaded_by,
+      uploadedByRole: m.uploaded_by_role,
+      storagePath: m.storage_path,
+      imageSource: m.image_source,
+      aiImageStatus: m.ai_image_status,
+      generationPrompt: m.generation_prompt,
+      duration: m.duration,
+      fileSizeBytes: m.file_size_bytes,
+      isAiGenerated: m.image_source === "ai",
+      sourceLabel: m.image_source === "vendor" ? "Foto oleh Vendor" : m.image_source === "ai" ? "AI Generated Preview" : null,
+    })),
+    primaryImageUrl,
+    primaryImageSource: (primaryMedia as any)?.image_source ?? null,
+    hasVideo: media.some((m) => (m as any).media_type === "video" || (m as any).media_type === "video_link"),
+  });
 });
 
 // POST /api/portal/marketplace/:id/quote — buat Quote Request dari catalog item
-router.post("/marketplace/:id/quote", async (req, res) => {
+router.post("/marketplace/:id/quote", marketplaceSubmitLimiter, async (req, res) => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) return res.status(400).json({ error: "id tidak valid" });
 
+  const body = req.body as Record<string, unknown>;
+  if (body._hp && String(body._hp).trim() !== "") {
+    return res.status(400).json({ error: "Permintaan tidak valid" });
+  }
+
   const item = await getCatalogItemPublic(id);
   if (!item) return res.status(404).json({ error: "Item tidak ditemukan" });
+
+  if (item.validityDate && new Date(item.validityDate) < new Date(new Date().toDateString())) {
+    return res.status(400).json({ error: "Item ini sudah kedaluwarsa dan tidak dapat dipesan" });
+  }
 
   const { customerName, email, phone, qty = 1, unit, notes, includePpn = false } = req.body as {
     customerName?: string; email?: string; phone?: string;
@@ -297,16 +538,26 @@ router.post("/marketplace/:id/quote", async (req, res) => {
     subtotal: String(sellPrice * qtyNum),
   });
 
+  db.execute(sql`UPDATE vendor_catalog_items SET quote_count = quote_count + 1 WHERE id = ${id}`).catch(() => {});
   return res.status(201).json({ orderNumber, id: order.id, status: "Quote Request" });
 });
 
 // POST /api/portal/marketplace/:id/order — buat Order Now dari catalog item
-router.post("/marketplace/:id/order", async (req, res) => {
+router.post("/marketplace/:id/order", marketplaceSubmitLimiter, async (req, res) => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) return res.status(400).json({ error: "id tidak valid" });
 
+  const body = req.body as Record<string, unknown>;
+  if (body._hp && String(body._hp).trim() !== "") {
+    return res.status(400).json({ error: "Permintaan tidak valid" });
+  }
+
   const item = await getCatalogItemPublic(id);
   if (!item) return res.status(404).json({ error: "Item tidak ditemukan" });
+
+  if (item.validityDate && new Date(item.validityDate) < new Date(new Date().toDateString())) {
+    return res.status(400).json({ error: "Item ini sudah kedaluwarsa dan tidak dapat dipesan" });
+  }
 
   const { customerName, email, phone, shippingAddress, qty = 1, unit, notes, includePpn = false } = req.body as {
     customerName?: string; email?: string; phone?: string; shippingAddress?: string;
@@ -365,6 +616,7 @@ router.post("/marketplace/:id/order", async (req, res) => {
     subtotal: String(sellPrice * qtyNum),
   });
 
+  db.execute(sql`UPDATE vendor_catalog_items SET order_count = order_count + 1 WHERE id = ${id}`).catch(() => {});
   return res.status(201).json({ orderNumber, id: order.id, status: "New Order" });
 });
 
@@ -1606,7 +1858,8 @@ const _multerUpload = multer({ storage: multer.memoryStorage(), limits: { fileSi
 router.post("/admin/upload", requirePortalAdmin, _multerUpload.single("file"), async (req, res) => {
   const file = req.file;
   if (!file) return res.status(400).json({ message: "File gambar wajib diisi" });
-  if (!file.mimetype.startsWith("image/")) return res.status(415).json({ message: "Hanya file gambar yang diizinkan" });
+  const _ADMIN_IMG_MIME = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp", "image/heic", "image/heif"]);
+  if (!_ADMIN_IMG_MIME.has(file.mimetype)) return res.status(415).json({ message: "Hanya file gambar (JPG, PNG, WebP, HEIC) yang diizinkan" });
   try {
     const { buffer, contentType } = await compressImageBuffer(file.buffer, file.mimetype, "photo");
     const objectId = randomUUID();
@@ -1644,9 +1897,15 @@ const _portalUpload = multer({
 
 const _PORTAL_ALLOWED_MIME = new Set([
   "application/pdf",
-  "image/jpeg", "image/png", "image/webp", "image/gif",
+  "image/jpeg", "image/jpg", "image/png", "image/webp",
+  "image/heic", "image/heif",
   "application/msword",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+]);
+// Explicitly blocked types that must never pass even if a future wildcard is added
+const _PORTAL_BLOCKED_MIME = new Set([
+  "image/svg+xml", "text/html", "application/javascript",
+  "application/x-javascript", "text/javascript",
 ]);
 
 // POST /api/portal/order-upload
@@ -1675,8 +1934,8 @@ router.post("/order-upload", requirePortalAuth, (req, res, next) => {
   if (!req.file) return res.status(400).json({ message: "File wajib diunggah" });
 
   const mime = req.file.mimetype;
-  if (!_PORTAL_ALLOWED_MIME.has(mime) && !mime.startsWith("image/")) {
-    return res.status(415).json({ message: "Tipe file tidak diizinkan" });
+  if (_PORTAL_BLOCKED_MIME.has(mime) || !_PORTAL_ALLOWED_MIME.has(mime)) {
+    return res.status(415).json({ message: "Tipe file tidak diizinkan. Gunakan JPG, PNG, WebP, HEIC, PDF, atau dokumen Office." });
   }
 
   try {
@@ -1721,8 +1980,13 @@ router.post("/payment-proof-upload", (req, res, next) => {
   }
   if (!req.file) return res.status(400).json({ message: "File wajib diunggah" });
   const mime = req.file.mimetype;
-  if (!mime.startsWith("image/") && mime !== "application/pdf") {
-    return res.status(415).json({ message: "Hanya file gambar (JPG/PNG/WebP) atau PDF yang diizinkan" });
+  const _PROOF_ALLOWED_MIME = new Set([
+    "image/jpeg", "image/jpg", "image/png", "image/webp",
+    "image/heic", "image/heif",
+    "application/pdf",
+  ]);
+  if (!_PROOF_ALLOWED_MIME.has(mime)) {
+    return res.status(415).json({ message: "Hanya file gambar (JPG/PNG/WebP/HEIC) atau PDF yang diizinkan. SVG, HTML, dan file eksekutabel tidak diterima." });
   }
   try {
     const objectPath = await _objectStorage.uploadPrivateEntity(req.file.buffer, mime);
@@ -2641,7 +2905,10 @@ router.post("/onboarding/upload-doc", requirePortalAuth, onboardingUpload.single
   try {
     const storage = new ObjectStorageService();
     let buf = req.file.buffer;
-    if (req.file.mimetype.startsWith("image/")) {
+    const _COMPRESS_IMAGE_MIME = new Set([
+      "image/jpeg", "image/jpg", "image/png", "image/webp", "image/heic", "image/heif",
+    ]);
+    if (_COMPRESS_IMAGE_MIME.has(req.file.mimetype)) {
       try { const c = await compressImageBuffer(buf, req.file.mimetype); buf = c.buffer; } catch { /* gunakan original */ }
     }
     // Upload ke private bucket — dokumen identitas tidak boleh public
@@ -3455,7 +3722,8 @@ router.get("/vendor-catalog/compare", async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
   try {
     const { type } = req.query as Record<string, string>;
-    const conditions = [eq(vendorCatalogItemsTable.isActive, true)];
+    // Publik: wajib isPublished = true DAN isActive = true
+    const conditions = [...catalogPublicConditions()];
     if (type === "product" || type === "service") {
       conditions.push(eq(vendorCatalogItemsTable.type, type));
     }
@@ -3529,7 +3797,8 @@ router.get("/vendor-catalog", async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
   try {
     const { type, kategori } = req.query as Record<string, string>;
-    const conditions = [eq(vendorCatalogItemsTable.isActive, true)];
+    // Publik: wajib isPublished = true DAN isActive = true
+    const conditions = [...catalogPublicConditions()];
     if (type === "product" || type === "service") {
       conditions.push(eq(vendorCatalogItemsTable.type, type));
     }
@@ -3699,6 +3968,484 @@ router.post("/catalog-inquiry", catalogInquiryLimiter, async (req, res) => {
   } catch (err) {
     req.log?.error({ err }, "catalog-inquiry error");
     return res.status(500).json({ message: "Gagal mengirim permintaan" });
+  }
+});
+
+// ── Helper: primary image subquery ───────────────────────────────────────────
+const primaryImageSubquery = (itemIdRef: ReturnType<typeof sql>) =>
+  sql<string | null>`(
+    SELECT pm.file_url
+    FROM product_media pm
+    WHERE pm.vendor_catalog_item_id = ${itemIdRef}
+      AND pm.is_active = true
+      AND pm.media_type = 'image'
+    ORDER BY pm.is_primary DESC, pm.sort_order ASC
+    LIMIT 1
+  )`;
+
+const CATALOG_PUBLIC_COLS = {
+  id: vendorCatalogItemsTable.id,
+  vendorId: vendorCatalogItemsTable.vendorId,
+  vendorName: vendorCatalogItemsTable.vendorName,
+  templateKind: vendorCatalogItemsTable.templateKind,
+  categoryKey: vendorCatalogItemsTable.categoryKey,
+  serviceType: vendorCatalogItemsTable.serviceType,
+  name: vendorCatalogItemsTable.name,
+  description: vendorCatalogItemsTable.description,
+  kategori: vendorCatalogItemsTable.kategori,
+  specValues: vendorCatalogItemsTable.specValues,
+  priceSell: vendorCatalogItemsTable.priceSell,
+  currency: vendorCatalogItemsTable.currency,
+  unit: vendorCatalogItemsTable.unit,
+  moq: vendorCatalogItemsTable.moq,
+  stockStatus: vendorCatalogItemsTable.stockStatus,
+  leadTime: vendorCatalogItemsTable.leadTime,
+  location: vendorCatalogItemsTable.location,
+  origin: vendorCatalogItemsTable.origin,
+  publishedAt: vendorCatalogItemsTable.publishedAt,
+};
+
+// GET /api/portal/marketplace/:id/related — items from the same vendor
+router.get("/marketplace/:id/related", async (req, res) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: "id tidak valid" });
+
+  const item = await getCatalogItemPublic(id);
+  if (!item) return res.status(404).json({ error: "Item tidak ditemukan" });
+
+  try {
+    const vci = vendorCatalogItemsTable;
+
+    // Sort: same category first, then closest price, then most recent
+    const rows = await db
+      .select({
+        ...CATALOG_PUBLIC_COLS,
+        primaryImageUrl: sql<string | null>`(
+          SELECT pm.file_url FROM product_media pm
+          WHERE pm.vendor_catalog_item_id = ${vci.id}
+            AND pm.is_active = true AND pm.media_type = 'image'
+          ORDER BY pm.is_primary DESC, pm.sort_order ASC LIMIT 1
+        )`.as("primary_image_url"),
+      })
+      .from(vci)
+      .where(and(
+        eq(vci.vendorId, item.vendorId),
+        ne(vci.id, id),
+        ...catalogPublicConditions(vci),
+      ))
+      .orderBy(
+        sql`CASE WHEN ${vci.categoryKey} = ${item.categoryKey ?? ""} THEN 0 ELSE 1 END`,
+        item.priceSell != null
+          ? sql`CASE WHEN ${vci.priceSell} IS NOT NULL THEN ABS(${vci.priceSell}::numeric - ${String(item.priceSell)}::numeric) ELSE CAST(999999 AS numeric) END`
+          : sql`CAST(999999 AS numeric)`,
+        desc(vci.publishedAt),
+      )
+      .limit(8);
+
+    return res.json(rows.map((r) => ({
+      ...r,
+      priceSell: r.priceSell !== null ? Number(r.priceSell) : null,
+    })));
+  } catch (err) {
+    req.log?.error({ err }, "related items error");
+    return res.status(500).json({ error: "Gagal memuat related items" });
+  }
+});
+
+// GET /api/portal/marketplace/:id/similar — "customers also viewed" (other vendors)
+router.get("/marketplace/:id/similar", async (req, res) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: "id tidak valid" });
+
+  const item = await getCatalogItemPublic(id);
+  if (!item) return res.status(404).json({ error: "Item tidak ditemukan" });
+
+  try {
+    const vci = vendorCatalogItemsTable;
+
+    // Match on category, serviceType, or commodity spec value
+    const commodityVal = item.specValues && typeof item.specValues === "object"
+      ? (item.specValues as Record<string, unknown>)["commodity"]
+        ?? (item.specValues as Record<string, unknown>)["komoditi"]
+        ?? null
+      : null;
+    const gradeVal = item.specValues && typeof item.specValues === "object"
+      ? (item.specValues as Record<string, unknown>)["grade"]
+        ?? (item.specValues as Record<string, unknown>)["kualitas"]
+        ?? null
+      : null;
+
+    // Publik: wajib isPublished = true DAN isActive = true
+    const conditions = [
+      ne(vci.id, id),
+      ...catalogPublicConditions(vci),
+    ];
+
+    // Prefer same templateKind
+    if (item.templateKind) conditions.push(eq(vci.templateKind, item.templateKind));
+
+    // Match category OR serviceType
+    const matchConditions = [];
+    if (item.categoryKey)  matchConditions.push(eq(vci.categoryKey, item.categoryKey));
+    if (item.serviceType)  matchConditions.push(eq(vci.serviceType, item.serviceType));
+    if (item.kategori)     matchConditions.push(eq(vci.kategori, item.kategori));
+    if (matchConditions.length > 0) conditions.push(or(...matchConditions)!);
+
+    const rows = await db
+      .select({
+        ...CATALOG_PUBLIC_COLS,
+        primaryImageUrl: sql<string | null>`(
+          SELECT pm.file_url FROM product_media pm
+          WHERE pm.vendor_catalog_item_id = ${vci.id}
+            AND pm.is_active = true AND pm.media_type = 'image'
+          ORDER BY pm.is_primary DESC, pm.sort_order ASC LIMIT 1
+        )`.as("primary_image_url"),
+      })
+      .from(vci)
+      .where(and(...conditions))
+      .orderBy(
+        // boost same vendor items down (prefer other vendors)
+        sql`CASE WHEN ${vci.vendorId} = ${item.vendorId} THEN 1 ELSE 0 END`,
+        // boost same category
+        sql`CASE WHEN ${vci.categoryKey} = ${item.categoryKey ?? ""} THEN 0 ELSE 1 END`,
+        desc(vci.publishedAt),
+      )
+      .limit(8);
+
+    return res.json(rows.map((r) => ({
+      ...r,
+      priceSell: r.priceSell !== null ? Number(r.priceSell) : null,
+    })));
+  } catch (err) {
+    req.log?.error({ err }, "similar items error");
+    return res.status(500).json({ error: "Gagal memuat similar items" });
+  }
+});
+
+// GET /api/portal/marketplace/:id/same-province — products from other vendors in the same province
+router.get("/marketplace/:id/same-province", async (req, res) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: "id tidak valid" });
+
+  const item = await getCatalogItemPublic(id);
+  if (!item) return res.status(404).json({ error: "Item tidak ditemukan" });
+
+  // Extract province: "City, Province" → take everything after last comma
+  const rawLocation = item.location ?? "";
+  const province = rawLocation.includes(",")
+    ? rawLocation.split(",").pop()!.trim()
+    : rawLocation.trim();
+
+  if (!province) return res.json([]);
+
+  try {
+    const vci = vendorCatalogItemsTable;
+
+    const rows = await db
+      .select({
+        ...CATALOG_PUBLIC_COLS,
+        primaryImageUrl: sql<string | null>`(
+          SELECT pm.file_url FROM product_media pm
+          WHERE pm.vendor_catalog_item_id = ${vci.id}
+            AND pm.is_active = true AND pm.media_type = 'image'
+          ORDER BY pm.is_primary DESC, pm.sort_order ASC LIMIT 1
+        )`.as("primary_image_url"),
+      })
+      .from(vci)
+      .where(and(
+        ne(vci.id, id),
+        ne(vci.vendorId, item.vendorId),
+        ilike(vci.location, `%${province}%`),
+        ...catalogPublicConditions(vci),
+      ))
+      .orderBy(
+        // same category first
+        sql`CASE WHEN ${vci.categoryKey} = ${item.categoryKey ?? ""} THEN 0 ELSE 1 END`,
+        desc(vci.publishedAt),
+      )
+      .limit(8);
+
+    return res.json(rows.map((r) => ({
+      ...r,
+      priceSell: r.priceSell !== null ? Number(r.priceSell) : null,
+    })));
+  } catch (err) {
+    req.log?.error({ err }, "same-province items error");
+    return res.status(500).json({ error: "Gagal memuat item provinsi yang sama" });
+  }
+});
+
+// GET /api/portal/vendors/:vendorId/public-profile — vendor mini profile
+router.get("/vendors/:vendorId/public-profile", async (req, res) => {
+  res.setHeader("Cache-Control", "public, max-age=300, stale-while-revalidate=60");
+  const vendorId = parseInt(req.params.vendorId);
+  if (isNaN(vendorId)) return res.status(400).json({ error: "vendorId tidak valid" });
+
+  const [vendor] = await db
+    .select({
+      id: suppliersTable.id,
+      name: suppliersTable.name,
+      logo: suppliersTable.logo,
+      location: suppliersTable.address,
+      serviceType: suppliersTable.serviceType,
+      country: suppliersTable.country,
+      createdAt: suppliersTable.createdAt,
+    })
+    .from(suppliersTable)
+    .where(eq(suppliersTable.id, vendorId));
+
+  if (!vendor) return res.status(404).json({ error: "Vendor tidak ditemukan" });
+
+  const [perf] = await db
+    .select({
+      totalOrders: vendorPerformanceTable.totalOrders,
+      completedOrders: vendorPerformanceTable.completedOrders,
+      ontimePercentage: vendorPerformanceTable.ontimePercentage,
+      avgResponseHours: vendorPerformanceTable.avgResponseHours,
+      averageResponseMinutes: vendorPerformanceTable.averageResponseMinutes,
+      customerRating: vendorPerformanceTable.customerRating,
+      vendorGrade: vendorPerformanceTable.vendorGrade,
+      score: vendorPerformanceTable.score,
+      lastCalculatedAt: vendorPerformanceTable.lastCalculatedAt,
+    })
+    .from(vendorPerformanceTable)
+    .where(eq(vendorPerformanceTable.vendorId, vendorId));
+
+  // Count published items
+  const [countResult] = await db
+    .select({
+      products: sql<number>`count(*) filter (where ${vendorCatalogItemsTable.templateKind} = 'product')`,
+      services: sql<number>`count(*) filter (where ${vendorCatalogItemsTable.templateKind} = 'service')`,
+    })
+    .from(vendorCatalogItemsTable)
+    // Publik: wajib isPublished = true DAN isActive = true
+    .where(and(
+      eq(vendorCatalogItemsTable.vendorId, vendorId),
+      ...catalogPublicConditions(),
+    ));
+
+  return res.json({
+    vendor,
+    performance: perf
+      ? {
+          totalOrders: perf.totalOrders,
+          completedOrders: perf.completedOrders,
+          ontimePercentage: perf.ontimePercentage !== null ? Number(perf.ontimePercentage) : null,
+          avgResponseHours: perf.avgResponseHours !== null ? Number(perf.avgResponseHours) : null,
+          averageResponseMinutes: perf.averageResponseMinutes !== null ? Number(perf.averageResponseMinutes) : null,
+          customerRating: perf.customerRating !== null ? Number(perf.customerRating) : null,
+          vendorGrade: perf.vendorGrade,
+          score: perf.score !== null ? Number(perf.score) : null,
+          lastCalculatedAt: perf.lastCalculatedAt,
+        }
+      : null,
+    productCount: Number(countResult?.products ?? 0),
+    serviceCount: Number(countResult?.services ?? 0),
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// VENDOR CATALOG MEDIA — vendor self-service photo upload
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function _getLinkedSupplier(customerId: number) {
+  const [customer] = await db.select().from(portalCustomersTable).where(eq(portalCustomersTable.id, customerId));
+  if (!customer) return null;
+  const allSuppliers = await db.select().from(suppliersTable);
+  const normalizePhone = (p: string | null) => (p ? p.replace(/[^\d]/g, "").replace(/^0/, "62") : null);
+  const customerPhone = normalizePhone(customer.phone);
+  return (
+    allSuppliers.find(
+      (s) =>
+        (s.contactEmail && s.contactEmail.toLowerCase() === customer.email.toLowerCase()) ||
+        (customerPhone && normalizePhone(s.phone) === customerPhone),
+    ) ?? null
+  );
+}
+
+const _vendorImgUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
+const _VENDOR_IMG_MIME = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp"]);
+
+// GET /api/portal/vendor/catalog — list vendor's own catalog items with media
+router.get("/vendor/catalog", requirePortalAuth, async (req, res) => {
+  const customerId = (req as PortalAuthReq).portalCustomerId;
+  const supplier = await _getLinkedSupplier(customerId);
+  if (!supplier) return res.status(403).json({ message: "Akun belum terhubung ke data vendor" });
+
+  try {
+    const rows = await db.execute(sql`
+      SELECT
+        vci.id,
+        vci.name,
+        vci.template_kind,
+        vci.kategori,
+        vci.category_key,
+        vci.is_active,
+        vci.is_published,
+        vci.description,
+        COUNT(pm.id) FILTER (WHERE pm.is_active = true)                       AS media_count,
+        COALESCE(json_agg(
+          json_build_object(
+            'id',          pm.id,
+            'fileUrl',     pm.file_url,
+            'isPrimary',   pm.is_primary,
+            'mediaType',   pm.media_type,
+            'imageSource', pm.image_source
+          ) ORDER BY pm.sort_order, pm.created_at
+        ) FILTER (WHERE pm.is_active = true AND pm.media_type = 'image'), '[]') AS images
+      FROM vendor_catalog_items vci
+      LEFT JOIN product_media pm ON pm.vendor_catalog_item_id = vci.id
+      WHERE vci.vendor_id = ${supplier.id}
+      GROUP BY vci.id, vci.name, vci.template_kind, vci.kategori, vci.category_key,
+               vci.is_active, vci.is_published, vci.description
+      ORDER BY vci.sort_order ASC NULLS LAST, vci.id ASC
+    `);
+
+    return res.json({
+      supplierId: supplier.id,
+      supplierName: supplier.name,
+      items: (rows as any[]).map((r: any) => ({
+        id: r.id,
+        name: r.name,
+        templateKind: r.template_kind,
+        kategori: r.kategori,
+        categoryKey: r.category_key,
+        isActive: r.is_active,
+        isPublished: r.is_published,
+        description: r.description,
+        mediaCount: parseInt(r.media_count ?? "0"),
+        images: Array.isArray(r.images) ? r.images : [],
+      })),
+    });
+  } catch (e: any) {
+    return res.status(500).json({ error: e?.message });
+  }
+});
+
+// POST /api/portal/vendor/catalog/:itemId/media/upload
+router.post(
+  "/vendor/catalog/:itemId/media/upload",
+  requirePortalAuth,
+  (req: any, res: any, next: any) =>
+    (_vendorImgUpload.single("file") as any)(req, res, (err: any) => {
+      if (err?.code === "LIMIT_FILE_SIZE") {
+        return res.status(413).json({ error: "Ukuran foto maks 5 MB" });
+      }
+      next(err);
+    }),
+  async (req: any, res: any) => {
+    const customerId = (req as PortalAuthReq).portalCustomerId;
+    const itemId = parseInt(req.params.itemId);
+    if (isNaN(itemId)) return res.status(400).json({ error: "ID item tidak valid" });
+
+    const supplier = await _getLinkedSupplier(customerId);
+    if (!supplier) return res.status(403).json({ message: "Akun belum terhubung ke data vendor" });
+
+    const [item] = await db
+      .select({ id: vendorCatalogItemsTable.id })
+      .from(vendorCatalogItemsTable)
+      .where(and(eq(vendorCatalogItemsTable.id, itemId), eq(vendorCatalogItemsTable.vendorId, supplier.id)));
+    if (!item) return res.status(404).json({ error: "Item tidak ditemukan atau bukan milik vendor ini" });
+
+    if (!req.file) return res.status(400).json({ error: "Tidak ada file yang diunggah" });
+    if (!_VENDOR_IMG_MIME.has(req.file.mimetype)) {
+      return res.status(415).json({ error: "Hanya file JPG, PNG, atau WebP yang diizinkan" });
+    }
+
+    try {
+      let buffer = req.file.buffer as Buffer;
+      let mime = req.file.mimetype as string;
+      if (isCompressibleImage(mime)) {
+        const c = await compressImageBuffer(buffer, mime, "photo");
+        buffer = c.buffer;
+        mime = c.contentType;
+      }
+
+      const folder = `product-media/vendor-${supplier.id}/item-${itemId}`;
+      const { publicUrl, storagePath } = await uploadToSupabase(buffer, mime, folder);
+
+      const [existingPrimary] = await db
+        .select({ id: productMediaTable.id })
+        .from(productMediaTable)
+        .where(
+          and(
+            eq(productMediaTable.vendorCatalogItemId, itemId),
+            eq(productMediaTable.isPrimary, true),
+            eq(productMediaTable.isActive, true),
+          ),
+        );
+      const isPrimary = !existingPrimary;
+
+      const [customer] = await db
+        .select({ email: portalCustomersTable.email })
+        .from(portalCustomersTable)
+        .where(eq(portalCustomersTable.id, customerId));
+
+      const [inserted] = await db
+        .insert(productMediaTable)
+        .values({
+          vendorCatalogItemId: itemId,
+          vendorId: supplier.id,
+          mediaType: "image",
+          fileUrl: publicUrl,
+          storagePath,
+          isPrimary,
+          isActive: true,
+          uploadedBy: customer?.email ?? "vendor",
+          uploadedByRole: "vendor",
+          sortOrder: 0,
+          imageSource: "vendor",
+          aiImageStatus: null,
+        })
+        .returning();
+
+      return res.status(201).json({ media: inserted });
+    } catch (e: any) {
+      return res.status(500).json({ error: e?.message });
+    }
+  },
+);
+
+// DELETE /api/portal/vendor/catalog/media/:mediaId
+router.delete("/vendor/catalog/media/:mediaId", requirePortalAuth, async (req, res) => {
+  const customerId = (req as PortalAuthReq).portalCustomerId;
+  const mediaId = parseInt(req.params.mediaId);
+  if (isNaN(mediaId)) return res.status(400).json({ error: "ID media tidak valid" });
+
+  const supplier = await _getLinkedSupplier(customerId);
+  if (!supplier) return res.status(403).json({ message: "Akun belum terhubung ke data vendor" });
+
+  const [media] = await db.select().from(productMediaTable).where(eq(productMediaTable.id, mediaId));
+  if (!media) return res.status(404).json({ error: "Media tidak ditemukan" });
+  if (media.vendorId !== supplier.id) return res.status(403).json({ error: "Bukan milik vendor ini" });
+
+  try {
+    if (media.storagePath) await deleteFromSupabase(media.storagePath);
+    await db.delete(productMediaTable).where(eq(productMediaTable.id, mediaId));
+
+    if (media.isPrimary && media.vendorCatalogItemId) {
+      const [next] = await db
+        .select()
+        .from(productMediaTable)
+        .where(
+          and(
+            eq(productMediaTable.vendorCatalogItemId, media.vendorCatalogItemId),
+            eq(productMediaTable.isActive, true),
+          ),
+        )
+        .orderBy(asc(productMediaTable.sortOrder), asc(productMediaTable.createdAt))
+        .limit(1);
+      if (next) {
+        await db
+          .update(productMediaTable)
+          .set({ isPrimary: true, updatedAt: new Date() })
+          .where(eq(productMediaTable.id, next.id));
+      }
+    }
+
+    return res.json({ success: true });
+  } catch (e: any) {
+    return res.status(500).json({ error: e?.message });
   }
 });
 

@@ -244,6 +244,16 @@ export async function runVendorMiniFormMigration(): Promise<void> {
         ADD COLUMN IF NOT EXISTS template_snapshot JSONB
     `));
 
+    // ── Media Foundation: idempotent ADD COLUMN IF NOT EXISTS ─────────────────
+    await db.execute(sql.raw(`
+      ALTER TABLE vendor_mini_form_submissions
+        ADD COLUMN IF NOT EXISTS media_assets JSONB NOT NULL DEFAULT '[]'
+    `));
+    await db.execute(sql.raw(`
+      ALTER TABLE customer_approvals
+        ADD COLUMN IF NOT EXISTS media_assets JSONB NOT NULL DEFAULT '[]'
+    `));
+
     logger.info("Vendor mini form migration: ok");
   } catch (err) {
     logger.error({ err }, "Vendor mini form migration failed");

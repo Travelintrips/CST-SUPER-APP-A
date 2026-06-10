@@ -9,6 +9,7 @@ import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis,
 } from "recharts";
 import { Package2, TrendingUp, TrendingDown, Search, RefreshCw } from "lucide-react";
+import { CompanySelect } from "@/components/CompanySelect";
 
 const idr = (v: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(v);
@@ -35,11 +36,13 @@ export default function CommodityProfitabilityPage() {
   const [dateTo,   setDateTo]   = useState(today);
   const [search,   setSearch]   = useState("");
   const [sortKey,  setSortKey]  = useState<"revenue" | "margin" | "marginPct" | "orderCount">("revenue");
+  const [companyId, setCompanyId] = useState("all");
 
   const params = new URLSearchParams({ dateFrom, dateTo });
+  if (companyId !== "all") params.set("companyId", companyId);
 
   const { data, isLoading, refetch } = useQuery<{ items: CommodityRow[]; summary: SummaryType }>({
-    queryKey: ["analytics-commodities", dateFrom, dateTo],
+    queryKey: ["analytics-commodities", dateFrom, dateTo, companyId],
     queryFn:  () => fetch(`/api/analytics/profitability/commodities?${params}`, { credentials: "include" }).then(r => r.json()),
   });
 
@@ -86,6 +89,7 @@ export default function CommodityProfitabilityPage() {
                 <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
                   className="bg-slate-800 border-slate-700 text-white w-36" />
               </div>
+              <CompanySelect value={companyId} onChange={setCompanyId} />
               <div className="space-y-1 flex-1 min-w-40">
                 <Label className="text-xs text-slate-400">Cari komoditas</Label>
                 <div className="relative">

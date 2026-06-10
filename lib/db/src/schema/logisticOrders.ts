@@ -124,6 +124,14 @@ export const logisticOrderItemsTable = pgTable("logistic_order_items", {
   inputData: jsonb("input_data").notNull().default({}),
   calculationResult: jsonb("calculation_result").notNull().default({}),
   subtotal: numeric("subtotal", { precision: 14, scale: 2 }).notNull().default("0"),
+  // vendor catalog reference fields
+  itemSource: text("item_source").default("manual"),
+  vendorCatalogItemId: integer("vendor_catalog_item_id"),
+  vendorId: integer("vendor_id").references(() => suppliersTable.id, { onDelete: "set null" }),
+  serviceType: text("service_type"),
+  priceSnapshot: jsonb("price_snapshot"),
+  calculationInput: jsonb("calculation_input"),
+  templateSnapshot: jsonb("template_snapshot"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

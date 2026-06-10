@@ -82,6 +82,12 @@ export async function runServiceTemplateMigration(): Promise<void> {
     upserted++;
   }
 
+  // ── Media Foundation: idempotent ADD COLUMN IF NOT EXISTS ──────────────────
+  await db.execute(sql`
+    ALTER TABLE service_templates
+      ADD COLUMN IF NOT EXISTS media_assets JSONB NOT NULL DEFAULT '[]'
+  `);
+
   logger.info(
     { total: templates.length, upserted },
     "Service template migration: selesai",

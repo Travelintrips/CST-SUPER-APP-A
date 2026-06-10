@@ -3,7 +3,7 @@ import { logger } from "./lib/logger";
 import { seedAccountingDefaults, seedAdditionalTaxes } from "./lib/accountingSeed";
 import { seedLogisticsServiceItems } from "./lib/seedLogisticsItems";
 import { seedCatalogProducts } from "./lib/seedCatalogProducts";
-import { seedDemoData, seedDemoDrivers } from "./lib/seedDemoData";
+import { seedDemoData, seedDemoDrivers, seedAirFreightRates } from "./lib/seedDemoData";
 import { startImapPoller } from "./lib/imapPoller";
 import { startOcrTempCleanup } from "./lib/ocrTempCleanup";
 import { startVmfGapNotifier, runVmfGapCheck } from "./lib/vmfGapNotifier";
@@ -59,6 +59,7 @@ import { runOrderProgressMigration } from "./lib/orderProgress.js";
 import { runExceptionEnumMigration, runOrderExceptionsMigration } from "./lib/services/exceptionService.js";
 import { runVendorCompanyAssignmentsMigration } from "./lib/vendorCompanyAssignmentsMigration.js";
 import { runVendorCatalogSchemaMigration } from "./lib/vendorCatalogSchemaMigration.js";
+import { runLogisticVendorFulfillmentsMigration } from "./lib/logisticVendorFulfillmentsMigration.js";
 import { runProductFirstFlowMigration } from "./lib/productFirstFlowMigration.js";
 import { runStep4TemplateMigration } from "./lib/step4TemplateMigration.js";
 import { runServiceTemplateMigration } from "./lib/serviceTemplateMigration.js";
@@ -81,6 +82,7 @@ import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { runStartupValidation } from "./lib/startupValidator.js";
 import { backfillVendorPerformance } from "./routes/vendorPerformance.js";
+import { runProductMediaMigration } from "./lib/productMediaMigration.js";
 
 
 // REPLIT_API_PORT overrides PORT so the server listens on the local port
@@ -619,6 +621,8 @@ async function startServer() {
     .then(() => runWithRetry("Driver assignment migration", runDriverAssignmentMigration))
     .then(() => runWithRetry("Vendor company assignments migration", runVendorCompanyAssignmentsMigration))
     .then(() => runWithRetry("Vendor catalog schema migration", runVendorCatalogSchemaMigration))
+    .then(() => runWithRetry("Logistic vendor fulfillments migration", runLogisticVendorFulfillmentsMigration))
+    .then(() => runWithRetry("Product media migration", runProductMediaMigration))
     .then(() => enableRealtimeTables().catch((err) => {
       logger.warn({ err }, "Supabase Realtime table enable failed (non-fatal)");
     }))
@@ -639,6 +643,7 @@ async function startServer() {
         .then(() => seedCatalogProducts())
         .then(() => seedDemoData())
         .then(() => seedDemoDrivers())
+        .then(() => seedAirFreightRates())
         .then(() => remediateOrphanProducts())
         .catch((seedErr) => {
           logger.error({ err: seedErr }, "Logistics/demo seed failed");

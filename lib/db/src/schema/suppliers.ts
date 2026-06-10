@@ -79,6 +79,8 @@ export const vendorCatalogItemsTable = pgTable("vendor_catalog_items", {
 
   // ── Attachments ───────────────────────────────────────────────────────────
   documents: jsonb("documents"),
+  // ── Media Foundation ──────────────────────────────────────────────────────
+  mediaAssets: jsonb("media_assets").$type<Record<string, unknown>[]>().notNull().default([]),
 
   // ── Publication state ─────────────────────────────────────────────────────
   status: text("status").notNull().default("draft"),
@@ -90,6 +92,15 @@ export const vendorCatalogItemsTable = pgTable("vendor_catalog_items", {
   // ── Timestamps ────────────────────────────────────────────────────────────
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow(),
+
+  // ── Analytics counters ─────────────────────────────────────────────────────
+  viewCount:  integer("view_count").notNull().default(0),
+  quoteCount: integer("quote_count").notNull().default(0),
+  orderCount: integer("order_count").notNull().default(0),
+
+  // ── Featured ──────────────────────────────────────────────────────────────
+  isFeatured:   boolean("is_featured").notNull().default(false),
+  featuredUntil: timestamp("featured_until"),
 }, (t) => [
   index("vendor_catalog_vendor_idx").on(t.vendorId),
   index("vendor_catalog_status_idx").on(t.status, t.isPublished),

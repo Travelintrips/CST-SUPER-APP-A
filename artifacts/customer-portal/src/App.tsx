@@ -80,9 +80,17 @@ const PaymentProofPage          = lazy(() => import("@/pages/payment-proof"));
 const ProductOrderTrackPage     = lazy(() => import("@/pages/product-order-track"));
 const CatalogPage               = lazy(() => import("@/pages/catalog"));
 const MarketplaceDetail         = lazy(() => import("@/pages/marketplace-detail"));
+const JasaVendorDetail          = lazy(() => import("@/pages/jasa-vendor-detail"));
 const EscrowConfirmPage         = lazy(() => import("@/pages/escrow-confirm"));
 const ProductApprovePage        = lazy(() => import("@/pages/product-approve"));
 const ShipmentSelectionPage     = lazy(() => import("@/pages/shipment-selection"));
+const TruckingPage              = lazy(() => import("@/pages/trucking"));
+const AirFreightBookingPage     = lazy(() => import("@/pages/air-freight-booking"));
+const AirFreightApprovalPage    = lazy(() => import("@/pages/air-freight-approval"));
+const AirFreightTrackPage       = lazy(() => import("@/pages/air-freight-track"));
+const OceanFreightPage          = lazy(() => import("@/pages/ocean-freight"));
+const OceanFreightVendorForm    = lazy(() => import("@/pages/ocean-freight-vendor-form"));
+const OceanFreightQuotePage     = lazy(() => import("@/pages/ocean-freight-quote"));
 const NotFound                  = lazy(() => import("@/pages/not-found"));
 
 const queryClient = new QueryClient();
@@ -110,6 +118,10 @@ const NO_SHELL_PREFIXES = [
   "/product-approve",
   "/shipment-selection",
   "/escrow-confirm",
+  "/air-freight/approval",
+  "/air-freight/track",
+  "/ocean-freight-vendor-form",
+  "/ocean-freight-quote",
   "/q/",
 ];
 
@@ -130,6 +142,8 @@ const NO_AUTH_CHECK_PREFIXES = [
   "/product-approve",
   "/shipment-selection",
   "/escrow-confirm",
+  "/ocean-freight-vendor-form",
+  "/ocean-freight-quote",
 ];
 
 const BASE_PREFIX = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -217,6 +231,7 @@ function AppShell() {
         <Route path="/marketplace" component={Marketplace} />
         <Route path="/products">{() => { window.location.replace("/marketplace"); return null; }}</Route>
         <Route path="/jasa" component={Jasa} />
+        <Route path="/jasa/vendor/:id" component={JasaVendorDetail} />
         <Route path="/jasa/:id" component={JasaDetail} />
         <Route path="/login" component={Login} />
         <Route path="/register" component={Register} />
@@ -279,6 +294,13 @@ function AppShell() {
         <Route path="/product-approve/:token" component={ProductApprovePage} />
         <Route path="/shipment-selection/:token" component={ShipmentSelectionPage} />
         <Route path="/marketplace/:id" component={MarketplaceDetail} />
+        <Route path="/trucking" component={TruckingPage} />
+        <Route path="/air-freight-booking" component={AirFreightBookingPage} />
+        <Route path="/air-freight/approval/:token" component={AirFreightApprovalPage} />
+        <Route path="/air-freight/track/:orderNumber" component={AirFreightTrackPage} />
+        <Route path="/ocean-freight" component={OceanFreightPage} />
+        <Route path="/ocean-freight-vendor-form/:token" component={OceanFreightVendorForm} />
+        <Route path="/ocean-freight-quote/:token" component={OceanFreightQuotePage} />
         <Route component={NotFound} />
       </Switch>
     </Suspense>

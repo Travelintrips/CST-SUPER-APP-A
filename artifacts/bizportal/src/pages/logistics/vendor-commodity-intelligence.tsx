@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ChevronDown, ChevronRight, Search, Layers, RefreshCw, Package } from "lucide-react";
+import { CompanySelect } from "@/components/CompanySelect";
 
 const idr = (v: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(v);
@@ -88,10 +89,14 @@ function VendorRow({ vendor }: { vendor: VendorEntry }) {
 export default function VendorCommodityIntelligencePage() {
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<"orders" | "revenue" | "commodities">("revenue");
+  const [companyId, setCompanyId] = useState("all");
+
+  const params = new URLSearchParams();
+  if (companyId !== "all") params.set("companyId", companyId);
 
   const { data, isLoading, refetch } = useQuery<{ vendors: VendorEntry[]; total: number }>({
-    queryKey: ["vendor-commodity-intelligence"],
-    queryFn: () => fetch("/api/vendor-intelligence/commodities", { credentials: "include" }).then(r => r.json()),
+    queryKey: ["vendor-commodity-intelligence", companyId],
+    queryFn: () => fetch(`/api/vendor-intelligence/commodities?${params}`, { credentials: "include" }).then(r => r.json()),
   });
 
   const vendors = (data?.vendors ?? [])
@@ -148,6 +153,7 @@ export default function VendorCommodityIntelligencePage() {
 
         {/* Filter + Sort */}
         <div className="flex flex-wrap gap-4 items-end">
+          <CompanySelect value={companyId} onChange={setCompanyId} />
           <div className="relative flex-1 min-w-52">
             <Search className="absolute left-2 top-2.5 w-4 h-4 text-slate-500" />
             <Input value={search} onChange={e => setSearch(e.target.value)}

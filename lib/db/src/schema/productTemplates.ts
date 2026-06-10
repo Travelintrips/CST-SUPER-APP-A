@@ -19,6 +19,8 @@ export const productTemplatesTable = pgTable("product_templates", {
   packagingInstructions: text("packaging_instructions").default(""),
   conditionalRules: jsonb("conditional_rules").notNull().default([]),
   validationRules: jsonb("validation_rules").notNull().default([]),
+  // ── Media Foundation ──────────────────────────────────────────────────────
+  mediaAssets: jsonb("media_assets").$type<Record<string, unknown>[]>().notNull().default([]),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

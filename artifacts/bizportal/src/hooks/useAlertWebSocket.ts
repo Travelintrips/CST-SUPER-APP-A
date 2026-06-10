@@ -11,7 +11,7 @@ import {
   getListOrdersQueryKey,
 } from "@workspace/api-client-react";
 
-interface AlertPayload {
+export interface AlertPayload {
   id: number;
   alertType: string;
   entityType: string;
@@ -34,6 +34,40 @@ const SEVERITY_LABELS: Record<string, string> = {
   info: "ℹ️ Info",
 };
 
+// ── Module-level event emitter ─────────────────────────────────────────────────
+type InvalidationListener = (scope: string, entityId?: number) => void;
+type ConnectionListener = (connected: boolean) => void;
+
+const _invalidationListeners = new Set<InvalidationListener>();
+const _connectionListeners = new Set<ConnectionListener>();
+let _isConnected = false;
+
+function _setConnected(v: boolean) {
+  if (_isConnected === v) return;
+  _isConnected = v;
+  _connectionListeners.forEach((fn) => fn(v));
+}
+
+function _emitInvalidation(scope: string, entityId?: number) {
+  _invalidationListeners.forEach((fn) => fn(scope, entityId));
+}
+
+/** Subscribe to invalidation events from the SSE stream.
+ *  Returns an unsubscribe function. */
+export function subscribeToInvalidation(fn: InvalidationListener): () => void {
+  _invalidationListeners.add(fn);
+  return () => _invalidationListeners.delete(fn);
+}
+
+/** Subscribe to SSE connection state changes.
+ *  Immediately calls fn with the current state, then on every change. */
+export function subscribeToConnection(fn: ConnectionListener): () => void {
+  _connectionListeners.add(fn);
+  fn(_isConnected);
+  return () => _connectionListeners.delete(fn);
+}
+
+// ── Query invalidation ─────────────────────────────────────────────────────────
 function invalidateByScope(
   qc: ReturnType<typeof useQueryClient>,
   scope: string,
@@ -52,6 +86,7 @@ function invalidateByScope(
       void qc.invalidateQueries({ queryKey: getListLogisticOrdersQueryKey() });
       void qc.invalidateQueries({ queryKey: ["logistics-dashboard-kpi"] });
       void qc.invalidateQueries({ queryKey: ["logistics-dashboard"] });
+      void qc.invalidateQueries({ queryKey: ["operational-dashboard"] });
       if (entityId != null) {
         void qc.invalidateQueries({ queryKey: ["logistic-order", entityId] });
       }
@@ -75,6 +110,7 @@ function invalidateByScope(
     default:
       break;
   }
+  _emitInvalidation(scope, entityId);
 }
 
 let _invalidationToastTimer: ReturnType<typeof setTimeout> | null = null;
@@ -124,6 +160,10 @@ export function useAlertWebSocket() {
       const es = new EventSource("/api/alerts/stream");
       esRef.current = es;
 
+      es.onopen = () => {
+        _setConnected(true);
+      };
+
       es.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data as string) as {
@@ -132,6 +172,11 @@ export function useAlertWebSocket() {
             scope?: string;
             entityId?: number;
           };
+
+          if (msg.type === "connected") {
+            _setConnected(true);
+            return;
+          }
 
           if (msg.type === "new_alert" && msg.alert) {
             const alert = msg.alert;
@@ -158,6 +203,7 @@ export function useAlertWebSocket() {
       };
 
       es.onerror = () => {
+        _setConnected(false);
         es.close();
         esRef.current = null;
         if (!destroyedRef.current) {
@@ -170,6 +216,7 @@ export function useAlertWebSocket() {
 
     return () => {
       destroyedRef.current = true;
+      _setConnected(false);
       if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
       if (esRef.current) {
         esRef.current.close();

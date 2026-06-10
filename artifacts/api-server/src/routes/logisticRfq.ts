@@ -32,6 +32,7 @@ import { sendMail, isSmtpConfigured } from "../lib/mailer.js";
 import { logActivity } from "../lib/activityLog.js";
 import { logOrderAudit, logVendorQuoteEvent, logOrderStatusChange } from "../lib/auditTrail.js";
 import { updateOrderProgress } from "../lib/orderProgress.js";
+import { fetchVendorCatalogLines } from "../lib/podInvoiceAutoCreate.js";
 
 function getConfirmFormUrl(token: string): string {
   const domain = getPreferredDomain();
@@ -2043,20 +2044,50 @@ logisticRfqRouter.post("/confirm/:token", async (req: Request, res: Response) =>
 
         if (newSo) {
           createdSoNumber = newSo.docNumber;
-          // Insert 1 line: jasa pengiriman
-          await db.insert(salesDocumentLinesTable).values({
-            documentId: newSo.id,
-            name: `Jasa Pengiriman ${order.origin} → ${order.destination}`,
-            description: [
-              order.shipmentType,
-              order.commodity ? `Komoditi: ${order.commodity}` : null,
-              order.grossWeight ? `Berat: ${order.grossWeight} kg` : null,
-            ].filter(Boolean).join(" | ") || null,
-            quantity: "1",
-            unitPrice: String(sellingPrice),
-            subtotal: String(sellingPrice),
-          });
-          logger.info({ orderId: order.id, soNumber, soId: newSo.id }, "Sales Order auto-created dari customer confirm");
+
+          // Fetch vendor catalog item lines
+          const catalogLines = await fetchVendorCatalogLines(order.id).catch(() => []);
+          const catalogSubtotalSum = catalogLines.reduce((acc, l) => acc + l.subtotalNum, 0);
+          const freightSubtotal = Math.max(0, sellingPrice - catalogSubtotalSum);
+
+          // Insert freight line (adjusted amount excl. catalog items)
+          if (freightSubtotal > 0 || catalogLines.length === 0) {
+            const freightAmt = catalogLines.length === 0 ? sellingPrice : freightSubtotal;
+            await (db.insert(salesDocumentLinesTable) as any).values({
+              documentId: newSo.id,
+              name: `Jasa Pengiriman ${order.origin} → ${order.destination}`,
+              description: [
+                order.shipmentType,
+                order.commodity ? `Komoditi: ${order.commodity}` : null,
+                order.grossWeight ? `Berat: ${order.grossWeight} kg` : null,
+              ].filter(Boolean).join(" | ") || null,
+              quantity: "1",
+              unitPrice: String(freightAmt),
+              subtotal: String(freightAmt),
+            });
+          }
+
+          // Insert vendor catalog item lines
+          for (const line of catalogLines) {
+            await (db.insert(salesDocumentLinesTable) as any).values({
+              documentId:  newSo.id,
+              name:        line.name,
+              description: line.description,
+              quantity:    line.quantity,
+              unitPrice:   line.unitPrice,
+              subtotal:    line.subtotal,
+              meta: {
+                orderItemId:         line.orderItemId,
+                vendorCatalogItemId: line.vendorCatalogItemId,
+                vendorFulfillmentId: line.vendorFulfillmentId,
+              },
+            });
+          }
+
+          logger.info(
+            { orderId: order.id, soNumber, soId: newSo.id, catalogLineCount: catalogLines.length },
+            "Sales Order auto-created dari customer confirm",
+          );
         }
       }
     } catch (soErr) {

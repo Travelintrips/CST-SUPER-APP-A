@@ -103,6 +103,11 @@ export const salesDocumentLinesTable = pgTable("sales_document_lines", {
   baseQty: numeric("base_qty", { precision: 12, scale: 4 }),
   unitPrice: numeric("unit_price", { precision: 14, scale: 2 }).notNull().default("0"),
   subtotal: numeric("subtotal", { precision: 14, scale: 2 }).notNull().default("0"),
+  meta: jsonb("meta").$type<{
+    orderItemId?: number;
+    vendorCatalogItemId?: number | null;
+    vendorFulfillmentId?: number | null;
+  } | null>(),
 });
 
 export const insertSalesDocumentSchema = createInsertSchema(salesDocumentsTable).omit({

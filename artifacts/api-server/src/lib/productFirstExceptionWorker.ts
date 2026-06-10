@@ -183,6 +183,74 @@ async function checkPickupSelfOverdue() {
   }
 }
 
+// ── Check: Product Vendor Rejected (stuck di "Product Vendor Selected" setelah customer reject) ──
+async function checkProductVendorRejected() {
+  // Deteksi: approval sudah dikirim (token ada), customer tidak menyetujui (approvedAt null),
+  // dan order masih di "Product Vendor Selected" > 8 jam → kemungkinan customer reject.
+  const rows = await db.execute<{
+    id: number; order_number: string; customer_name: string; hours_stuck: number;
+  }>(sql.raw(`
+    SELECT lo.id, lo.order_number, lo.customer_name,
+           EXTRACT(EPOCH FROM (NOW() - lo.updated_at)) / 3600 AS hours_stuck
+    FROM logistic_orders lo
+    WHERE lo.order_type = 'product_first'
+      AND lo.status = 'Product Vendor Selected'
+      AND lo.customer_product_approval_token IS NOT NULL
+      AND lo.customer_product_approved_at IS NULL
+      AND lo.updated_at < NOW() - INTERVAL '8 hours'
+  `));
+
+  for (const r of rows.rows as any[]) {
+    await upsertException({
+      orderId: r.id,
+      orderNumber: r.order_number,
+      customerName: r.customer_name,
+      exceptionType: "product_vendor_rejected",
+      severity: r.hours_stuck > 24 ? "high" : "medium",
+      title: `Produk Ditolak Customer — ${r.order_number}`,
+      description: `Customer ${r.customer_name} menolak penawaran produk atau link approval expired. Order stuck di Product Vendor Selected selama ${Math.round(r.hours_stuck)} jam. Admin perlu negosiasi ulang atau pilih vendor lain.`,
+    });
+  }
+  if ((rows.rows as any[]).length > 0) {
+    await notifyAdmin(
+      `🚫 *[EXCEPTION] Produk Ditolak Customer*\n${(rows.rows as any[]).map((r: any) => `• ${r.order_number} — ${r.customer_name} (${Math.round(r.hours_stuck)} jam)`).join("\n")}`,
+      "exception_product_vendor_rejected",
+    );
+  }
+}
+
+// ── Check: Product Stock Not Available (admin telah menandai stok tidak tersedia) ──
+async function checkProductStockNotAvailable() {
+  // Pastikan kolom ada dulu (idempotent)
+  await db.execute(sql.raw(`
+    ALTER TABLE logistic_orders
+      ADD COLUMN IF NOT EXISTS product_stock_unavailable_at TIMESTAMPTZ
+  `)).catch(() => {});
+
+  const rows = await db.execute<{
+    id: number; order_number: string; customer_name: string; flagged_at: string;
+  }>(sql.raw(`
+    SELECT lo.id, lo.order_number, lo.customer_name,
+           lo.product_stock_unavailable_at::text AS flagged_at
+    FROM logistic_orders lo
+    WHERE lo.order_type = 'product_first'
+      AND lo.product_stock_unavailable_at IS NOT NULL
+      AND lo.status NOT IN ('Completed', 'Cancelled')
+  `));
+
+  for (const r of rows.rows as any[]) {
+    await upsertException({
+      orderId: r.id,
+      orderNumber: r.order_number,
+      customerName: r.customer_name,
+      exceptionType: "product_stock_not_available",
+      severity: "high",
+      title: `Stok Produk Tidak Tersedia — ${r.order_number}`,
+      description: `Admin menandai stok produk tidak tersedia untuk order ${r.order_number} (${r.customer_name}) sejak ${r.flagged_at?.slice(0, 10)}. Perlu tindakan: cari vendor alternatif atau informasikan customer.`,
+    });
+  }
+}
+
 // ── Check: Product Ready Date Delayed (ready_date lewat, belum Invoice) ───────
 async function checkReadyDateDelayed() {
   const rows = await db.execute<{
@@ -217,6 +285,8 @@ async function runScan() {
   await ensureOnce();
   logger.info(`${PREFIX} starting exception scan`);
   await Promise.allSettled([
+    checkProductVendorRejected(),
+    checkProductStockNotAvailable(),
     checkShipmentNotSelected(),
     checkShipmentRfqNoResponse(),
     checkPickupSelfOverdue(),

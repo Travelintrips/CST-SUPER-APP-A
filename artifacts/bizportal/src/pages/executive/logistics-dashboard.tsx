@@ -14,6 +14,7 @@ import {
   Truck, TrendingUp, TrendingDown, DollarSign, Package,
   Map, Star, Lightbulb, ArrowRight, RefreshCw, CheckCircle2,
 } from "lucide-react";
+import { CompanySelect } from "@/components/CompanySelect";
 
 const idr = (v: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(v);
@@ -71,11 +72,15 @@ export default function LogisticsDashboardPage() {
   const firstOfYear = `${new Date().getFullYear()}-01-01`;
   const [from, setFrom] = useState(firstOfYear);
   const [to, setTo]     = useState(today);
+  const [companyId, setCompanyId] = useState("all");
+
+  const summaryParams = new URLSearchParams({ from, to });
+  if (companyId !== "all") summaryParams.set("companyId", companyId);
 
   const { data, isLoading, refetch } = useQuery<SummaryData>({
-    queryKey: ["executive-logistics", from, to],
+    queryKey: ["executive-logistics", from, to, companyId],
     queryFn: () =>
-      fetch(`/api/executive/logistics-summary?from=${from}&to=${to}`, { credentials: "include" })
+      fetch(`/api/executive/logistics-summary?${summaryParams}`, { credentials: "include" })
         .then(r => r.json()),
   });
 
@@ -110,7 +115,7 @@ export default function LogisticsDashboardPage() {
         {/* Date Filters */}
         <Card className="bg-slate-900 border-slate-800">
           <CardContent className="pt-4 pb-4">
-            <div className="flex gap-4 items-end">
+            <div className="flex flex-wrap gap-4 items-end">
               <div className="space-y-1">
                 <Label className="text-xs text-slate-400">Dari</Label>
                 <Input type="date" value={from} onChange={e => setFrom(e.target.value)}
@@ -121,6 +126,7 @@ export default function LogisticsDashboardPage() {
                 <Input type="date" value={to} onChange={e => setTo(e.target.value)}
                   className="bg-slate-800 border-slate-700 text-white w-36" />
               </div>
+              <CompanySelect value={companyId} onChange={setCompanyId} />
             </div>
           </CardContent>
         </Card>

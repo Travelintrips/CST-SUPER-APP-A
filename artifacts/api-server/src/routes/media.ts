@@ -7,9 +7,18 @@ import { requireClerkUser, requireAdmin } from "../lib/requireAdmin";
 import { uploadToSupabase, downloadFromSupabase, isSupabaseUrl, deleteFromSupabase } from "../lib/supabaseStorage";
 import { logStorageEvent, getRequestIp, getActor } from "../lib/storageAuditLog";
 import { compressImageBuffer, isCompressibleImage } from "../lib/imageCompress";
+import {
+  optimizeAndUploadMarketplaceImage,
+  validateMarketplaceImage,
+  MARKETPLACE_IMAGE_MAX_BYTES,
+} from "../lib/imageOptimizer.js";
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
+const uploadMarketplace = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MARKETPLACE_IMAGE_MAX_BYTES },
+});
 
 router.use(async (req, res, next) => {
   if (!(await requireClerkUser(req, res))) return;
@@ -102,6 +111,58 @@ router.post("/upload", upload.single("file"), async (req, res): Promise<void> =>
     res.json({ ok: true, item: inserted });
   } catch (err: any) {
     console.error("[media/upload] Error:", err?.message ?? err);
+    res.status(500).json({ error: err?.message ?? "Upload gagal" });
+  }
+});
+
+// POST /api/media/marketplace-upload — upload + optimize gambar marketplace
+// Pipeline: Validate → Thumbnail(300x300) + Medium(800x800) + Large(1600x1600) → WebP → Upload
+// Auth: admin only (marketplace images bukan user content biasa)
+const _mktplaceUploadMiddleware = (req: any, res: any, next: any) =>
+  (uploadMarketplace.single("file") as any)(req, res, (err: any) => {
+    if (err?.code === "LIMIT_FILE_SIZE") {
+      return res.status(413).json({ error: "Ukuran file melebihi batas 5MB untuk gambar marketplace." });
+    }
+    next(err);
+  });
+
+router.post("/marketplace-upload", _mktplaceUploadMiddleware, async (req, res): Promise<void> => {
+  try {
+    if (!req.file) { res.status(400).json({ error: "Tidak ada file yang diunggah" }); return; }
+
+    const { mimetype, originalname, buffer } = req.file;
+    const folder = (req.body.folder as string)?.trim() || "marketplace";
+
+    const validation = validateMarketplaceImage(buffer, mimetype, originalname);
+    if (!validation.ok) {
+      res.status(validation.status).json({ error: validation.message }); return;
+    }
+
+    const result = await optimizeAndUploadMarketplaceImage(buffer, mimetype, folder);
+
+    const [inserted] = await db.insert(mediaAssetsTable).values({
+      originalName: originalname,
+      contentType: "image/webp",
+      sizeBytes: result.variants.find(v => v.variantName === "large")?.sizeBytes ?? buffer.byteLength,
+      url: result.webpUrl,
+      objectPath: `supabase:media/${result.variants.find(v => v.variantName === "large")?.objectPath ?? ""}`,
+      uploadedBy: (req as any).user?.email ?? null,
+      folder,
+      publicUrl: result.webpUrl,
+    }).returning();
+
+    res.json({
+      ok: true,
+      originalUrl: result.originalUrl,
+      webpUrl: result.webpUrl,
+      thumbnailUrl: result.thumbnailUrl,
+      mediumUrl: result.mediumUrl,
+      largeUrl: result.largeUrl,
+      variants: result.variants,
+      mediaAssetId: inserted.id,
+    });
+  } catch (err: any) {
+    console.error("[media/marketplace-upload] Error:", err?.message ?? err);
     res.status(500).json({ error: err?.message ?? "Upload gagal" });
   }
 });

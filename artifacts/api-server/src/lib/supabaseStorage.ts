@@ -15,6 +15,10 @@ function extFromContentType(contentType: string): string {
     "image/heic": "heic",
     "image/heif": "heif",
     "application/pdf": "pdf",
+    "video/mp4": "mp4",
+    "video/quicktime": "mp4",
+    "video/webm": "webm",
+    "image/jpg": "jpg",
   };
   return map[contentType.toLowerCase()] ?? "bin";
 }

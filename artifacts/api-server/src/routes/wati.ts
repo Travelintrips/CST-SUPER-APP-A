@@ -13,10 +13,8 @@ import { logger } from "../lib/logger.js";
 import { setSetting, getSetting } from "../lib/appSecrets.js";
 
 export const watiRouter = Router();
-watiRouter.use(async (req, res, next) => {
-  const ok = await requireAdmin(req, res);
-  if (ok) next();
-});
+watiRouter.use((_req, _res, next) => next());
+watiRouter.use(requireAdmin);
 
 // ─── Status ────────────────────────────────────────────────────────────────────
 watiRouter.get("/status", async (_req, res) => {
