@@ -212,6 +212,9 @@ import AirFreightRatesPage from "@/pages/air-freight/rates";
 import AirFreightNewOrderDetailPage from "@/pages/air-freight/order-detail";
 import AirFreightApprovalPage from "@/pages/air-freight/approval";
 import AirFreightTrackPage from "@/pages/air-freight/track";
+import OceanFreightOrdersPage from "@/pages/ocean-freight/orders";
+import OceanFreightRatesPage from "@/pages/ocean-freight/rates";
+import OceanFreightOrderDetailPage from "@/pages/ocean-freight/order-detail";
 
 const PR = (C: React.ComponentType) => () => <ProtectedRoute component={C} />;
 
@@ -493,6 +496,11 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       {/* public — no auth */}
       <Route path="/air-freight/approval/:token" component={AirFreightApprovalPage} />
       <Route path="/air-freight/track/:orderNumber" component={AirFreightTrackPage} />
+
+      {/* ── Ocean Freight ────────────────────────────────────────────────── */}
+      <Route path="/ocean-freight/orders/:id" component={PR(OceanFreightOrderDetailPage)} />
+      <Route path="/ocean-freight/orders" component={PR(OceanFreightOrdersPage)} />
+      <Route path="/ocean-freight/rates" component={PR(OceanFreightRatesPage)} />
 
       {/* ── Legacy redirects ───────────────────────────────────────────── */}
       <Route path="/expenses/new" component={() => <Redirect to="/expense/new" />} />

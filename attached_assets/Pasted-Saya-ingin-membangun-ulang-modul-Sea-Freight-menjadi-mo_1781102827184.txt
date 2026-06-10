@@ -1,0 +1,1110 @@
+Saya ingin membangun ulang modul Sea Freight menjadi modul baru bernama Ocean Freight dengan flow lengkap seperti aplikasi freight forwarding modern.
+
+Jangan buat halaman detail layanan statis lagi.
+
+Tujuan modul:
+Customer bisa cek estimasi Ocean Freight berdasarkan rute, shipment type, container/cargo, dan layanan tambahan.
+Harga awal bersifat estimasi.
+Setelah inquiry masuk, admin bisa blast RFQ ke vendor / shipping line / NVOCC / co-loader / forwarder partner.
+Vendor/partner submit rate.
+Admin compare rate, pilih rate final, tambah markup/PPN, lalu kirim quote final ke customer.
+Customer menerima notifikasi, review harga final, lalu approve.
+Setelah approve, admin confirm booking dan update tracking shipment.
+
+Gunakan nama module:
+Ocean Freight
+
+Service yang didukung:
+- FCL
+- LCL
+- Domestic Sea
+- Export
+- Import
+- Cross Border
+- Port to Port
+- Door to Port
+- Port to Door
+- Door to Door
+
+==================================================
+FASE 1 — AUDIT EXISTING SEA FREIGHT MODULE
+==================================================
+
+Cari semua file, route, component, endpoint, schema, dan table yang berhubungan dengan:
+- Sea Freight
+- sea_freight
+- Ocean Freight
+- ocean_freight
+- service type sea freight
+- kalkulator estimasi freight
+
+Buat catatan:
+1. file frontend customer portal yang menampilkan detail Sea Freight
+2. component kalkulator estimasi yang sekarang
+3. endpoint API terkait service detail dan quote/order
+4. schema/table yang sudah ada
+5. seed data existing
+6. route admin portal terkait service/vendor/order jika ada
+
+Jangan langsung hapus.
+Gunakan ulang struktur existing bila memungkinkan agar minim breaking change.
+
+==================================================
+FASE 2 — RENAME DAN STRUKTUR MODULE
+==================================================
+
+Ubah konsep module dari “Sea Freight detail page” menjadi:
+Ocean Freight Booking Flow.
+
+Customer Portal route yang diharapkan:
+- /services/ocean-freight
+atau gunakan route existing jika arsitektur project sudah punya dynamic service route.
+
+Admin Portal menu:
+Operations > Ocean Freight Orders
+Operations > Rate Management > Ocean Freight
+
+Jika sidebar sudah punya struktur berbeda, ikuti pola project existing.
+
+Pastikan label user-facing:
+“Sea Freight” boleh tetap muncul sebagai kategori lama jika masih dipakai,
+tetapi UI utama harus menggunakan:
+“Ocean Freight”.
+
+==================================================
+FASE 3 — CUSTOMER PORTAL UI OCEAN FREIGHT
+==================================================
+
+Buat halaman Customer Portal Ocean Freight dengan UI modern biru-putih seperti konsep Trucking Booking.
+
+Layout utama:
+
+1. Header route selector:
+- Origin City
+- Port of Loading / POL
+- Destination City
+- Port of Discharge / POD
+- Trade Type:
+  - Domestic
+  - Export
+  - Import
+  - Cross Border
+
+2. Service Mode selector:
+- Port to Port
+- Door to Port
+- Port to Door
+- Door to Door
+
+3. Shipment Type selector:
+- FCL
+- LCL
+
+4. Container selector untuk FCL:
+- 20ft
+- 40ft
+- 40HC
+- Reefer 20ft
+- Reefer 40ft
+- Open Top
+- Flat Rack
+
+5. LCL quick fields:
+Jika user pilih LCL, tampilkan:
+- Total CBM
+- Gross Weight
+- Jumlah Koli
+
+6. Area utama kiri:
+Tampilkan visual container/kapal.
+Tampilkan spesifikasi sesuai pilihan:
+- container size
+- max payload
+- volume CBM
+- estimated transit time
+- free time jika ada
+- catatan:
+“Dimensi dan transit time adalah estimasi. Detail final mengikuti konfirmasi carrier/shipping line.”
+
+7. Area utama kanan:
+Panel:
+“Cek Estimasi Ocean Freight”
+
+Default form kalkulator tertutup.
+Tampilkan tombol:
+“Cek Estimasi”
+
+Saat tombol diklik, baru tampilkan form detail di bawah area visual.
+
+Style:
+- modern blue/white
+- rounded card
+- soft shadow
+- responsive mobile
+- active state jelas
+- jangan tampilkan semua form dari awal
+
+==================================================
+FASE 4 — FORM ESTIMASI OCEAN FREIGHT
+==================================================
+
+Saat customer klik “Cek Estimasi”, tampilkan form lengkap.
+
+Section 1: Route Detail
+- Origin City
+- POL
+- Destination City
+- POD
+- Incoterm:
+  - EXW
+  - FOB
+  - CFR/CNF
+  - CIF
+  - DAP
+  - DDP
+
+Section 2: Shipment Detail
+- Shipment Type: FCL / LCL
+- Container Type jika FCL
+- Container Qty jika FCL
+- Total CBM jika LCL
+- Gross Weight
+- Jumlah Koli
+
+Section 3: Cargo Detail
+- Commodity
+- HS Code optional
+- Cargo Value optional
+- Cargo Condition:
+  - General Cargo
+  - DG Cargo
+  - Reefer
+  - Fragile
+  - Oversize
+  - High Value
+
+Section 4: Schedule
+- ETD Preferred
+- ETA Target optional
+
+Section 5: Additional Services checkbox:
+- Trucking Pickup
+- Trucking Delivery
+- Customs Clearance
+- Insurance
+- Fumigation
+- COO / Certificate
+- Warehouse Handling
+- Stuffing
+- Unstuffing
+- Surveyor
+- Document Handling
+
+Button:
+“Hitung Estimasi”
+
+Validation:
+- Origin dan destination wajib
+- Shipment type wajib
+- Jika FCL, container type dan qty wajib
+- Jika LCL, CBM atau gross weight wajib
+- Container qty minimal 1
+- CBM tidak boleh negatif
+- Gross weight tidak boleh negatif
+
+==================================================
+FASE 5 — DATABASE / SCHEMA RATE MANAGEMENT
+==================================================
+
+Buat Rate Management untuk Ocean Freight.
+
+Jangan gunakan istilah “harga vendor” sebagai konsep utama.
+Gunakan:
+Rate Management
+
+Buat table/model:
+ocean_freight_rates
+
+Field minimal:
+
+- id
+- rate_code
+- rate_source_type:
+  shipping_line
+  nvocc
+  coloader
+  forwarder_partner
+  internal_rate
+  vendor_rate
+
+- rate_source_name
+Contoh:
+Maersk, CMA CGM, MSC, ONE, Evergreen, Samudera, Meratus, Temas, Vendor A
+
+- vendor_id nullable
+- carrier_name nullable
+- origin_city
+- origin_port
+- destination_city
+- destination_port
+- trade_type:
+  domestic
+  export
+  import
+  cross_border
+
+- shipment_type:
+  FCL
+  LCL
+
+- service_mode:
+  port_to_port
+  door_to_port
+  port_to_door
+  door_to_door
+
+- container_type nullable
+- currency:
+  IDR
+  USD
+  SGD
+  EUR
+
+- exchange_rate_to_idr
+- ocean_freight_amount
+- lcl_rate_per_cbm
+- lcl_minimum_cbm
+- thc_origin
+- thc_destination
+- doc_fee
+- bl_fee
+- do_fee
+- handling_fee
+- customs_clearance_fee
+- trucking_pickup_estimate
+- trucking_delivery_estimate
+- insurance_percent
+- dg_surcharge_percent
+- reefer_surcharge
+- peak_season_surcharge
+- emergency_bunker_surcharge
+- currency_adjustment_factor
+- valid_from
+- valid_until
+- transit_days
+- carrier
+- vessel_name nullable
+- voyage nullable
+- direct_or_transshipment:
+  direct
+  transshipment
+
+- price_status:
+  estimate
+  confirmed
+
+- notes
+- is_active
+- created_at
+- updated_at
+
+Rules:
+- rate expired tidak boleh dipakai estimasi
+- rate inactive tidak boleh dipakai estimasi
+- currency selain IDR harus bisa ditampilkan juga equivalent IDR
+
+==================================================
+FASE 6 — DATABASE / SCHEMA OCEAN FREIGHT INQUIRY
+==================================================
+
+Buat table/model:
+ocean_freight_orders
+atau gunakan table order existing jika project sudah punya order framework.
+
+Field minimal:
+
+- id
+- order_number
+- customer_id nullable
+- customer_name
+- customer_phone
+- customer_email
+- origin_city
+- origin_port
+- destination_city
+- destination_port
+- trade_type
+- service_mode
+- shipment_type
+- container_type nullable
+- container_qty nullable
+- total_cbm nullable
+- gross_weight nullable
+- koli nullable
+- commodity
+- hs_code nullable
+- cargo_value nullable
+- cargo_condition
+- incoterm
+- etd_preferred nullable
+- eta_target nullable
+- selected_additional_services JSON
+- selected_estimate_option nullable
+- estimated_price
+- estimated_price_idr
+- currency
+- pricing_breakdown JSON
+- selected_rate_id nullable
+- candidate_rate_ids JSON
+- final_rate_id nullable
+- final_price nullable
+- final_price_idr nullable
+- markup_amount nullable
+- ppn_amount nullable
+- grand_total nullable
+- final_breakdown JSON nullable
+- admin_notes nullable
+- price_status:
+  estimate
+  confirmed
+
+- status:
+  draft
+  estimated
+  waiting_rate
+  rate_requested
+  rate_received
+  quoted
+  approved
+  booked
+  sailed
+  arrived
+  completed
+  cancelled
+  quote_declined
+
+- source:
+  customer_portal
+  admin_portal
+  api
+
+- created_at
+- updated_at
+
+==================================================
+FASE 7 — DATABASE / SCHEMA RFQ RATE SUBMISSION
+==================================================
+
+Buat table/model untuk RFQ Ocean Freight:
+ocean_freight_rfqs
+dan
+ocean_freight_rate_submissions
+
+RFQ field:
+- id
+- order_id
+- rfq_number
+- vendor_id nullable
+- contact_name nullable
+- contact_phone nullable
+- contact_email nullable
+- sent_channel:
+  whatsapp
+  email
+  manual
+- rfq_token
+- status:
+  sent
+  opened
+  submitted
+  expired
+  cancelled
+- expires_at
+- created_at
+- updated_at
+
+Rate submission field:
+- id
+- rfq_id
+- order_id
+- vendor_id nullable
+- rate_source_type
+- rate_source_name
+- carrier
+- ocean_freight_amount
+- currency
+- exchange_rate_to_idr
+- validity_date
+- vessel_name nullable
+- voyage nullable
+- etd nullable
+- eta nullable
+- transit_days nullable
+- direct_or_transshipment
+- thc_origin
+- thc_destination
+- doc_fee
+- bl_fee
+- do_fee
+- handling_fee
+- trucking_pickup_estimate
+- trucking_delivery_estimate
+- customs_clearance_fee
+- surcharge_amount nullable
+- notes nullable
+- attachment_url nullable
+- total_amount
+- total_amount_idr
+- created_at
+
+==================================================
+FASE 8 — PRICING ENGINE OCEAN FREIGHT
+==================================================
+
+Buat helper function:
+calculateOceanFreightEstimate(input, rates)
+
+Input:
+- origin_city
+- origin_port
+- destination_city
+- destination_port
+- trade_type
+- shipment_type
+- service_mode
+- container_type
+- container_qty
+- total_cbm
+- gross_weight
+- cargo_condition
+- selected_additional_services
+- currency_display
+
+Rules:
+
+1. Ambil rate aktif yang cocok:
+- origin_port
+- destination_port
+- shipment_type
+- service_mode
+- container_type jika FCL
+- valid_from <= today
+- valid_until >= today
+- is_active = true
+
+2. Formula FCL:
+base = ocean_freight_amount * container_qty
+
+3. Formula LCL:
+chargeable_cbm = MAX(total_cbm, lcl_minimum_cbm)
+base = chargeable_cbm * lcl_rate_per_cbm
+
+4. Standard charges:
+charges =
+thc_origin
++ thc_destination
++ doc_fee
++ bl_fee
++ do_fee
++ handling_fee
+
+5. Additional service charges:
+Jika dipilih:
++ customs_clearance_fee
++ trucking_pickup_estimate
++ trucking_delivery_estimate
+
+6. Cargo surcharge:
+Jika cargo_condition = DG Cargo:
+tambahkan dg_surcharge_percent
+Jika cargo_condition = Reefer:
+tambahkan reefer_surcharge
+Jika ada peak season:
+tambahkan peak_season_surcharge
+
+7. Currency:
+Jika currency bukan IDR:
+- tampilkan total dalam currency asli
+- tampilkan equivalent IDR dengan exchange_rate_to_idr
+
+8. Return 3 opsi estimasi:
+- Economy: harga termurah
+- Standard: kombinasi harga dan transit terbaik
+- Priority: transit tercepat
+
+Return breakdown:
+- estimate_option
+- rate_id
+- rate_source_name
+- carrier
+- route
+- shipment_type
+- service_mode
+- container_type
+- transit_days
+- direct_or_transshipment
+- base_ocean_freight
+- origin_charges
+- destination_charges
+- document_charges
+- trucking_charges
+- customs_charges
+- surcharge_breakdown
+- total_estimate
+- currency
+- total_estimate_idr
+- price_status
+- validity
+
+==================================================
+FASE 9 — API ENDPOINTS CUSTOMER PORTAL
+==================================================
+
+Tambahkan endpoint API sesuai pola project.
+
+Minimal endpoint:
+
+1. GET available ocean freight options
+Untuk load dropdown:
+- ports
+- container types
+- service modes
+- trade types
+- cargo conditions
+
+2. POST calculate estimate
+Input dari form customer.
+Return:
+- Economy
+- Standard
+- Priority
+- breakdown masing-masing
+
+3. POST submit inquiry
+Membuat ocean freight order status waiting_rate.
+
+4. GET customer quote detail
+Untuk customer lihat estimasi/final quote.
+
+5. POST customer approve quote
+Ubah status menjadi approved.
+
+6. POST customer decline quote
+Ubah status menjadi quote_declined atau cancelled.
+
+Pastikan validasi server-side tetap ada, jangan hanya frontend.
+
+==================================================
+FASE 10 — CUSTOMER ESTIMATE RESULT UI
+==================================================
+
+Setelah customer klik “Hitung Estimasi”, tampilkan 3 card:
+
+1. Economy
+2. Standard
+3. Priority
+
+Masing-masing card berisi:
+- Rate source / carrier
+- Route POL → POD
+- Shipment type
+- Container type / CBM
+- Transit days
+- Direct atau Transshipment
+- Currency
+- Total estimasi
+- Equivalent IDR jika currency bukan IDR
+- Valid until
+- Label:
+“Estimasi Awal”
+
+Tambahkan tombol:
+“Pilih Estimasi Ini”
+
+Setelah customer memilih salah satu, tampilkan breakdown:
+- Ocean Freight
+- Origin Charges
+- Destination Charges
+- Document Charges
+- Trucking Pickup jika dipilih
+- Trucking Delivery jika dipilih
+- Customs Clearance jika dipilih
+- Surcharge
+- Total Estimasi
+
+Tambahkan catatan:
+“Harga ini adalah estimasi awal. Harga final akan dikonfirmasi setelah admin/vendor mendapatkan konfirmasi dari shipping line, NVOCC, co-loader, atau partner.”
+
+Button:
+“Minta Penawaran Final”
+
+==================================================
+FASE 11 — SUBMIT INQUIRY CUSTOMER
+==================================================
+
+Saat customer klik “Minta Penawaran Final”:
+
+1. Buat order/inquiry baru dengan status:
+waiting_rate
+
+2. Simpan semua input customer, selected estimate, candidate rates, dan pricing breakdown.
+
+3. Tampilkan success page:
+“Permintaan penawaran Ocean Freight berhasil dikirim.”
+“Tim kami akan mengirim harga final setelah mendapatkan konfirmasi dari shipping line / partner.”
+
+4. Jika integrasi WhatsApp/email sudah ada:
+kirim notifikasi ke admin bahwa ada Ocean Freight inquiry baru.
+
+==================================================
+FASE 12 — ADMIN RATE MANAGEMENT UI
+==================================================
+
+Tambahkan menu:
+Operations > Rate Management > Ocean Freight
+
+Fitur:
+1. List ocean freight rates
+2. Filter:
+- origin port
+- destination port
+- shipment type
+- container type
+- service mode
+- rate source type
+- currency
+- active/inactive
+- valid/expired
+
+3. Create/Edit rate form:
+- rate source type
+- rate source name
+- carrier name
+- origin city
+- origin port
+- destination city
+- destination port
+- trade type
+- shipment type
+- service mode
+- container type
+- currency
+- exchange rate to IDR
+- ocean freight amount
+- LCL rate per CBM
+- LCL minimum CBM
+- THC origin
+- THC destination
+- doc fee
+- B/L fee
+- D/O fee
+- handling fee
+- customs clearance fee
+- trucking pickup estimate
+- trucking delivery estimate
+- insurance percent
+- DG surcharge percent
+- reefer surcharge
+- peak season surcharge
+- EBS
+- CAF
+- valid from
+- valid until
+- transit days
+- carrier
+- vessel name optional
+- voyage optional
+- direct/transshipment
+- price status
+- notes
+- active toggle
+
+Validasi:
+- valid_until harus >= valid_from
+- currency wajib
+- exchange_rate_to_idr wajib jika currency bukan IDR
+- FCL wajib punya container_type dan ocean_freight_amount
+- LCL wajib punya lcl_rate_per_cbm dan lcl_minimum_cbm
+- amount tidak boleh negatif
+
+==================================================
+FASE 13 — ADMIN OCEAN FREIGHT ORDERS UI
+==================================================
+
+Tambahkan menu:
+Operations > Ocean Freight Orders
+
+List menampilkan:
+- order number
+- customer
+- origin_port
+- destination_port
+- shipment_type
+- container_type / CBM
+- estimated_price
+- status
+- created_at
+
+Detail order menampilkan:
+- customer contact
+- route detail
+- shipment detail
+- cargo detail
+- incoterm
+- schedule
+- additional services
+- selected estimate
+- pricing breakdown
+- candidate rates
+- customer notes
+
+Admin action:
+1. Review inquiry
+2. Change status to rate_requested
+3. Blast RFQ
+4. Input manual final rate
+5. Upload quotation file optional
+6. Add markup
+7. Add PPN if needed
+8. Set final customer quote
+9. Send quote to customer
+10. Confirm booking after customer approve
+11. Update shipment tracking status
+
+==================================================
+FASE 14 — RFQ BLAST OCEAN FREIGHT
+==================================================
+
+Implement RFQ Blast untuk Ocean Freight.
+
+Saat admin klik “Blast RFQ”:
+
+1. Sistem mencari partner/vendor yang cocok berdasarkan:
+- service_type ocean_freight
+- origin_port
+- destination_port
+- trade_type
+- shipment_type
+- container_type
+- area coverage
+- active status
+
+2. Jika integrasi WhatsApp/email tersedia:
+kirim RFQ via WhatsApp/email.
+Jika belum tersedia:
+buat RFQ link dan tampilkan tombol copy link.
+
+3. Buat vendor mini form link menggunakan rfq_token.
+
+Vendor mini form Ocean Freight harus berisi:
+- ocean freight amount
+- currency
+- exchange rate
+- validity date
+- carrier / shipping line
+- vessel name optional
+- voyage optional
+- ETD
+- ETA
+- transit days
+- direct/transshipment
+- origin charges
+- destination charges
+- document charges
+- trucking pickup estimate
+- trucking delivery estimate
+- customs clearance fee
+- surcharge amount
+- notes
+- attachment quotation optional
+
+4. Setelah vendor submit rate:
+- simpan sebagai ocean_freight_rate_submission
+- status RFQ menjadi submitted
+- status order menjadi rate_received
+- admin bisa compare rate
+
+5. Admin compare table:
+- vendor/source
+- carrier
+- price
+- currency
+- total IDR
+- transit days
+- validity
+- notes
+- attachment
+- select rate button
+
+==================================================
+FASE 15 — FINAL QUOTE TO CUSTOMER
+==================================================
+
+Implement final quote flow.
+
+Saat admin pilih rate final dan klik “Kirim Quote Final”:
+
+Simpan ke order:
+- final_rate_id
+- final_price
+- final_price_idr
+- markup_amount
+- ppn_amount
+- grand_total
+- final_breakdown JSON
+- admin_notes
+- status = quoted
+- price_status = confirmed
+
+Customer notification:
+Jika WhatsApp/email tersedia, kirim:
+“Harga final Ocean Freight Anda sudah tersedia. Silakan review dan approve.”
+
+Customer Portal quote approval page menampilkan:
+- harga estimasi awal
+- harga final
+- selisih harga
+- route
+- shipment detail
+- carrier
+- ETD/ETA
+- transit days
+- breakdown final
+- notes admin
+- tombol Approve
+- tombol Decline
+
+Jika customer Approve:
+status = approved
+
+Jika customer Decline:
+status = quote_declined
+
+==================================================
+FASE 16 — BOOKING CONFIRMATION & TRACKING
+==================================================
+
+Setelah customer approve quote final:
+
+Admin bisa klik:
+“Confirm Booking”
+
+Saat booking confirmed, simpan:
+- booking_number
+- carrier
+- vessel_name
+- voyage
+- ETD
+- ETA
+- POL
+- POD
+- container_number optional
+- seal_number optional
+- BL number optional
+- booking confirmation file optional
+
+Status menjadi:
+booked
+
+Tambahkan tracking status:
+- booked
+- container_empty_released
+- stuffed
+- gate_in
+- sailed
+- transshipment
+- arrived
+- customs_clearance
+- delivered
+- completed
+
+Customer Portal tracking menampilkan:
+- current status
+- route
+- carrier/vessel
+- ETD/ETA
+- documents jika tersedia
+- timeline status
+
+==================================================
+FASE 17 — SEED DATA OCEAN FREIGHT
+==================================================
+
+Tambahkan seed data Ocean Freight agar bisa langsung dites.
+
+Seed 1:
+rate_source_type: shipping_line
+rate_source_name: Samudera
+carrier: Samudera
+origin_city: Surabaya
+origin_port: Tanjung Perak
+destination_city: Singapore
+destination_port: PSA Singapore
+trade_type: export
+shipment_type: FCL
+service_mode: port_to_port
+container_type: 20ft
+currency: USD
+exchange_rate_to_idr: 16500
+ocean_freight_amount: 350
+thc_origin: 150
+thc_destination: 180
+doc_fee: 50
+bl_fee: 35
+do_fee: 45
+handling_fee: 75
+customs_clearance_fee: 100
+trucking_pickup_estimate: 0
+trucking_delivery_estimate: 0
+valid_from: today
+valid_until: today + 30 days
+transit_days: 5
+direct_or_transshipment: direct
+price_status: estimate
+is_active: true
+
+Seed 2:
+route sama
+shipment_type: FCL
+container_type: 40ft
+ocean_freight_amount: 600
+currency: USD
+exchange_rate_to_idr: 16500
+transit_days: 5
+
+Seed 3:
+route sama
+shipment_type: LCL
+service_mode: port_to_port
+currency: USD
+exchange_rate_to_idr: 16500
+lcl_rate_per_cbm: 60
+lcl_minimum_cbm: 2
+transit_days: 6
+
+Seed 4:
+origin_city: Jakarta
+origin_port: Tanjung Priok
+destination_city: Singapore
+destination_port: PSA Singapore
+trade_type: export
+shipment_type: FCL
+service_mode: port_to_port
+container_type: 20ft
+currency: USD
+exchange_rate_to_idr: 16500
+ocean_freight_amount: 380
+transit_days: 4
+
+Pastikan seed tidak merusak data existing.
+
+==================================================
+FASE 18 — INTEGRATION WITH EXISTING WORKFLOW
+==================================================
+
+Integrasikan Ocean Freight dengan workflow existing project jika sudah ada:
+- vendor management
+- service templates
+- customer quote
+- WhatsApp notification
+- admin audit log
+- order timeline
+- document upload
+- invoice flow jika tersedia
+
+Jangan duplikasi sistem jika sudah ada framework existing.
+Gunakan helper atau pattern existing sebanyak mungkin.
+
+==================================================
+FASE 19 — SECURITY & VALIDATION
+==================================================
+
+Pastikan:
+1. Semua input divalidasi server-side.
+2. RFQ token tidak mudah ditebak.
+3. Vendor mini form hanya bisa akses RFQ sesuai token.
+4. Upload quotation file mengikuti upload validation existing.
+5. Tidak ada harga negatif.
+6. Rate expired tidak dipakai.
+7. Customer hanya bisa melihat order/quote miliknya atau public token yang valid.
+8. Admin action tercatat audit log jika audit log tersedia.
+9. Jangan expose internal vendor margin ke customer.
+
+==================================================
+FASE 20 — TESTING END TO END
+==================================================
+
+Lakukan testing end-to-end.
+
+Test case 1 Customer FCL:
+1. Customer buka Ocean Freight Booking
+2. Pilih:
+Origin: Surabaya
+POL: Tanjung Perak
+Destination: Singapore
+POD: PSA Singapore
+Trade Type: Export
+Service Mode: Port to Port
+Shipment Type: FCL
+Container: 20ft
+Qty: 1
+Commodity: General Cargo
+3. Klik Hitung Estimasi
+4. Pastikan muncul Economy / Standard / Priority
+5. Pilih salah satu estimasi
+6. Klik Minta Penawaran Final
+7. Pastikan inquiry masuk status waiting_rate
+
+Test case 2 Customer LCL:
+1. Pilih route Surabaya → Singapore
+2. Shipment Type: LCL
+3. CBM: 3
+4. Gross Weight: 500 kg
+5. Klik Hitung Estimasi
+6. Pastikan pakai formula chargeable CBM
+7. Submit inquiry
+
+Test case 3 Admin:
+1. Admin buka Ocean Freight Orders
+2. Buka detail inquiry
+3. Klik Blast RFQ
+4. Simulasikan vendor submit rate via mini form
+5. Admin compare rate
+6. Admin pilih rate final
+7. Admin tambah markup
+8. Admin tambah PPN jika perlu
+9. Admin kirim quote final
+10. Status menjadi quoted
+
+Test case 4 Customer Approval:
+1. Customer buka quote approval
+2. Lihat estimasi awal vs harga final
+3. Lihat breakdown final
+4. Klik Approve
+5. Status menjadi approved
+
+Test case 5 Booking & Tracking:
+1. Admin confirm booking
+2. Isi carrier, vessel, voyage, ETD, ETA
+3. Status menjadi booked
+4. Update status sailed
+5. Customer tracking menampilkan timeline
+
+==================================================
+FASE 21 — COMMANDS WAJIB DIJALANKAN
+==================================================
+
+Setelah implementasi, jalankan:
+
+pnpm typecheck
+pnpm build
+pnpm test jika tersedia
+
+Jika ada error:
+- perbaiki sampai typecheck dan build lulus
+- jangan tinggalkan TODO yang membuat flow utama gagal
+- jangan hardcode data selain seed/demo data
+- laporkan semua file yang diubah
+- laporkan table/model baru
+- laporkan endpoint baru
+- laporkan hasil test end-to-end

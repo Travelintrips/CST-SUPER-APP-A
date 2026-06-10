@@ -88,6 +88,9 @@ const TruckingPage              = lazy(() => import("@/pages/trucking"));
 const AirFreightBookingPage     = lazy(() => import("@/pages/air-freight-booking"));
 const AirFreightApprovalPage    = lazy(() => import("@/pages/air-freight-approval"));
 const AirFreightTrackPage       = lazy(() => import("@/pages/air-freight-track"));
+const OceanFreightBookingPage   = lazy(() => import("@/pages/ocean-freight-booking"));
+const OceanFreightApprovalPage  = lazy(() => import("@/pages/ocean-freight-approval"));
+const OceanFreightTrackPage     = lazy(() => import("@/pages/ocean-freight-track"));
 const NotFound                  = lazy(() => import("@/pages/not-found"));
 
 const queryClient = new QueryClient();
@@ -117,6 +120,9 @@ const NO_SHELL_PREFIXES = [
   "/escrow-confirm",
   "/air-freight/approval",
   "/air-freight/track",
+  "/ocean-freight/approval",
+  "/ocean-freight/track",
+  "/ocean-freight-booking",
   "/q/",
 ];
 
