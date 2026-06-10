@@ -32,6 +32,7 @@ import geocodeRouter from "./geocode";
 import { whatsappRouter } from "./whatsapp";
 import { vendorResponseRouter } from "./vendorResponse";
 import mediaRouter from "./media";
+import taxRouter from "./tax.js";
 
 import warehouseRouter from "./warehouse";
 import inventoryReceiveRouter from "./inventoryReceive";
@@ -106,6 +107,13 @@ import { handleAlertSse } from "../lib/alertsBroadcast.js";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import sportCenterRouter from "../modules/sport-center/routes.js";
 import tenantRouter from "../modules/tenant/routes.js";
+import airFreightNewRouter from "./airFreight.js";
+import airFreightRatesRouter from "./airFreightRates.js";
+import airFreightPublicRouter from "./airFreightPublic.js";
+import oceanFreightRouter from "./oceanFreight.js";
+import oceanFreightRatesRouter from "./oceanFreightRates.js";
+import { oceanFreightPublicRouter } from "./oceanFreightPublic.js";
+import { oceanFreightVendorFormRouter } from "./oceanFreightVendorForm.js";
 import executiveRouter from "./executive.js";
 import cashAdvancesRouter from "./cashAdvances.js";
 import vendorPaymentsRouter from "./vendorPayments.js";
@@ -116,6 +124,8 @@ import expenseApprovalsRouter from "./expenseApprovals.js";
 import expenseDashboardRouter from "./expenseDashboard.js";
 import expenseTemplatesRouter from "./expenseTemplates.js";
 import expenseBudgetsRouter from "./expenseBudgets.js";
+import { airFreightRouter } from "./airFreight.js"; // legacy ORM router (old freight module)
+import { airFreightVendorFormRouter } from "./airFreightVendorForm.js";
 import { watiRouter } from "./wati.js";
 import { marketplaceRouter } from "./marketplace.js";
 import { escrowAdminRouter, escrowPublicRouter } from "./escrow.js";
@@ -123,6 +133,7 @@ import { vendorCatalogEnginePublicRouter, vendorCatalogEngineAdminRouter } from 
 import orderCostsRouter from "./orderCosts.js";
 import vendorTruckingPricingRouter from "./vendorTruckingPricing.js";
 import productMediaRouter from "./productMedia.js";
+import oceanFreightMasterRouter from "./oceanFreightMaster.js";
 
 import type { Request, Response } from "express";
 
@@ -268,6 +279,13 @@ router.use("/rbac", rbacRouter);
 router.use("/import-advisor", importAdvisorRouter);
 router.use("/sport-center", sportCenterRouter);
 router.use("/tenant", tenantRouter);
+router.use("/air-freight", airFreightNewRouter);
+router.use("/air-freight", airFreightRatesRouter);
+router.use("/air-freight", airFreightPublicRouter);
+router.use("/ocean-freight", oceanFreightRouter);
+router.use("/ocean-freight", oceanFreightRatesRouter);
+router.use("/ocean-freight", oceanFreightPublicRouter);
+router.use("/ocean-freight/vendor-form", oceanFreightVendorFormRouter);
 router.use("/executive", executiveRouter);
 router.use("/cash-advances", cashAdvancesRouter);
 router.use("/vendor-payments", vendorPaymentsRouter);
@@ -278,10 +296,13 @@ router.use("/expense-approvals", expenseApprovalsRouter);
 router.use("/expense-dashboard", expenseDashboardRouter);
 router.use("/expense-templates", expenseTemplatesRouter);
 router.use("/expense-config", expenseBudgetsRouter);
+router.use("/air-freight-form", airFreightVendorFormRouter);
+router.use("/ocean-freight-master", oceanFreightMasterRouter);
 router.use("/wati", watiRouter);
 router.use("/sales/escrow", escrowPublicRouter);
 router.use("/sales/escrow", escrowAdminRouter);
 router.use("/vendor-trucking-pricing", vendorTruckingPricingRouter);
+router.use("/tax", taxRouter);
 
 router.get("/alerts/stream", async (req: Request, res: Response) => {
   const ok = await requireAdmin(req, res);

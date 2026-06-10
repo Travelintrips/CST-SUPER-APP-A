@@ -118,7 +118,8 @@ export default function SportCenterMembers() {
       const qs = new URLSearchParams({ days: String(upcomingDays) });
       if (activeCompanyId) qs.set("companyId", String(activeCompanyId));
       const r = await fetch(`/api/sport-center/member-reminders/upcoming?${qs}`, { credentials: "include" });
-      return r.json();
+      const json = await r.json();
+      return Array.isArray(json) ? json : (Array.isArray(json?.data) ? json.data : []);
     },
   });
 
@@ -126,7 +127,8 @@ export default function SportCenterMembers() {
     queryKey: ["sport-center-member-reminder-logs"],
     queryFn: async () => {
       const r = await fetch(`/api/sport-center/member-reminders/logs?limit=50`, { credentials: "include" });
-      return r.json();
+      const json = await r.json();
+      return Array.isArray(json) ? json : (Array.isArray(json?.data) ? json.data : []);
     },
   });
 

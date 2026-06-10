@@ -379,6 +379,19 @@ router.post("/", async (req, res) => {
     await db.execute(sql.raw(`UPDATE expenses SET transaction_type = '${txType}' WHERE id = ${(created as any).id}`));
   }
 
+  if (taxAmountN > 0) {
+    import("../lib/taxAutoService.js").then(({ recordTransactionTax }) => {
+      void recordTransactionTax({
+        companyId: companyIdForInsert ?? 1,
+        transactionType: "expense",
+        transactionId: (created as any).id,
+        transactionRef: (created as any).expenseNumber,
+        baseAmount: subtotal,
+        taxAmount: taxAmountN,
+      });
+    }).catch(() => {/* ignore */});
+  }
+
   auditFromReq(req as Request, {
     action: "create",
     module: "expense",

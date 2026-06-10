@@ -1,0 +1,83 @@
+Saya ingin menggabungkan proyek Mall Admin Portal / Tenant Kantin ini ke Biz Portal yang sudah ada.
+
+Jangan langsung copy paste semua file.
+Jangan membuat aplikasi login baru.
+Jangan membuat auth baru jika Biz Portal sudah punya auth.
+Jangan reset database.
+Jangan drop table existing.
+
+Tujuan:
+Modul Tenant/Kantin menjadi bagian dari Biz Portal sebagai modul baru.
+
+Konteks bisnis:
+Kami hanya punya 2 lokasi:
+1. Sport Center
+2. TOD M1
+
+Kantin bukan lokasi baru.
+Kantin adalah area/unit di dalam masing-masing lokasi.
+
+Struktur final:
+- Sport Center
+  - Area Kantin
+  - Unit: SC-KTN-01, SC-KTN-02, dst
+
+- TOD M1
+  - Area Kantin
+  - Unit: TOD-KTN-01, TOD-KTN-02, dst
+
+Nama modul di Biz Portal:
+Tenant / Kantin Management
+
+Menu yang harus masuk Biz Portal:
+1. Dashboard Tenant/Kantin
+2. Data Tenant
+3. Unit Kantin
+4. Booking Tenant
+5. Invoice Tenant
+6. POS Tenant
+7. Tinjau Pembayaran
+8. Rekap Tenant
+9. Rekap Pembayaran
+10. Perbandingan Lokasi
+
+FASE 1 — Audit Biz Portal dulu
+
+Tugas:
+1. Baca struktur Biz Portal:
+   - frontend app
+   - backend API
+   - database schema
+   - migration system
+   - auth
+   - role permission
+   - sidebar/menu
+   - audit log
+   - upload storage
+   - finance/accounting module
+   - WhatsApp/Fonnte setting jika ada
+
+2. Baca struktur proyek Mall Admin Portal:
+   - schema tenant
+   - route API tenant
+   - halaman frontend tenant
+   - middleware auth/site
+   - audit log
+   - upload
+   - invoice/payment/POS
+   - tenant portal jika ada
+
+3. Buat mapping:
+   - file mana yang bisa dipindahkan
+   - file mana yang harus diadaptasi
+   - file mana yang tidak boleh dibawa karena duplikat dengan Biz Portal
+   - table mana yang sudah ada di Biz Portal
+   - table mana yang perlu ditambahkan
+
+4. Jangan melakukan perubahan kode dulu.
+5. Output hanya laporan:
+   - arsitektur Biz Portal saat ini
+   - arsitektur Mall Admin Portal saat ini
+   - konflik yang ditemukan
+   - rencana migrasi bertahap
+   - risiko utama

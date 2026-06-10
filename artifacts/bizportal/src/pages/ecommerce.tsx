@@ -32,7 +32,6 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, ShoppingBag, Pencil, Trash2, Printer, Search, ChevronDown, X, RefreshCw, Clock, ExternalLink } from "lucide-react";
 import { Plus, ShoppingBag, Pencil, Trash2, Printer, Search, ChevronDown, X, RefreshCw, Clock, ExternalLink, Database, Copy, CheckCheck, Link, Check } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import {

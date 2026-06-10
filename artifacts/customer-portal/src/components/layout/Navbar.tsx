@@ -4,7 +4,7 @@ import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import {
   Menu, X, LogOut, LayoutDashboard, ShoppingCart, Shield,
-  ChevronDown, Ship, FileCheck, Truck,
+  ChevronDown, Ship, Anchor, FileCheck, Truck,
   Search, Calculator, ChevronRight, MapPin, Phone, Info,
   ImagePlus, Loader2, ClipboardList,
   Package, Wind, Globe, FileText, Factory, Coffee, Flame,
@@ -19,8 +19,9 @@ import { useLanguage } from "@/i18n/LanguageContext";
 import { useEditMode } from "@/contexts/EditModeContext";
 
 const SERVICES_ITEMS = [
-  { icon: Ship,      titleKey: "servicesMenu.freight.title",   descKey: "servicesMenu.freight.desc",   href: "/marketplace?type=service&category=sea_freight" },
-  { icon: FileCheck, titleKey: "servicesMenu.customs.title",   descKey: "servicesMenu.customs.desc",   href: "/marketplace?type=service&category=ppjk" },
+  { icon: Ship,      titleKey: "servicesMenu.freight.title",   descKey: "servicesMenu.freight.desc",   href: "/freight-forwarding" },
+  { icon: Anchor,    titleKey: "servicesMenu.ocean.title",     descKey: "servicesMenu.ocean.desc",     href: "/ocean-freight" },
+  { icon: FileCheck, titleKey: "servicesMenu.customs.title",   descKey: "servicesMenu.customs.desc",   href: "/pabean" },
   { icon: Truck,     titleKey: "servicesMenu.trucking.title",  descKey: "servicesMenu.trucking.desc",  href: "/trucking" },
   { icon: Search,    titleKey: "servicesMenu.tracking.title",  descKey: "servicesMenu.tracking.desc",  href: "/track" },
 ];
@@ -52,22 +53,28 @@ const AUTOCOMPLETE_MAP: AutocompleteEntry[] = [
     href: "/trucking",
   },
   {
-    icon: Ship, label: "Sea Freight",
-    description: "Pengiriman laut internasional FCL / LCL",
-    kind: "Layanan", terms: ["sea", "freight", "fcl", "lcl", "kapal", "laut", "forwarding", "ekspedisi"],
-    href: "/marketplace?type=service&category=sea_freight&q=sea+freight",
+    icon: Ship, label: "Freight Forwarding",
+    description: "Pengiriman udara & laut internasional ke seluruh dunia",
+    kind: "Layanan", terms: ["sea", "freight", "fcl", "lcl", "forwarding", "ekspedisi", "ekspor", "impor", "international"],
+    href: "/freight-forwarding",
+  },
+  {
+    icon: Anchor, label: "Ocean Freight",
+    description: "Pengiriman laut FCL / LCL internasional",
+    kind: "Layanan", terms: ["ocean", "laut", "kapal", "fcl", "lcl", "sea freight"],
+    href: "/ocean-freight",
   },
   {
     icon: Wind, label: "Air Freight",
     description: "Pengiriman udara cepat domestik & internasional",
-    kind: "Layanan", terms: ["air", "udara", "pesawat", "fly"],
+    kind: "Layanan", terms: ["air", "udara", "pesawat", "fly", "airfreight"],
     href: "/marketplace?type=service&category=air_freight&q=air+freight",
   },
   {
     icon: FileCheck, label: "PPJK / Customs Clearance",
     description: "Pengurusan kepabeanan, bea cukai & dokumen",
-    kind: "Layanan", terms: ["ppjk", "custom", "kepabeanan", "bea", "cukai", "pabean", "customs"],
-    href: "/marketplace?type=service&category=ppjk&q=ppjk",
+    kind: "Layanan", terms: ["ppjk", "custom", "kepabeanan", "bea", "cukai", "pabean", "customs", "clearance"],
+    href: "/pabean",
   },
   {
     icon: Factory, label: "Cargo Handling",
@@ -159,6 +166,43 @@ const DEFAULT_SUGGESTIONS: AutocompleteEntry[] = [
   AUTOCOMPLETE_MAP.find(e => e.label === "Batubara")!,
   AUTOCOMPLETE_MAP.find(e => e.label === "Minyak Sawit / CPO")!,
 ];
+
+function getAutocompleteSuggestions(
+  q: string,
+  liveItems: MarketplaceResult[],
+): AutocompleteEntry[] {
+  if (q.length < 2) return DEFAULT_SUGGESTIONS;
+
+  const liveResults: AutocompleteEntry[] = liveItems
+    .filter((item) =>
+      item.name.toLowerCase().includes(q) ||
+      (item.description ?? "").toLowerCase().includes(q),
+    )
+    .slice(0, 5)
+    .map((item) => {
+      const isSvc = item.templateKind === "service";
+      const cat = isSvc ? item.serviceType : item.categoryKey;
+      return {
+        icon: isSvc ? Truck : Package,
+        label: item.name,
+        description: item.description ?? (isSvc ? "Layanan" : "Produk"),
+        kind: isSvc ? ("Layanan" as const) : ("Produk" as const),
+        href: `/marketplace?type=${isSvc ? "service" : "product"}${cat ? `&category=${cat}` : ""}&q=${encodeURIComponent(item.name)}`,
+        terms: [],
+      };
+    });
+
+  const liveLabels = new Set(liveResults.map((r) => r.label.toLowerCase()));
+  const staticResults = AUTOCOMPLETE_MAP.filter(
+    (e) =>
+      !liveLabels.has(e.label.toLowerCase()) &&
+      (e.label.toLowerCase().includes(q) ||
+        e.description.toLowerCase().includes(q) ||
+        e.terms.some((t) => t.includes(q) || q.includes(t))),
+  ).slice(0, 3);
+
+  return [...liveResults, ...staticResults].slice(0, 8);
+}
 
 const NAV_BASE: React.CSSProperties = {
   background: "rgba(255,255,255,0.95)",
@@ -308,8 +352,16 @@ export function Navbar() {
 
   function handleSearchSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!searchQuery.trim()) return;
-    setLocation(`/marketplace?q=${encodeURIComponent(searchQuery.trim())}`);
+    const q = searchQuery.trim();
+    if (!q) return;
+
+    // Use top autocomplete suggestion's href if available, else fall back to marketplace
+    const suggestions = getAutocompleteSuggestions(q.toLowerCase(), liveItems);
+    const target = suggestions.length > 0
+      ? suggestions[0].href
+      : `/marketplace?q=${encodeURIComponent(q)}`;
+
+    setLocation(target);
     setSearchOpen(false);
     setSearchQuery("");
   }
@@ -334,42 +386,10 @@ export function Navbar() {
   });
 
   // Smart autocomplete: ≥2 chars → search live items + static, else show defaults
-  const autocompleteSuggestions: AutocompleteEntry[] = (() => {
-    const q = searchQuery.trim().toLowerCase();
-    if (q.length < 2) return DEFAULT_SUGGESTIONS;
-
-    // Search live items first
-    const liveResults: AutocompleteEntry[] = liveItems
-      .filter((item) =>
-        item.name.toLowerCase().includes(q) ||
-        (item.description ?? "").toLowerCase().includes(q),
-      )
-      .slice(0, 5)
-      .map((item) => {
-        const isSvc = item.templateKind === "service";
-        const cat = isSvc ? item.serviceType : item.categoryKey;
-        return {
-          icon: isSvc ? Truck : Package,
-          label: item.name,
-          description: item.description ?? (isSvc ? "Layanan" : "Produk"),
-          kind: isSvc ? ("Layanan" as const) : ("Produk" as const),
-          href: `/marketplace?type=${isSvc ? "service" : "product"}${cat ? `&category=${cat}` : ""}&q=${encodeURIComponent(item.name)}`,
-          terms: [],
-        };
-      });
-
-    // Supplement with static suggestions (deduplicate by label)
-    const liveLabels = new Set(liveResults.map((r) => r.label.toLowerCase()));
-    const staticResults = AUTOCOMPLETE_MAP.filter(
-      (e) =>
-        !liveLabels.has(e.label.toLowerCase()) &&
-        (e.label.toLowerCase().includes(q) ||
-          e.description.toLowerCase().includes(q) ||
-          e.terms.some((t) => t.includes(q) || q.includes(t))),
-    ).slice(0, 3);
-
-    return [...liveResults, ...staticResults].slice(0, 8);
-  })();
+  const autocompleteSuggestions = getAutocompleteSuggestions(
+    searchQuery.trim().toLowerCase(),
+    liveItems,
+  );
 
   const isServicesActive =
     location.startsWith("/jasa") ||

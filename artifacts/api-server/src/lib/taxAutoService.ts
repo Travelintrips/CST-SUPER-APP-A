@@ -11,6 +11,7 @@ export type TxType =
   | "bank_loan"
   | "employee_advance"
   | "fixed_asset"
+  | "sport_center"
   | "other";
 
 interface RecordTaxParams {
@@ -149,6 +150,13 @@ async function detectTax(
       return (
         (await findTaxByName(companyId, "PPh 23")) ??
         (await findTaxByKind(companyId, "withholding"))
+      );
+
+    case "sport_center":
+      // Sport center → PPN Keluaran (jasa olahraga)
+      return (
+        (await findTaxByName(companyId, "PPN Keluaran")) ??
+        (await findTaxByKind(companyId, "sale"))
       );
 
     case "employee_advance":

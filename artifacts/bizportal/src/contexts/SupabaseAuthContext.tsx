@@ -82,72 +82,38 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
     }
   }, [fetchUser]);
 
-  const signInWithGoogle = useCallback(async () => {
-    if (!supabase) {
-      console.error("[BizPortal] Supabase tidak terkonfigurasi");
-      return;
-    }
-
+  const signInWithGoogle = useCallback(() => {
     const origin = getOrigin();
     const base = getBase();
-    const callbackUrl = `${origin}${base.replace(/\/$/, "")}/auth/callback`;
+    const returnTo = encodeURIComponent(base);
+    const loginUrl = `${origin}/api/login/google?returnTo=${returnTo}`;
+
     const isInIframe = window !== window.top;
-
     if (isInIframe) {
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: { redirectTo: callbackUrl, skipBrowserRedirect: true },
-      });
-
-      if (error || !data.url) {
-        console.error("[BizPortal] Gagal mendapat OAuth URL:", error);
-        return;
-      }
-
-      // Buka tanpa noopener agar postMessage dari popup ke parent bisa bekerja
-      const authWindow = window.open(data.url, "bizportal-google-auth", "width=520,height=680");
-
+      // Dalam iframe (Replit preview): buka di tab baru, poll sampai session terbentuk
+      const authWindow = window.open(loginUrl, "_blank", "noopener");
       if (authWindow) {
-        const onMessage = async (evt: MessageEvent) => {
-          if (evt.origin !== origin) return;
-          if (evt.data?.type === "supabase-auth" && typeof evt.data.access_token === "string") {
-            window.removeEventListener("message", onMessage);
-            clearInterval(poll);
-            await exchangeToken(evt.data.access_token);
-          } else if (evt.data === "auth:error") {
-            window.removeEventListener("message", onMessage);
-            clearInterval(poll);
-          }
-        };
-        window.addEventListener("message", onMessage);
-
         const poll = setInterval(() => {
-          if (authWindow.closed) {
-            clearInterval(poll);
-            window.removeEventListener("message", onMessage);
-            fetchUser();
-          }
-        }, 1000);
-
-        setTimeout(() => {
-          clearInterval(poll);
-          window.removeEventListener("message", onMessage);
-        }, 5 * 60 * 1000);
+          fetch("/api/auth/user", { credentials: "include" })
+            .then((r) => r.json())
+            .then((data: { user: AuthUser | null }) => {
+              if (data.user) {
+                clearInterval(poll);
+                writeCache(data.user);
+                setUser(data.user);
+              }
+            })
+            .catch(() => {});
+          if (authWindow.closed) clearInterval(poll);
+        }, 2000);
+        setTimeout(() => clearInterval(poll), 5 * 60 * 1000);
       } else {
-        const { error: e2 } = await supabase.auth.signInWithOAuth({
-          provider: "google",
-          options: { redirectTo: callbackUrl },
-        });
-        if (e2) console.error("[BizPortal] OAuth redirect gagal:", e2);
+        window.location.href = loginUrl;
       }
     } else {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: { redirectTo: callbackUrl },
-      });
-      if (error) console.error("[BizPortal] OAuth redirect gagal:", error);
+      window.location.href = loginUrl;
     }
-  }, [exchangeToken, fetchUser]);
+  }, []);
 
   useEffect(() => {
     if (!supabase) return;
