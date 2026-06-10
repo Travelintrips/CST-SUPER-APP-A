@@ -148,6 +148,9 @@ import OrderAuditTrailPage from "@/pages/logistics/order-audit-trail";
 import VendorPerformancePage from "@/pages/logistics/vendor-performance";
 import InternalTasksPage from "@/pages/logistics/internal-tasks";
 import LogisticsImportAssistantPage from "@/pages/logistics-import-assistant";
+import AirFreightOrdersPage from "@/pages/logistics/air-freight-orders";
+import AirFreightOrderDetailPage from "@/pages/logistics/air-freight-order-detail";
+import AirFreightVendorFormPage from "@/pages/air-freight-vendor-form";
 import ExceptionsPage from "@/pages/exceptions/index";
 // Misc
 import NotificationsPage from "@/pages/notifications";
@@ -225,6 +228,9 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/logistics/vendor-performance" component={PR(VendorPerformancePage)} />
       <Route path="/logistics/internal-tasks" component={PR(InternalTasksPage)} />
       <Route path="/logistics/import-assistant" component={PR(LogisticsImportAssistantPage)} />
+      <Route path="/logistics/air-freight/:id" component={PR(AirFreightOrderDetailPage)} />
+      <Route path="/logistics/air-freight" component={PR(AirFreightOrdersPage)} />
+      <Route path="/air-freight-form/:token" component={AirFreightVendorFormPage} />
       <Route path="/portal-product-orders" component={PR(PortalProductOrdersPage)} />
       <Route path="/portal/customers" component={PR(PortalCustomersPage)} />
       <Route path="/portal/onboarding-approvals" component={PR(PortalOnboardingApprovalsPage)} />
