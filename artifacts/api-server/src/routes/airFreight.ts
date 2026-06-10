@@ -2,6 +2,9 @@ import { Router, type Request, type Response } from "express";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
+import { randomBytes } from "crypto";
+import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
+import { sendMail, isSmtpConfigured } from "../lib/mailer.js";
 
 const router = Router();
 
@@ -65,6 +68,33 @@ db.execute(sql`
     created_by                  TEXT,
     created_at                  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at                  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )
+`).catch(() => {});
+
+// ── ALTER TABLE — new columns (FASE 10) ──────────────────────────────────────
+const _fase10Alters = [
+  "ALTER TABLE air_freight_orders ADD COLUMN IF NOT EXISTS approval_token TEXT UNIQUE",
+  "ALTER TABLE air_freight_orders ADD COLUMN IF NOT EXISTS booking_number TEXT",
+  "ALTER TABLE air_freight_orders ADD COLUMN IF NOT EXISTS mawb TEXT",
+  "ALTER TABLE air_freight_orders ADD COLUMN IF NOT EXISTS hawb TEXT",
+  "ALTER TABLE air_freight_orders ADD COLUMN IF NOT EXISTS booking_confirmed_at TIMESTAMPTZ",
+  "ALTER TABLE air_freight_orders ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ",
+  "ALTER TABLE air_freight_orders ADD COLUMN IF NOT EXISTS declined_at TIMESTAMPTZ",
+  "ALTER TABLE air_freight_orders ADD COLUMN IF NOT EXISTS quoted_at TIMESTAMPTZ",
+  "ALTER TABLE air_freight_orders ADD COLUMN IF NOT EXISTS decline_reason TEXT",
+  "ALTER TABLE air_freight_orders ADD COLUMN IF NOT EXISTS tracking_status TEXT DEFAULT 'booked'",
+  "ALTER TABLE air_freight_orders ADD COLUMN IF NOT EXISTS booking_attachment_url TEXT",
+];
+for (const s of _fase10Alters) { db.execute(sql.raw(s)).catch(() => {}); }
+
+db.execute(sql`
+  CREATE TABLE IF NOT EXISTS air_freight_tracking_events (
+    id          SERIAL PRIMARY KEY,
+    order_id    INTEGER NOT NULL,
+    event_type  TEXT NOT NULL,
+    note        TEXT,
+    created_by  TEXT,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )
 `).catch(() => {});
 
@@ -353,6 +383,228 @@ router.delete("/orders/:id", async (req: Request, res: Response) => {
   } catch (err) {
     console.error("[air-freight] DELETE /orders/:id error:", err);
     res.status(500).json({ error: "Gagal membatalkan order" });
+  }
+});
+
+// ── POST /orders/:id/send-final-quote ────────────────────────────────────────
+router.post("/orders/:id/send-final-quote", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  try {
+    const id   = Number(req.params.id);
+    const body = req.body;
+    const existing = await db.execute(sql`SELECT * FROM air_freight_orders WHERE id = ${id} LIMIT 1`);
+    if (!existing.rows.length) return res.status(404).json({ error: "Order tidak ditemukan" });
+
+    const REQUIRED = ["final_price_idr","grand_total"];
+    for (const f of REQUIRED) {
+      if (body[f] == null || body[f] === "") return res.status(400).json({ error: `Field ${f} wajib diisi` });
+    }
+
+    // generate/reuse approval_token
+    let token = (existing.rows[0] as any).approval_token as string | null;
+    if (!token) {
+      token = randomBytes(24).toString("hex");
+    }
+
+    const r = await db.execute(sql`
+      UPDATE air_freight_orders SET
+        final_rate_id           = COALESCE(${body.final_rate_id ?? null}::int, final_rate_id),
+        final_price             = ${body.final_price ?? null},
+        final_price_idr         = ${body.final_price_idr},
+        markup_amount           = ${body.markup_amount ?? null},
+        ppn_amount              = ${body.ppn_amount ?? null},
+        grand_total             = ${body.grand_total},
+        final_breakdown         = COALESCE(${body.final_breakdown != null ? JSON.stringify(body.final_breakdown) : null}::jsonb, final_breakdown),
+        admin_notes             = COALESCE(${body.admin_notes ?? null}, admin_notes),
+        status                  = 'quoted',
+        price_status            = 'confirmed',
+        quoted_at               = NOW(),
+        approval_token          = ${token},
+        updated_at              = NOW()
+      WHERE id = ${id}
+      RETURNING *
+    `);
+    const updated = r.rows[0] as any;
+
+    // build approval URL
+    const domain = process.env.REPLIT_DEV_DOMAIN ?? "localhost:5000";
+    const approvalUrl = `https://${domain}/bizportal/air-freight/approval/${token}`;
+    const trackUrl    = `https://${domain}/bizportal/air-freight/track/${updated.order_number}`;
+
+    const idr = (v: number) => new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(v);
+
+    // ── WA notification to customer ──────────────────────────────────────────
+    if (updated.customer_phone?.trim()) {
+      const msg = [
+        `✈️ *Air Freight Order ${updated.order_number}*`,
+        ``,
+        `Harga final untuk pengiriman udara Anda sudah tersedia.`,
+        ``,
+        `📦 *Rute:* ${updated.origin_airport} → ${updated.destination_airport}`,
+        `💰 *Harga Final:* ${idr(Number(updated.grand_total))}`,
+        ``,
+        `Silakan review dan berikan persetujuan di link berikut:`,
+        approvalUrl,
+        ``,
+        `Link Tracking: ${trackUrl}`,
+      ].join("\n");
+      sendWhatsApp(updated.customer_phone, msg, {
+        context: "air_freight_quote_final",
+        refType: "air_freight_order",
+        refId: String(id),
+      }).catch((e: unknown) => console.error("[air-freight] WA quote notification failed:", e));
+    }
+
+    // ── Email notification ───────────────────────────────────────────────────
+    if (updated.customer_email?.trim() && isSmtpConfigured()) {
+      sendMail({
+        to: updated.customer_email,
+        subject: `Harga Final Air Freight — Order ${updated.order_number}`,
+        html: `
+          <h2>Harga Final Air Freight Tersedia</h2>
+          <p>Halo <b>${updated.customer_name || "Pelanggan"}</b>,</p>
+          <p>Harga final untuk order air freight Anda (<b>${updated.order_number}</b>) sudah tersedia.</p>
+          <table style="border-collapse:collapse;width:100%;max-width:500px">
+            <tr><td style="padding:6px;border:1px solid #ddd;color:#666">Rute</td><td style="padding:6px;border:1px solid #ddd">${updated.origin_airport} → ${updated.destination_airport}</td></tr>
+            <tr><td style="padding:6px;border:1px solid #ddd;color:#666">Grand Total</td><td style="padding:6px;border:1px solid #ddd"><b>${idr(Number(updated.grand_total))}</b></td></tr>
+            ${body.admin_notes ? `<tr><td style="padding:6px;border:1px solid #ddd;color:#666">Catatan</td><td style="padding:6px;border:1px solid #ddd">${body.admin_notes}</td></tr>` : ""}
+          </table>
+          <p style="margin-top:20px">
+            <a href="${approvalUrl}" style="background:#1d4ed8;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;display:inline-block">
+              Review &amp; Approve
+            </a>
+          </p>
+          <p style="color:#666;font-size:12px">Link tracking: <a href="${trackUrl}">${trackUrl}</a></p>
+        `,
+        text: `Harga final Air Freight Order ${updated.order_number} tersedia. Silakan review: ${approvalUrl}`,
+        context: "air_freight_quote_final",
+        refType: "air_freight_order",
+        refId: String(id),
+      }).catch((e: unknown) => console.error("[air-freight] email quote notification failed:", e));
+    }
+
+    res.json({ ok: true, order: updated, approvalUrl });
+  } catch (err) {
+    console.error("[air-freight] POST /orders/:id/send-final-quote error:", err);
+    res.status(500).json({ error: "Gagal mengirim quote final" });
+  }
+});
+
+// ── POST /orders/:id/confirm-booking ──────────────────────────────────────────
+router.post("/orders/:id/confirm-booking", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  try {
+    const id   = Number(req.params.id);
+    const body = req.body;
+    const existing = await db.execute(sql`SELECT id, status FROM air_freight_orders WHERE id = ${id} LIMIT 1`);
+    if (!existing.rows.length) return res.status(404).json({ error: "Order tidak ditemukan" });
+
+    const r = await db.execute(sql`
+      UPDATE air_freight_orders SET
+        status                  = 'booked',
+        tracking_status         = 'booked',
+        booking_number          = COALESCE(${body.booking_number ?? null}, booking_number),
+        mawb                    = COALESCE(${body.mawb ?? null}, mawb),
+        hawb                    = COALESCE(${body.hawb ?? null}, hawb),
+        booking_attachment_url  = COALESCE(${body.booking_attachment_url ?? null}, booking_attachment_url),
+        booking_confirmed_at    = NOW(),
+        updated_at              = NOW()
+      WHERE id = ${id}
+      RETURNING *
+    `);
+    const updated = r.rows[0] as any;
+
+    // update final_rate info (flight_number, etd, eta) if provided
+    if (body.flight_number || body.etd || body.eta) {
+      if (updated.final_rate_id) {
+        await db.execute(sql`
+          UPDATE air_freight_rates SET
+            flight_number = COALESCE(${body.flight_number ?? null}, flight_number),
+            etd           = COALESCE(${body.etd ?? null}, etd),
+            eta           = COALESCE(${body.eta ?? null}, eta),
+            updated_at    = NOW()
+          WHERE id = ${updated.final_rate_id}
+        `).catch(() => {});
+      }
+    }
+
+    // log tracking event
+    await db.execute(sql`
+      INSERT INTO air_freight_tracking_events (order_id, event_type, note, created_by)
+      VALUES (${id}, 'booked', ${body.booking_number ? `Booking confirmed — No. ${body.booking_number}` : 'Booking confirmed'}, ${(req.user as any)?.id ?? null})
+    `).catch(() => {});
+
+    res.json({ ok: true, order: updated });
+  } catch (err) {
+    console.error("[air-freight] POST /orders/:id/confirm-booking error:", err);
+    res.status(500).json({ error: "Gagal konfirmasi booking" });
+  }
+});
+
+// ── PATCH /orders/:id/tracking-status ────────────────────────────────────────
+router.patch("/orders/:id/tracking-status", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  try {
+    const id = Number(req.params.id);
+    const { tracking_status, note } = req.body;
+    const VALID_TRACKING = [
+      "booked","cargo_received","departed","in_transit","arrived",
+      "customs_clearance","out_for_delivery","delivered","completed",
+    ];
+    if (!tracking_status || !VALID_TRACKING.includes(tracking_status)) {
+      return res.status(400).json({ error: `tracking_status tidak valid. Pilih: ${VALID_TRACKING.join(", ")}` });
+    }
+
+    // map tracking → order status for major transitions
+    const ORDER_STATUS_MAP: Record<string, string> = {
+      departed:         "departed",
+      arrived:          "arrived",
+      delivered:        "delivered",
+      completed:        "completed",
+    };
+    const newOrderStatus = ORDER_STATUS_MAP[tracking_status];
+
+    // Update tracking_status (always), plus order status on major transitions
+    await db.execute(sql`
+      UPDATE air_freight_orders SET tracking_status = ${tracking_status}, updated_at = NOW()
+      WHERE id = ${id}
+    `);
+    if (newOrderStatus) {
+      await db.execute(sql`
+        UPDATE air_freight_orders SET status = ${newOrderStatus}, updated_at = NOW()
+        WHERE id = ${id}
+      `);
+    }
+    const r = await db.execute(sql`SELECT * FROM air_freight_orders WHERE id = ${id} LIMIT 1`);
+    if (!r.rows.length) return res.status(404).json({ error: "Order tidak ditemukan" });
+
+    await db.execute(sql`
+      INSERT INTO air_freight_tracking_events (order_id, event_type, note, created_by)
+      VALUES (${id}, ${tracking_status}, ${note ?? null}, ${(req.user as any)?.id ?? null})
+    `).catch(() => {});
+
+    res.json({ ok: true, order: r.rows[0] });
+  } catch (err) {
+    console.error("[air-freight] PATCH /orders/:id/tracking-status error:", err);
+    res.status(500).json({ error: "Gagal update tracking status" });
+  }
+});
+
+// ── GET /orders/:id/tracking-events ──────────────────────────────────────────
+router.get("/orders/:id/tracking-events", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  try {
+    const id = Number(req.params.id);
+    const r = await db.execute(sql`
+      SELECT id, event_type, note, created_by, created_at
+      FROM air_freight_tracking_events
+      WHERE order_id = ${id}
+      ORDER BY created_at ASC
+    `);
+    res.json(r.rows);
+  } catch (err) {
+    console.error("[air-freight] GET /orders/:id/tracking-events error:", err);
+    res.status(500).json({ error: "Gagal memuat tracking events" });
   }
 });
 
