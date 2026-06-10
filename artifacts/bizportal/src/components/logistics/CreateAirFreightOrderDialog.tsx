@@ -77,9 +77,9 @@ export function CreateAirFreightOrderDialog({ open, onClose, onCreated }: Props)
     return acc + vol;
   }, 0);
 
-  const handleCreate = async () => {
-    if (!form.customerName.trim()) return toast({ title: "Nama customer wajib diisi", variant: "destructive" });
-    if (!form.originAirport.trim() || !form.destAirport.trim()) return toast({ title: "Origin & Dest airport wajib diisi", variant: "destructive" });
+  const handleCreate = async (): Promise<void> => {
+    if (!form.customerName.trim()) { toast({ title: "Nama customer wajib diisi", variant: "destructive" }); return; }
+    if (!form.originAirport.trim() || !form.destAirport.trim()) { toast({ title: "Origin & Dest airport wajib diisi", variant: "destructive" }); return; }
     setSaving(true);
     try {
       const dims = dimensions
