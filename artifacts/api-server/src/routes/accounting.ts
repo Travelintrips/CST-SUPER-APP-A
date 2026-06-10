@@ -4106,6 +4106,143 @@ router.post("/rekonsiliasi-gsheet", async (req, res) => {
   }
 });
 
+// ── WHT Payable Reconciliation ───────────────────────────────────────────────
+// GET /api/accounting/wht-reconciliation?period=YYYY-MM&companyId=N
+// Merangkum WHT yang dipotong dari vendor_payments vs jurnal WHT Payable (2-1030)
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/wht-reconciliation", async (req, res) => {
+  const { period, companyId: companyIdQ } = req.query as Record<string, string>;
+  const companyId = companyIdQ ? parseInt(companyIdQ, 10) : 1;
+
+  // Tentukan rentang tanggal dari period (YYYY-MM) atau bulan berjalan
+  const now = new Date();
+  const rawPeriod = period ?? `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const [yearStr, monthStr] = rawPeriod.split("-");
+  const year = parseInt(yearStr ?? String(now.getFullYear()), 10);
+  const month = parseInt(monthStr ?? String(now.getMonth() + 1), 10);
+  const startDate = new Date(year, month - 1, 1);
+  const endDate   = new Date(year, month, 1);
+
+  try {
+    // 1. WHT yang dipotong dari vendor_payments dalam periode ini
+    const whtRows = await db.execute(sql`
+      SELECT
+        vp.supplier_id,
+        s.name                            AS supplier_name,
+        COUNT(*)::int                     AS payment_count,
+        SUM(vp.amount)::numeric           AS total_gross,
+        SUM(vp.wht_amount)::numeric       AS total_wht,
+        SUM(vp.amount - vp.wht_amount)::numeric AS total_net_bank,
+        MAX(vp.wht_account_id)            AS wht_account_id
+      FROM vendor_payments vp
+      LEFT JOIN suppliers s ON s.id = vp.supplier_id
+      WHERE vp.wht_amount > 0
+        AND vp.company_id = ${companyId}
+        AND vp.created_at >= ${startDate.toISOString()}
+        AND vp.created_at <  ${endDate.toISOString()}
+      GROUP BY vp.supplier_id, s.name
+      ORDER BY SUM(vp.wht_amount) DESC
+    `);
+
+    // 2. WHT yang sudah di-jurnal ke akun 2-1030 (WHT Payable) dalam periode ini
+    const journalRows = await db.execute(sql`
+      SELECT
+        COALESCE(SUM(jel.credit), 0)::numeric AS total_journaled
+      FROM journal_entry_lines jel
+      JOIN journal_entries je ON je.id = jel.journal_entry_id
+      JOIN chart_of_accounts coa ON coa.id = jel.account_id
+      WHERE coa.code LIKE '2-1030%'
+        AND je.company_id = ${companyId}
+        AND je.date >= ${startDate.toISOString().slice(0, 10)}
+        AND je.date <  ${endDate.toISOString().slice(0, 10)}
+        AND (je.status IS NULL OR je.status != 'voided')
+    `);
+
+    // 3. Daftar vendor payments dengan WHT detail (untuk tabel detail)
+    const detailRows = await db.execute(sql`
+      SELECT
+        vp.id,
+        vp.payment_number,
+        vp.created_at,
+        s.name      AS supplier_name,
+        vp.amount   AS gross_amount,
+        vp.wht_amount,
+        vp.amount - vp.wht_amount AS net_bank,
+        vp.journal_entry_id,
+        coa.code    AS wht_account_code,
+        coa.name    AS wht_account_name
+      FROM vendor_payments vp
+      LEFT JOIN suppliers s ON s.id = vp.supplier_id
+      LEFT JOIN chart_of_accounts coa ON coa.id = vp.wht_account_id
+      WHERE vp.wht_amount > 0
+        AND vp.company_id = ${companyId}
+        AND vp.created_at >= ${startDate.toISOString()}
+        AND vp.created_at <  ${endDate.toISOString()}
+      ORDER BY vp.created_at DESC
+    `);
+
+    const summaryRows = whtRows as unknown as Array<{
+      supplier_id: number | null;
+      supplier_name: string | null;
+      payment_count: number;
+      total_gross: string;
+      total_wht: string;
+      total_net_bank: string;
+      wht_account_id: number | null;
+    }>;
+
+    const totalWhtPotongan = summaryRows.reduce((s, r) => s + Number(r.total_wht), 0);
+    const totalJournaled   = Number((journalRows as unknown as Array<{ total_journaled: string }>)[0]?.total_journaled ?? 0);
+    const selisih          = Math.round((totalWhtPotongan - totalJournaled) * 100) / 100;
+
+    return res.json({
+      period: rawPeriod,
+      companyId,
+      summary: {
+        totalWhtPotongan: Math.round(totalWhtPotongan * 100) / 100,
+        totalJournaled:   Math.round(totalJournaled   * 100) / 100,
+        selisih,
+        isBalanced: Math.abs(selisih) < 1,
+      },
+      bySupplier: summaryRows.map((r) => ({
+        supplierId:   r.supplier_id,
+        supplierName: r.supplier_name ?? "—",
+        paymentCount: r.payment_count,
+        totalGross:   Number(r.total_gross),
+        totalWht:     Number(r.total_wht),
+        totalNetBank: Number(r.total_net_bank),
+      })),
+      detail: (detailRows as unknown as Array<{
+        id: number;
+        payment_number: string;
+        created_at: string;
+        supplier_name: string | null;
+        gross_amount: string;
+        wht_amount: string;
+        net_bank: string;
+        journal_entry_id: number | null;
+        wht_account_code: string | null;
+        wht_account_name: string | null;
+      }>).map((r) => ({
+        id:             r.id,
+        paymentNumber:  r.payment_number,
+        createdAt:      r.created_at,
+        supplierName:   r.supplier_name ?? "—",
+        grossAmount:    Number(r.gross_amount),
+        whtAmount:      Number(r.wht_amount),
+        netBank:        Number(r.net_bank),
+        journalEntryId: r.journal_entry_id,
+        whtAccountCode: r.wht_account_code,
+        whtAccountName: r.wht_account_name,
+        isJournaled:    !!r.journal_entry_id,
+      })),
+    });
+  } catch (err) {
+    logger.error({ err }, "wht-reconciliation: query failed");
+    return res.status(500).json({ message: "Gagal memuat rekonsiliasi WHT" });
+  }
+});
+
 export default router;
 
 

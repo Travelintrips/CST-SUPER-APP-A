@@ -393,6 +393,7 @@ export function AppShell({ children, noPadding }: AppShellProps) {
         { titleKey: "balanceSheet", href: "/accounting/reports/balance-sheet", icon: Wallet },
         { titleKey: "Profitabilitas Freight", href: "/accounting/reports/freight-profitability", icon: Ship },
         { titleKey: "reconciliation", href: "/accounting/reconciliation", icon: GitMerge },
+        { titleKey: "Rekonsiliasi WHT Payable", href: "/accounting/wht-reconciliation", icon: ShieldCheck },
         { titleKey: "accountingSettings", href: "/accounting/settings", icon: Settings },
         { titleKey: "Google Sheets Sync", href: "/accounting/gsheet", icon: FileSpreadsheet },
         { titleKey: "Overview Perusahaan", href: "/holding", icon: Building2 },

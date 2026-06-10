@@ -98,6 +98,7 @@ import AccountingBalanceSheetPage from "@/pages/accounting/reports/balance-sheet
 import AccountingFreightProfitabilityPage from "@/pages/accounting/reports/freight-profitability";
 import AccountingReconciliationPage from "@/pages/accounting/reconciliation";
 import AccountingGSheetPage from "@/pages/accounting/gsheet";
+import WhtReconciliationPage from "@/pages/accounting/wht-reconciliation";
 import TaxReportPage from "@/pages/accounting/tax-report";
 import HoldingPage from "@/pages/HoldingPage";
 import ExecutiveDashboardPage from "@/pages/executive/dashboard";
@@ -375,6 +376,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/accounting/settings" component={PR(AccountingSettingsPage)} />
       <Route path="/accounting/cost-centers" component={PR(CostCentersPage)} />
       <Route path="/accounting/reconciliation" component={PR(AccountingReconciliationPage)} />
+      <Route path="/accounting/wht-reconciliation" component={PR(WhtReconciliationPage)} />
       <Route path="/accounting/gsheet" component={PR(AccountingGSheetPage)} />
       <Route path="/accounting/tax-report" component={PR(TaxReportPage)} />
       <Route path="/accounting/reports/trial-balance" component={PR(AccountingTrialBalancePage)} />
