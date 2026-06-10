@@ -1,4 +1,4 @@
-modules = ["nodejs-20", "web", "bash", "python-3.11"]
+modules = ["nodejs-20", "web", "bash", "python-3.11", "postgresql-16"]
 
 [deployment]
 router = "application"
@@ -24,15 +24,19 @@ args = "Gateway"
 name = "Gateway"
 author = "agent"
 
+[workflows.workflow.metadata]
+outputType = "webview"
+
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "fuser -k 5000/tcp 2>/dev/null; sleep 0.3; BIZPORTAL_PORT=6800 PORT=5000 node gateway.mjs"
 waitForPort = 5000
 
+[[workflows.workflow]]
+name = "Logistic Order"
+author = "agent"
+
 [workflows.workflow.metadata]
-<<<<<<< HEAD
-outputType = "webview"
-=======
 outputType = "console"
 
 [[workflows.workflow.tasks]]
@@ -49,7 +53,7 @@ outputType = "console"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "cd artifacts/api-server && bash start-dev.sh"
+args = "cd artifacts/api-server && pnpm run dev"
 waitForPort = 8080
 
 [[workflows.workflow]]
@@ -62,7 +66,7 @@ outputType = "console"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "BIZPORTAL_PORT=6800 bash artifacts/bizportal/start-dev.sh"
-waitForPort = 6800
+waitForPort = 3000
 
 [[workflows.workflow]]
 name = "Customer Portal"
@@ -75,7 +79,6 @@ outputType = "console"
 task = "shell.exec"
 args = "cd artifacts/customer-portal && PORT=3001 pnpm run dev"
 waitForPort = 3001
->>>>>>> f4a7855e87d23bc71ac4cde4e5120f58cce3010b
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
@@ -125,6 +128,7 @@ WATI_BASE_URL = "https://live-mt-server.wati.io/10176503"
 SUPABASE_SERVICE_ROLE_KEY_DEV = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhzc3Jmc2hkcnRkZnVwZ3F3ZmR3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3ODg5NjcyOCwiZXhwIjoyMDk0NDcyNzI4fQ.VFPcBxsVJkYwNo3ojy3uOHglqUA9zILhjw4_0JAhZYI"
 GOOGLE_SERVICE_ACCOUNT_JSON = '{   "type": "service_account",   "project_id": "sheet-498707",   "private_key_id": "88357f13ad3a952faef471b812154c42e4d8333e",   "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDY1Drh/BjpvYCJ\nvQz+WMi6bSuA/hXkt1ppJyRqV1hI/A4+mxAKbRdPW2Z82Z0AWHKV20kKizf3hgeI\np+PgkLtJuGUQb3IJM0rGarD3md19xKlVvfwQZZk4gaH2rg1RIRK73lrS8so4GwKc\nviyPiDWedjdYZMYz5hM/rIyZ5Pf91ktrq8OxOMyy+G81/BKLrQsostXAgbSc6LmQ\n7y12P2mEp+JxmXn6B1uo7S4P9XqZ/T8vwTLcVaELJRtgkmvbF2+LYOmEFdtsthle\nQcMgSjVtyHXdT0nDmxiL+l/mCI8gmF2V90RphH1n8U3iKlD5rCyfeUts/qFC6dy/\nxjFOAoVLAgMBAAECggEAHAcnC2IyeDhqPqPE47XnUI3fE0AE5Xk8Ax6vqt1aiKio\nULhrlOVwH25xq47XqB1Gxo8/fFDtrZ3SKHyHTNZ4lzlyOvMk+wJ51nchJAhsJJ9A\nwlgaFqaDbVX4cTIjf4q2aLl/5QfEUwdOyaMdkHorcC3YzqDMLBZAA7mSvSvnUJTf\nZani/69FnxwMtM/xvDw6EN2Fv/9fs1vWyREyX6XRDGBEtra55zLgSxE1J4KzSJ41\nv9mDLd2r55OLrpcxkS3LnsMvAVOekM1yipa5fqZYwPVDLQnF0Sc2KQp4chlQaf+2\nZ1bq6xeWI1zM990hcL9xlooohNUOsZZvR16CGv5xkQKBgQDups6U5aEJWIUn8zkG\ngZdVG5YByTiE2bGKfELF1drukYf3O/EMJoXgx7+5Tm2UIG67FKwbONhaVde8xlny\nmyxSlrbNbkSlwZTxIqApTIvK1ZFxffKAr2VMb2X/hX9OPs8AbMkoKKwwOItwAGPY\n3AGytHnlg7kxaUCYt5ZR9demMQKBgQDol1DAFf+1BJuvytk2EYzPYxU5dKz+bE36\n0ePbv2QzzvVG8JgjMAcfpnZKzjJuocNjXJq0Y1qm9peBBIjhrNjKl5iTGjH5WpC6\n9cWmS9a6/4C7ce79PTdnkMSAJnZpWc//+qX3U07+oeogCpkdz2b8tMcB+jToBtWt\nMy4PYJy4OwKBgQDL3GQVnz57zEkawlMRMrxCMGlopyoHmipmIRWtB6yYJGsgD+0u\nMu4kAJ3PPqauZTIRz2vhaSKvsCq1ED8f1dv7xNDtFWfArGd9wNVN0hyMLPmsGCmC\nMdH3hCV+K9x+y3pqY4NGMdA89OBv0XV5dx5gOHj0TRxyj/VlP1ZCNx560QKBgDB2\nLq4HJ2M5FZM4Ka/ZUkR3uZliFRVhzZGgH+DObPtaeMKSKLDUNffDQExv0BQ7AjH2\nvoktVlsJcCHCpx6WXAlCMtkbkSQKWbOKt+bhUFlgGRt1Lr12/s9GW5rz6KIkw3Dr\ncZ8prYDijZyleKe8ahHnPLvNvS5HFkhjLIqpr523AoGBAIzNQC/pYW6THnRC5Hr1\nacm0iP0J5VPdI1XyPHvyqm33PMxtkw6lTva2kOIil7MbxZ/H8AVV+TP5jvKMPzCA\nsJiIIcjNUzSkDxx74GJrYXs6QUIdsf8zFFfqyJqX7hGR2XNv8C1R2F2tsnhcNKLO\nb4WpyDC4q/htJh6qEcv2lQxd\n-----END PRIVATE KEY-----\n",   "client_email": "dheet-286@sheet-498707.iam.gserviceaccount.com",   "client_id": "112370525621324127888",   "auth_uri": "https://accounts.google.com/o/oauth2/auth",   "token_uri": "https://oauth2.googleapis.com/token",   "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",   "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/dheet-286%40sheet-498707.iam.gserviceaccount.com",   "universe_domain": "googleapis.com" }'
 GOOGLE_CLIENT_SECRET = "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"
+SMTP_PASS = " info@cstlogistic.co.id"
 
 [userenv.development]
 ADMIN_EMAIL_DOMAINS = "example.com"
@@ -138,64 +142,28 @@ defaultBucketID = "replit-objstore-e357cc66-19c3-4d73-9ca9-3069d78355d1"
 
 [[ports]]
 localPort = 3000
-externalPort = 9000
+externalPort = 3002
 
 [[ports]]
 localPort = 3001
-externalPort = 3001
-
-[[ports]]
-localPort = 3002
-externalPort = 8008
+externalPort = 3003
 
 [[ports]]
 localPort = 5000
 externalPort = 80
 
 [[ports]]
-localPort = 8083
-externalPort = 3001
-
-[[ports]]
-localPort = 8084
-externalPort = 3003
-
-[[ports]]
-localPort = 8085
-externalPort = 5000
-
-[[ports]]
-localPort = 8086
-externalPort = 4200
-
-[[ports]]
-localPort = 18442
-externalPort = 3000
-
-[[ports]]
-localPort = 18443
-externalPort = 6800
-
-[[ports]]
-localPort = 18444
-externalPort = 8080
-
-[[ports]]
-localPort = 19368
+localPort = 6000
 externalPort = 6000
 
 [[ports]]
-localPort = 21170
-externalPort = 8000
+localPort = 6800
+externalPort = 6800
 
 [[ports]]
-localPort = 21171
-externalPort = 8099
+localPort = 8080
+externalPort = 8080
 
 [[ports]]
-localPort = 23434
-externalPort = 5173
-
-[[ports]]
-localPort = 23435
-externalPort = 8081
+localPort = 18444
+externalPort = 3000
