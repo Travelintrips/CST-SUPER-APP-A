@@ -72,6 +72,7 @@ import { runTenantMigration } from "./modules/tenant/migration.js";
 import { startRecurringExpenseWorker } from "./modules/sport-center/recurringExpenseWorker.js";
 import { startMemberReminderWorker } from "./modules/sport-center/memberReminderWorker.js";
 import { startExpenseReminderWorker } from "./lib/expenseReminderWorker.js";
+import { startWhtReminderWorker } from "./lib/whtReminderWorker.js";
 import { startProductFirstReminderWorker } from "./lib/productFirstReminderWorker.js";
 import { startProductFirstExceptionWorker } from "./lib/productFirstExceptionWorker.js";
 import { startRekonsiliasiWorker } from "./lib/rekonsiliasiWorker.js";
@@ -547,6 +548,7 @@ async function startServer() {
   startRecurringExpenseWorker();
   startMemberReminderWorker();
   startExpenseReminderWorker();
+  startWhtReminderWorker();
   startProductFirstReminderWorker();
   startProductFirstExceptionWorker();
   startRekonsiliasiWorker();
