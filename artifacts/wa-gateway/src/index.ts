@@ -19,8 +19,13 @@ const app = express();
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: "50mb" }));
 
-// Redirect /wa-gateway → /wa-gateway/
-app.get(BASE, (_req, res) => res.redirect(301, `${BASE}/`));
+// Redirect /wa-gateway (tanpa trailing slash) → /wa-gateway/
+app.use((req, res, next) => {
+  if (req.url === BASE || req.url.startsWith(BASE + "?")) {
+    return res.redirect(301, `${BASE}/`);
+  }
+  next();
+});
 
 app.use(`${BASE}/api/auth`, authRouter);
 app.use(`${BASE}/api/devices`, devicesRouter);
