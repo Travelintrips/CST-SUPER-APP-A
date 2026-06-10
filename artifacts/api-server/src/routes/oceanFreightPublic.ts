@@ -9,73 +9,11 @@ import { logger } from "../lib/logger.js";
 
 export const oceanFreightPublicRouter = Router();
 
-// ── Options ───────────────────────────────────────────────────────────────────
-oceanFreightPublicRouter.get("/options", async (_req: Request, res: Response) => {
-  res.json({
-    ports: [
-      { city: "Jakarta",   port: "Tanjung Priok" },
-      { city: "Surabaya",  port: "Tanjung Perak" },
-      { city: "Semarang",  port: "Tanjung Emas" },
-      { city: "Makassar",  port: "Soekarno-Hatta" },
-      { city: "Medan",     port: "Belawan" },
-      { city: "Balikpapan",port: "Kariangau" },
-      { city: "Pontianak", port: "Dwikora" },
-      { city: "Singapore", port: "PSA Singapore" },
-      { city: "Port Klang",port: "Port Klang" },
-      { city: "Penang",    port: "Penang Port" },
-      { city: "Bangkok",   port: "Laem Chabang" },
-      { city: "Shanghai",  port: "Yangshan" },
-      { city: "Ningbo",    port: "Ningbo" },
-      { city: "Hong Kong", port: "Kwai Tsing" },
-      { city: "Busan",     port: "Busan New Port" },
-      { city: "Tokyo",     port: "Tokyo Port" },
-      { city: "Dubai",     port: "Jebel Ali" },
-      { city: "Rotterdam", port: "Rotterdam" },
-      { city: "Hamburg",   port: "Hamburg" },
-      { city: "Los Angeles",port: "Long Beach" },
-    ],
-    container_types: ["20ft","40ft","40HC","Reefer 20ft","Reefer 40ft","Open Top","Flat Rack"],
-    trade_types: [
-      { value: "domestic",     label: "Domestic" },
-      { value: "export",       label: "Export" },
-      { value: "import",       label: "Import" },
-      { value: "cross_border", label: "Cross Border" },
-    ],
-    service_modes: [
-      { value: "port_to_port",  label: "Port to Port" },
-      { value: "door_to_port",  label: "Door to Port" },
-      { value: "port_to_door",  label: "Port to Door" },
-      { value: "door_to_door",  label: "Door to Door" },
-    ],
-    cargo_conditions: [
-      { value: "general",   label: "General Cargo" },
-      { value: "dg",        label: "DG Cargo" },
-      { value: "reefer",    label: "Reefer" },
-      { value: "fragile",   label: "Fragile" },
-      { value: "oversize",  label: "Oversize" },
-      { value: "high_value",label: "High Value" },
-    ],
-    incoterms: ["EXW","FOB","CFR/CNF","CIF","DAP","DDP"],
-    additional_services: [
-      { value: "trucking_pickup",    label: "Trucking Pickup" },
-      { value: "trucking_delivery",  label: "Trucking Delivery" },
-      { value: "customs_clearance",  label: "Customs Clearance" },
-      { value: "insurance",          label: "Insurance" },
-      { value: "fumigation",         label: "Fumigation" },
-      { value: "coo_certificate",    label: "COO / Certificate" },
-      { value: "warehouse_handling", label: "Warehouse Handling" },
-      { value: "stuffing",           label: "Stuffing" },
-      { value: "unstuffing",         label: "Unstuffing" },
-      { value: "surveyor",           label: "Surveyor" },
-      { value: "doc_handling",       label: "Document Handling" },
-
-const router = Router();
-
 const estimateLimit = rateLimit({ windowMs: 60_000, max: 30, standardHeaders: true, legacyHeaders: false });
 const submitLimit   = rateLimit({ windowMs: 60_000, max: 10, standardHeaders: true, legacyHeaders: false });
 
 // ── GET /api/ocean-freight-public/options ─────────────────────────────────────
-router.get("/options", async (_req: Request, res: Response) => {
+oceanFreightPublicRouter.get("/options", async (_req: Request, res: Response) => {
   return res.json({
     trade_types: [
       { v: "domestic",     l: "Domestic" },
@@ -345,36 +283,8 @@ oceanFreightPublicRouter.post("/calculate", async (req: Request, res: Response) 
   }
 });
 
-// ── POST /inquiry ─────────────────────────────────────────────────────────────
-oceanFreightPublicRouter.post("/inquiry", async (req: Request, res: Response) => {
-  try {
-    const b = req.body;
-
-    // Validate
-    if (!b.origin_port || !b.destination_port)
-      return res.status(400).json({ error: "Origin dan destination wajib" });
-    if (!b.shipment_type)
-      return res.status(400).json({ error: "Shipment type wajib" });
-    if (!b.customer_name)
-      return res.status(400).json({ error: "Nama customer wajib" });
-    if (!b.customer_phone && !b.customer_email)
-      return res.status(400).json({ error: "Phone atau email wajib" });
-    if (Number(b.container_qty ?? 1) < 1)
-      return res.status(400).json({ error: "Container qty minimal 1" });
-    if (Number(b.total_cbm ?? 0) < 0 || Number(b.gross_weight ?? 0) < 0)
-      return res.status(400).json({ error: "CBM/berat tidak boleh negatif" });
-
-    const orderNumber = `OCF/${new Date().getFullYear().toString().slice(2)}${String(new Date().getMonth() + 1).padStart(2, "0")}/${Math.floor(Math.random() * 9000 + 1000)}`;
-
-    const pricingBreakdown = b.pricing_breakdown ? JSON.stringify(b.pricing_breakdown) : null;
-    const additionalSvc    = b.selected_additional_services ? JSON.stringify(b.selected_additional_services) : "[]";
-    const candidateRateIds = b.candidate_rate_ids ? JSON.stringify(b.candidate_rate_ids) : "[]";
-
-    const insRes = await db.execute(sql.raw(`
-      INSERT INTO ocean_freight_orders (
-        order_number, customer_name, customer_phone, customer_email,
 // ── POST /api/ocean-freight-public/estimate ───────────────────────────────────
-router.post("/estimate", estimateLimit, async (req: Request, res: Response) => {
+oceanFreightPublicRouter.post("/estimate", estimateLimit, async (req: Request, res: Response) => {
   try {
     const b = req.body ?? {};
     const originPort      = String(b.origin_port ?? "").trim();
@@ -515,9 +425,10 @@ router.post("/estimate", estimateLimit, async (req: Request, res: Response) => {
 });
 
 // ── POST /api/ocean-freight-public/inquiry ────────────────────────────────────
-router.post("/inquiry", submitLimit, async (req: Request, res: Response) => {
+oceanFreightPublicRouter.post("/inquiry", submitLimit, async (req: Request, res: Response) => {
   try {
     const b = req.body ?? {};
+    const additionalSvc    = b.selected_additional_services ? JSON.stringify(b.selected_additional_services) : "[]";
 
     // Validasi wajib
     if (!b.origin_port || !b.destination_port) return res.status(400).json({ error: "origin_port dan destination_port wajib" });
@@ -528,6 +439,9 @@ router.post("/inquiry", submitLimit, async (req: Request, res: Response) => {
 
     const orderNumber = `OFR/${new Date().getFullYear()}/${String(Math.floor(Math.random() * 999999)).padStart(6, "0")}`;
     const quoteToken  = randomBytes(24).toString("hex");
+
+    const pricingBreakdown = b.pricing_breakdown ? JSON.stringify(b.pricing_breakdown) : null;
+    const candidateRateIds = b.candidate_rate_ids ? JSON.stringify(b.candidate_rate_ids) : "[]";
 
     const { rows } = await db.execute(sql`
       INSERT INTO ocean_freight_orders (
@@ -541,43 +455,33 @@ router.post("/inquiry", submitLimit, async (req: Request, res: Response) => {
         pricing_breakdown, candidate_rate_ids, selected_rate_id,
         status, source
       ) VALUES (
-        '${orderNumber}',
-        '${String(b.customer_name ?? "").replace(/'/g, "''")}',
-        ${b.customer_phone ? `'${String(b.customer_phone).replace(/'/g, "''")}'` : "NULL"},
-        ${b.customer_email ? `'${String(b.customer_email).replace(/'/g, "''")}'` : "NULL"},
-        '${String(b.origin_city ?? "").replace(/'/g, "''")}',
-        '${String(b.origin_port ?? "").replace(/'/g, "''")}',
-        '${String(b.destination_city ?? "").replace(/'/g, "''")}',
-        '${String(b.destination_port ?? "").replace(/'/g, "''")}',
-        '${String(b.trade_type ?? "export").replace(/'/g, "''")}',
-        '${String(b.service_mode ?? "port_to_port").replace(/'/g, "''")}',
-        '${String(b.shipment_type ?? "FCL").replace(/'/g, "''")}',
-        ${b.container_type ? `'${String(b.container_type).replace(/'/g, "''")}'` : "NULL"},
+        ${orderNumber},
+        ${String(b.customer_name ?? "").trim()},
+        ${b.customer_phone ?? null}, ${b.customer_email ?? null}, ${b.customer_company ?? null},
+        ${b.origin_city ?? ""}, ${b.origin_port ?? ""}, ${b.destination_city ?? ""}, ${b.destination_port ?? ""},
+        ${b.trade_type ?? "export"}, ${b.service_mode ?? "port_to_port"},
+        ${b.shipment_type ?? "FCL"}, ${b.container_type ?? null},
         ${b.container_qty ? Number(b.container_qty) : 1},
-        ${b.total_cbm ? Number(b.total_cbm) : "NULL"},
-        ${b.gross_weight ? Number(b.gross_weight) : "NULL"},
-        ${b.koli ? Number(b.koli) : "NULL"},
-        ${b.commodity ? `'${String(b.commodity).replace(/'/g, "''")}'` : "NULL"},
-        ${b.hs_code ? `'${String(b.hs_code).replace(/'/g, "''")}'` : "NULL"},
-        ${b.cargo_value ? Number(b.cargo_value) : "NULL"},
-        '${String(b.cargo_condition ?? "general").replace(/'/g, "''")}',
-        ${b.incoterm ? `'${String(b.incoterm).replace(/'/g, "''")}'` : "NULL"},
-        ${b.etd_preferred ? `'${String(b.etd_preferred).replace(/'/g, "''")}'` : "NULL"},
-        ${b.eta_target ? `'${String(b.eta_target).replace(/'/g, "''")}'` : "NULL"},
-        '${additionalSvc.replace(/'/g, "''")}',
-        ${b.selected_estimate_option ? `'${String(b.selected_estimate_option).replace(/'/g, "''")}'` : "NULL"},
-        ${b.estimated_price ? Number(b.estimated_price) : "NULL"},
-        ${b.estimated_price_idr ? Number(b.estimated_price_idr) : "NULL"},
-        '${String(b.currency ?? "IDR").replace(/'/g, "''")}',
-        ${pricingBreakdown ? `'${pricingBreakdown.replace(/'/g, "''")}'` : "NULL"},
-        '${candidateRateIds.replace(/'/g, "''")}',
-        ${b.selected_rate_id ? Number(b.selected_rate_id) : "NULL"},
-        'waiting_rate',
-        'customer_portal'
+        ${b.total_cbm ? Number(b.total_cbm) : null},
+        ${b.gross_weight ? Number(b.gross_weight) : null},
+        ${b.koli ? Number(b.koli) : null},
+        ${b.commodity ?? "General Cargo"}, ${b.hs_code ?? null},
+        ${b.cargo_value ? Number(b.cargo_value) : null},
+        ${b.cargo_condition ?? "general"}, ${b.incoterm ?? null},
+        ${b.etd_preferred ?? null}, ${b.eta_target ?? null},
+        ${JSON.stringify(b.selected_additional_services ?? [])}::jsonb,
+        ${b.selected_estimate_option ?? null},
+        ${b.estimated_price ? Number(b.estimated_price) : null},
+        ${b.estimated_price_idr ? Number(b.estimated_price_idr) : null},
+        ${b.currency ?? "IDR"},
+        ${pricingBreakdown}::jsonb,
+        ${candidateRateIds}::jsonb,
+        ${b.selected_rate_id ? Number(b.selected_rate_id) : null},
+        'waiting_rate', 'customer_portal'
       ) RETURNING id, order_number
-    `));
+    `);
 
-    const order = insRes.rows[0] as any;
+    const order = rows[0] as any;
 
     // Notify admin
     try {
@@ -595,70 +499,6 @@ router.post("/inquiry", submitLimit, async (req: Request, res: Response) => {
   }
 });
 
-// ── GET /quote/:token — customer view quote ───────────────────────────────────
-oceanFreightPublicRouter.get("/quote/:token", async (req: Request, res: Response) => {
-  try {
-    const { token } = req.params;
-    const res2 = await db.execute(sql.raw(`SELECT * FROM ocean_freight_orders WHERE quote_token = '${token.replace(/'/g, "''")}'`));
-    const order = res2.rows[0] as any;
-    if (!order) return res.status(404).json({ error: "Quote tidak ditemukan atau sudah tidak berlaku" });
-    // Strip internal fields
-    const { admin_notes: _an, ...safe } = order;
-    res.json(safe);
-  } catch (err) {
-    logger.error({ err }, "[ocean-freight-public] GET /quote/:token");
-    res.status(500).json({ error: "Gagal memuat quote" });
-  }
-});
-
-// ── POST /quote/:token/approve ────────────────────────────────────────────────
-oceanFreightPublicRouter.post("/quote/:token/approve", async (req: Request, res: Response) => {
-  try {
-    const { token } = req.params;
-    const res2 = await db.execute(sql.raw(`SELECT * FROM ocean_freight_orders WHERE quote_token = '${token.replace(/'/g, "''")}'`));
-    const order = res2.rows[0] as any;
-    if (!order) return res.status(404).json({ error: "Quote tidak ditemukan" });
-    if (order.status !== "quoted") return res.status(400).json({ error: "Quote belum dikirim atau sudah diproses" });
-
-    await db.execute(sql.raw(`UPDATE ocean_freight_orders SET status = 'approved', updated_at = NOW() WHERE quote_token = '${token.replace(/'/g, "''")}'`));
-
-    // Notify admin
-    try {
-      const adminWa = await getAdminGroupWa();
-      if (adminWa) await sendWhatsApp(adminWa, `*Customer Approve Ocean Freight Quote*\n• Order: ${order.order_number}\n• Customer: ${order.customer_name}\n• Rute: ${order.origin_port} → ${order.destination_port}\n• Total: IDR ${Number(order.grand_total ?? 0).toLocaleString("id-ID")}\n\nSilakan konfirmasi booking!`);
-    } catch {}
-
-    res.json({ ok: true, message: "Quote berhasil disetujui. Tim kami akan segera mengkonfirmasi booking." });
-  } catch (err) {
-    logger.error({ err }, "[ocean-freight-public] POST /quote/:token/approve");
-    res.status(500).json({ error: "Gagal approve quote" });
-  }
-});
-
-// ── POST /quote/:token/decline ────────────────────────────────────────────────
-oceanFreightPublicRouter.post("/quote/:token/decline", async (req: Request, res: Response) => {
-  try {
-    const { token } = req.params;
-    const { reason } = req.body;
-    const res2 = await db.execute(sql.raw(`SELECT * FROM ocean_freight_orders WHERE quote_token = '${token.replace(/'/g, "''")}'`));
-    const order = res2.rows[0] as any;
-    if (!order) return res.status(404).json({ error: "Quote tidak ditemukan" });
-    if (order.status !== "quoted") return res.status(400).json({ error: "Quote belum dikirim atau sudah diproses" });
-
-    await db.execute(sql.raw(`UPDATE ocean_freight_orders SET status = 'quote_declined', ${reason ? `admin_notes = '${String(reason).replace(/'/g, "''")}',` : ""} updated_at = NOW() WHERE quote_token = '${token.replace(/'/g, "''")}'`));
-
-    try {
-      const adminWa = await getAdminGroupWa();
-      if (adminWa) await sendWhatsApp(adminWa, `*Customer Tolak Ocean Freight Quote*\n• Order: ${order.order_number}\n• Customer: ${order.customer_name}${reason ? `\n• Alasan: ${reason}` : ""}`);
-    } catch {}
-
-    res.json({ ok: true, message: "Quote ditolak. Tim kami akan menghubungi Anda." });
-  } catch (err) {
-    logger.error({ err }, "[ocean-freight-public] POST /quote/:token/decline");
-    res.status(500).json({ error: "Gagal decline quote" });
-  }
-});
-
 // ── GET /track/:orderNumber ───────────────────────────────────────────────────
 oceanFreightPublicRouter.get("/track/:orderNumber", async (req: Request, res: Response) => {
   try {
@@ -672,69 +512,9 @@ oceanFreightPublicRouter.get("/track/:orderNumber", async (req: Request, res: Re
     res.status(500).json({ error: "Gagal memuat tracking" });
   }
 });
-        estimated_price, estimated_price_idr, currency, pricing_breakdown,
-        selected_rate_id, candidate_rate_ids, customer_notes,
-        status, source, price_status, quote_token, created_at, updated_at
-      ) VALUES (
-        ${orderNumber},
-        ${String(b.customer_name ?? "").trim()},
-        ${b.customer_phone ?? null}, ${b.customer_email ?? null}, ${b.customer_company ?? null},
-        ${b.origin_city ?? ""}, ${b.origin_port ?? ""}, ${b.destination_city ?? ""}, ${b.destination_port ?? ""},
-        ${b.trade_type ?? "export"}, ${b.service_mode ?? "port_to_port"},
-        ${b.shipment_type ?? "FCL"}, ${b.container_type ?? null},
-        ${b.container_qty ? Number(b.container_qty) : null},
-        ${b.total_cbm ? Number(b.total_cbm) : null},
-        ${b.gross_weight ? Number(b.gross_weight) : null},
-        ${b.koli ? Number(b.koli) : null},
-        ${b.commodity ?? "General Cargo"}, ${b.hs_code ?? null},
-        ${b.cargo_value ? Number(b.cargo_value) : null},
-        ${b.cargo_condition ?? "general"}, ${b.incoterm ?? null},
-        ${b.etd_preferred ?? null}, ${b.eta_target ?? null},
-        ${JSON.stringify(b.selected_additional_services ?? [])}::jsonb,
-        ${b.selected_estimate_option ?? null},
-        ${b.estimated_price ? Number(b.estimated_price) : null},
-        ${b.estimated_price_idr ? Number(b.estimated_price_idr) : null},
-        ${b.currency ?? "IDR"},
-        ${JSON.stringify(b.pricing_breakdown ?? {})}::jsonb,
-        ${b.selected_rate_id ? Number(b.selected_rate_id) : null},
-        ${JSON.stringify(b.candidate_rate_ids ?? [])}::jsonb,
-        ${b.customer_notes ?? null},
-        'waiting_rate', 'customer_portal', 'estimate',
-        ${quoteToken}, NOW(), NOW()
-      ) RETURNING id, order_number, quote_token
-    `);
-
-    const order = rows[0] as any;
-
-    // Notify admin via WA
-    try {
-      const adminGroup = await getAdminGroupWa();
-      if (adminGroup) {
-        const msgParts = [
-          `🚢 *Ocean Freight Inquiry Baru*`,
-          `No: ${order.order_number}`,
-          `Customer: ${b.customer_name}`,
-          `Rute: ${b.origin_port} → ${b.destination_port}`,
-          `${b.shipment_type}${b.container_type ? " " + b.container_type : ""}`,
-          `Status: waiting_rate`,
-        ];
-        await sendWhatsApp(adminGroup, msgParts.join("\n"));
-      }
-    } catch (_) {}
-
-    return res.status(201).json({
-      ok: true,
-      order_number: order.order_number,
-      message: "Permintaan penawaran Ocean Freight berhasil dikirim. Tim kami akan mengirim harga final setelah mendapatkan konfirmasi dari shipping line / partner.",
-    });
-  } catch (e) {
-    console.error("[ocean-freight-public/inquiry]", e);
-    return res.status(500).json({ error: "Gagal submit inquiry" });
-  }
-});
 
 // ── GET /api/ocean-freight-public/quote/:token ────────────────────────────────
-router.get("/quote/:token", async (req: Request, res: Response) => {
+oceanFreightPublicRouter.get("/quote/:token", async (req: Request, res: Response) => {
   try {
     const token = String(req.params.token ?? "").trim();
     if (!token) return res.status(400).json({ error: "Token tidak valid" });
@@ -756,7 +536,7 @@ router.get("/quote/:token", async (req: Request, res: Response) => {
 });
 
 // ── POST /api/ocean-freight-public/quote/:token/approve ──────────────────────
-router.post("/quote/:token/approve", async (req: Request, res: Response) => {
+oceanFreightPublicRouter.post("/quote/:token/approve", async (req: Request, res: Response) => {
   try {
     const token = String(req.params.token ?? "");
     const { rows: existing } = await db.execute(sql`
@@ -786,7 +566,7 @@ router.post("/quote/:token/approve", async (req: Request, res: Response) => {
 });
 
 // ── POST /api/ocean-freight-public/quote/:token/decline ──────────────────────
-router.post("/quote/:token/decline", async (req: Request, res: Response) => {
+oceanFreightPublicRouter.post("/quote/:token/decline", async (req: Request, res: Response) => {
   try {
     const token = String(req.params.token ?? "");
     const { rows: existing } = await db.execute(sql`
@@ -808,4 +588,4 @@ router.post("/quote/:token/decline", async (req: Request, res: Response) => {
   }
 });
 
-export default router;
+export default oceanFreightPublicRouter;

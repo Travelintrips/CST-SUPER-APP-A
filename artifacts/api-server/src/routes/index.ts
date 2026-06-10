@@ -132,10 +132,6 @@ import { vendorCatalogEnginePublicRouter, vendorCatalogEngineAdminRouter } from 
 import orderCostsRouter from "./orderCosts.js";
 import vendorTruckingPricingRouter from "./vendorTruckingPricing.js";
 import productMediaRouter from "./productMedia.js";
-import oceanFreightRouter from "./oceanFreight.js";
-import oceanFreightRatesRouter from "./oceanFreightRates.js";
-import oceanFreightPublicRouter from "./oceanFreightPublic.js";
-import { oceanFreightVendorFormRouter } from "./oceanFreightVendorForm.js";
 import oceanFreightMasterRouter from "./oceanFreightMaster.js";
 
 import type { Request, Response } from "express";
@@ -300,10 +296,6 @@ router.use("/expense-dashboard", expenseDashboardRouter);
 router.use("/expense-templates", expenseTemplatesRouter);
 router.use("/expense-config", expenseBudgetsRouter);
 router.use("/air-freight-form", airFreightVendorFormRouter);
-router.use("/ocean-freight-rates", oceanFreightRatesRouter);
-router.use("/ocean-freight", oceanFreightRouter);
-router.use("/ocean-freight-public", oceanFreightPublicRouter);
-router.use("/ocean-freight-form", oceanFreightVendorFormRouter);
 router.use("/ocean-freight-master", oceanFreightMasterRouter);
 router.use("/wati", watiRouter);
 router.use("/sales/escrow", escrowPublicRouter);

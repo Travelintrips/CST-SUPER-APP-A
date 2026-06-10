@@ -6,36 +6,6 @@ import { logger } from "../lib/logger.js";
 
 const router = Router();
 
-function validateRate(b: Record<string, unknown>): string | null {
-  if (b.valid_until && b.valid_from && String(b.valid_until) < String(b.valid_from))
-    return "valid_until harus >= valid_from";
-  const cur = String(b.currency ?? "IDR");
-  if (cur !== "IDR") {
-    const er = Number(b.exchange_rate_to_idr ?? 0);
-    if (!er || er <= 0) return "exchange_rate_to_idr wajib diisi jika currency bukan IDR";
-  }
-  const st = String(b.shipment_type ?? "FCL");
-  if (st === "FCL") {
-    if (!b.container_type) return "container_type wajib untuk FCL";
-    if (!(Number(b.ocean_freight_amount ?? 0) > 0)) return "ocean_freight_amount wajib untuk FCL";
-  }
-  if (st === "LCL") {
-    if (!(Number(b.lcl_rate_per_cbm ?? 0) > 0)) return "lcl_rate_per_cbm wajib untuk LCL";
-    if (!(Number(b.lcl_minimum_cbm ?? 0) > 0)) return "lcl_minimum_cbm wajib untuk LCL";
-  }
-  const numFields = [
-    "exchange_rate_to_idr","ocean_freight_amount","lcl_rate_per_cbm","lcl_minimum_cbm",
-    "thc_origin","thc_destination","doc_fee","bl_fee","do_fee","handling_fee",
-    "customs_clearance_fee","trucking_pickup_estimate","trucking_delivery_estimate",
-    "insurance_percent","dg_surcharge_percent","reefer_surcharge","peak_season_surcharge",
-    "emergency_bunker_surcharge","currency_adjustment_factor",
-  ];
-  for (const f of numFields) {
-    const v = b[f];
-    if (v != null && Number(v) < 0) return `${f} tidak boleh negatif`;
-
-const router = Router();
-
 // ── Boot: create table + ensure rate_code unique constraint ───────────────────
 (async () => {
   await db.execute(sql.raw(`
@@ -559,8 +529,8 @@ router.patch("/rates/:id/toggle", async (req: Request, res: Response) => {
   } catch (err) {
     logger.error({ err }, "[ocean-freight-rates] PATCH /rates/:id/toggle");
     res.status(500).json({ error: "Gagal toggle rate" });
-const today = new Date().toISOString().slice(0, 10);
-const in90  = new Date(Date.now() + 90 * 86400_000).toISOString().slice(0, 10);
+  }
+});
 
 // GET /api/ocean-freight-rates — list
 router.get("/", requireAdmin, async (req: Request, res: Response) => {
