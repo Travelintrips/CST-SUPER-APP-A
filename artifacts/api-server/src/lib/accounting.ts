@@ -46,7 +46,8 @@ export interface PostingInput {
     | "sport_center_refund"
     | "sport_center_membership"
     | "sport_center_operational_expense"
-    | "logistic_vendor_cost";
+    | "logistic_vendor_cost"
+    | "tenant_rent_payment";
   sourceId?: number | null;
   createdById?: string | null;
   companyId?: number | null;

@@ -129,9 +129,9 @@ router.get("/units", async (req, res) => {
 router.post("/units", async (req, res) => {
   if (!(await requireAdmin(req, res))) return;
   const b = req.body ?? {};
-  if (!b.unit_code || !b.name) return res.status(400).json({ error: "Kode unit dan nama wajib diisi" });
+  if (!b.unit_code || !b.name) return void res.status(400).json({ error: "Kode unit dan nama wajib diisi" });
   const companyId = Number(b.company_id ?? companyOf(req) ?? 1);
-  if (![1, 2].includes(companyId)) return res.status(400).json({ error: "Lokasi harus Sport Center (1) atau TOD M1 (2)" });
+  if (![1, 2].includes(companyId)) return void res.status(400).json({ error: "Lokasi harus Sport Center (1) atau TOD M1 (2)" });
   try {
     const { rows } = (await db.execute(sql`
       INSERT INTO tenant_units (company_id, unit_code, name, area_name, unit_type, area_sqm, monthly_rate, status, notes, position_x, position_y, width, height)
@@ -144,7 +144,7 @@ router.post("/units", async (req, res) => {
     await writeAuditLog("CREATE", "tenant_unit", rows[0]?.id ?? null, { unit_code: rows[0]?.unit_code, company_id: companyId }, req);
     res.json(rows[0]);
   } catch (err: any) {
-    if (err?.code === "23505") return res.status(409).json({ error: "Kode unit sudah digunakan di lokasi ini" });
+    if (err?.code === "23505") return void res.status(409).json({ error: "Kode unit sudah digunakan di lokasi ini" });
     logger.error({ err }, "create tenant unit failed");
     res.status(500).json({ error: "Gagal menyimpan unit" });
   }
@@ -173,11 +173,11 @@ router.put("/units/:id", async (req, res) => {
         height = COALESCE(${b.height != null ? Number(b.height) : null}, height),
         updated_at = NOW()
       WHERE id = ${id} ${cf} RETURNING *`)) as unknown as { rows: any[] };
-    if (!rows[0]) return res.status(404).json({ error: "Unit tidak ditemukan" });
+    if (!rows[0]) return void res.status(404).json({ error: "Unit tidak ditemukan" });
     await writeAuditLog("UPDATE", "tenant_unit", id, { changes: b }, req);
     res.json(rows[0]);
   } catch (err: any) {
-    if (err?.code === "23505") return res.status(409).json({ error: "Kode unit sudah digunakan di lokasi ini" });
+    if (err?.code === "23505") return void res.status(409).json({ error: "Kode unit sudah digunakan di lokasi ini" });
     logger.error({ err }, "update tenant unit failed");
     res.status(500).json({ error: "Gagal memperbarui unit" });
   }
@@ -192,7 +192,7 @@ router.delete("/units/:id", async (req, res) => {
     const { rows } = (await db.execute(
       sql`UPDATE tenant_units SET status = 'inactive', updated_at = NOW() WHERE id = ${id} ${cf} RETURNING *`,
     )) as unknown as { rows: any[] };
-    if (!rows[0]) return res.status(404).json({ error: "Unit tidak ditemukan" });
+    if (!rows[0]) return void res.status(404).json({ error: "Unit tidak ditemukan" });
     await writeAuditLog("DEACTIVATE", "tenant_unit", id, { unit_code: rows[0]?.unit_code }, req);
     res.json({ ok: true, unit: rows[0] });
   } catch (err) {
@@ -230,7 +230,7 @@ router.get("/tenants/:id", async (req, res) => {
   const cf = companyId ? sql`AND company_id = ${companyId}` : sql``;
   try {
     const { rows } = (await db.execute(sql`SELECT * FROM tenants WHERE id = ${id} ${cf} LIMIT 1`)) as unknown as { rows: any[] };
-    if (!rows[0]) return res.status(404).json({ error: "Penyewa tidak ditemukan" });
+    if (!rows[0]) return void res.status(404).json({ error: "Penyewa tidak ditemukan" });
     const { rows: bookings } = (await db.execute(
       sql`SELECT b.*, u.unit_code, u.name AS unit_name FROM tenant_bookings b
           LEFT JOIN tenant_units u ON u.id = b.unit_id
@@ -251,7 +251,7 @@ router.get("/tenants/:id", async (req, res) => {
 router.post("/tenants", async (req, res) => {
   if (!(await requireAdmin(req, res))) return;
   const b = req.body ?? {};
-  if (!b.business_name || !b.owner_name) return res.status(400).json({ error: "Nama usaha dan pemilik wajib diisi" });
+  if (!b.business_name || !b.owner_name) return void res.status(400).json({ error: "Nama usaha dan pemilik wajib diisi" });
   try {
     const { rows } = (await db.execute(sql`
       INSERT INTO tenants (company_id, business_name, owner_name, phone, email, business_category, logo_url, address, status)
@@ -284,7 +284,7 @@ router.put("/tenants/:id", async (req, res) => {
         status = COALESCE(${b.status ?? null}, status),
         updated_at = NOW()
       WHERE id = ${id} ${cf} RETURNING *`)) as unknown as { rows: any[] };
-    if (!rows[0]) return res.status(404).json({ error: "Penyewa tidak ditemukan" });
+    if (!rows[0]) return void res.status(404).json({ error: "Penyewa tidak ditemukan" });
     res.json(rows[0]);
   } catch (err) {
     logger.error({ err }, "update tenant failed");
@@ -299,7 +299,7 @@ router.delete("/tenants/:id", async (req, res) => {
   const cf = companyId ? sql`AND company_id = ${companyId}` : sql``;
   try {
     const { rows } = (await db.execute(sql`DELETE FROM tenants WHERE id = ${id} ${cf} RETURNING id`)) as unknown as { rows: any[] };
-    if (!rows[0]) return res.status(404).json({ error: "Penyewa tidak ditemukan" });
+    if (!rows[0]) return void res.status(404).json({ error: "Penyewa tidak ditemukan" });
     res.json({ ok: true });
   } catch (err) {
     logger.error({ err }, "delete tenant failed");
@@ -335,13 +335,13 @@ router.get("/bookings", async (req, res) => {
 router.post("/bookings", async (req, res) => {
   if (!(await requireAdmin(req, res))) return;
   const b = req.body ?? {};
-  if (!b.tenant_id) return res.status(400).json({ error: "Penyewa wajib dipilih" });
+  if (!b.tenant_id) return void res.status(400).json({ error: "Penyewa wajib dipilih" });
   const companyId = companyOf(req) ?? 1;
   try {
     const { rows: tRows } = (await db.execute(
       sql`SELECT id, site_id FROM tenants WHERE id = ${Number(b.tenant_id)} AND company_id = ${companyId} LIMIT 1`,
     )) as unknown as { rows: { id: number; site_id: number | null }[] };
-    if (!tRows[0]) return res.status(400).json({ error: "Penyewa tidak valid untuk perusahaan ini" });
+    if (!tRows[0]) return void res.status(400).json({ error: "Penyewa tidak valid untuk perusahaan ini" });
     const siteId = tRows[0].site_id;
 
     if (b.unit_id) {
@@ -349,9 +349,9 @@ router.post("/bookings", async (req, res) => {
       const { rows: uRows } = (await db.execute(
         sql`SELECT id, status FROM tenant_units WHERE id = ${unitId} AND company_id = ${companyId} LIMIT 1`,
       )) as unknown as { rows: { id: number; status: string }[] };
-      if (!uRows[0]) return res.status(400).json({ error: "Unit tidak ditemukan" });
-      if (uRows[0].status === "maintenance") return res.status(409).json({ error: "Unit sedang maintenance, tidak bisa dipesan" });
-      if (uRows[0].status === "inactive") return res.status(409).json({ error: "Unit tidak aktif, tidak bisa dipesan" });
+      if (!uRows[0]) return void res.status(400).json({ error: "Unit tidak ditemukan" });
+      if (uRows[0].status === "maintenance") return void res.status(409).json({ error: "Unit sedang maintenance, tidak bisa dipesan" });
+      if (uRows[0].status === "inactive") return void res.status(409).json({ error: "Unit tidak aktif, tidak bisa dipesan" });
 
       if (b.start_date && b.end_date) {
         const { rows: overlap } = (await db.execute(
@@ -362,7 +362,7 @@ router.post("/bookings", async (req, res) => {
                 AND start_date <= ${b.end_date} AND end_date >= ${b.start_date}
               LIMIT 1`,
         )) as unknown as { rows: any[] };
-        if (overlap[0]) return res.status(409).json({ error: "Unit sudah dibooking pada periode yang sama" });
+        if (overlap[0]) return void res.status(409).json({ error: "Unit sudah dibooking pada periode yang sama" });
       }
     }
 
@@ -412,7 +412,7 @@ router.put("/bookings/:id", async (req, res) => {
         total_price = COALESCE(${b.total_price ?? null}, total_price),
         updated_at = NOW()
       WHERE id = ${id} ${cf} RETURNING *`)) as unknown as { rows: any[] };
-    if (!rows[0]) return res.status(404).json({ error: "Penyewaan tidak ditemukan" });
+    if (!rows[0]) return void res.status(404).json({ error: "Penyewaan tidak ditemukan" });
     await writeAuditLog("UPDATE", "tenant_booking", id, { changes: b }, req);
     res.json(rows[0]);
   } catch (err) {
@@ -428,7 +428,7 @@ router.delete("/bookings/:id", async (req, res) => {
   const cf = companyId ? sql`AND company_id = ${companyId}` : sql``;
   try {
     const { rows } = (await db.execute(sql`DELETE FROM tenant_bookings WHERE id = ${id} ${cf} RETURNING id`)) as unknown as { rows: any[] };
-    if (!rows[0]) return res.status(404).json({ error: "Penyewaan tidak ditemukan" });
+    if (!rows[0]) return void res.status(404).json({ error: "Penyewaan tidak ditemukan" });
     res.json({ ok: true });
   } catch (err) {
     logger.error({ err }, "delete booking failed");
@@ -464,13 +464,13 @@ router.get("/payments", async (req, res) => {
 router.post("/payments", async (req, res) => {
   if (!(await requireAdmin(req, res))) return;
   const b = req.body ?? {};
-  if (!b.tenant_booking_id || !b.amount) return res.status(400).json({ error: "Booking dan jumlah wajib diisi" });
+  if (!b.tenant_booking_id || !b.amount) return void res.status(400).json({ error: "Booking dan jumlah wajib diisi" });
   const companyId = companyOf(req) ?? 1;
   try {
     const { rows: bRows } = (await db.execute(
       sql`SELECT id FROM tenant_bookings WHERE id = ${Number(b.tenant_booking_id)} AND company_id = ${companyId} LIMIT 1`,
     )) as unknown as { rows: any[] };
-    if (!bRows[0]) return res.status(400).json({ error: "Penyewaan tidak valid untuk perusahaan ini" });
+    if (!bRows[0]) return void res.status(400).json({ error: "Penyewaan tidak valid untuk perusahaan ini" });
     const paymentNumber = await nextPaymentNumber();
     const { rows } = (await db.execute(sql`
       INSERT INTO tenant_payments (company_id, tenant_booking_id, payment_number, proof_image_url, amount, method, notes, status)
@@ -517,10 +517,10 @@ router.post("/payments/:id/confirm", async (req, res) => {
   const companyId = companyOf(req);
   try {
     const ok = await confirmPaymentInternal(id, req, companyId);
-    if (!ok) return res.status(404).json({ error: "Pembayaran tidak ditemukan" });
+    if (!ok) return void res.status(404).json({ error: "Pembayaran tidak ditemukan" });
     const cf = companyId ? sql`AND company_id = ${companyId}` : sql``;
     const { rows } = (await db.execute(sql`SELECT * FROM tenant_payments WHERE id = ${id} ${cf} LIMIT 1`)) as unknown as { rows: any[] };
-    if (!rows[0]) return res.status(404).json({ error: "Pembayaran tidak ditemukan" });
+    if (!rows[0]) return void res.status(404).json({ error: "Pembayaran tidak ditemukan" });
     res.json(rows[0]);
   } catch (err) {
     logger.error({ err }, "confirm payment failed");
