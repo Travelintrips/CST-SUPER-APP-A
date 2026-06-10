@@ -206,9 +206,9 @@ import TenantDashboard from "@/pages/tenant/dashboard";
 import TenantList from "@/pages/tenant/tenants";
 import TenantBookings from "@/pages/tenant/bookings";
 import TenantPayments from "@/pages/tenant/payments";
-import AirFreightOrdersPage from "@/pages/air-freight/orders";
+import AirFreightNewOrdersPage from "@/pages/air-freight/orders";
 import AirFreightRatesPage from "@/pages/air-freight/rates";
-import AirFreightOrderDetailPage from "@/pages/air-freight/order-detail";
+import AirFreightNewOrderDetailPage from "@/pages/air-freight/order-detail";
 import AirFreightApprovalPage from "@/pages/air-freight/approval";
 import AirFreightTrackPage from "@/pages/air-freight/track";
 
@@ -485,8 +485,8 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/tenant" component={PR(TenantDashboard)} />
 
       {/* ── Air Freight ─────────────────────────────────────────────────── */}
-      <Route path="/air-freight/orders/:id" component={PR(AirFreightOrderDetailPage)} />
-      <Route path="/air-freight/orders" component={PR(AirFreightOrdersPage)} />
+      <Route path="/air-freight/orders/:id" component={PR(AirFreightNewOrderDetailPage)} />
+      <Route path="/air-freight/orders" component={PR(AirFreightNewOrdersPage)} />
       <Route path="/air-freight/rates" component={PR(AirFreightRatesPage)} />
       {/* public — no auth */}
       <Route path="/air-freight/approval/:token" component={AirFreightApprovalPage} />
