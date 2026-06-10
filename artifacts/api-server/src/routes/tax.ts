@@ -7,6 +7,7 @@ import { logger } from "../lib/logger.js";
 import { audit } from "../lib/unifiedAudit.js";
 import { validateNpwp, formatNpwp, stripNpwp } from "../lib/npwpValidator.js";
 import { validateFakturPajak, formatFaktur } from "../lib/fakturPajakValidator.js";
+import { calculatePph21, calculatePph21NonPegawai, PTKP_OPTIONS, type PtkpStatus } from "../lib/pph21Calculator.js";
 
 const router = Router();
 
@@ -495,6 +496,127 @@ router.post("/validate/faktur", (req, res) => {
   if (!faktur) return res.status(400).json({ message: "faktur wajib diisi" });
   const result = validateFakturPajak(String(faktur));
   return res.json(result);
+});
+
+// ── POST /api/tax/pph21/calculate ─────────────────────────────────────────────
+router.post("/pph21/calculate", (req, res) => {
+  const {
+    grossMonthly, ptkpStatus = "TK/0", useTer = false, nonPegawai = false,
+    grossAmount, hasNpwp,
+  } = req.body;
+
+  if (nonPegawai) {
+    if (!grossAmount) return res.status(400).json({ message: "grossAmount wajib untuk non-pegawai" });
+    return res.json(calculatePph21NonPegawai({ grossAmount: Number(grossAmount), hasNpwp: hasNpwp !== false }));
+  }
+
+  if (grossMonthly == null) return res.status(400).json({ message: "grossMonthly wajib diisi" });
+  const result = calculatePph21({
+    grossMonthly: Number(grossMonthly),
+    ptkpStatus: ptkpStatus as PtkpStatus,
+    useTer: Boolean(useTer),
+  });
+  return res.json(result);
+});
+
+// ── GET /api/tax/pph21/ptkp-options ──────────────────────────────────────────
+router.get("/pph21/ptkp-options", (_req, res) => {
+  return res.json({ data: PTKP_OPTIONS });
+});
+
+// ── GET /api/tax/reconciliation/unmatched ─────────────────────────────────────
+router.get("/reconciliation/unmatched", async (req, res) => {
+  const companyId = resolveCompanyId(req);
+  const { year, period } = req.query as Record<string, string>;
+  const y = year ?? new Date().getFullYear().toString();
+  const periodFilter = period ? `AND tt.period = '${period}'` : `AND tt.period LIKE '${y}%'`;
+
+  const [orphaned, staleOpen, unmatchedEntries] = await Promise.all([
+
+    // 1. transaction_taxes yang module_source-nya bukan 'manual'
+    //    tetapi source_id tidak ada di tabel asal (orphaned)
+    db.execute(sql.raw(`
+      SELECT tt.id, tt.period, tt.tax_name, tt.direction,
+             tt.transaction_type, tt.transaction_ref, tt.partner_name,
+             tt.base_amount::numeric, tt.tax_amount::numeric, tt.status,
+             tt.created_at,
+             'orphaned' AS issue_type,
+             'Transaksi sumber tidak ditemukan' AS issue_desc
+      FROM transaction_taxes tt
+      WHERE tt.company_id = ${companyId}
+        ${periodFilter}
+        AND tt.status = 'pending'
+        AND tt.transaction_type = 'expense'
+        AND NOT EXISTS (
+          SELECT 1 FROM expenses e WHERE e.id = tt.source_id
+        )
+        AND tt.source_id IS NOT NULL
+      LIMIT 100
+    `)),
+
+    // 2. transaction_taxes pending lebih dari 60 hari tanpa update
+    db.execute(sql.raw(`
+      SELECT tt.id, tt.period, tt.tax_name, tt.direction,
+             tt.transaction_type, tt.transaction_ref, tt.partner_name,
+             tt.base_amount::numeric, tt.tax_amount::numeric, tt.status,
+             tt.created_at,
+             'stale_pending' AS issue_type,
+             'Pending > 60 hari tanpa update' AS issue_desc
+      FROM transaction_taxes tt
+      WHERE tt.company_id = ${companyId}
+        ${periodFilter}
+        AND tt.status = 'pending'
+        AND tt.created_at < NOW() - INTERVAL '60 days'
+      ORDER BY tt.created_at ASC
+      LIMIT 200
+    `)),
+
+    // 3. accounting entry lines ke akun PPN/PPh (COA code 2-10xx atau 1-13xx)
+    //    yang tidak punya transaction_taxes record dengan matching ref
+    db.execute(sql.raw(`
+      SELECT
+        ae.id AS entry_id,
+        ae.entry_number,
+        ae.date::date,
+        ae.description,
+        ae.ref,
+        ae.source,
+        COALESCE(SUM(CASE WHEN ael.debit  > 0 THEN ael.debit  ELSE 0 END), 0)::numeric AS debit_total,
+        COALESCE(SUM(CASE WHEN ael.credit > 0 THEN ael.credit ELSE 0 END), 0)::numeric AS credit_total,
+        'unmatched_entry' AS issue_type,
+        'Jurnal ke akun pajak tanpa transaction_taxes record' AS issue_desc
+      FROM accounting_entries ae
+      JOIN accounting_entry_lines ael ON ael.entry_id = ae.id
+      JOIN chart_of_accounts coa ON coa.id = ael.account_id
+      WHERE ae.company_id = ${companyId}
+        AND ae.date >= '${y}-01-01'
+        AND ae.date <  '${parseInt(y) + 1}-01-01'
+        AND ae.status != 'voided'
+        AND (coa.code LIKE '2-1030%' OR coa.code LIKE '2-1040%')
+        AND NOT EXISTS (
+          SELECT 1 FROM transaction_taxes tt
+          WHERE tt.company_id = ${companyId}
+            AND tt.transaction_ref = ae.ref
+            AND tt.period LIKE '${y}%'
+        )
+      GROUP BY ae.id, ae.entry_number, ae.date, ae.description, ae.ref, ae.source
+      ORDER BY ae.date DESC
+      LIMIT 100
+    `)),
+  ]);
+
+  const totalIssues =
+    (orphaned.rows as unknown[]).length +
+    (staleOpen.rows as unknown[]).length +
+    (unmatchedEntries.rows as unknown[]).length;
+
+  return res.json({
+    year: y,
+    totalIssues,
+    orphaned: orphaned.rows,
+    stalePending: staleOpen.rows,
+    unmatchedEntries: unmatchedEntries.rows,
+  });
 });
 
 // ── POST /api/tax/transactions/calculate ──────────────────────────────────────

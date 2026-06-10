@@ -6,6 +6,7 @@ import { postEntry } from "../lib/accounting.js";
 import { ensureAccountingSettings } from "../lib/accountingSeed.js";
 import { resolveCompanyId } from "../lib/resolveCompany.js";
 import { audit } from "../lib/unifiedAudit.js";
+import { recalculateVendorDocPaymentStatus } from "../lib/vendorPaymentRecalc.js";
 
 const router = Router();
 router.use(async (req, res, next) => {
@@ -197,6 +198,12 @@ router.post("/", async (req: Request, res) => {
     after: row,
     companyId: companyId ?? null,
   });
+
+  // Auto-update purchase_documents.payment_status jika terhubung ke PO
+  if (purchaseDocumentId) {
+    void recalculateVendorDocPaymentStatus(parseInt(purchaseDocumentId)).catch(() => {});
+  }
+
   return res.status(201).json(row);
 });
 
@@ -214,6 +221,13 @@ router.delete("/:id", async (req: Request, res) => {
     resourceId: String((before.payment_number as string | undefined) ?? id),
     before,
   });
+
+  // Re-recalculate setelah hapus — status mungkin kembali ke partial/unpaid
+  const purchaseDocId = before.purchase_document_id as number | null | undefined;
+  if (purchaseDocId) {
+    void recalculateVendorDocPaymentStatus(purchaseDocId).catch(() => {});
+  }
+
   return res.json({ ok: true });
 });
 
