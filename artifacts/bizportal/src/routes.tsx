@@ -204,6 +204,7 @@ import SportCenterSettings from "@/pages/sport-center/settings";
 import SportCenterProfitability from "@/pages/sport-center/profitability";
 import TenantDashboard from "@/pages/tenant/dashboard";
 import TenantList from "@/pages/tenant/tenants";
+import TenantUnits from "@/pages/tenant/units";
 import TenantBookings from "@/pages/tenant/bookings";
 import TenantPayments from "@/pages/tenant/payments";
 import AirFreightOrdersPage from "@/pages/air-freight/orders";
@@ -480,6 +481,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/sport-center" component={PR(SportCenterDashboard)} />
       <Route path="/tenant/dashboard" component={PR(TenantDashboard)} />
       <Route path="/tenant/tenants" component={PR(TenantList)} />
+      <Route path="/tenant/units" component={PR(TenantUnits)} />
       <Route path="/tenant/bookings" component={PR(TenantBookings)} />
       <Route path="/tenant/payments" component={PR(TenantPayments)} />
       <Route path="/tenant" component={PR(TenantDashboard)} />
