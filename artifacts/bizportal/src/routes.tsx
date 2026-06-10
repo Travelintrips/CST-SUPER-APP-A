@@ -51,6 +51,7 @@ import QcListPage from "@/pages/purchase/qc-list";
 import QcEditorPage from "@/pages/purchase/qc-editor";
 import { PurchaseReturnsListPage, PurchaseReturnEditorPage } from "@/pages/purchase/purchase-returns";
 import TaxDashboardPage from "@/pages/tax/dashboard";
+import TaxReconciliationPage from "@/pages/tax/reconciliation";
 import TaxRulesPage from "@/pages/tax/rules";
 import TaxTransactionsPage from "@/pages/tax/transactions";
 import TaxPpnPage from "@/pages/tax/ppn";
@@ -524,6 +525,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/tax/ppn" component={PR(TaxPpnPage)} />
       <Route path="/tax/pph" component={PR(TaxPphPage)} />
       <Route path="/tax/spt" component={PR(TaxSptPage)} />
+      <Route path="/tax/reconciliation" component={PR(TaxReconciliationPage)} />
       <Route path="/tax" component={PR(TaxDashboardPage)} />
 
       {/* ── Legacy redirects ───────────────────────────────────────────── */}

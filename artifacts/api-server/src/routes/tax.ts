@@ -315,6 +315,100 @@ router.get("/export", async (req, res) => {
   return res.send("\uFEFF" + csv);
 });
 
+// ── GET /api/tax/reconciliation ───────────────────────────────────────────────
+router.get("/reconciliation", async (req, res) => {
+  const companyId = resolveCompanyId(req);
+  const { year } = req.query as Record<string, string>;
+  const y = year ?? new Date().getFullYear().toString();
+
+  const [summary, gaps, byPeriod] = await Promise.all([
+    // Summary tahunan per jenis pajak
+    db.execute(sql.raw(`
+      SELECT
+        tax_name,
+        direction,
+        COUNT(*)::int                                              AS total_tx,
+        COALESCE(SUM(base_amount),0)::numeric                     AS total_dpp,
+        COALESCE(SUM(tax_amount),0)::numeric                      AS total_tax,
+        SUM(CASE WHEN status='paid'     THEN tax_amount ELSE 0 END)::numeric AS paid,
+        SUM(CASE WHEN status='reported' THEN tax_amount ELSE 0 END)::numeric AS reported,
+        SUM(CASE WHEN status='pending'  THEN tax_amount ELSE 0 END)::numeric AS pending,
+        SUM(CASE WHEN npwp IS NULL OR npwp='' THEN 1 ELSE 0 END)::int       AS missing_npwp,
+        SUM(CASE WHEN tax_invoice_number IS NULL OR tax_invoice_number='' THEN 1 ELSE 0 END)::int AS missing_faktur
+      FROM transaction_taxes
+      WHERE company_id = ${companyId} AND period LIKE '${y}%'
+      GROUP BY tax_name, direction
+      ORDER BY tax_name, direction
+    `)),
+    // Baris yang belum lengkap (missing NPWP atau faktur, masih pending)
+    db.execute(sql.raw(`
+      SELECT id, period, tax_name, direction, transaction_type, transaction_ref,
+             partner_name, npwp, tax_invoice_number,
+             base_amount::numeric, tax_amount::numeric, status, created_at
+      FROM transaction_taxes
+      WHERE company_id = ${companyId} AND period LIKE '${y}%'
+        AND status = 'pending'
+        AND (npwp IS NULL OR npwp = '' OR tax_invoice_number IS NULL OR tax_invoice_number = '')
+      ORDER BY period DESC, tax_name, created_at DESC
+      LIMIT 200
+    `)),
+    // Monthly breakdown per jenis pajak
+    db.execute(sql.raw(`
+      SELECT
+        period,
+        tax_name,
+        direction,
+        COUNT(*)::int                                              AS total_tx,
+        COALESCE(SUM(tax_amount),0)::numeric                      AS total_tax,
+        SUM(CASE WHEN status='paid'     THEN tax_amount ELSE 0 END)::numeric AS paid,
+        SUM(CASE WHEN status='reported' THEN tax_amount ELSE 0 END)::numeric AS reported,
+        SUM(CASE WHEN status='pending'  THEN tax_amount ELSE 0 END)::numeric AS pending,
+        SUM(CASE WHEN npwp IS NULL OR npwp='' THEN 1 ELSE 0 END)::int       AS missing_npwp,
+        SUM(CASE WHEN tax_invoice_number IS NULL OR tax_invoice_number='' THEN 1 ELSE 0 END)::int AS missing_faktur
+      FROM transaction_taxes
+      WHERE company_id = ${companyId} AND period LIKE '${y}%'
+      GROUP BY period, tax_name, direction
+      ORDER BY period DESC, tax_name
+    `)),
+  ]);
+
+  return res.json({
+    year: y,
+    summary: summary.rows,
+    gaps: gaps.rows,
+    byPeriod: byPeriod.rows,
+  });
+});
+
+// ── PATCH /api/tax/reconciliation/bulk-status ──────────────────────────────────
+router.patch("/reconciliation/bulk-status", async (req, res) => {
+  const companyId = resolveCompanyId(req);
+  const { period, taxName, status } = req.body as {
+    period?: string;
+    taxName?: string;
+    status: "pending" | "paid" | "reported";
+  };
+
+  if (!["pending", "paid", "reported"].includes(status)) {
+    return res.status(400).json({ message: "status harus pending / paid / reported" });
+  }
+
+  const conds = [`company_id = ${companyId}`];
+  if (period) conds.push(`period = '${period.replace(/'/g, "''")}'`);
+  if (taxName) conds.push(`tax_name ILIKE '${taxName.replace(/'/g, "''")}%'`);
+
+  const paidAtSet = status === "paid"     ? `, paid_at = NOW()`     : status === "reported" ? `, reported_at = NOW()` : "";
+  const result = await db.execute(sql.raw(`
+    UPDATE transaction_taxes
+    SET status = '${status}', updated_at = NOW()${paidAtSet}
+    WHERE ${conds.join(" AND ")}
+    RETURNING id
+  `));
+
+  logger.info({ companyId, period, taxName, status, count: result.rows.length }, "[tax] bulk-status updated");
+  return res.json({ ok: true, updated: result.rows.length });
+});
+
 // ── PATCH /api/tax/transactions/:id/npwp ──────────────────────────────────────
 router.patch("/transactions/:id/npwp", async (req, res) => {
   const id = Number(req.params.id);
