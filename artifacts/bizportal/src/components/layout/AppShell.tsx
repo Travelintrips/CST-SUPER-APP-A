@@ -549,6 +549,15 @@ export function AppShell({ children, noPadding }: AppShellProps) {
   const { hiddenItems, itemOrder, childOrder, toggle: toggleHidden, reorder, reorderChildren, reset: resetHidden } = useNavPreferences();
   const [customizeMode, setCustomizeMode] = useState(false);
 
+  const [sidebarOpen, setSidebarOpen] = useState<boolean>(() => {
+    try { return localStorage.getItem("bizportal_sidebar_open") !== "false"; }
+    catch { return true; }
+  });
+  const handleSidebarOpenChange = (open: boolean) => {
+    setSidebarOpen(open);
+    try { localStorage.setItem("bizportal_sidebar_open", String(open)); } catch { /* ignore */ }
+  };
+
   const SIDEBAR_MIN = 200;
   const SIDEBAR_MAX = 420;
   const SIDEBAR_DEFAULT = 256;
@@ -998,7 +1007,7 @@ export function AppShell({ children, noPadding }: AppShellProps) {
   ) : null;
 
   return (
-    <SidebarProvider defaultOpen={true} style={{ "--sidebar-width": `${sidebarWidth}px` } as React.CSSProperties}>
+    <SidebarProvider open={sidebarOpen} onOpenChange={handleSidebarOpenChange} style={{ "--sidebar-width": `${sidebarWidth}px` } as React.CSSProperties}>
       {shortcutsOverlay}
       <div className="flex min-h-[100dvh] w-full bg-background text-foreground">
         <Sidebar className="border-r border-border">
