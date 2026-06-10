@@ -1,4 +1,4 @@
-modules = ["nodejs-20", "web", "bash", "python-3.11", "postgresql-16"]
+modules = ["nodejs-20", "web", "bash", "python-3.11"]
 
 [deployment]
 router = "application"
@@ -20,6 +20,22 @@ author = "agent"
 task = "workflow.run"
 args = "Gateway"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "API Server"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "BizPortal"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Customer Portal"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Logistic Order"
+
 [[workflows.workflow]]
 name = "Gateway"
 author = "agent"
@@ -29,7 +45,7 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "fuser -k 5000/tcp 2>/dev/null; sleep 0.3; BIZPORTAL_PORT=6800 PORT=5000 node gateway.mjs"
+args = "node artifacts/api-server/kill-port.mjs 5000 2>/dev/null; sleep 0.3; API_PORT=8080 BIZPORTAL_PORT=6800 CUSTOMER_PORT=3001 LOGISTIC_ORDER_PORT=6000 PORT=5000 node gateway.mjs"
 waitForPort = 5000
 
 [[workflows.workflow]]
@@ -41,8 +57,8 @@ outputType = "console"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "BIZPORTAL_PORT=6800 bash artifacts/bizportal/start-dev.sh"
-waitForPort = 3000
+args = "BIZPORTAL_PORT=6800 PORT=3000 bash artifacts/bizportal/start-dev.sh"
+waitForPort = 6800
 
 [[workflows.workflow]]
 name = "Customer Portal"
@@ -53,8 +69,32 @@ outputType = "console"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "cd artifacts/customer-portal && PORT=3001 pnpm run dev"
+args = "CUSTOMER_PORT=3001 PORT=3002 bash artifacts/customer-portal/start-dev.sh"
 waitForPort = 3001
+
+[[workflows.workflow]]
+name = "API Server"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "API_PORT=8080 bash artifacts/api-server/start-dev.sh"
+waitForPort = 8080
+
+[[workflows.workflow]]
+name = "Logistic Order"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd artifacts/logistic-order && node ../api-server/kill-port.mjs 19368 6000 2>/dev/null; sleep 0.3 && pnpm exec vite --config vite.config.ts --host 0.0.0.0 --port 6000"
+waitForPort = 6000
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
@@ -125,24 +165,8 @@ localPort = 3001
 externalPort = 3001
 
 [[ports]]
-localPort = 3002
-externalPort = 8008
-
-[[ports]]
 localPort = 5000
 externalPort = 80
-
-[[ports]]
-localPort = 6800
-externalPort = 3002
-
-[[ports]]
-localPort = 8083
-externalPort = 3001
-
-[[ports]]
-localPort = 8084
-externalPort = 3003
 
 [[ports]]
 localPort = 8085
@@ -183,3 +207,15 @@ externalPort = 5173
 [[ports]]
 localPort = 23435
 externalPort = 8081
+
+[[ports]]
+localPort = 8080
+externalPort = 8080
+
+[[ports]]
+localPort = 6800
+externalPort = 6800
+
+[[ports]]
+localPort = 6000
+externalPort = 6000
