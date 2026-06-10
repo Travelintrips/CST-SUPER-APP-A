@@ -1,7 +1,16 @@
 import { Router, type Request, type Response } from "express";
+import { rateLimit } from "express-rate-limit";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { logger } from "../lib/logger.js";
+import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
+import { getAdminGroupWa } from "../lib/adminWa.js";
+import { ObjectStorageService } from "../lib/objectStorage.js";
+import multer from "multer";
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+const storage = new ObjectStorageService();
+const submitLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false });
 
 export const oceanFreightVendorFormRouter = Router();
 
@@ -85,21 +94,12 @@ oceanFreightVendorFormRouter.post("/:token", async (req: Request, res: Response)
       ? Number(b.ocean_freight_amount) * qty
       : Number(b.ocean_freight_amount) * Math.max(cbm, 1);
 
-    const totalOrig = baseOcean
-import { rateLimit } from "express-rate-limit";
-import { db } from "@workspace/db";
-import { sql } from "drizzle-orm";
-import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
-import { getAdminGroupWa } from "../lib/adminWa.js";
-import { ObjectStorageService } from "../lib/objectStorage.js";
-import multer from "multer";
-
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
-const storage = new ObjectStorageService();
-
-const submitLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false });
-
-export const oceanFreightVendorFormRouter = Router();
+    // Calculation handled by updated implementation below
+    return res.status(501).json({ error: "Gunakan endpoint terbaru" });
+  } catch (err) {
+    res.status(500).json({ error: "Error" });
+  }
+});
 
 // ── GET /api/ocean-freight-form/:token ───────────────────────────────────────
 oceanFreightVendorFormRouter.get("/:token", async (req: Request, res: Response) => {
@@ -164,6 +164,7 @@ oceanFreightVendorFormRouter.post(
       return res.status(400).json({ error: "Token tidak valid" });
     }
 
+    try {
     const { rows: subs } = await db.execute(sql`
       SELECT * FROM ocean_freight_rate_submissions WHERE token = ${token}
     `);
@@ -248,74 +249,5 @@ oceanFreightVendorFormRouter.post(
     res.status(500).json({ error: "Gagal submit rate" });
   }
 });
-      + Number(b.trucking_pickup ?? 0)
-      + Number(b.trucking_delivery ?? 0)
-      + Number(b.customs_clearance_fee ?? 0)
-      + Number(b.surcharge_amount ?? 0);
-
-    const totalIdr = curr === "IDR" ? totalAmt : totalAmt * exr;
-
-    await db.execute(sql`
-      UPDATE ocean_freight_rate_submissions SET
-        rate_source_type = ${b.rate_source_type ?? "forwarder_partner"},
-        rate_source_name = ${b.rate_source_name ?? null},
-        carrier = ${b.carrier ?? null},
-        ocean_freight_amount = ${oceanAmt},
-        currency = ${curr},
-        exchange_rate = ${exr},
-        validity_date = ${b.validity_date ?? null},
-        vessel_name = ${b.vessel_name ?? null},
-        voyage = ${b.voyage ?? null},
-        etd = ${b.etd ?? null},
-        eta = ${b.eta ?? null},
-        transit_days = ${b.transit_days ? Number(b.transit_days) : null},
-        direct_or_transshipment = ${b.direct_or_transshipment ?? "direct"},
-        thc_origin = ${Number(b.thc_origin ?? 0)},
-        thc_destination = ${Number(b.thc_destination ?? 0)},
-        doc_fee = ${Number(b.doc_fee ?? 0)},
-        bl_fee = ${Number(b.bl_fee ?? 0)},
-        do_fee = ${Number(b.do_fee ?? 0)},
-        handling_fee = ${Number(b.handling_fee ?? 0)},
-        trucking_pickup = ${Number(b.trucking_pickup ?? 0)},
-        trucking_delivery = ${Number(b.trucking_delivery ?? 0)},
-        customs_clearance_fee = ${Number(b.customs_clearance_fee ?? 0)},
-        surcharge_amount = ${Number(b.surcharge_amount ?? 0)},
-        notes = ${b.notes ?? null},
-        attachment_url = ${attachmentUrl},
-        total_amount = ${totalAmt},
-        total_amount_idr = ${totalIdr},
-        status = 'submitted',
-        submitted_at = NOW(),
-        submitter_ip = ${req.ip ?? null},
-        updated_at = NOW()
-      WHERE token = ${token}
-    `);
-
-    // Update order status to rate_received
-    await db.execute(sql`
-      UPDATE ocean_freight_orders SET status = 'rate_received', updated_at = NOW()
-      WHERE id = ${sub.order_id} AND status NOT IN ('quoted','approved','booked','completed','cancelled')
-    `);
-
-    // Notify admin
-    try {
-      const adminGroup = await getAdminGroupWa();
-      if (adminGroup) {
-        const msg = [
-          `📦 *Rate Submission Ocean Freight*`,
-          `Vendor: ${b.rate_source_name ?? sub.vendor_name ?? "Unknown"}`,
-          `Carrier: ${b.carrier ?? "-"}`,
-          `Ocean Freight: ${curr} ${Number(oceanAmt).toLocaleString("id-ID")}`,
-          `Total IDR: ${Number(totalIdr).toLocaleString("id-ID")}`,
-          `Transit: ${b.transit_days ?? "-"} hari`,
-          `ETD: ${b.etd ?? "-"}`,
-        ].join("\n");
-        await sendWhatsApp(adminGroup, msg);
-      }
-    } catch (_) {}
-
-    return res.json({ ok: true, message: "Rate berhasil disubmit. Terima kasih." });
-  }
-);
 
 export { oceanFreightVendorFormRouter as default };

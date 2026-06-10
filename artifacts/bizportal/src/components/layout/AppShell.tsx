@@ -478,6 +478,7 @@ export function AppShell({ children, noPadding }: AppShellProps) {
         { titleKey: "Unit Kantin", href: "/tenant/units", icon: LayoutGrid },
         { titleKey: "Penyewaan", href: "/tenant/bookings", icon: FileText },
         { titleKey: "Pembayaran Sewa", href: "/tenant/payments", icon: DollarSign },
+        { titleKey: "Invoice", href: "/tenant/invoices", icon: Receipt },
       ],
     },
 

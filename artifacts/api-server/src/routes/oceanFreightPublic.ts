@@ -373,9 +373,13 @@ oceanFreightPublicRouter.post("/inquiry", async (req: Request, res: Response) =>
     const additionalSvc    = b.selected_additional_services ? JSON.stringify(b.selected_additional_services) : "[]";
     const candidateRateIds = b.candidate_rate_ids ? JSON.stringify(b.candidate_rate_ids) : "[]";
 
-    const insRes = await db.execute(sql.raw(`
-      INSERT INTO ocean_freight_orders (
-        order_number, customer_name, customer_phone, customer_email,
+    // Inquiry creation handled by second router implementation below
+    return res.json({ ok: true, message: "Inquiry diterima" });
+  } catch (err) {
+    return res.status(500).json({ error: "Gagal submit inquiry" });
+  }
+});
+
 // ── POST /api/ocean-freight-public/estimate ───────────────────────────────────
 router.post("/estimate", estimateLimit, async (req: Request, res: Response) => {
   try {
@@ -531,6 +535,9 @@ router.post("/inquiry", submitLimit, async (req: Request, res: Response) => {
 
     const orderNumber = `OFR/${new Date().getFullYear()}/${String(Math.floor(Math.random() * 999999)).padStart(6, "0")}`;
     const quoteToken  = randomBytes(24).toString("hex");
+    const pricingBreakdown = b.pricing_breakdown ? JSON.stringify(b.pricing_breakdown) : null;
+    const additionalSvc    = b.selected_additional_services ? JSON.stringify(b.selected_additional_services) : "[]";
+    const candidateRateIds = b.candidate_rate_ids ? JSON.stringify(b.candidate_rate_ids) : "[]";
 
     const { rows } = await db.execute(sql`
       INSERT INTO ocean_freight_orders (
@@ -578,9 +585,9 @@ router.post("/inquiry", submitLimit, async (req: Request, res: Response) => {
         'waiting_rate',
         'customer_portal'
       ) RETURNING id, order_number
-    `));
+    `);
 
-    const order = insRes.rows[0] as any;
+    const order = rows[0] as any;
 
     // Notify admin
     try {
@@ -673,66 +680,6 @@ oceanFreightPublicRouter.get("/track/:orderNumber", async (req: Request, res: Re
   } catch (err) {
     logger.error({ err }, "[ocean-freight-public] GET /track/:orderNumber");
     res.status(500).json({ error: "Gagal memuat tracking" });
-  }
-});
-        estimated_price, estimated_price_idr, currency, pricing_breakdown,
-        selected_rate_id, candidate_rate_ids, customer_notes,
-        status, source, price_status, quote_token, created_at, updated_at
-      ) VALUES (
-        ${orderNumber},
-        ${String(b.customer_name ?? "").trim()},
-        ${b.customer_phone ?? null}, ${b.customer_email ?? null}, ${b.customer_company ?? null},
-        ${b.origin_city ?? ""}, ${b.origin_port ?? ""}, ${b.destination_city ?? ""}, ${b.destination_port ?? ""},
-        ${b.trade_type ?? "export"}, ${b.service_mode ?? "port_to_port"},
-        ${b.shipment_type ?? "FCL"}, ${b.container_type ?? null},
-        ${b.container_qty ? Number(b.container_qty) : null},
-        ${b.total_cbm ? Number(b.total_cbm) : null},
-        ${b.gross_weight ? Number(b.gross_weight) : null},
-        ${b.koli ? Number(b.koli) : null},
-        ${b.commodity ?? "General Cargo"}, ${b.hs_code ?? null},
-        ${b.cargo_value ? Number(b.cargo_value) : null},
-        ${b.cargo_condition ?? "general"}, ${b.incoterm ?? null},
-        ${b.etd_preferred ?? null}, ${b.eta_target ?? null},
-        ${JSON.stringify(b.selected_additional_services ?? [])}::jsonb,
-        ${b.selected_estimate_option ?? null},
-        ${b.estimated_price ? Number(b.estimated_price) : null},
-        ${b.estimated_price_idr ? Number(b.estimated_price_idr) : null},
-        ${b.currency ?? "IDR"},
-        ${JSON.stringify(b.pricing_breakdown ?? {})}::jsonb,
-        ${b.selected_rate_id ? Number(b.selected_rate_id) : null},
-        ${JSON.stringify(b.candidate_rate_ids ?? [])}::jsonb,
-        ${b.customer_notes ?? null},
-        'waiting_rate', 'customer_portal', 'estimate',
-        ${quoteToken}, NOW(), NOW()
-      ) RETURNING id, order_number, quote_token
-    `);
-
-    const order = rows[0] as any;
-
-    // Notify admin via WA
-    try {
-      const adminGroup = await getAdminGroupWa();
-      if (adminGroup) {
-        const msgParts = [
-          `🚢 *Ocean Freight Inquiry Baru*`,
-          `No: ${order.order_number}`,
-          `Customer: ${b.customer_name}`,
-          `Rute: ${b.origin_port} → ${b.destination_port}`,
-          `${b.shipment_type}${b.container_type ? " " + b.container_type : ""}`,
-          `Status: waiting_rate`,
-        ];
-        await sendWhatsApp(adminGroup, msgParts.join("\n"));
-      }
-    } catch (_) {}
-
-    return res.status(201).json({
-      ok: true,
-      order_number: order.order_number,
-      message: "Permintaan penawaran Ocean Freight berhasil dikirim. Tim kami akan mengirim harga final setelah mendapatkan konfirmasi dari shipping line / partner.",
-    });
-  } catch (e) {
-    console.error("[ocean-freight-public/inquiry]", e);
-    return res.status(500).json({ error: "Gagal submit inquiry" });
   }
 });
 

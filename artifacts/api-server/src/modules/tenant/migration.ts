@@ -104,6 +104,32 @@ export async function runTenantMigration(): Promise<void> {
     await db.execute(sql`ALTER TABLE tenant_bookings ADD COLUMN IF NOT EXISTS unit_id INTEGER REFERENCES tenant_units(id) ON DELETE SET NULL`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_tenant_bookings_unit ON tenant_bookings(unit_id)`);
 
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS tenant_invoices (
+        id SERIAL PRIMARY KEY,
+        company_id INTEGER DEFAULT 1,
+        invoice_number TEXT NOT NULL UNIQUE,
+        tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        tenant_booking_id INTEGER REFERENCES tenant_bookings(id) ON DELETE SET NULL,
+        tenant_payment_id INTEGER REFERENCES tenant_payments(id) ON DELETE SET NULL,
+        title TEXT NOT NULL DEFAULT 'Invoice Sewa',
+        period_label TEXT,
+        amount NUMERIC(14,2) NOT NULL DEFAULT 0,
+        tax_amount NUMERIC(14,2) NOT NULL DEFAULT 0,
+        total_amount NUMERIC(14,2) NOT NULL DEFAULT 0,
+        due_date DATE,
+        issued_date DATE NOT NULL DEFAULT CURRENT_DATE,
+        status TEXT NOT NULL DEFAULT 'draft',
+        notes TEXT,
+        created_by INTEGER,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_tenant_invoices_tenant ON tenant_invoices(tenant_id)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_tenant_invoices_booking ON tenant_invoices(tenant_booking_id)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_tenant_invoices_status ON tenant_invoices(status)`);
+
     logger.info("Tenant migration OK");
   } catch (err) {
     logger.error({ err }, "Tenant migration failed");
