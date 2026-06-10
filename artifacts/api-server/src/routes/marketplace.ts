@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { vendorCatalogItemsTable, suppliersTable } from "@workspace/db";
+import { eq, and, ilike, or, sql, asc, ne } from "drizzle-orm";
 import { eq, and, ilike, or, sql, asc, isNull, gte } from "drizzle-orm";
 import { isCatalogItemPublic, catalogPublicConditions } from "../lib/catalogVisibility.js";
 
@@ -115,4 +116,86 @@ marketplaceRouter.get("/categories", async (_req, res) => {
   return res.json(
     (rows.rows as { key: string }[]).map((r) => r.key).filter(Boolean),
   );
+});
+
+// GET /api/marketplace/products/:id/related — up to 4 published related items
+marketplaceRouter.get("/products/:id/related", async (req, res) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: "id tidak valid" });
+
+  const [current] = await db
+    .select({
+      vendorId:    vendorCatalogItemsTable.vendorId,
+      kategori:    vendorCatalogItemsTable.kategori,
+      categoryKey: vendorCatalogItemsTable.categoryKey,
+    })
+    .from(vendorCatalogItemsTable)
+    .where(eq(vendorCatalogItemsTable.id, id))
+    .limit(1);
+
+  if (!current) return res.json([]);
+
+  const cols = {
+    id:           vendorCatalogItemsTable.id,
+    name:         vendorCatalogItemsTable.name,
+    vendorName:   vendorCatalogItemsTable.vendorName,
+    templateKind: vendorCatalogItemsTable.templateKind,
+    priceSell:    vendorCatalogItemsTable.priceSell,
+    unit:         vendorCatalogItemsTable.unit,
+    stockStatus:  vendorCatalogItemsTable.stockStatus,
+    leadTime:     vendorCatalogItemsTable.leadTime,
+    location:     vendorCatalogItemsTable.location,
+    sortOrder:    vendorCatalogItemsTable.sortOrder,
+    vendorId:     vendorCatalogItemsTable.vendorId,
+  };
+
+  const seen = new Set<number>([id]);
+  const result: unknown[] = [];
+
+  // 1. same vendor (published only)
+  if (current.vendorId) {
+    const sameVendor = await db
+      .select(cols)
+      .from(vendorCatalogItemsTable)
+      .where(and(
+        eq(vendorCatalogItemsTable.isPublished, true),
+        eq(vendorCatalogItemsTable.vendorId, current.vendorId),
+        ne(vendorCatalogItemsTable.id, id),
+      ))
+      .orderBy(asc(vendorCatalogItemsTable.sortOrder), asc(vendorCatalogItemsTable.id))
+      .limit(4);
+    for (const r of sameVendor) {
+      if (result.length >= 4) break;
+      seen.add(r.id);
+      result.push({ ...r, priceSell: r.priceSell != null ? Number(r.priceSell) : null });
+    }
+  }
+
+  // 2. same category (fill up to 4, published only)
+  if (result.length < 4) {
+    const cat = current.categoryKey ?? current.kategori;
+    if (cat) {
+      const sameCat = await db
+        .select(cols)
+        .from(vendorCatalogItemsTable)
+        .where(and(
+          eq(vendorCatalogItemsTable.isPublished, true),
+          or(
+            eq(vendorCatalogItemsTable.categoryKey, cat),
+            eq(vendorCatalogItemsTable.kategori, cat),
+          ),
+          ne(vendorCatalogItemsTable.id, id),
+        ))
+        .orderBy(asc(vendorCatalogItemsTable.sortOrder), asc(vendorCatalogItemsTable.id))
+        .limit(4);
+      for (const r of sameCat) {
+        if (result.length >= 4) break;
+        if (seen.has(r.id)) continue;
+        seen.add(r.id);
+        result.push({ ...r, priceSell: r.priceSell != null ? Number(r.priceSell) : null });
+      }
+    }
+  }
+
+  return res.json(result);
 });

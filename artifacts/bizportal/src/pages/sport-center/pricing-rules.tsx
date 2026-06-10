@@ -57,7 +57,8 @@ export default function SportCenterPricingRules() {
       if (activeCompanyId) qs.set("companyId", String(activeCompanyId));
       if (facilityFilter !== "all") qs.set("facilityId", facilityFilter);
       const r = await fetch(`/api/sport-center/pricing-rules?${qs}`, { credentials: "include" });
-      return r.json();
+      const json = await r.json();
+      return Array.isArray(json) ? json : (Array.isArray(json?.data) ? json.data : []);
     },
   });
 
@@ -66,7 +67,8 @@ export default function SportCenterPricingRules() {
     queryFn: async () => {
       const qs = activeCompanyId ? `?companyId=${activeCompanyId}` : "";
       const r = await fetch(`/api/sport-center/facilities${qs}`, { credentials: "include" });
-      return r.json();
+      const json = await r.json();
+      return Array.isArray(json) ? json : (Array.isArray(json?.data) ? json.data : []);
     },
   });
 

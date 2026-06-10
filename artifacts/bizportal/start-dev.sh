@@ -1,6 +1,13 @@
 #!/bin/bash
+ARTIFACT_PORT=${BIZPORTAL_PORT:-${PORT:-6800}}
+GATEWAY_PORT=4200
+
+node "$(dirname "$0")/../api-server/kill-port.mjs" "${ARTIFACT_PORT}" 2>/dev/null || true
+node "$(dirname "$0")/../api-server/kill-port.mjs" "${GATEWAY_PORT}" 2>/dev/null || true
+cd "$(dirname "$0")"
+
 GW_PORT=${BIZPORTAL_PORT:-6800}
-VITE_PORT=${PORT:-3000}
+VITE_PORT=${BIZPORTAL_PORT:-${PORT:-6800}}
 
 cd "$(dirname "$0")"
 

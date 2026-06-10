@@ -19,13 +19,41 @@ export async function runTenantMigration(): Promise<void> {
         status TEXT NOT NULL DEFAULT 'active',
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      );
+      )
+    `);
 
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS tenant_units (
+        id SERIAL PRIMARY KEY,
+        company_id INTEGER NOT NULL DEFAULT 1,
+        unit_code TEXT NOT NULL,
+        name TEXT NOT NULL,
+        area_name TEXT NOT NULL DEFAULT 'Area Kantin',
+        unit_type TEXT NOT NULL DEFAULT 'food_booth',
+        area_sqm NUMERIC(10,2),
+        monthly_rate NUMERIC(14,2),
+        status TEXT NOT NULL DEFAULT 'available',
+        notes TEXT,
+        position_x INTEGER NOT NULL DEFAULT 0,
+        position_y INTEGER NOT NULL DEFAULT 0,
+        width INTEGER NOT NULL DEFAULT 100,
+        height INTEGER NOT NULL DEFAULT 80,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+
+    await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS uq_tenant_units_code_company ON tenant_units(company_id, unit_code)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_tenant_units_company ON tenant_units(company_id)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_tenant_units_status ON tenant_units(status)`);
+
+    await db.execute(sql`
       CREATE TABLE IF NOT EXISTS tenant_bookings (
         id SERIAL PRIMARY KEY,
         company_id INTEGER DEFAULT 1,
         order_number TEXT NOT NULL,
         tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        unit_id INTEGER REFERENCES tenant_units(id) ON DELETE SET NULL,
         user_id INTEGER,
         booking_type TEXT NOT NULL DEFAULT 'rental',
         start_date DATE,
@@ -48,8 +76,10 @@ export async function runTenantMigration(): Promise<void> {
         total_price NUMERIC(14,2),
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      );
+      )
+    `);
 
+    await db.execute(sql`
       CREATE TABLE IF NOT EXISTS tenant_payments (
         id SERIAL PRIMARY KEY,
         company_id INTEGER DEFAULT 1,
@@ -63,13 +93,17 @@ export async function runTenantMigration(): Promise<void> {
         paid_at TIMESTAMPTZ,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_tenant_bookings_tenant ON tenant_bookings(tenant_id);
-      CREATE INDEX IF NOT EXISTS idx_tenant_payments_booking ON tenant_payments(tenant_booking_id);
-      CREATE UNIQUE INDEX IF NOT EXISTS uq_tenant_bookings_order_number ON tenant_bookings(order_number);
-      CREATE UNIQUE INDEX IF NOT EXISTS uq_tenant_payments_payment_number ON tenant_payments(payment_number);
+      )
     `);
+
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_tenant_bookings_tenant ON tenant_bookings(tenant_id)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_tenant_payments_booking ON tenant_payments(tenant_booking_id)`);
+    await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS uq_tenant_bookings_order_number ON tenant_bookings(order_number)`);
+    await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS uq_tenant_payments_payment_number ON tenant_payments(payment_number)`);
+
+    await db.execute(sql`ALTER TABLE tenant_bookings ADD COLUMN IF NOT EXISTS unit_id INTEGER REFERENCES tenant_units(id) ON DELETE SET NULL`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_tenant_bookings_unit ON tenant_bookings(unit_id)`);
+
     logger.info("Tenant migration OK");
   } catch (err) {
     logger.error({ err }, "Tenant migration failed");

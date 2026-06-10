@@ -172,6 +172,9 @@ import LogisticsImportAssistantPage from "@/pages/logistics-import-assistant";
 import AirFreightOrdersPage from "@/pages/logistics/air-freight-orders";
 import AirFreightOrderDetailPage from "@/pages/logistics/air-freight-order-detail";
 import AirFreightVendorFormPage from "@/pages/air-freight-vendor-form";
+import OceanFreightOrdersPage from "@/pages/logistics/ocean-freight-orders";
+import OceanFreightOrderDetailPage from "@/pages/logistics/ocean-freight-order-detail";
+import OceanFreightRatesPage from "@/pages/logistics/ocean-freight-rates";
 import ExceptionsPage from "@/pages/exceptions/index";
 // Misc
 import NotificationsPage from "@/pages/notifications";
@@ -488,6 +491,11 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/tenant/bookings" component={PR(TenantBookings)} />
       <Route path="/tenant/payments" component={PR(TenantPayments)} />
       <Route path="/tenant" component={PR(TenantDashboard)} />
+
+      {/* ── Ocean Freight ───────────────────────────────────────────────── */}
+      <Route path="/logistics/ocean-freight-orders" component={PR(OceanFreightOrdersPage)} />
+      <Route path="/logistics/ocean-freight/:id" component={PR(OceanFreightOrderDetailPage)} />
+      <Route path="/logistics/ocean-freight-rates" component={PR(OceanFreightRatesPage)} />
 
       {/* ── Air Freight ─────────────────────────────────────────────────── */}
       <Route path="/air-freight/orders/:id" component={PR(AirFreightNewOrderDetailPage)} />

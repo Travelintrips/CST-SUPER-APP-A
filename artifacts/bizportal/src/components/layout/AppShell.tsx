@@ -326,6 +326,8 @@ export function AppShell({ children, noPadding }: AppShellProps) {
         { titleKey: "Air Freight Rates", href: "/air-freight/rates", icon: Plane, roles: ["admin", "owner"], companyCodes: ["CST"] },
         { titleKey: "Ocean Freight Orders", href: "/ocean-freight/orders", icon: Ship, companyCodes: ["CST"] },
         { titleKey: "Ocean Freight Rates", href: "/ocean-freight/rates", icon: Ship, roles: ["admin", "owner"], companyCodes: ["CST"] },
+        { titleKey: "Ocean Freight Orders", href: "/logistics/ocean-freight-orders", icon: Ship, companyCodes: ["CST"] },
+        { titleKey: "Ocean Freight Rates", href: "/logistics/ocean-freight-rates", icon: Ship, roles: ["admin", "owner"], companyCodes: ["CST"] },
       ],
     },
 
