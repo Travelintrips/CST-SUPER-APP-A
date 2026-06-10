@@ -187,12 +187,12 @@ const router = Router();
        'USD',16500,0,30,1,80,100,50,35,45,60,100,6,'direct','estimate',TRUE,'${today}','${in90}'),
 
       ('PERAK-PKG-20FT','shipping_line','Wan Hai','Wan Hai',
-       'Surabaya','Tanjung Perak','Port Klang','Westport',
+       'Surabaya','Tanjung Perak','Port Klang','Port Klang',
        'export','FCL','port_to_port','20ft',
        'USD',16500,300,NULL,NULL,150,160,50,35,45,75,100,6,'direct','estimate',TRUE,'${today}','${in90}'),
 
       ('PERAK-PKG-40FT','shipping_line','Wan Hai','Wan Hai',
-       'Surabaya','Tanjung Perak','Port Klang','Westport',
+       'Surabaya','Tanjung Perak','Port Klang','Port Klang',
        'export','FCL','port_to_port','40ft',
        'USD',16500,520,NULL,NULL,150,160,50,35,45,75,100,6,'direct','estimate',TRUE,'${today}','${in90}'),
 
@@ -243,12 +243,12 @@ const router = Router();
        'USD',16500,0,25,1,80,100,50,35,45,55,100,4,'direct','estimate',TRUE,'${today}','${in90}'),
 
       ('BLAW-PKG-20FT','shipping_line','Samudera','Samudera',
-       'Medan','Belawan','Port Klang','Westport',
+       'Medan','Belawan','Port Klang','Port Klang',
        'export','FCL','port_to_port','20ft',
        'USD',16500,220,NULL,NULL,140,160,50,35,45,75,100,2,'direct','estimate',TRUE,'${today}','${in90}'),
 
       ('BLAW-PKG-40FT','shipping_line','PIL','PIL',
-       'Medan','Belawan','Port Klang','Westport',
+       'Medan','Belawan','Port Klang','Port Klang',
        'export','FCL','port_to_port','40ft',
        'USD',16500,380,NULL,NULL,140,160,50,35,45,75,100,3,'direct','estimate',TRUE,'${today}','${in90}'),
 
@@ -274,7 +274,7 @@ const router = Router();
        'USD',16500,0,32,1,80,100,50,35,45,55,100,7,'transshipment','estimate',TRUE,'${today}','${in90}'),
 
       ('MKS-PKG-20FT','shipping_line','Meratus','Meratus',
-       'Makassar','Makassar','Port Klang','Westport',
+       'Makassar','Makassar','Port Klang','Port Klang',
        'export','FCL','port_to_port','20ft',
        'USD',16500,380,NULL,NULL,150,160,50,35,45,75,100,6,'transshipment','estimate',TRUE,'${today}','${in90}'),
 
@@ -300,12 +300,12 @@ const router = Router();
        'USD',16500,820,NULL,NULL,155,180,50,35,45,75,100,6,'direct','estimate',TRUE,'${today}','${in90}'),
 
       ('BPN-PKG-20FT','shipping_line','PIL','PIL',
-       'Balikpapan','Balikpapan','Port Klang','Westport',
+       'Balikpapan','Balikpapan','Port Klang','Port Klang',
        'export','FCL','port_to_port','20ft',
        'USD',16500,400,NULL,NULL,155,160,50,35,45,75,100,7,'transshipment','estimate',TRUE,'${today}','${in90}'),
 
       ('BPN-PKG-40FT','shipping_line','PIL','PIL',
-       'Balikpapan','Balikpapan','Port Klang','Westport',
+       'Balikpapan','Balikpapan','Port Klang','Port Klang',
        'export','FCL','port_to_port','40ft',
        'USD',16500,700,NULL,NULL,155,160,50,35,45,75,100,7,'transshipment','estimate',TRUE,'${today}','${in90}'),
 
@@ -331,12 +331,12 @@ const router = Router();
        'USD',16500,0,29,1,80,100,50,35,45,55,100,6,'transshipment','estimate',TRUE,'${today}','${in90}'),
 
       ('SMG-PKG-20FT','shipping_line','Yang Ming','Yang Ming',
-       'Semarang','Tanjung Emas','Port Klang','Westport',
+       'Semarang','Tanjung Emas','Port Klang','Port Klang',
        'export','FCL','port_to_port','20ft',
        'USD',16500,290,NULL,NULL,150,160,50,35,45,75,100,5,'direct','estimate',TRUE,'${today}','${in90}'),
 
       ('SMG-PKG-40FT','shipping_line','Yang Ming','Yang Ming',
-       'Semarang','Tanjung Emas','Port Klang','Westport',
+       'Semarang','Tanjung Emas','Port Klang','Port Klang',
        'export','FCL','port_to_port','40ft',
        'USD',16500,500,NULL,NULL,150,160,50,35,45,75,100,5,'direct','estimate',TRUE,'${today}','${in90}'),
 
