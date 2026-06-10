@@ -1,0 +1,90 @@
+Stop dulu. Jangan lanjut batch fix semua error.
+
+Saya lihat proses sudah melebar terlalu jauh dari tujuan awal Fase 2 Unit Kantin. Sekarang kamu mulai mengubah banyak modul lain seperti logistic-order, customer-portal, airFreight, portal, marketplace, dan api-server global. Itu berisiko.
+
+Tujuan awal hanya:
+
+* validasi Fase 2 Unit Kantin
+* pastikan BizPortal preview normal
+* pastikan /tenant/units berjalan
+* pastikan booking bisa pilih unit
+* pastikan Sport Center dan TOD M1 tidak tercampur
+
+Jangan lanjut memperbaiki ratusan TypeScript error lintas monorepo kecuali saya setujui.
+
+Tugas sekarang:
+
+1. Hentikan semua perubahan massal.
+
+2. Tampilkan ringkasan semua file yang sudah diubah sejak mulai validasi Fase 2.
+
+3. Pisahkan file menjadi 2 kategori:
+   A. Terkait Tenant POS / Unit Kantin
+   B. Tidak terkait Tenant POS / Unit Kantin
+
+4. Untuk file kategori B yang tidak terkait Tenant POS:
+
+   * jangan lanjut edit
+   * jika perubahan hanya karena typecheck global dan tidak diperlukan untuk Fase 2, rekomendasikan untuk revert
+   * jangan ubah behavior modul lain
+
+5. Jangan disable strictness TypeScript secara global.
+   Jika tadi sudah mengubah noImplicitReturns atau tsconfig global/api-server:
+
+   * jelaskan file mana yang diubah
+   * jelaskan alasannya
+   * jangan jadikan itu solusi permanen tanpa persetujuan
+   * lebih baik revert jika hanya untuk menutupi error unrelated
+
+6. Cek apakah ada file yang rusak karena sed/replace otomatis.
+   Khusus cek:
+
+   * portal-product-orders
+   * documents-list
+   * logistic-order
+   * airFreight
+   * portal.ts
+   * purchaseMiniFormRoute
+   * file lain yang tadi terkena mass replace
+
+7. Fokus quality gate Fase 2 saja:
+   Jalankan scoped verification:
+
+   * build libs jika perlu
+   * typecheck BizPortal
+   * typecheck API server tenant module jika memungkinkan
+   * build BizPortal
+   * pastikan API server start
+   * jangan memaksa fix semua monorepo unrelated dulu
+
+8. Verifikasi Fase 2:
+
+   * GET /api/tenant/units
+   * GET /api/tenant/units?company_id=1
+   * GET /api/tenant/units?company_id=2
+   * GET /api/tenant/dashboard
+   * create unit Sport Center
+   * create unit TOD M1
+   * booking unit maintenance ditolak
+   * booking overlap ditolak
+   * booking lama unit_id NULL tetap tampil
+   * audit log unit tercatat
+   * BizPortal port 6800
+   * /bizportal/ tampil
+   * /tenant/units redirect login jika belum login
+   * setelah login owner/admin, /tenant/units tampil
+
+9. Buat laporan:
+
+   * status Fase 2 Unit Kantin
+   * file tenant yang benar-benar diubah
+   * file non-tenant yang ikut terubah
+   * apakah perlu revert file non-tenant
+   * apakah ada risiko dari perubahan tsconfig
+   * apakah aman lanjut Fase 3 Invoice Tenant
+
+10. Jangan lanjut Fase 3 Invoice Tenant.
+
+11. Jangan lanjut memperbaiki modul lain.
+
+12. Jangan melakukan perubahan besar sampai saya menyetujui daftar file yang akan dipertahankan.
