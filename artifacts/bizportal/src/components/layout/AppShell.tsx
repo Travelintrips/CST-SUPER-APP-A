@@ -74,6 +74,7 @@ import {
   CreditCard,
   Sparkles,
   Plane,
+  Anchor,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -328,6 +329,7 @@ export function AppShell({ children, noPadding }: AppShellProps) {
         { titleKey: "Ocean Freight Rates", href: "/ocean-freight/rates", icon: Ship, roles: ["admin", "owner"], companyCodes: ["CST"] },
         { titleKey: "Ocean Freight Orders", href: "/logistics/ocean-freight-orders", icon: Ship, companyCodes: ["CST"] },
         { titleKey: "Ocean Freight Rates", href: "/logistics/ocean-freight-rates", icon: Ship, roles: ["admin", "owner"], companyCodes: ["CST"] },
+        { titleKey: "Ocean Freight Master Data", href: "/ocean-freight-master-data", icon: Anchor, roles: ["admin", "owner"], companyCodes: ["CST"] },
       ],
     },
 

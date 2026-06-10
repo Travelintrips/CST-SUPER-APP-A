@@ -479,4 +479,31 @@ router.delete("/route-matrix/:id", requireAdmin, async (req: Request, res: Respo
   }
 });
 
+router.delete("/carriers/:id", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    await db.execute(sql`DELETE FROM freight_carriers WHERE id = ${Number(req.params.id)}`);
+    return res.json({ ok: true });
+  } catch (e) {
+    return res.status(500).json({ error: "Gagal hapus carrier" });
+  }
+});
+
+router.delete("/container-types/:id", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    await db.execute(sql`DELETE FROM freight_container_types WHERE id = ${Number(req.params.id)}`);
+    return res.json({ ok: true });
+  } catch (e) {
+    return res.status(500).json({ error: "Gagal hapus container type" });
+  }
+});
+
+router.delete("/ports/:id", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    await db.execute(sql`DELETE FROM freight_ports WHERE id = ${Number(req.params.id)}`);
+    return res.json({ ok: true });
+  } catch (e) {
+    return res.status(500).json({ error: "Gagal hapus port" });
+  }
+});
+
 export default router;
