@@ -72,6 +72,7 @@ import {
   Store,
   CreditCard,
   Sparkles,
+  Plane,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -318,6 +319,8 @@ export function AppShell({ children, noPadding }: AppShellProps) {
         { titleKey: "Vendor × Komoditas", href: "/logistics/vendor-commodity-intelligence", icon: BarChart2, roles: ["admin", "owner"] },
         { titleKey: "Pelanggan Portal", href: "/portal/customers", icon: Users },
         { titleKey: "Persetujuan Onboarding", href: "/portal/onboarding-approvals", icon: Users },
+        { titleKey: "Air Freight Orders", href: "/air-freight/orders", icon: Plane, companyCodes: ["CST"] },
+        { titleKey: "Air Freight Rates", href: "/air-freight/rates", icon: Plane, roles: ["admin", "owner"], companyCodes: ["CST"] },
       ],
     },
 

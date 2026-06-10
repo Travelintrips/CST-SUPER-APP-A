@@ -203,6 +203,8 @@ import TenantDashboard from "@/pages/tenant/dashboard";
 import TenantList from "@/pages/tenant/tenants";
 import TenantBookings from "@/pages/tenant/bookings";
 import TenantPayments from "@/pages/tenant/payments";
+import AirFreightOrdersPage from "@/pages/air-freight/orders";
+import AirFreightRatesPage from "@/pages/air-freight/rates";
 
 const PR = (C: React.ComponentType) => () => <ProtectedRoute component={C} />;
 
@@ -472,6 +474,10 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/tenant/bookings" component={PR(TenantBookings)} />
       <Route path="/tenant/payments" component={PR(TenantPayments)} />
       <Route path="/tenant" component={PR(TenantDashboard)} />
+
+      {/* ── Air Freight ─────────────────────────────────────────────────── */}
+      <Route path="/air-freight/orders" component={PR(AirFreightOrdersPage)} />
+      <Route path="/air-freight/rates" component={PR(AirFreightRatesPage)} />
 
       {/* ── Legacy redirects ───────────────────────────────────────────── */}
       <Route path="/expenses/new" component={() => <Redirect to="/expense/new" />} />
