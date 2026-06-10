@@ -5,6 +5,7 @@ import { requireAdmin } from "../lib/requireAdmin.js";
 import { postEntry } from "../lib/accounting.js";
 import { ensureAccountingSettings } from "../lib/accountingSeed.js";
 import { resolveCompanyId } from "../lib/resolveCompany.js";
+import { audit } from "../lib/unifiedAudit.js";
 
 const router = Router();
 router.use(async (req, res, next) => {
@@ -188,16 +189,31 @@ router.post("/", async (req: Request, res) => {
        ${userId ? `'${userId}'` : "NULL"})
     RETURNING *
   `));
-  return res.status(201).json(inserted.rows[0]);
+  const row = inserted.rows[0] as Record<string, unknown>;
+  audit(req as Request, {
+    action: "payment",
+    module: "payment",
+    resourceId: paymentNumber,
+    after: row,
+    companyId: companyId ?? null,
+  });
+  return res.status(201).json(row);
 });
 
 // ─── DELETE /api/vendor-payments/:id ─────────────────────────────────────────
 router.delete("/:id", async (req: Request, res) => {
   await runMigration();
   const id = parseInt(req.params.id);
-  const result = await db.execute(sql.raw(`SELECT id FROM vendor_payments WHERE id = ${id}`));
+  const result = await db.execute(sql.raw(`SELECT * FROM vendor_payments WHERE id = ${id}`));
   if (!result.rows[0]) return res.status(404).json({ message: "Pembayaran tidak ditemukan." });
+  const before = result.rows[0] as Record<string, unknown>;
   await db.execute(sql.raw(`DELETE FROM vendor_payments WHERE id = ${id}`));
+  audit(req as Request, {
+    action: "delete",
+    module: "payment",
+    resourceId: String((before.payment_number as string | undefined) ?? id),
+    before,
+  });
   return res.json({ ok: true });
 });
 

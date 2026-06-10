@@ -4,6 +4,9 @@ import { sql } from "drizzle-orm";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { seedDefaultTaxRules } from "../lib/taxRulesMigration.js";
 import { logger } from "../lib/logger.js";
+import { audit } from "../lib/unifiedAudit.js";
+import { validateNpwp, formatNpwp, stripNpwp } from "../lib/npwpValidator.js";
+import { validateFakturPajak, formatFaktur } from "../lib/fakturPajakValidator.js";
 
 const router = Router();
 
@@ -115,6 +118,7 @@ router.post("/rules", async (req, res) => {
     )
     RETURNING *
   `)).rows;
+  audit(req, { action: "create", module: "tax", resourceId: String((row as any)?.id ?? "?"), after: row as Record<string, unknown>, companyId });
   return res.json({ ok: true, data: row });
 });
 
@@ -122,6 +126,7 @@ router.post("/rules", async (req, res) => {
 router.put("/rules/:id", async (req, res) => {
   const id = Number(req.params.id);
   const { name, transaction_type, module_source, tax_type, tax_rate, tax_base_type, direction, is_active, effective_from, effective_to, notes } = req.body;
+  const [before] = (await db.execute(sql`SELECT * FROM tax_rules WHERE id = ${id}`)).rows;
   const [row] = (await db.execute(sql`
     UPDATE tax_rules SET
       name = COALESCE(${name ?? null}, name),
@@ -140,13 +145,16 @@ router.put("/rules/:id", async (req, res) => {
     RETURNING *
   `)).rows;
   if (!row) return res.status(404).json({ message: "Rule tidak ditemukan" });
+  audit(req, { action: "update", module: "tax", resourceId: String(id), before: before as Record<string, unknown>, after: row as Record<string, unknown> });
   return res.json({ ok: true, data: row });
 });
 
 // ── DELETE /api/tax/rules/:id ─────────────────────────────────────────────────
 router.delete("/rules/:id", async (req, res) => {
   const id = Number(req.params.id);
+  const [before] = (await db.execute(sql`SELECT * FROM tax_rules WHERE id = ${id}`)).rows;
   await db.execute(sql`DELETE FROM tax_rules WHERE id = ${id}`);
+  audit(req, { action: "delete", module: "tax", resourceId: String(id), before: before as Record<string, unknown> });
   return res.json({ ok: true });
 });
 
@@ -413,15 +421,80 @@ router.patch("/reconciliation/bulk-status", async (req, res) => {
 router.patch("/transactions/:id/npwp", async (req, res) => {
   const id = Number(req.params.id);
   const { npwp, taxInvoiceNumber, partnerName } = req.body;
+
+  // Validasi format NPWP jika diisi
+  if (npwp && npwp.trim()) {
+    const npwpResult = validateNpwp(npwp);
+    if (!npwpResult.valid) {
+      return res.status(400).json({
+        message: `NPWP tidak valid: ${npwpResult.error}`,
+        field: "npwp",
+        validation: npwpResult,
+      });
+    }
+    // Normalisasi ke format standar XX.XXX.XXX.X-XXX.XXX
+    req.body.npwp = npwpResult.formatted;
+  }
+
+  // Validasi format nomor faktur pajak jika diisi
+  if (taxInvoiceNumber && taxInvoiceNumber.trim()) {
+    const fakturResult = validateFakturPajak(taxInvoiceNumber);
+    if (!fakturResult.valid) {
+      return res.status(400).json({
+        message: `Nomor faktur tidak valid: ${fakturResult.error}`,
+        field: "taxInvoiceNumber",
+        validation: fakturResult,
+      });
+    }
+    // Normalisasi ke format standar KKK.SSS-TT.SSSSSSSS
+    req.body.taxInvoiceNumber = fakturResult.formatted;
+  }
+
+  const normalizedNpwp = req.body.npwp ?? null;
+  const normalizedFaktur = req.body.taxInvoiceNumber ?? null;
+
+  const [before] = (await db.execute(sql`SELECT npwp, tax_invoice_number, partner_name FROM transaction_taxes WHERE id = ${id}`)).rows;
   await db.execute(sql`
     UPDATE transaction_taxes SET
-      npwp = ${npwp ?? null},
-      tax_invoice_number = ${taxInvoiceNumber ?? null},
+      npwp = ${normalizedNpwp},
+      tax_invoice_number = ${normalizedFaktur},
       partner_name = ${partnerName ?? null},
       updated_at = NOW()
     WHERE id = ${id}
   `);
-  return res.json({ ok: true });
+  audit(req, {
+    action: "update",
+    module: "tax",
+    resourceId: String(id),
+    before: before as Record<string, unknown>,
+    after: { npwp: normalizedNpwp, taxInvoiceNumber: normalizedFaktur, partnerName: partnerName ?? null },
+  });
+  return res.json({ ok: true, npwp: normalizedNpwp, taxInvoiceNumber: normalizedFaktur });
+});
+
+// ── POST /api/tax/validate/npwp ───────────────────────────────────────────────
+router.post("/validate/npwp", (req, res) => {
+  const { npwp, loose = false } = req.body;
+  if (!npwp) return res.status(400).json({ message: "npwp wajib diisi" });
+
+  const result = loose
+    ? (() => {
+        const digits = stripNpwp(String(npwp));
+        if (digits.length !== 15)
+          return { valid: false, formatted: null, normalized: digits.length > 0 ? digits : null, error: `NPWP harus 15 digit (ditemukan ${digits.length} digit)` };
+        return { valid: true, formatted: formatNpwp(digits), normalized: digits };
+      })()
+    : validateNpwp(String(npwp));
+
+  return res.json(result);
+});
+
+// ── POST /api/tax/validate/faktur ─────────────────────────────────────────────
+router.post("/validate/faktur", (req, res) => {
+  const { faktur } = req.body;
+  if (!faktur) return res.status(400).json({ message: "faktur wajib diisi" });
+  const result = validateFakturPajak(String(faktur));
+  return res.json(result);
 });
 
 // ── POST /api/tax/transactions/calculate ──────────────────────────────────────

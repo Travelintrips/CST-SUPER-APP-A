@@ -39,6 +39,7 @@ import {
 } from "drizzle-orm";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { resolveCompanyId, resolveCompanyScope } from "../lib/resolveCompany.js";
+import { audit } from "../lib/unifiedAudit.js";
 import {
   ensureAccountingSettings,
   seedAccountingDefaults,
@@ -605,6 +606,22 @@ router.post("/entries", async (req, res) => {
       .select()
       .from(accountingEntryLinesTable)
       .where(eq(accountingEntryLinesTable.entryId, entry.id));
+    audit(req, {
+      action: "create",
+      module: "accounting",
+      resourceId: entry.entryNumber ?? String(entry.id),
+      after: {
+        id: entry.id,
+        entryNumber: entry.entryNumber,
+        journalId: journal.id,
+        journalCode: journal.code,
+        date: dateStr,
+        ref,
+        description,
+        lineCount: postingLines.length,
+      },
+      companyId,
+    });
     return res
       .status(201)
       .json({
