@@ -1085,7 +1085,10 @@ export default function LogisticsPortalOrdersPage() {
                 </SelectTrigger>
                 <SelectContent>
                   {STATUS_OPTIONS.map((s) => (
-                    <SelectItem key={s} value={s}>{s}</SelectItem>
+                    <SelectItem key={s} value={s}>
+                      <span className={`inline-block w-2 h-2 rounded-full mr-1.5 ${STATUS_DOT_COLOR[s] ?? "bg-gray-400"}`} />
+                      {STATUS_LABEL_ID[s] ?? s}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>

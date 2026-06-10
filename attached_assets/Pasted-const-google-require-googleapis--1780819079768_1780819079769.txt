@@ -1,0 +1,128 @@
+const { google } = require('googleapis');
+
+// ==========================================================
+// 1. FUNGSI PEMBUAT KUNCI UNIK (Sama persis dengan rumus GS)
+// ==========================================================
+function generateUniqueKey(tanggal, debit, kredit) {
+    const d = new Date(tanggal);
+    // Format: yyyymmdd
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const dateStr = `${yyyy}${mm}${dd}`;
+    
+    // Logika rumus Anda: IF(D>0, D, C) dan IF(D>0, "IN", "OUT")
+    // Asumsi: D = Kredit (IN), C = Debit (OUT)
+    const amount = kredit > 0 ? kredit : debit;
+    const type = kredit > 0 ? "IN" : "OUT";
+    
+    return `${dateStr}_${amount}_${type}`;
+}
+
+// ==========================================================
+// 2. DATA AKUNTANSI DARI REPLIT (Ganti dengan query DB Anda)
+// ==========================================================
+// Contoh: const dataAkuntansiReplit = await prisma.transaksi.findMany();
+const dataAkuntansiReplit = [
+    { id: 101, tanggal: '2023-10-25', debit: 0, kredit: 500000, keterangan: 'Penjualan' },
+    { id: 102, tanggal: '2023-10-25', debit: 150000, kredit: 0, keterangan: 'Pembelian ATK' },
+    // ... tambahkan atau ganti dengan data dari database Anda
+];
+
+// ==========================================================
+// 3. KONFIGURASI GOOGLE SHEET
+// ==========================================================
+const SPREADSHEET_ID = 'MASUKKAN_ID_SPREADSHEET_DISINI'; // Ganti dengan ID Sheet Anda
+const SHEET_NAME = 'Mutasi'; // Ganti dengan nama sheet Anda
+
+const auth = new google.auth.GoogleAuth({
+    credentials: JSON.parse(process.env.GOOGLE_CREDENTIALS), // Pastikan Secret ini sudah diisi di Replit
+    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+});
+const sheets = google.sheets({ version: 'v4', auth });
+
+// ==========================================================
+// 4. FUNGSI UTAMA REKONSILIASI
+// ==========================================================
+async function jalankanRekonsiliasi() {
+    try {
+        console.log("🔄 Membaca data mutasi dari Google Sheet...");
+        
+        // Baca Kolom A s/d F (A=0, B=1, C=2, D=3, E=4[Key], F=5[Status])
+        const response = await sheets.spreadsheets.values.get({
+            spreadsheetId: SPREADSHEET_ID,
+            range: `${SHEET_NAME}!A2:F`, 
+        });
+
+        const rows = response.data.values || [];
+        
+        // Hitung frekuensi kemunculan setiap Unique Key di Google Sheet
+        const keyFrequency = {};
+        rows.forEach(row => {
+            const key = row[4]; // Kolom E adalah Unique Key hasil ArrayFormula
+            if (key && key.trim() !== '') {
+                keyFrequency[key] = (keyFrequency[key] || 0) + 1;
+            }
+        });
+
+        console.log(`✅ Ditemukan ${Object.keys(keyFrequency).length} kunci unik di Google Sheet.`);
+
+        const updateRequests = [];
+
+        // Proses setiap data dari Replit
+        for (const trx of dataAkuntansiReplit) {
+            // Buat kunci unik dari data Replit
+            const keyReplit = generateUniqueKey(trx.tanggal, trx.debit, trx.kredit);
+            
+            // Cek berapa kali kunci ini muncul di Google Sheet
+            const jumlahMuncul = keyFrequency[keyReplit] || 0;
+
+            let statusRekonsiliasi = "";
+
+            // LOGIKA UTAMA: Jika lebih dari 1, admin yang approve
+            if (jumlahMuncul > 1) {
+                statusRekonsiliasi = "⚠️ PERLU APPROVAL ADMIN (DUPLIKAT)";
+            } else if (jumlahMuncul === 1) {
+                statusRekonsiliasi = "✅ REKONSILIASI BERHASIL";
+                // Opsional: Tandai di Replit bahwa ini sudah match
+                // trx.status = 'MATCHED';
+            } else {
+                statusRekonsiliasi = "❌ TIDAK DITEMUKAN DI MUTASI";
+            }
+
+            console.log(`[ID: ${trx.id}] Key: ${keyReplit} -> Status: ${statusRekonsiliasi}`);
+
+            // Cari index baris di Google Sheet yang memiliki key yang sama untuk di-update statusnya
+            const rowIndex = rows.findIndex(row => row[4] === keyReplit);
+            
+            if (rowIndex !== -1) {
+                // Kolom F adalah index 5. Baris di sheet = rowIndex + 2 (karena ada header & index mulai dari 0)
+                updateRequests.push({
+                    range: `${SHEET_NAME}!F${rowIndex + 2}`,
+                    values: [[statusRekonsiliasi]]
+                });
+            }
+        }
+
+        // Update status secara batch ke Google Sheet (lebih cepat & efisien)
+        if (updateRequests.length > 0) {
+            console.log(`\n📝 Memperbarui ${updateRequests.length} status ke Google Sheet...`);
+            await sheets.spreadsheets.values.batchUpdate({
+                spreadsheetId: SPREADSHEET_ID,
+                resource: {
+                    data: updateRequests,
+                    valueInputOption: 'USER_ENTERED',
+                },
+            });
+            console.log("🎉 Rekonsiliasi selesai! Google Sheet berhasil diperbarui.");
+        } else {
+            console.log("ℹ️ Tidak ada data yang cocok untuk diperbarui statusnya.");
+        }
+
+    } catch (error) {
+        console.error("❌ Error saat rekonsiliasi:", error.message);
+    }
+}
+
+// Jalankan fungsi
+jalankanRekonsiliasi();

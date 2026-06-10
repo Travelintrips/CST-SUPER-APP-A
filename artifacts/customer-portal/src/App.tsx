@@ -20,6 +20,7 @@ import { fetchAndStoreProfile } from "@/lib/auth";
 const Home                      = lazy(() => import("@/pages/home"));
 const Services                  = lazy(() => import("@/pages/services"));
 const Products                  = lazy(() => import("@/pages/products"));
+const Marketplace               = lazy(() => import("@/pages/marketplace"));
 const Jasa                      = lazy(() => import("@/pages/jasa"));
 const JasaDetail                = lazy(() => import("@/pages/jasa-detail"));
 const Login                     = lazy(() => import("@/pages/login"));
@@ -77,6 +78,13 @@ const GoodsReceiptFormPage      = lazy(() => import("@/pages/goods-receipt-form"
 const DriverProgressPage        = lazy(() => import("@/pages/driver-progress"));
 const PaymentProofPage          = lazy(() => import("@/pages/payment-proof"));
 const ProductOrderTrackPage     = lazy(() => import("@/pages/product-order-track"));
+const CatalogPage               = lazy(() => import("@/pages/catalog"));
+const MarketplaceDetail         = lazy(() => import("@/pages/marketplace-detail"));
+const JasaVendorDetail          = lazy(() => import("@/pages/jasa-vendor-detail"));
+const EscrowConfirmPage         = lazy(() => import("@/pages/escrow-confirm"));
+const ProductApprovePage        = lazy(() => import("@/pages/product-approve"));
+const ShipmentSelectionPage     = lazy(() => import("@/pages/shipment-selection"));
+const TruckingPage              = lazy(() => import("@/pages/trucking"));
 const NotFound                  = lazy(() => import("@/pages/not-found"));
 
 const queryClient = new QueryClient();
@@ -101,6 +109,9 @@ const NO_SHELL_PREFIXES = [
   "/driver-progress",
   "/payment-proof",
   "/track-produk",
+  "/product-approve",
+  "/shipment-selection",
+  "/escrow-confirm",
   "/q/",
 ];
 
@@ -118,6 +129,9 @@ const NO_AUTH_CHECK_PREFIXES = [
   "/driver-progress",
   "/payment-proof",
   "/track-produk",
+  "/product-approve",
+  "/shipment-selection",
+  "/escrow-confirm",
 ];
 
 const BASE_PREFIX = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -202,8 +216,10 @@ function AppShell() {
       <Switch>
         <Route path="/" component={Home} />
         <Route path="/services" component={Services} />
-        <Route path="/products" component={Products} />
+        <Route path="/marketplace" component={Marketplace} />
+        <Route path="/products">{() => { window.location.replace("/marketplace"); return null; }}</Route>
         <Route path="/jasa" component={Jasa} />
+        <Route path="/jasa/vendor/:id" component={JasaVendorDetail} />
         <Route path="/jasa/:id" component={JasaDetail} />
         <Route path="/login" component={Login} />
         <Route path="/register" component={Register} />
@@ -260,7 +276,13 @@ function AppShell() {
         <Route path="/vendor-invoice/:token" component={VendorInvoiceFormPage} />
         <Route path="/goods-receipt/:token" component={GoodsReceiptFormPage} />
         <Route path="/payment-proof/:token" component={PaymentProofPage} />
+        <Route path="/escrow-confirm/:token" component={EscrowConfirmPage} />
         <Route path="/track-produk/:token" component={ProductOrderTrackPage} />
+        <Route path="/catalog" component={CatalogPage} />
+        <Route path="/product-approve/:token" component={ProductApprovePage} />
+        <Route path="/shipment-selection/:token" component={ShipmentSelectionPage} />
+        <Route path="/marketplace/:id" component={MarketplaceDetail} />
+        <Route path="/trucking" component={TruckingPage} />
         <Route component={NotFound} />
       </Switch>
     </Suspense>

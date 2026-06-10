@@ -3,6 +3,8 @@ import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { GooglePlacesAutocomplete } from "@/components/ui/google-places-autocomplete";
+import { RouteMapPreview } from "@/components/ui/route-map-preview";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
@@ -21,12 +23,53 @@ import {
   Plane, Download, Upload, MapPin, Home,
   Package, Warehouse, Truck, FileCheck, Shield, FileText,
   Plus, Trash2, Edit2, Calculator, ShoppingCart, User, CheckCircle2,
+  CreditCard, Banknote, Building2, Receipt,
 } from "lucide-react";
+import { CityAutocompleteInput } from "@/components/ui/city-autocomplete";
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   Ship, Plane, Download, Upload, MapPin, Home,
   Package, Warehouse, Truck, FileCheck, Shield, FileText,
 };
+
+const QUICK_SERVICES = [
+  {
+    id: "freight",
+    name: "Freight",
+    description: "Air & sea forwarding, domestic delivery",
+    category: "Freight" as const,
+    isTrucking: false,
+    icon: <Ship className="w-5 h-5 text-blue-600" />,
+    color: "border-blue-200 bg-blue-50/60 hover:border-blue-400 text-blue-900",
+  },
+  {
+    id: "customs",
+    name: "Customs",
+    description: "Import/export customs clearance",
+    category: "Customs" as const,
+    isTrucking: false,
+    icon: <FileCheck className="w-5 h-5 text-orange-600" />,
+    color: "border-orange-200 bg-orange-50/60 hover:border-orange-400 text-orange-900",
+  },
+  {
+    id: "trucking",
+    name: "Trucking",
+    description: "Pickup, delivery & container transport",
+    category: "Trucking" as const,
+    isTrucking: true,
+    icon: <Truck className="w-5 h-5 text-amber-600" />,
+    color: "border-amber-200 bg-amber-50/60 hover:border-amber-400 text-amber-900",
+  },
+  {
+    id: "storage",
+    name: "Storage",
+    description: "Warehouse & bonded storage",
+    category: "Storage" as const,
+    isTrucking: false,
+    icon: <Warehouse className="w-5 h-5 text-teal-600" />,
+    color: "border-teal-200 bg-teal-50/60 hover:border-teal-400 text-teal-900",
+  },
+];
 
 function getServiceDetailRows(
   calculatorType: string,
@@ -84,6 +127,17 @@ function getServiceDetailRows(
       ...(inputData.unit ? [{ label: "Unit", value: str(inputData.unit) }] : []),
     ];
   }
+  if (inputData.itemSource === "vendor_catalog_item") {
+    const rows: { label: string; value: string }[] = [];
+    if (inputData.serviceType) rows.push({ label: "Tipe Layanan", value: str(inputData.serviceType) });
+    if (inputData.quantity != null) rows.push({ label: "Qty / Volume", value: `${inputData.quantity}${inputData.unit ? " " + str(inputData.unit) : ""}` });
+    if (inputData.pickupCity || inputData.origin) rows.push({ label: "Asal", value: str(inputData.pickupCity ?? inputData.origin) });
+    if (inputData.destCity || inputData.destination) rows.push({ label: "Tujuan", value: str(inputData.destCity ?? inputData.destination) });
+    if (inputData.containerType) rows.push({ label: "Kontainer", value: str(inputData.containerType) });
+    if (inputData.grossWeight) rows.push({ label: "Berat Kotor", value: `${inputData.grossWeight} kg` });
+    if (inputData.chargeableWeight) rows.push({ label: "Chargeable Weight", value: `${inputData.chargeableWeight} kg` });
+    return rows;
+  }
   const skipped = new Set(["unitPrice", "serviceFee", "adminFee", "ratePerKg", "ratePerCbm", "minimumCharge", "freightRate", "handlingFee", "truckingRate", "loadingFee", "customsFee", "documentFee", "pibPebFee", "permitFee", "notes"]);
   return Object.entries(inputData)
     .filter(([k, v]) => v && !skipped.has(k))
@@ -99,9 +153,11 @@ const STEPS = [
   "Pilih Layanan",
   "Ringkasan",
   "Data Pemesan",
+  "Pembayaran",
+  "Konfirmasi",
 ];
 
-type Step = 0 | 1 | 2 | 3 | 4;
+type Step = 0 | 1 | 2 | 3 | 4 | 5;
 
 interface CalcState {
   [key: string]: string;
@@ -191,7 +247,7 @@ function calcResult(calcType: string, state: CalcState): Record<string, unknown>
 
 interface CompanyOrigin { name: string; address: string; originCity: string; originAirport: string; originPort: string; }
 
-function CalculatorForm({ item, onAdd, onBack, transportMode, truckType, origin, destination, companyOrigin }: {
+function CalculatorForm({ item, onAdd, onBack, transportMode, truckType, origin, destination, companyOrigin, initialState: initialCalcState }: {
   item: ServiceItem;
   onAdd: (data: Omit<CartItem, "cartId">) => void;
   onBack: () => void;
@@ -200,21 +256,31 @@ function CalculatorForm({ item, onAdd, onBack, transportMode, truckType, origin,
   origin?: string;
   destination?: string;
   companyOrigin?: CompanyOrigin;
+  initialState?: Record<string, string>;
 }) {
   const [state, setState] = useState<CalcState>({});
   const [autoRateFetching, setAutoRateFetching] = useState(false);
   const { toast } = useToast();
 
-  // Auto-fill origin airport/port from company defaults
+  // Auto-fill origin airport/port from company defaults, and product dims if provided
   useEffect(() => {
-    if (!companyOrigin) return;
-    if (item.calculatorType === "air_freight") {
-      setState(prev => ({ ...prev, originAirport: prev.originAirport || companyOrigin.originAirport }));
-    } else if (item.calculatorType === "sea_fcl") {
-      setState(prev => ({ ...prev, originPort: prev.originPort || companyOrigin.originPort }));
-    }
+    if (!companyOrigin && !initialCalcState) return;
+    setState(prev => {
+      const next = { ...prev };
+      if (companyOrigin) {
+        if (item.calculatorType === "air_freight") next.originAirport = prev.originAirport || companyOrigin.originAirport;
+        else if (item.calculatorType === "sea_fcl") next.originPort = prev.originPort || companyOrigin.originPort;
+      }
+      if (initialCalcState && item.calculatorType === "air_freight") {
+        if (initialCalcState.grossWeight && !next.grossWeight) next.grossWeight = initialCalcState.grossWeight;
+        if (initialCalcState.length && !next.length) next.length = initialCalcState.length;
+        if (initialCalcState.width && !next.width) next.width = initialCalcState.width;
+        if (initialCalcState.height && !next.height) next.height = initialCalcState.height;
+      }
+      return next;
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [companyOrigin, item.calculatorType]);
+  }, [companyOrigin, item.calculatorType, initialCalcState]);
 
   function set(key: string, val: string) {
     setState((prev) => ({ ...prev, [key]: val }));
@@ -286,11 +352,21 @@ function CalculatorForm({ item, onAdd, onBack, transportMode, truckType, origin,
           <Calculator className="w-4 h-4 text-accent" /> Calculator
         </div>
 
+        {hasAnyAuto && (
+          <div className="flex gap-2 bg-blue-50 border border-blue-200 rounded-lg px-4 py-3">
+            <Sparkles className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-xs font-semibold text-blue-700">Diisi otomatis dari produk pesanan</p>
+              <p className="text-xs text-blue-600 mt-0.5">Berat &amp; dimensi dihitung dari item di keranjang. Lengkapi detail lainnya lalu klik Hitung Estimasi.</p>
+            </div>
+          </div>
+        )}
+
         {ct === "air_freight" && <>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label className="text-xs flex items-center gap-1">
-                Origin Airport
+                Bandara Asal
                 <span className="ml-auto text-[10px] font-semibold text-orange-600 bg-orange-100 border border-orange-200 rounded px-1.5 py-0.5">Otomatis</span>
               </Label>
               <div className="flex items-center gap-2 bg-orange-50 border border-orange-200 rounded-md px-3 py-2 mt-1">
@@ -298,17 +374,30 @@ function CalculatorForm({ item, onAdd, onBack, transportMode, truckType, origin,
                 <span className="text-xs font-semibold text-slate-800">{state.originAirport || companyOrigin?.originAirport || "CGK"}</span>
               </div>
             </div>
-            <div><Label className="text-xs">Destination Airport</Label><Input placeholder="SIN" value={state.destinationAirport||""} onChange={e => set("destinationAirport", e.target.value)} /></div>
+            <div>
+              <Label className="text-xs">Bandara Tujuan <span className="text-destructive">*</span></Label>
+              <CityAutocompleteInput type="airport" placeholder="Cari bandara tujuan..." value={state.destinationAirport||""} onChange={v => set("destinationAirport", v)} />
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <div><Label className="text-xs">Gross Weight (kg)</Label><Input type="number" placeholder="0" value={state.grossWeight||""} onChange={e => set("grossWeight", e.target.value)} /></div>
+            {hasAutoWeight
+              ? <AutoReadOnly label="Gross Weight (kg)" value={state.grossWeight||""} />
+              : <div><Label className="text-xs">Gross Weight (kg)</Label><Input type="number" placeholder="0" value={state.grossWeight||""} onChange={e => set("grossWeight", e.target.value)} /></div>
+            }
             <div><Label className="text-xs">Quantity (pcs)</Label><Input type="number" placeholder="1" value={state.quantity||""} onChange={e => set("quantity", e.target.value)} /></div>
           </div>
           <div className="grid grid-cols-3 gap-3">
-            <div><Label className="text-xs">Length (cm)</Label><Input type="number" placeholder="0" value={state.length||""} onChange={e => set("length", e.target.value)} /></div>
-            <div><Label className="text-xs">Width (cm)</Label><Input type="number" placeholder="0" value={state.width||""} onChange={e => set("width", e.target.value)} /></div>
-            <div><Label className="text-xs">Height (cm)</Label><Input type="number" placeholder="0" value={state.height||""} onChange={e => set("height", e.target.value)} /></div>
+            {hasAutoDims ? <>
+              <AutoReadOnly label="Panjang (cm)" value={state.length||""} />
+              <AutoReadOnly label="Lebar (cm)" value={state.width||""} />
+              <AutoReadOnly label="Tinggi (cm)" value={state.height||""} />
+            </> : <>
+              <div><Label className="text-xs">Length (cm)</Label><Input type="number" placeholder="0" value={state.length||""} onChange={e => set("length", e.target.value)} /></div>
+              <div><Label className="text-xs">Width (cm)</Label><Input type="number" placeholder="0" value={state.width||""} onChange={e => set("width", e.target.value)} /></div>
+              <div><Label className="text-xs">Height (cm)</Label><Input type="number" placeholder="0" value={state.height||""} onChange={e => set("height", e.target.value)} /></div>
+            </>}
           </div>
+          {hasAutoGoods && <AutoReadOnly label="Jenis Barang" value={state.goodsType||""} />}
           <div><Label className="text-xs">Rate per Kg (IDR)</Label><Input type="number" placeholder="0" value={state.ratePerKg||""} onChange={e => set("ratePerKg", e.target.value)} /></div>
           {(parseFloat(state.grossWeight)||0) > 0 && (parseFloat(state.ratePerKg)||0) > 0 && (
             <div className="text-xs text-muted-foreground bg-background rounded p-3 space-y-1">
@@ -322,7 +411,7 @@ function CalculatorForm({ item, onAdd, onBack, transportMode, truckType, origin,
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label className="text-xs flex items-center gap-1">
-                Origin Port
+                Pelabuhan Asal
                 <span className="ml-auto text-[10px] font-semibold text-orange-600 bg-orange-100 border border-orange-200 rounded px-1.5 py-0.5">Otomatis</span>
               </Label>
               <div className="flex items-center gap-2 bg-orange-50 border border-orange-200 rounded-md px-3 py-2 mt-1">
@@ -330,8 +419,22 @@ function CalculatorForm({ item, onAdd, onBack, transportMode, truckType, origin,
                 <span className="text-xs font-semibold text-slate-800">{state.originPort || companyOrigin?.originPort || "Tanjung Priok, Jakarta"}</span>
               </div>
             </div>
-            <div><Label className="text-xs">Destination Port</Label><Input placeholder="SGSIN" value={state.destinationPort||""} onChange={e => set("destinationPort", e.target.value)} /></div>
+            <div>
+              <Label className="text-xs">Pelabuhan Tujuan <span className="text-destructive">*</span></Label>
+              <CityAutocompleteInput type="port" placeholder="Cari pelabuhan tujuan..." value={state.destinationPort||""} onChange={v => set("destinationPort", v)} />
+            </div>
           </div>
+          {(hasAutoWeight || hasAutoDims || hasAutoGoods) && (
+            <div className="grid grid-cols-2 gap-3">
+              {hasAutoWeight && <AutoReadOnly label="Berat (kg)" value={state.grossWeight||""} />}
+              {hasAutoGoods && <AutoReadOnly label="Jenis Barang" value={state.goodsType||""} />}
+              {hasAutoDims && <>
+                <AutoReadOnly label="Panjang (cm)" value={state.length||""} />
+                <AutoReadOnly label="Lebar (cm)" value={state.width||""} />
+                <AutoReadOnly label="Tinggi (cm)" value={state.height||""} />
+              </>}
+            </div>
+          )}
           <div><Label className="text-xs">Container Type</Label>
             <Select value={state.containerType||undefined} onValueChange={v => set("containerType", v)}>
               <SelectTrigger><SelectValue placeholder="Select container" /></SelectTrigger>
@@ -348,9 +451,16 @@ function CalculatorForm({ item, onAdd, onBack, transportMode, truckType, origin,
 
         {ct === "sea_lcl" && <>
           <div className="grid grid-cols-2 gap-3">
-            <div><Label className="text-xs">CBM</Label><Input type="number" placeholder="0" value={state.cbm||""} onChange={e => set("cbm", e.target.value)} /></div>
-            <div><Label className="text-xs">Weight (kg)</Label><Input type="number" placeholder="0" value={state.weight||""} onChange={e => set("weight", e.target.value)} /></div>
+            {hasAutoDims
+              ? <AutoReadOnly label="CBM" value={state.cbm||""} />
+              : <div><Label className="text-xs">CBM</Label><Input type="number" placeholder="0" value={state.cbm||""} onChange={e => set("cbm", e.target.value)} /></div>
+            }
+            {hasAutoWeight
+              ? <AutoReadOnly label="Berat (kg)" value={state.weight||state.grossWeight||""} />
+              : <div><Label className="text-xs">Weight (kg)</Label><Input type="number" placeholder="0" value={state.weight||""} onChange={e => set("weight", e.target.value)} /></div>
+            }
           </div>
+          {hasAutoGoods && <AutoReadOnly label="Jenis Barang" value={state.goodsType||""} />}
           <div className="grid grid-cols-2 gap-3">
             <div><Label className="text-xs">Rate per CBM (IDR)</Label><Input type="number" placeholder="0" value={state.ratePerCbm||""} onChange={e => set("ratePerCbm", e.target.value)} /></div>
             <div><Label className="text-xs">Minimum Charge (IDR)</Label><Input type="number" placeholder="0" value={state.minimumCharge||""} onChange={e => set("minimumCharge", e.target.value)} /></div>
@@ -377,9 +487,27 @@ function CalculatorForm({ item, onAdd, onBack, transportMode, truckType, origin,
 
         {ct === "trucking" && <>
           <div className="grid grid-cols-2 gap-3">
-            <div><Label className="text-xs">Pickup City</Label><Input placeholder="Jakarta" value={state.pickupCity||""} onChange={e => set("pickupCity", e.target.value)} /></div>
-            <div><Label className="text-xs">Destination City</Label><Input placeholder="Surabaya" value={state.destCity||""} onChange={e => set("destCity", e.target.value)} /></div>
+            <div>
+              <Label className="text-xs flex items-center gap-1">
+                Kota Asal
+                <span className="ml-auto text-[10px] font-semibold text-orange-600 bg-orange-100 border border-orange-200 rounded px-1.5 py-0.5">Otomatis</span>
+              </Label>
+              <div className="flex items-center gap-2 bg-orange-50 border border-orange-200 rounded-md px-3 py-2 mt-1">
+                <MapPin className="w-3.5 h-3.5 text-orange-500 shrink-0" />
+                <span className="text-xs font-semibold text-slate-800">{state.pickupCity || companyOrigin?.originCity || "Jakarta"}</span>
+              </div>
+            </div>
+            <div>
+              <Label className="text-xs">Kota Tujuan <span className="text-destructive">*</span></Label>
+              <CityAutocompleteInput type="city" placeholder="Cari kota tujuan..." value={state.destCity||""} onChange={v => set("destCity", v)} />
+            </div>
           </div>
+          {(hasAutoWeight || hasAutoGoods) && (
+            <div className="grid grid-cols-2 gap-3">
+              {hasAutoWeight && <AutoReadOnly label="Berat (kg)" value={state.grossWeight||""} />}
+              {hasAutoGoods && <AutoReadOnly label="Jenis Barang" value={state.goodsType||""} />}
+            </div>
+          )}
           <div><Label className="text-xs">Vehicle Type</Label>
             <Select value={state.vehicleType||undefined} onValueChange={v => set("vehicleType", v)}>
               <SelectTrigger><SelectValue placeholder="Select vehicle" /></SelectTrigger>
@@ -480,7 +608,7 @@ export default function BookPage() {
   const [selectedCategory, setSelectedCategory] = useState<ServiceCategory | null>(null);
   const [selectedItem, setSelectedItem] = useState<ServiceItem | null>(null);
   const [editCartId, setEditCartId] = useState<string | null>(null);
-  const { items: cartItems, addItem, removeItem, clearCart, subtotal, tax, grandTotal } = useCart();
+  const { items: cartItems, addItem, removeItem, updateItem, clearCart, subtotal, tax, grandTotal } = useCart();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const createOrder = useCreateLogisticOrder();
@@ -494,6 +622,21 @@ export default function BookPage() {
 
   const [fromProduct, setFromProduct] = useState<{ name: string; qty: number; price: number; unit?: string } | null>(null);
   const [companyOrigin, setCompanyOrigin] = useState<CompanyOrigin | null>(null);
+  const [productDims, setProductDims] = useState<Record<string, string>>({});
+
+  const [productShipping, setProductShipping] = useState<{
+    method: "darat" | "laut" | "udara";
+    estimate: number | null;
+    companyName: string;
+    companyAddress: string;
+  } | null>(null);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("logistic_product_shipping");
+      if (saved) setProductShipping(JSON.parse(saved));
+    } catch { /* ignore */ }
+  }, []);
 
   // Fetch company origin defaults (origin airport, port, city)
   useEffect(() => {
@@ -525,15 +668,51 @@ export default function BookPage() {
   });
   const [estimation, setEstimation] = useState<{ estimated_price: number | null; disclaimer: string } | null>(null);
   const [estimating, setEstimating] = useState(false);
-  const [paymentType, setPaymentType] = useState<"transfer" | "gateway" | "">("");
+  const [paymentType, setPaymentType] = useState<"transfer" | "gateway" | "cod" | "invoice" | "">("");
   const [transferTerm, setTransferTerm] = useState<"full" | "termin" | "dp" | "">("");
   const [paymentTerm, setPaymentTerm] = useState<"net7" | "net14" | "net30" | "net60" | "">("");
   const [dpNext, setDpNext] = useState<"lunas-delivery" | "lunas-net30" | "lunas-net60" | "cicil" | "">("");
+  const [bankInfo, setBankInfo] = useState<{ bankName: string; accountNumber: string; accountName: string; branch?: string; notes?: string } | null>(null);
+  const [proofFile, setProofFile] = useState<File | null>(null);
+  const [proofObjectPath, setProofObjectPath] = useState<string>("");
+  const [proofUploading, setProofUploading] = useState(false);
+  const [proofUploaded, setProofUploaded] = useState(false);
   const [quickTrucking, setQuickTrucking] = useState<"detail" | "calculator" | null>(null);
   const [quickTruckData, setQuickTruckData] = useState<Record<string, string>>({});
   const [quickTruckEstimate, setQuickTruckEstimate] = useState<number | null>(null);
   const [quickEstimating, setQuickEstimating] = useState(false);
   const [quickDeliveryAddressError, setQuickDeliveryAddressError] = useState(false);
+  const [confirmEditShipping, setConfirmEditShipping] = useState(false);
+
+  // Fetch bank transfer info ketika user pilih Transfer Bank
+  useEffect(() => {
+    if (paymentType === "transfer" && !bankInfo) {
+      fetch("/api/settings/bank-transfer-info")
+        .then(r => r.ok ? r.json() : null)
+        .then((d: { bankName: string; accountNumber: string; accountName: string; branch?: string; notes?: string } | null) => {
+          if (d) setBankInfo(d);
+        })
+        .catch(() => {});
+    }
+  }, [paymentType, bankInfo]);
+
+  async function uploadProof(file: File) {
+    setProofUploading(true);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const r = await fetch("/api/portal/payment-proof-upload", { method: "POST", body: form });
+      const json = await r.json() as { objectPath?: string; message?: string };
+      if (!r.ok) throw new Error(json.message ?? "Upload gagal");
+      setProofObjectPath(json.objectPath ?? "");
+      setProofUploaded(true);
+      toast({ title: "Bukti pembayaran berhasil diunggah ✓" });
+    } catch (err) {
+      toast({ title: "Gagal mengunggah bukti", description: String(err), variant: "destructive" });
+    } finally {
+      setProofUploading(false);
+    }
+  }
 
   // Persist orderType + shipmentType to localStorage whenever they change
   useEffect(() => {
@@ -660,9 +839,30 @@ export default function BookPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const commodity = params.get("commodity");
+    const productId = params.get("productId");
     const qty = parseInt(params.get("qty") ?? "1", 10) || 1;
     const productPrice = parseFloat(params.get("productPrice") ?? "0") || 0;
     const unit = params.get("unit") ?? undefined;
+
+    // Fetch product weight/dims for auto-fill in CalculatorForm
+    if (productId) {
+      fetch(`/api/ecommerce/products/${productId}`)
+        .then(r => r.ok ? r.json() : null)
+        .then((p: { weightKg?: number | null; lengthCm?: number | null; widthCm?: number | null; heightCm?: number | null; goodsType?: string | null } | null) => {
+          if (!p) return;
+          const dims: Record<string, string> = {};
+          if (p.weightKg != null) dims.grossWeight = String(p.weightKg);
+          if (p.lengthCm != null) dims.length = String(p.lengthCm);
+          if (p.widthCm != null) dims.width = String(p.widthCm);
+          if (p.heightCm != null) dims.height = String(p.heightCm);
+          if (p.goodsType) {
+            dims.goodsType = p.goodsType;
+            setQuickTruckData(prev => ({ ...prev, goodsType: prev.goodsType || p.goodsType! }));
+          }
+          if (Object.keys(dims).length > 0) setProductDims(dims);
+        })
+        .catch(() => {});
+    }
 
     if (commodity) {
       setFromProduct({ name: commodity, qty, price: productPrice, unit });
@@ -773,10 +973,6 @@ export default function BookPage() {
       return;
     }
     const hasProductOnly = cartItems.every(c => c.calculatorType === "product");
-    if (hasProductOnly && !customerForm.shippingAddress?.trim() && !customerForm.destination?.trim()) {
-      toast({ title: "Alamat Pengiriman wajib diisi", variant: "destructive" });
-      return;
-    }
     const truckingInputData = (truckingItem?.inputData ?? {}) as Record<string, unknown>;
     const str = (v: unknown) => (v ? String(v) : "");
     const derivedOrderType: "product" | "service" | "shipment" | null = orderType ?? (
@@ -784,17 +980,26 @@ export default function BookPage() {
       cartItems.every(c => c.calculatorType !== "trucking" && c.calculatorType !== "air_freight" && c.calculatorType !== "sea_fcl" && c.calculatorType !== "sea_lcl") && cartItems.some(c => c.calculatorType !== "product") ? "service" :
       "shipment"
     );
-    const effectiveOrigin = (derivedOrderType === "product" || derivedOrderType === "service") ? (origin || "") : origin;
+    // For product-only orders, use company address as origin and shipping address as destination
+    const productOnlyOrigin = hasProductOnly ? (productShipping?.companyAddress || companyOrigin?.address || "") : "";
+    const effectiveOrigin = hasProductOnly ? productOnlyOrigin : ((derivedOrderType === "service") ? (origin || "") : origin);
     const effectiveDestination = derivedOrderType === "product"
       ? (shippingAddress || destination || "")
       : (derivedOrderType === "service" ? (destination || "") : destination);
+    // Derive transport mode from productShipping for product-only orders
+    const productTransportMode = hasProductOnly && productShipping
+      ? (productShipping.method === "darat" ? "TRUCKING" : productShipping.method === "laut" ? "SEA_FREIGHT" : "AIR_FREIGHT")
+      : customerForm.transportMode;
+    const productShipmentType = hasProductOnly && productShipping
+      ? (productShipping.method === "darat" ? "Trucking" : productShipping.method === "laut" ? "Sea LCL" : "Air Freight")
+      : (shipmentType ?? "");
     createOrder.mutate({ data: {
       companyName,
       customerName,
       email,
       phone,
       orderType: derivedOrderType ?? undefined,
-      shipmentType: shipmentType ?? "",
+      shipmentType: productShipmentType || (shipmentType ?? ""),
       origin: effectiveOrigin,
       destination: effectiveDestination,
       commodity: customerForm.commodity || str(truckingInputData.cargo_category) || null,
@@ -813,7 +1018,7 @@ export default function BookPage() {
       jamOrder: str(truckingInputData.pickupTime) || null,
       // [MULTI-MODE] transport mode fields
       ...(({
-        ...(customerForm.transportMode ? { transportMode: customerForm.transportMode } : {}),
+        ...(productTransportMode ? { transportMode: productTransportMode } : {}),
         originDistrict: customerForm.originDistrict || undefined,
         destDistrict: customerForm.destDistrict || undefined,
         pickupDate: customerForm.pickupDate || str(truckingInputData.pickupDate) || undefined,
@@ -826,13 +1031,14 @@ export default function BookPage() {
         etd: customerForm.etd || undefined,
         eta: customerForm.eta || undefined,
       }) as Record<string, unknown>),
-      paymentMethod: paymentType === "gateway"
-        ? "payment_gateway"
-        : paymentType === "transfer"
-        ? "transfer"
+      paymentMethod: paymentType === "gateway" ? "payment_gateway"
+        : paymentType === "transfer" ? "transfer"
+        : paymentType === "cod" ? "cod"
+        : paymentType === "invoice" ? "invoice"
         : null,
-      paymentType: paymentType === "gateway"
-        ? "payment_gateway"
+      paymentType: paymentType === "gateway" ? "payment_gateway"
+        : paymentType === "cod" ? "cod"
+        : paymentType === "invoice" ? (paymentTerm ? `invoice:${paymentTerm}` : "invoice")
         : paymentType === "transfer"
         ? transferTerm === "full"
           ? "transfer:full"
@@ -852,12 +1058,32 @@ export default function BookPage() {
         inputData: c.inputData,
         calculationResult: c.calculationResult,
         subtotal: c.subtotal,
+        itemSource: c.itemSource ?? "manual",
+        vendorCatalogItemId: c.vendorCatalogItemId ?? null,
+        vendorId: c.vendorId ?? null,
+        serviceType: c.serviceType ?? null,
+        priceSnapshot: c.priceSnapshot ?? null,
+        calculationInput: c.calculationInput ?? null,
+        templateSnapshot: c.templateSnapshot ?? (c.inputData?.templateSnapshot as Record<string, unknown> | null | undefined) ?? null,
       })),
     }}, {
       onSuccess: (data: unknown) => {
         localStorage.setItem("last_order", JSON.stringify(data));
         localStorage.removeItem("logistic_cart");
         try { localStorage.removeItem(DRAFT_META_KEY); } catch { /* ignore */ }
+        if (proofObjectPath) {
+          const orderNum = (data as { orderNumber?: string })?.orderNumber;
+          if (orderNum) {
+            fetch(`/api/logistic/orders/${orderNum}/payment-proof`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ proofUrl: proofObjectPath }),
+            }).catch(() => {});
+          }
+          localStorage.setItem("last_order_proof_uploaded", "1");
+        } else {
+          localStorage.removeItem("last_order_proof_uploaded");
+        }
         setLocation("/logistic-order-success");
       },
       onError: () => {
@@ -1008,15 +1234,30 @@ export default function BookPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="sm:col-span-2">
                   <Label className="text-xs">Alamat Pickup <span className="text-destructive">*</span></Label>
-                  <Textarea rows={2} placeholder="Jl. ..., Kota, Provinsi" value={quickTruckData.pickupAddress||""} onChange={e => setQuickTruckData(p => ({ ...p, pickupAddress: e.target.value }))} />
+                  <GooglePlacesAutocomplete
+                    value={quickTruckData.pickupAddress || ""}
+                    onChange={v => setQuickTruckData(p => ({ ...p, pickupAddress: v }))}
+                    placeholder="Jl. ..., Kota, Provinsi"
+                  />
                 </div>
                 <div className="sm:col-span-2">
                   <Label className="text-xs">Alamat Pengiriman <span className="text-destructive">*</span></Label>
-                  <Textarea rows={2} placeholder="Jl. ..., Kota, Provinsi" value={quickTruckData.deliveryAddress||""}
+                  <GooglePlacesAutocomplete
+                    value={quickTruckData.deliveryAddress || ""}
+                    onChange={v => { setQuickDeliveryAddressError(false); setQuickTruckData(p => ({ ...p, deliveryAddress: v })); }}
+                    placeholder="Jl. ..., Kota, Provinsi"
                     className={quickDeliveryAddressError ? "border-destructive focus-visible:ring-destructive" : ""}
-                    onChange={e => { setQuickDeliveryAddressError(false); setQuickTruckData(p => ({ ...p, deliveryAddress: e.target.value })); }} />
+                  />
                   {quickDeliveryAddressError && <p className="text-[11px] text-destructive mt-1">Alamat pengiriman wajib diisi.</p>}
                 </div>
+                {(quickTruckData.pickupAddress || quickTruckData.deliveryAddress) && (
+                  <div className="sm:col-span-2">
+                    <RouteMapPreview
+                      origin={quickTruckData.pickupAddress || ""}
+                      destination={quickTruckData.deliveryAddress || ""}
+                    />
+                  </div>
+                )}
                 <div>
                   <Label className="text-xs">Nama Kontak</Label>
                   <Input placeholder="Nama PIC" value={quickTruckData.contactName||""} onChange={e => setQuickTruckData(p => ({ ...p, contactName: e.target.value }))} />
@@ -1064,11 +1305,11 @@ export default function BookPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <Label className="text-xs flex items-center gap-1"><MapPin className="w-3 h-3" /> Kota Asal <span className="text-destructive">*</span></Label>
-                  <Input placeholder="Jakarta" value={quickTruckData.pickupCity||""} onChange={e => setQuickTruckData(p => ({ ...p, pickupCity: e.target.value }))} />
+                  <CityAutocompleteInput type="city" placeholder="Cari kota asal..." value={quickTruckData.pickupCity||""} onChange={v => setQuickTruckData(p => ({ ...p, pickupCity: v }))} />
                 </div>
                 <div>
                   <Label className="text-xs flex items-center gap-1"><MapPin className="w-3 h-3" /> Kota Tujuan <span className="text-destructive">*</span></Label>
-                  <Input placeholder="Surabaya" value={quickTruckData.destCity||""} onChange={e => setQuickTruckData(p => ({ ...p, destCity: e.target.value }))} />
+                  <CityAutocompleteInput type="city" placeholder="Cari kota tujuan..." value={quickTruckData.destCity||""} onChange={v => setQuickTruckData(p => ({ ...p, destCity: v }))} />
                 </div>
                 <div>
                   <Label className="text-xs">Berat (kg) <span className="text-destructive">*</span></Label>
@@ -1271,6 +1512,7 @@ export default function BookPage() {
               origin={customerForm.origin}
               destination={customerForm.destination}
               companyOrigin={companyOrigin ?? undefined}
+              initialState={Object.keys(productDims).length > 0 ? productDims : undefined}
             />
           )}
         </div>
@@ -1327,26 +1569,52 @@ export default function BookPage() {
                         <div className="flex-1 border-t border-dashed border-border" />
                       </div>
                     )}
-                    <div className="bg-card border border-border rounded-lg p-4">
+                    <div className={`bg-card border rounded-lg p-4 ${item.itemSource === "vendor_catalog_item" ? "border-purple-200 bg-purple-50/30" : "border-border"}`}>
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex-1 min-w-0">
-                          <Badge variant="outline" className="text-xs mb-1">{item.category}</Badge>
+                          <div className="flex items-center flex-wrap gap-1 mb-1">
+                            <Badge variant="outline" className="text-xs">{item.category}</Badge>
+                            {item.itemSource === "vendor_catalog_item" && (
+                              <span className="text-[10px] font-bold bg-purple-100 text-purple-700 border border-purple-200 rounded px-1.5 py-0.5">Vendor Marketplace</span>
+                            )}
+                          </div>
                           <p className="font-semibold text-foreground text-sm">{item.serviceName}</p>
+                          {item.itemSource === "vendor_catalog_item" && item.vendorName && (
+                            <p className="text-xs text-purple-600 mt-0.5 font-medium">by {item.vendorName}</p>
+                          )}
                           <dl className="mt-2 space-y-1">
-                            {getServiceDetailRows(item.calculatorType, item.inputData).map(({ label, value }) => (
+                            {getServiceDetailRows(item.calculatorType, item.itemSource === "vendor_catalog_item" ? { ...item.inputData, itemSource: "vendor_catalog_item", serviceType: item.serviceType } : item.inputData).map(({ label, value }) => (
                               <div key={label} className="flex gap-2 text-xs leading-relaxed">
                                 <dt className="font-medium text-foreground shrink-0 w-28">{label}</dt>
                                 <dd className="text-muted-foreground">{value}</dd>
                               </div>
                             ))}
                           </dl>
+                          {item.itemSource === "vendor_catalog_item" && item.priceSnapshot && (
+                            <div className="mt-2 text-xs text-muted-foreground bg-white/60 border border-purple-100 rounded px-2 py-1 space-y-0.5">
+                              <span className="font-medium text-purple-700">Harga satuan: </span>
+                              <span>{formatCurrency(item.priceSnapshot.priceSell)} / {item.priceSnapshot.unit}</span>
+                              {item.tax != null && item.tax > 0 && (
+                                <span className="block">PPN 11%: +{formatCurrency(item.tax)}</span>
+                              )}
+                            </div>
+                          )}
                         </div>
                         <div className="flex flex-col items-end gap-1">
-                          {item.calculatorType === "trucking"
-                            ? <span className="text-xs font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded px-2 py-0.5">Harga menyusul</span>
-                            : item.subtotal > 0
-                              ? <span className="font-bold text-accent text-sm">{formatCurrency(item.subtotal)}</span>
-                              : <span className="text-xs font-semibold text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-0.5">Harga nego</span>
+                          {item.itemSource === "vendor_catalog_item"
+                            ? item.total != null && item.total > 0
+                              ? (
+                                <div className="text-right">
+                                  <span className="font-bold text-purple-700 text-sm">{formatCurrency(item.total)}</span>
+                                  <p className="text-[10px] text-muted-foreground">incl. PPN</p>
+                                </div>
+                              )
+                              : <span className="font-bold text-accent text-sm">{formatCurrency(item.subtotal)}</span>
+                            : item.calculatorType === "trucking"
+                              ? <span className="text-xs font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded px-2 py-0.5">Harga menyusul</span>
+                              : item.subtotal > 0
+                                ? <span className="font-bold text-accent text-sm">{formatCurrency(item.subtotal)}</span>
+                                : <span className="text-xs font-semibold text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-0.5">Harga nego</span>
                           }
                           <button
                             onClick={() => removeItem(item.cartId)}
@@ -1414,17 +1682,53 @@ export default function BookPage() {
       const hasShipmentInCart = cartItems.some(c =>
         ["trucking","air_freight","sea_fcl","sea_lcl"].includes(c.calculatorType)
       );
+      const hasProductOnly = cartItems.every(c => c.calculatorType === "product") && cartItems.length > 0;
       const hasLogisticService = !isProductOrder && hasShipmentInCart;
       const hasOriginDest = !isProductOrder && !isServiceOrder && cartItems.some(c =>
         c.inputData?.pickupCity || c.inputData?.originAirport || c.inputData?.originPort ||
         c.inputData?.destCity   || c.inputData?.destinationAirport || c.inputData?.destinationPort
       );
+
+      const SHIPPING_LABEL: Record<string, string> = {
+        darat: "Pengiriman Darat (Trucking)",
+        laut: "Pengiriman Laut (Sea Freight)",
+        udara: "Pengiriman Udara (Air Freight)",
+      };
+      const SHIPPING_ICON: Record<string, JSX.Element> = {
+        darat: <Truck className="w-5 h-5 text-orange-600" />,
+        laut: <Ship className="w-5 h-5 text-blue-600" />,
+        udara: <Plane className="w-5 h-5 text-sky-600" />,
+      };
+
       return (
         <div className="space-y-5">
           <div>
             <h2 className="text-xl font-bold text-foreground mb-1">Data Pemesan</h2>
             <p className="text-sm text-muted-foreground">Lengkapi data untuk konfirmasi pesanan</p>
           </div>
+
+          {/* ── Ringkasan Pengiriman (hanya untuk product-only order) ── */}
+          {hasProductOnly && productShipping && (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 divide-y divide-slate-200 overflow-hidden">
+              <div className="flex items-center gap-3 px-4 py-3 bg-white">
+                <div className="w-9 h-9 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
+                  {SHIPPING_ICON[productShipping.method]}
+                </div>
+                <div className="flex-1">
+                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wide">Metode Pengiriman</p>
+                  <p className="text-sm font-semibold text-slate-900">{SHIPPING_LABEL[productShipping.method]}</p>
+                </div>
+                {productShipping.estimate ? (
+                  <div className="text-right">
+                    <p className="text-[10px] text-slate-400">Estimasi</p>
+                    <p className="text-sm font-bold text-slate-800">{formatCurrency(productShipping.estimate)}</p>
+                  </div>
+                ) : (
+                  <span className="text-[11px] text-slate-400 italic">Sesuai rute</span>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* ── Group 1: Data Perusahaan ─────────────────────────── */}
           <div className="space-y-3">
@@ -1546,12 +1850,19 @@ export default function BookPage() {
                 </div>
               </>)}
 
-              {/* ── Alamat Pengiriman — tampil hanya jika product order + ada layanan shipment ─── */}
-              {isProductOrder && hasShipmentInCart && (
+              {/* ── Alamat Tujuan Pengiriman — tampil untuk semua product order ─── */}
+              {isProductOrder && (
                 <div className="col-span-2">
-                  <Label className="text-xs">Alamat Pengiriman (opsional)</Label>
-                  <Input placeholder="Jl. ..., Kota, Provinsi (kosongkan jika pickup)" value={f.shippingAddress} onChange={e => set("shippingAddress", e.target.value)} />
-                  <p className="text-[11px] text-muted-foreground mt-1">Terisi otomatis dari data layanan shipment. Kosongkan jika pickup sendiri.</p>
+                  <Label className="text-xs">
+                    Alamat Tujuan Pengiriman
+                    <span className="text-muted-foreground font-normal"> (opsional — kosongkan jika ambil sendiri)</span>
+                  </Label>
+                  <Input
+                    placeholder="Jl. ..., Kota, Provinsi — kosongkan jika ambil sendiri di gudang"
+                    value={f.shippingAddress}
+                    onChange={e => set("shippingAddress", e.target.value)}
+                  />
+                  <p className="text-[11px] text-muted-foreground mt-1">Masukkan alamat tujuan pengiriman, atau kosongkan jika barang akan diambil sendiri.</p>
                 </div>
               )}
 
@@ -1658,6 +1969,561 @@ export default function BookPage() {
       );
     }
 
+    // ── Step 4: Pembayaran ───────────────────────────────────────────────
+    if (step === 4) {
+      const hasProductOnly = cartItems.every(c => c.calculatorType === "product") && cartItems.length > 0;
+      const shippingEstimate = hasProductOnly && productShipping?.estimate ? productShipping.estimate : 0;
+      const totalWithShipping = grandTotal + shippingEstimate;
+
+      const PAYMENT_METHODS = [
+        {
+          id: "gateway" as const,
+          icon: <CreditCard className="w-5 h-5 text-emerald-600" />,
+          label: "Payment Gateway",
+          desc: "Bayar online sekarang",
+          badge: "Cepat & Aman",
+          badgeColor: "bg-emerald-100 text-emerald-700",
+        },
+        {
+          id: "transfer" as const,
+          icon: <Building2 className="w-5 h-5 text-blue-600" />,
+          label: "Transfer Bank",
+          desc: "Transfer ke rekening kami",
+          badge: null,
+          badgeColor: "",
+        },
+        {
+          id: "cod" as const,
+          icon: <Banknote className="w-5 h-5 text-orange-600" />,
+          label: "COD / Tunai",
+          desc: "Bayar saat pengiriman",
+          badge: null,
+          badgeColor: "",
+        },
+        {
+          id: "invoice" as const,
+          icon: <Receipt className="w-5 h-5 text-purple-600" />,
+          label: "Invoice / Net Terms",
+          desc: "Tagihan setelah selesai",
+          badge: null,
+          badgeColor: "",
+        },
+      ];
+
+      const TRANSFER_TERMS = [
+        { id: "full" as const, label: "Pembayaran Penuh", desc: "Bayar seluruh tagihan di muka" },
+        { id: "dp"   as const, label: "DP + Pelunasan",  desc: "Down payment, sisa dibayar kemudian" },
+        { id: "termin" as const, label: "Termin / Cicilan", desc: "Bayar dalam beberapa tahap" },
+      ];
+      const NET_TERMS = [
+        { id: "net7" as const, label: "Net 7 hari" },
+        { id: "net14" as const, label: "Net 14 hari" },
+        { id: "net30" as const, label: "Net 30 hari" },
+        { id: "net60" as const, label: "Net 60 hari" },
+      ];
+      const DP_TERMS = [
+        { id: "lunas-delivery" as const, label: "Lunas saat pengiriman" },
+        { id: "lunas-net30"   as const, label: "Lunas Net 30 hari" },
+        { id: "lunas-net60"   as const, label: "Lunas Net 60 hari" },
+        { id: "cicil"         as const, label: "Cicilan" },
+      ];
+
+      return (
+        <div className="space-y-5">
+          <div>
+            <h2 className="text-xl font-bold text-foreground mb-1">Metode Pembayaran</h2>
+            <p className="text-sm text-muted-foreground">Pilih cara pembayaran yang Anda inginkan</p>
+          </div>
+
+          {/* Method cards */}
+          <div className="grid grid-cols-2 gap-3">
+            {PAYMENT_METHODS.map(m => (
+              <button
+                key={m.id}
+                onClick={() => {
+                  setPaymentType(m.id);
+                  setTransferTerm("");
+                  setPaymentTerm("");
+                  setDpNext("");
+                }}
+                className={`rounded-xl border-2 p-4 flex flex-col gap-2.5 text-left transition-all ${
+                  paymentType === m.id
+                    ? "border-accent bg-accent/5 shadow-sm"
+                    : "border-border hover:border-accent/40 hover:bg-muted/30"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-1">
+                  <div className="w-10 h-10 rounded-xl bg-muted flex items-center justify-center shrink-0">
+                    {m.icon}
+                  </div>
+                  {paymentType === m.id && (
+                    <div className="w-4 h-4 rounded-full bg-accent flex items-center justify-center shrink-0 mt-0.5">
+                      <div className="w-2 h-2 rounded-full bg-accent-foreground" />
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <p className="text-sm font-bold text-foreground leading-tight">{m.label}</p>
+                    {m.badge && (
+                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${m.badgeColor}`}>
+                        {m.badge}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">{m.desc}</p>
+                </div>
+              </button>
+            ))}
+          </div>
+
+          {/* Transfer Bank sub-options */}
+          {paymentType === "transfer" && (
+            <div className="rounded-xl border border-blue-200 bg-blue-50/50 overflow-hidden">
+              <div className="px-4 py-2.5 bg-blue-100/60 border-b border-blue-200">
+                <p className="text-sm font-semibold text-blue-900">Pilih Skema Transfer</p>
+              </div>
+              <div className="p-4 space-y-2">
+                {TRANSFER_TERMS.map(t => (
+                  <button
+                    key={t.id}
+                    onClick={() => { setTransferTerm(t.id); setPaymentTerm(""); setDpNext(""); }}
+                    className={`w-full rounded-lg border px-4 py-3 flex items-center gap-3 text-left transition-all ${
+                      transferTerm === t.id ? "border-blue-400 bg-white shadow-sm" : "border-blue-200 hover:bg-white/80"
+                    }`}
+                  >
+                    <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                      transferTerm === t.id ? "border-blue-500" : "border-slate-400"
+                    }`}>
+                      {transferTerm === t.id && <div className="w-2 h-2 rounded-full bg-blue-500" />}
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">{t.label}</p>
+                      <p className="text-xs text-muted-foreground">{t.desc}</p>
+                    </div>
+                  </button>
+                ))}
+
+                {/* Termin sub-options */}
+                {transferTerm === "termin" && (
+                  <div className="ml-7 pt-1 grid grid-cols-2 gap-2">
+                    {NET_TERMS.map(t => (
+                      <button
+                        key={t.id}
+                        onClick={() => setPaymentTerm(t.id)}
+                        className={`rounded-lg border px-3 py-2 text-xs font-semibold transition-all ${
+                          paymentTerm === t.id
+                            ? "border-blue-500 bg-blue-500 text-white"
+                            : "border-blue-200 hover:bg-blue-100 text-foreground"
+                        }`}
+                      >{t.label}</button>
+                    ))}
+                  </div>
+                )}
+
+                {/* DP sub-options */}
+                {transferTerm === "dp" && (
+                  <div className="ml-7 pt-1 space-y-1.5">
+                    <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide">Jadwal Pelunasan:</p>
+                    {DP_TERMS.map(d => (
+                      <button
+                        key={d.id}
+                        onClick={() => setDpNext(d.id)}
+                        className={`w-full rounded-lg border px-3 py-2 text-xs font-medium text-left transition-all ${
+                          dpNext === d.id
+                            ? "border-blue-400 bg-white shadow-sm font-semibold text-blue-900"
+                            : "border-blue-200 hover:bg-white/80"
+                        }`}
+                      >{d.label}</button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Bank Transfer Info + Bukti Upload */}
+          {paymentType === "transfer" && (
+            <div className="rounded-xl border border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50 overflow-hidden">
+              <div className="px-4 py-2.5 bg-blue-100/70 border-b border-blue-200 flex items-center gap-2">
+                <Building2 className="w-4 h-4 text-blue-700" />
+                <p className="text-sm font-semibold text-blue-900">Informasi Rekening Tujuan</p>
+              </div>
+              {bankInfo ? (
+                <div className="p-4 space-y-3">
+                  <div className="grid grid-cols-2 gap-y-2 text-sm">
+                    <span className="text-muted-foreground font-medium">Bank</span>
+                    <span className="font-bold text-foreground">{bankInfo.bankName}</span>
+                    <span className="text-muted-foreground font-medium">No. Rekening</span>
+                    <span className="font-bold text-foreground tracking-widest">{bankInfo.accountNumber}</span>
+                    <span className="text-muted-foreground font-medium">Atas Nama</span>
+                    <span className="font-semibold text-foreground">{bankInfo.accountName}</span>
+                    {bankInfo.branch && <>
+                      <span className="text-muted-foreground font-medium">Cabang</span>
+                      <span className="text-foreground">{bankInfo.branch}</span>
+                    </>}
+                  </div>
+                  {bankInfo.notes && (
+                    <p className="text-xs text-blue-700 bg-blue-100 rounded-lg px-3 py-2">{bankInfo.notes}</p>
+                  )}
+                </div>
+              ) : (
+                <div className="p-4 flex items-center gap-2 text-sm text-muted-foreground">
+                  <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+                  Memuat info rekening…
+                </div>
+              )}
+
+              {/* Upload Bukti Pembayaran */}
+              <div className="border-t border-blue-200 px-4 py-4 space-y-3">
+                <p className="text-sm font-semibold text-blue-900">Upload Bukti Transfer <span className="text-xs font-normal text-muted-foreground">(opsional, bisa dilakukan setelah konfirmasi)</span></p>
+                {proofUploaded ? (
+                  <div className="flex items-center gap-2 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <p className="text-sm font-semibold text-emerald-800">Bukti pembayaran berhasil diunggah ✓</p>
+                    <button
+                      className="ml-auto text-xs text-muted-foreground underline"
+                      onClick={() => { setProofUploaded(false); setProofObjectPath(""); setProofFile(null); }}
+                    >Ganti</button>
+                  </div>
+                ) : (
+                  <label className={`flex flex-col items-center gap-2 rounded-xl border-2 border-dashed cursor-pointer transition-all px-4 py-5 ${
+                    proofFile ? "border-blue-400 bg-blue-50" : "border-blue-200 hover:border-blue-400 hover:bg-blue-50/50"
+                  }`}>
+                    <input
+                      type="file"
+                      accept="image/*,application/pdf"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const f = e.target.files?.[0];
+                        if (!f) return;
+                        setProofFile(f);
+                        await uploadProof(f);
+                      }}
+                    />
+                    {proofUploading ? (
+                      <>
+                        <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                        <p className="text-xs text-blue-700">Mengunggah…</p>
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="w-6 h-6 text-blue-400" />
+                        <p className="text-xs text-center text-muted-foreground">
+                          {proofFile ? proofFile.name : "Klik untuk pilih file (JPG, PNG, PDF, maks. 10 MB)"}
+                        </p>
+                      </>
+                    )}
+                  </label>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* COD info */}
+          {paymentType === "cod" && (
+            <div className="rounded-xl border border-orange-200 bg-orange-50 p-4 space-y-2">
+              <div className="flex items-center gap-2">
+                <Banknote className="w-4 h-4 text-orange-600 shrink-0" />
+                <p className="font-semibold text-sm text-orange-900">Bayar Saat Pengiriman</p>
+              </div>
+              <p className="text-xs text-orange-700">
+                Siapkan pembayaran tunai atau transfer instan saat kurir tiba. Nominal final dikonfirmasi tim kami setelah pesanan diproses.
+              </p>
+            </div>
+          )}
+
+          {/* Invoice / Net Terms */}
+          {paymentType === "invoice" && (
+            <div className="rounded-xl border border-purple-200 bg-purple-50/50 overflow-hidden">
+              <div className="px-4 py-2.5 bg-purple-100/60 border-b border-purple-200">
+                <p className="text-sm font-semibold text-purple-900">Pilih Jangka Waktu Invoice</p>
+              </div>
+              <div className="p-4 grid grid-cols-2 gap-2">
+                {NET_TERMS.map(t => (
+                  <button
+                    key={t.id}
+                    onClick={() => setPaymentTerm(t.id)}
+                    className={`rounded-lg border px-3 py-2.5 text-sm font-semibold transition-all ${
+                      paymentTerm === t.id
+                        ? "border-purple-500 bg-purple-500 text-white"
+                        : "border-purple-200 hover:bg-purple-100 text-foreground"
+                    }`}
+                  >{t.label}</button>
+                ))}
+              </div>
+              <p className="px-4 pb-3 text-xs text-purple-700">Tagihan dikirim ke email setelah pekerjaan selesai. Tersedia untuk pelanggan dengan credit terms yang disetujui.</p>
+            </div>
+          )}
+
+          {/* Total summary */}
+          <div className="rounded-xl border border-border bg-muted/30 px-4 py-3 flex justify-between items-center">
+            <span className="font-semibold text-sm text-foreground">Total Estimasi</span>
+            <span className="font-bold text-accent text-base">{formatCurrency(totalWithShipping)}</span>
+          </div>
+        </div>
+      );
+    }
+
+    // ── Step 5: Konfirmasi & Review ──────────────────────────────────────
+    if (step === 5) {
+      const hasProductOnly = cartItems.every(c => c.calculatorType === "product") && cartItems.length > 0;
+
+      const SHIPPING_LABEL: Record<string, string> = {
+        darat: "Darat (Trucking)", laut: "Laut (Sea Freight)", udara: "Udara (Air Freight)",
+      };
+      const SHIPPING_ICON: Record<string, JSX.Element> = {
+        darat: <Truck className="w-5 h-5 text-orange-600" />,
+        laut: <Ship className="w-5 h-5 text-blue-600" />,
+        udara: <Plane className="w-5 h-5 text-sky-600" />,
+      };
+      const SHIPPING_METHODS = [
+        { id: "darat" as const, label: "Darat", icon: <Truck className="w-5 h-5 text-orange-600" />, desc: "Trucking" },
+        { id: "laut"  as const, label: "Laut",  icon: <Ship  className="w-5 h-5 text-blue-600"   />, desc: "Sea Freight" },
+        { id: "udara" as const, label: "Udara", icon: <Plane className="w-5 h-5 text-sky-600"    />, desc: "Air Freight" },
+      ];
+
+      function handleQtyChange(item: CartItem, delta: number) {
+        const curQty = Number(item.inputData?.qty ?? 1);
+        const newQty = curQty + delta;
+        if (newQty <= 0) { removeItem(item.cartId); return; }
+        const price = Number(item.inputData?.price ?? 0);
+        updateItem(item.cartId, { inputData: { ...item.inputData, qty: newQty }, subtotal: price * newQty });
+      }
+
+      function handleChangeShipping(method: "darat" | "laut" | "udara") {
+        const updated = {
+          method,
+          estimate: method === "darat" ? (productShipping?.estimate ?? null) : null,
+          companyName: productShipping?.companyName ?? companyOrigin?.name ?? "",
+          companyAddress: productShipping?.companyAddress ?? companyOrigin?.address ?? "",
+        };
+        setProductShipping(updated);
+        try { localStorage.setItem("logistic_product_shipping", JSON.stringify(updated)); } catch { /* ignore */ }
+        setConfirmEditShipping(false);
+      }
+
+      const shippingEstimate = hasProductOnly && productShipping?.estimate ? productShipping.estimate : 0;
+      const totalWithShipping = grandTotal + shippingEstimate;
+
+      return (
+        <div className="space-y-5">
+          <div>
+            <h2 className="text-xl font-bold text-foreground mb-1">Konfirmasi Pesanan</h2>
+            <p className="text-sm text-muted-foreground">Periksa kembali sebelum submit</p>
+          </div>
+
+          {/* Section 1 — Produk & Layanan */}
+          <div className="rounded-xl border border-border overflow-hidden">
+            <div className="px-4 py-2.5 bg-muted/50 border-b border-border flex items-center gap-2">
+              <ShoppingCart className="w-4 h-4 text-muted-foreground" />
+              <span className="text-sm font-semibold">Produk &amp; Layanan</span>
+              <Badge variant="secondary" className="ml-auto text-xs">{cartItems.length} item</Badge>
+            </div>
+            <div className="divide-y divide-border">
+              {cartItems.map(item => {
+                const isProduct = item.calculatorType === "product";
+                const qty = Number(item.inputData?.qty ?? 1);
+                return (
+                  <div key={item.cartId} className="p-4 flex items-start gap-3">
+                    <div className="flex-1 min-w-0">
+                      <Badge variant="outline" className="text-[10px] mb-1">{item.category}</Badge>
+                      <p className="font-semibold text-sm text-foreground">{item.serviceName}</p>
+                      {!isProduct && (
+                        <dl className="mt-1 space-y-0.5">
+                          {getServiceDetailRows(item.calculatorType, item.inputData).map(({ label, value }) => (
+                            <div key={label} className="flex gap-2 text-xs">
+                              <dt className="text-muted-foreground w-24 shrink-0">{label}</dt>
+                              <dd className="font-medium text-foreground">{value}</dd>
+                            </div>
+                          ))}
+                        </dl>
+                      )}
+                    </div>
+                    <div className="flex flex-col items-end gap-2 shrink-0">
+                      {isProduct && (
+                        <div className="flex items-center border border-border rounded-lg overflow-hidden">
+                          <button
+                            className="w-7 h-7 flex items-center justify-center hover:bg-muted text-muted-foreground text-base leading-none"
+                            onClick={() => handleQtyChange(item, -1)}
+                          >−</button>
+                          <span className="w-8 text-center text-sm font-bold">{qty}</span>
+                          <button
+                            className="w-7 h-7 flex items-center justify-center hover:bg-muted text-muted-foreground text-base leading-none"
+                            onClick={() => handleQtyChange(item, +1)}
+                          >+</button>
+                        </div>
+                      )}
+                      <span className="text-sm font-bold text-accent">
+                        {item.subtotal > 0
+                          ? formatCurrency(item.subtotal)
+                          : <span className="text-amber-600 text-xs font-medium">Harga nego</span>}
+                      </span>
+                      <button
+                        className="text-destructive/60 hover:text-destructive transition-colors"
+                        onClick={() => removeItem(item.cartId)}
+                        title="Hapus item"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Section 2 — Metode Pengiriman (product-only) */}
+          {hasProductOnly && (
+            <div className="rounded-xl border border-border overflow-hidden">
+              <div className="px-4 py-2.5 bg-muted/50 border-b border-border flex items-center gap-2">
+                <Truck className="w-4 h-4 text-muted-foreground" />
+                <span className="text-sm font-semibold">Metode Pengiriman</span>
+                <button
+                  className="ml-auto text-xs text-accent font-medium hover:underline"
+                  onClick={() => setConfirmEditShipping(p => !p)}
+                >
+                  {confirmEditShipping ? "Batal" : "Ubah"}
+                </button>
+              </div>
+              {confirmEditShipping ? (
+                <div className="p-4 grid grid-cols-3 gap-2">
+                  {SHIPPING_METHODS.map(m => (
+                    <button
+                      key={m.id}
+                      onClick={() => handleChangeShipping(m.id)}
+                      className={`rounded-xl border-2 p-3 flex flex-col items-center gap-1.5 transition-all ${
+                        productShipping?.method === m.id
+                          ? "border-accent bg-accent/5"
+                          : "border-border hover:border-accent/40 hover:bg-muted/50"
+                      }`}
+                    >
+                      {m.icon}
+                      <span className="text-xs font-bold">{m.label}</span>
+                      <span className="text-[10px] text-muted-foreground">{m.desc}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : productShipping ? (
+                <div className="p-4 space-y-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                      {SHIPPING_ICON[productShipping.method]}
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-foreground">{SHIPPING_LABEL[productShipping.method]}</p>
+                      {productShipping.estimate
+                        ? <p className="text-xs text-accent font-medium">Estimasi: {formatCurrency(productShipping.estimate)}</p>
+                        : <p className="text-xs text-muted-foreground italic">Harga sesuai rute</p>}
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-2 bg-orange-50 border border-orange-100 rounded-lg px-3 py-2">
+                    <MapPin className="w-3.5 h-3.5 text-orange-500 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-[10px] font-bold text-orange-500 uppercase tracking-wide">Pengirim</p>
+                      <p className="text-xs font-semibold text-slate-800">{productShipping.companyName}</p>
+                      <p className="text-xs text-muted-foreground">{productShipping.companyAddress}</p>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-4 text-center text-sm text-muted-foreground">
+                  Belum dipilih.{" "}
+                  <button className="text-accent underline" onClick={() => setConfirmEditShipping(true)}>Pilih sekarang</button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Section 3 — Data Pemesan */}
+          <div className="rounded-xl border border-border overflow-hidden">
+            <div className="px-4 py-2.5 bg-muted/50 border-b border-border flex items-center gap-2">
+              <User className="w-4 h-4 text-muted-foreground" />
+              <span className="text-sm font-semibold">Data Pemesan</span>
+              <Button
+                variant="ghost" size="sm"
+                className="ml-auto h-7 text-xs gap-1 text-accent"
+                onClick={() => setStep(3)}
+              >
+                <Edit2 className="w-3 h-3" /> Edit
+              </Button>
+            </div>
+            <div className="p-4 grid grid-cols-2 gap-x-6 gap-y-3">
+              {([
+                ["Nama PIC", customerForm.customerName],
+                ["Perusahaan", customerForm.companyName],
+                ["Email", customerForm.email],
+                ["Telepon", customerForm.phone],
+                ...(customerForm.shippingAddress ? [["Alamat Tujuan", customerForm.shippingAddress]] : []),
+                ...(customerForm.notes ? [["Catatan", customerForm.notes]] : []),
+              ] as [string, string][]).filter(([, v]) => !!v).map(([label, value]) => (
+                <div key={label} className={label === "Alamat Tujuan" || label === "Catatan" ? "col-span-2" : ""}>
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide mb-0.5">{label}</p>
+                  <p className="text-sm font-medium text-foreground break-words">{value}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Section 4 — Metode Pembayaran (read-only summary) */}
+          {paymentType && (
+            <div className="rounded-xl border border-border overflow-hidden">
+              <div className="px-4 py-2.5 bg-muted/50 border-b border-border flex items-center gap-2">
+                <CreditCard className="w-4 h-4 text-muted-foreground" />
+                <span className="text-sm font-semibold">Metode Pembayaran</span>
+                <Button variant="ghost" size="sm" className="ml-auto h-7 text-xs gap-1 text-accent" onClick={() => setStep(4)}>
+                  <Edit2 className="w-3 h-3" /> Ubah
+                </Button>
+              </div>
+              <div className="p-4 space-y-1">
+                <p className="text-sm font-semibold text-foreground">
+                  {paymentType === "gateway" ? "💳 Payment Gateway"
+                    : paymentType === "transfer" ? "🏦 Transfer Bank"
+                    : paymentType === "cod" ? "💵 COD / Tunai"
+                    : paymentType === "invoice" ? "📄 Invoice / Net Terms"
+                    : paymentType}
+                </p>
+                {paymentType === "transfer" && transferTerm && (
+                  <p className="text-xs text-muted-foreground">
+                    {transferTerm === "full" ? "Pembayaran Penuh"
+                      : transferTerm === "dp" ? `DP + Pelunasan${dpNext ? ` (${dpNext.replace(/-/g," ")})` : ""}`
+                      : transferTerm === "termin" ? `Termin${paymentTerm ? ` ${paymentTerm}` : ""}` : ""}
+                  </p>
+                )}
+                {paymentType === "invoice" && paymentTerm && (
+                  <p className="text-xs text-muted-foreground">Jatuh tempo: {paymentTerm.replace("net","Net ").replace("7","7 hari").replace("14","14 hari").replace("30","30 hari").replace("60","60 hari")}</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Section 5 — Total */}
+          <div className="rounded-xl border border-accent/30 bg-accent/5 px-4 py-4 space-y-2">
+            {grandTotal > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Subtotal Produk &amp; Layanan</span>
+                <span className="font-medium">{formatCurrency(grandTotal)}</span>
+              </div>
+            )}
+            {hasProductOnly && (
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Estimasi Ongkos Kirim</span>
+                {shippingEstimate > 0
+                  ? <span className="font-medium">{formatCurrency(shippingEstimate)}</span>
+                  : <span className="text-muted-foreground italic text-xs">Dikonfirmasi setelah order</span>}
+              </div>
+            )}
+            <Separator />
+            <div className="flex justify-between items-baseline">
+              <span className="font-bold text-base">Total Estimasi</span>
+              <span className="font-bold text-lg text-accent">{formatCurrency(totalWithShipping)}</span>
+            </div>
+            <p className="text-[11px] text-muted-foreground">Harga final dikonfirmasi oleh tim kami setelah pesanan diterima.</p>
+          </div>
+        </div>
+      );
+    }
+
     return null;
   };
 
@@ -1666,6 +2532,12 @@ export default function BookPage() {
     if (step === 1) return false;
     if (step === 2) return cartItems.length > 0;
     if (step === 3) return !!(customerForm.customerName && customerForm.email);
+    if (step === 4) {
+      if (!paymentType) return false;
+      if (paymentType === "transfer") return !!transferTerm && (transferTerm !== "termin" || !!paymentTerm) && (transferTerm !== "dp" || !!dpNext);
+      return true;
+    }
+    if (step === 5) return !!(customerForm.customerName && customerForm.email) && cartItems.length > 0;
     return false;
   };
 
@@ -1747,13 +2619,21 @@ export default function BookPage() {
               >
                 Lanjutkan <ChevronRight className="w-4 h-4 ml-1" />
               </Button>
+            ) : step === 3 ? (
+              <Button onClick={() => setStep(4)} disabled={!canProceed()}>
+                Pilih Pembayaran <ChevronRight className="w-4 h-4 ml-1" />
+              </Button>
+            ) : step === 4 ? (
+              <Button onClick={() => setStep(5)} disabled={!canProceed()}>
+                Review Pesanan <ChevronRight className="w-4 h-4 ml-1" />
+              </Button>
             ) : (
               <Button
                 onClick={handleSubmit}
                 disabled={createOrder.isPending || !canProceed()}
-                className="bg-accent hover:bg-accent/90 text-accent-foreground font-semibold"
+                className="bg-accent hover:bg-accent/90 text-accent-foreground font-semibold gap-2"
               >
-                {createOrder.isPending ? "Menyimpan..." : "Submit Pesanan"}
+                {createOrder.isPending ? "Menyimpan..." : <><CheckCircle2 className="w-4 h-4" /> Konfirmasi &amp; Submit</>}
               </Button>
             )}
           </div>

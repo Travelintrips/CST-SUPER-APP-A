@@ -17,12 +17,12 @@ import {
   getGetExpenseQueryOptions,
   type Expense,
 } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { usePrefetchOnHover } from "@/hooks/use-prefetch-on-hover";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useCompany } from "@/contexts/CompanyContext";
-import { ShoppingCart, Ship, Plus, Receipt, Search, Trash2, X, CalendarRange, Zap, Wallet, HandCoins, Building2, Landmark, Package, ShieldCheck, LayoutDashboard, Layers, PieChart } from "lucide-react";
+import { ShoppingCart, Ship, Plus, Receipt, Search, Trash2, X, CalendarRange, Zap, Wallet, HandCoins, Building2, Landmark, Package, ShieldCheck, LayoutDashboard, Layers, PieChart, Banknote, TrendingDown, TrendingUp, Wrench, ChevronDown, ChevronUp, CheckCircle2, AlertCircle } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -35,6 +35,7 @@ const STATUS_LABELS: Record<string, string> = {
   draft: "Draft",
   submitted: "Diajukan",
   approved: "Disetujui",
+  pending_approval: "Menunggu Approval",
   posted: "Diposting",
   paid: "Lunas",
   rejected: "Ditolak",
@@ -44,6 +45,7 @@ const STATUS_COLORS: Record<string, string> = {
   draft: "bg-slate-800 text-slate-300 border-slate-600",
   submitted: "bg-sky-900/40 text-sky-300 border-sky-600",
   approved: "bg-indigo-900/40 text-indigo-300 border-indigo-600",
+  pending_approval: "bg-amber-900/40 text-amber-300 border-amber-600",
   posted: "bg-emerald-900/40 text-emerald-300 border-emerald-600",
   paid: "bg-green-900/50 text-green-300 border-green-600",
   rejected: "bg-red-900/40 text-red-300 border-red-600",
@@ -53,10 +55,15 @@ const TYPE_LABELS: Record<string, string> = {
   vendor_bill: "Tagihan Vendor",
   reimbursement: "Reimburse",
   internal: "Internal",
+  routine: "Rutin / Kas",
+  kasbon: "Kasbon",
+  talangan: "Dana Talangan",
+  fixed_asset: "Aset Tetap",
 };
 
 const LS_STATUS_FILTER    = "expense_list_statusFilter";
 const LS_TYPE_FILTER      = "expense_list_typeFilter";
+const LS_TX_TYPE_FILTER   = "expense_list_txTypeFilter";
 const LS_CAT_FILTER       = "expense_list_catFilter";
 const LS_SALES_DOC_FILTER = "expense_list_salesDocFilter";
 const LS_SHIPMENT_FILTER  = "expense_list_shipmentFilter";
@@ -111,10 +118,68 @@ export default function ExpenseListPage() {
       return v && (v === "all" || /^\d+$/.test(v)) ? v : "all";
     } catch { return "all"; }
   });
+  const [txTypeFilter, setTxTypeFilter] = useState(() => {
+    try {
+      const v = localStorage.getItem(LS_TX_TYPE_FILTER);
+      return v && ["all", "expense", "income"].includes(v) ? v : "all";
+    } catch { return "all"; }
+  });
+
+  const [repairOpen, setRepairOpen] = useState(false);
+  const [repairing, setRepairing] = useState(false);
+  const [repairResult, setRepairResult] = useState<{ total: number; succeeded: number; failed: number; results: { id: number; success: boolean; error?: string }[] } | null>(null);
+
+  const { data: missingJournals, refetch: refetchMissing } = useQuery<{ count: number; items: { id: number; expense_number: string; date: string; description: string; total: string; transaction_type: string; category_name: string }[] }>({
+    queryKey: ["expense-missing-journals", activeCompanyId],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (activeCompanyId) params.set("company", String(activeCompanyId));
+      const res = await fetch(`/api/expenses/missing-journals?${params}`);
+      if (!res.ok) return { count: 0, items: [] };
+      return res.json();
+    },
+    refetchInterval: repairOpen ? 30000 : false,
+  });
+
+  const handleBulkRepost = async () => {
+    setRepairing(true);
+    setRepairResult(null);
+    try {
+      const params = new URLSearchParams();
+      if (activeCompanyId) params.set("company", String(activeCompanyId));
+      const res = await fetch(`/api/expenses/bulk-repost?${params}`, { method: "POST" });
+      const data = await res.json();
+      setRepairResult(data);
+      refetchMissing();
+      qc.invalidateQueries({ queryKey: getListExpensesQueryKey() });
+      toast({ title: `Selesai: ${data.succeeded} jurnal berhasil di-posting` });
+    } catch (e: any) {
+      toast({ title: e?.message ?? "Gagal", variant: "destructive" });
+    } finally {
+      setRepairing(false);
+    }
+  };
+
+  const handleSingleRepost = async (id: number) => {
+    try {
+      const res = await fetch(`/api/expenses/${id}/repost-journal`, { method: "POST" });
+      const data = await res.json();
+      if (data.success) {
+        toast({ title: `Jurnal expense #${id} berhasil di-posting` });
+        refetchMissing();
+        qc.invalidateQueries({ queryKey: getListExpensesQueryKey() });
+      } else {
+        toast({ title: data.message ?? "Gagal", variant: "destructive" });
+      }
+    } catch (e: any) {
+      toast({ title: e?.message ?? "Gagal", variant: "destructive" });
+    }
+  };
 
   const { data: expenses = [], isLoading } = useListExpenses({
     status: statusFilter !== "all" ? statusFilter : undefined,
     expenseType: typeFilter !== "all" ? typeFilter : undefined,
+    transactionType: txTypeFilter !== "all" ? txTypeFilter : undefined,
     categoryId: catFilter !== "all" ? Number(catFilter) : undefined,
     salesDocId: salesDocFilter !== "all" ? Number(salesDocFilter) : undefined,
     shipmentId: shipmentFilter !== "all" ? Number(shipmentFilter) : undefined,
@@ -164,6 +229,74 @@ export default function ExpenseListPage() {
             </Link>
           </div>
         </div>
+
+        {/* ── Panel Perbaiki Jurnal ────────────────────────────────────── */}
+        {(missingJournals?.count ?? 0) > 0 && (
+          <Card className="border-amber-500/50 bg-amber-950/20">
+            <CardContent className="p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-amber-400">
+                  <Wrench size={15} className="shrink-0" />
+                  <span className="text-sm font-medium">
+                    {missingJournals!.count} expense aktif belum punya jurnal akuntansi
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm" variant="outline"
+                    className="h-7 text-xs border-amber-500/50 text-amber-400 hover:bg-amber-950/40"
+                    onClick={() => setRepairOpen((v) => !v)}
+                  >
+                    {repairOpen ? <ChevronUp size={12} className="mr-1" /> : <ChevronDown size={12} className="mr-1" />}
+                    {repairOpen ? "Tutup" : "Lihat Detail"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="h-7 text-xs bg-amber-600 hover:bg-amber-700 text-white"
+                    onClick={handleBulkRepost}
+                    disabled={repairing}
+                  >
+                    <Wrench size={12} className="mr-1" />
+                    {repairing ? "Memproses..." : "Perbaiki Semua"}
+                  </Button>
+                </div>
+              </div>
+
+              {repairResult && (
+                <div className="mt-2 text-xs flex gap-4 text-muted-foreground">
+                  <span className="text-emerald-400 flex items-center gap-1"><CheckCircle2 size={11} />{repairResult.succeeded} berhasil</span>
+                  {repairResult.failed > 0 && <span className="text-rose-400 flex items-center gap-1"><AlertCircle size={11} />{repairResult.failed} gagal (akun COA belum diset)</span>}
+                </div>
+              )}
+
+              {repairOpen && (
+                <div className="mt-3 border-t border-amber-500/20 pt-3 space-y-1 max-h-56 overflow-y-auto">
+                  {missingJournals!.items.map((item) => (
+                    <div key={item.id} className="flex items-center justify-between gap-2 text-xs py-1">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="font-mono text-muted-foreground shrink-0">{item.expense_number}</span>
+                        <span className="truncate text-foreground">{item.description || item.category_name || "—"}</span>
+                        <Badge variant="outline" className={`text-[10px] shrink-0 ${item.transaction_type === "income" ? "border-emerald-500/40 text-emerald-400" : "border-rose-500/40 text-rose-400"}`}>
+                          {item.transaction_type === "income" ? "Penerimaan" : "Expense"}
+                        </Badge>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="font-mono text-muted-foreground">{idr(Number(item.total))}</span>
+                        <Button
+                          size="sm" variant="ghost"
+                          className="h-6 px-2 text-[10px] text-amber-400 hover:text-amber-300"
+                          onClick={() => handleSingleRepost(item.id)}
+                        >
+                          <Wrench size={10} className="mr-0.5" />Post
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* ── Modul Cepat ────────────────────────────────────────────── */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -218,6 +351,24 @@ export default function ExpenseListPage() {
               <div>
                 <p className="text-sm font-medium leading-tight">Aset Tetap</p>
                 <p className="text-xs text-muted-foreground">Penyusutan otomatis</p>
+              </div>
+            </div>
+          </Link>
+          <Link href="/expense/vendor-payments">
+            <div className="flex items-center gap-3 rounded-lg border bg-card px-4 py-3 hover:bg-muted/50 transition-colors cursor-pointer">
+              <Banknote size={18} className="text-emerald-400 shrink-0" />
+              <div>
+                <p className="text-sm font-medium leading-tight">Pembayaran Vendor</p>
+                <p className="text-xs text-muted-foreground">DR Hutang / CR Bank</p>
+              </div>
+            </div>
+          </Link>
+          <Link href="/expense/asset-depreciation">
+            <div className="flex items-center gap-3 rounded-lg border bg-card px-4 py-3 hover:bg-muted/50 transition-colors cursor-pointer">
+              <TrendingDown size={18} className="text-orange-400 shrink-0" />
+              <div>
+                <p className="text-sm font-medium leading-tight">Penyusutan Aset</p>
+                <p className="text-xs text-muted-foreground">DR Beban / CR Akum.</p>
               </div>
             </div>
           </Link>
@@ -310,6 +461,20 @@ export default function ExpenseListPage() {
               ))}
             </SelectContent>
           </Select>
+          <Select value={txTypeFilter} onValueChange={(v) => { setTxTypeFilter(v); try { localStorage.setItem(LS_TX_TYPE_FILTER, v); } catch {} }}>
+            <SelectTrigger className="w-[170px]">
+              <SelectValue placeholder="Semua Jenis" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Pengeluaran & Penerimaan</SelectItem>
+              <SelectItem value="expense">
+                <span className="flex items-center gap-1.5"><TrendingDown size={12} className="text-red-400" />Pengeluaran</span>
+              </SelectItem>
+              <SelectItem value="income">
+                <span className="flex items-center gap-1.5"><TrendingUp size={12} className="text-emerald-400" />Penerimaan</span>
+              </SelectItem>
+            </SelectContent>
+          </Select>
           <Select value={catFilter} onValueChange={(v) => { setCatFilter(v); try { localStorage.setItem(LS_CAT_FILTER, v); } catch {} }}>
             <SelectTrigger className="w-[180px]">
               <SelectValue placeholder="Semua kategori" />
@@ -360,6 +525,7 @@ export default function ExpenseListPage() {
                   <TableHead>Vendor/Karyawan</TableHead>
                   <TableHead>Deskripsi</TableHead>
                   <TableHead>Kategori</TableHead>
+                  <TableHead>Sumber Dana</TableHead>
                   <TableHead>Job / Referensi</TableHead>
                   <TableHead className="text-right">Total</TableHead>
                   <TableHead>Status</TableHead>
@@ -369,17 +535,18 @@ export default function ExpenseListPage() {
               <TableBody>
                 {isLoading && (
                   <TableRow>
-                    <TableCell colSpan={10} className="text-center py-10 text-muted-foreground">Memuat data...</TableCell>
+                    <TableCell colSpan={11} className="text-center py-10 text-muted-foreground">Memuat data...</TableCell>
                   </TableRow>
                 )}
                 {!isLoading && expenses.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={10} className="text-center py-10 text-muted-foreground">
+                    <TableCell colSpan={11} className="text-center py-10 text-muted-foreground">
                       Belum ada expense. Klik "Buat Expense" untuk memulai.
                     </TableCell>
                   </TableRow>
                 )}
                 {expenses.map((exp) => {
+                  const expAny = exp as any;
                   const cat = cats.find((c) => c.id === exp.categoryId);
                   return (
                     <TableRow key={exp.id} className="cursor-pointer hover:bg-muted/50" {...prefetchHover(getGetExpenseQueryOptions(exp.id))}>
@@ -390,14 +557,29 @@ export default function ExpenseListPage() {
                       </TableCell>
                       <TableCell className="text-sm">{exp.date}</TableCell>
                       <TableCell>
-                        <Badge variant="outline" className="text-xs">{TYPE_LABELS[exp.expenseType] ?? exp.expenseType}</Badge>
+                        <div className="flex flex-col gap-0.5">
+                          <Badge variant="outline" className="text-xs">{TYPE_LABELS[exp.expenseType] ?? exp.expenseType}</Badge>
+                          {(expAny.transactionType === "income") ? (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-400">
+                              <TrendingUp size={10} />Penerimaan
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-red-400">
+                              <TrendingDown size={10} />Pengeluaran
+                            </span>
+                          )}
+                        </div>
                       </TableCell>
-                      <TableCell className="text-sm">{exp.vendorEmployee ?? "—"}</TableCell>
+                      <TableCell className="text-sm">{expAny.vendor?.name ?? expAny.user?.name ?? exp.vendorEmployee ?? "—"}</TableCell>
                       <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">{exp.description ?? "—"}</TableCell>
                       <TableCell>
-                        {cat ? (
-                          <Badge variant="secondary" className="text-xs">{cat.name}</Badge>
-                        ) : <span className="text-xs text-muted-foreground">—</span>}
+                        {expAny.categoryName
+                          ? <Badge variant="secondary" className="text-xs">{expAny.categoryName}</Badge>
+                          : cat ? <Badge variant="secondary" className="text-xs">{cat.name}</Badge>
+                          : <span className="text-xs text-muted-foreground">—</span>}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {expAny.sourceAccountName ?? expAny.sourceAccount?.name ?? "—"}
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-col gap-0.5">

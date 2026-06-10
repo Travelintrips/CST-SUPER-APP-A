@@ -12,7 +12,8 @@ interface Props {
 }
 
 export function TemplateFieldRenderer({ template, values, onChange, readOnly, accentColor = "indigo" }: Props) {
-  if (!template.customFields.length) return null;
+  const customFields = template?.customFields ?? [];
+  if (!customFields.length) return null;
 
   function setField(key: string, val: string | number | boolean) {
     const next: DynamicFormValues = {
@@ -33,7 +34,7 @@ export function TemplateFieldRenderer({ template, values, onChange, readOnly, ac
         📦 Spesifikasi {template.label}
       </h2>
       <div className="space-y-4">
-        {template.customFields.map((field) => {
+        {customFields.map((field) => {
           if (!isFieldVisible(field.key, template, values)) return null;
           const strVal = String(values.customFieldValues[field.key] ?? "");
           const cls = IC.replace("focus:ring-indigo-400", ringColor);

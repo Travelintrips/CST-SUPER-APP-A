@@ -60,7 +60,7 @@ router.get("/products", async (req: Request, res: Response) => {
   const companyId = resolveCompanyId(req);
   const search = req.query.search as string | undefined;
   const rows = await db.execute(sql`
-    SELECT id, name, sku, unit, price::float, cost_price::float, is_active, item_type, subcategory
+    SELECT id, name, sku, unit, price::float, cost_price::float, is_active, item_type, subcategory, currency_code
     FROM products
     WHERE company_id = ${companyId}
       ${search ? sql`AND (name ILIKE ${"%" + search + "%"} OR sku ILIKE ${"%" + search + "%"})` : sql``}
@@ -72,16 +72,16 @@ router.get("/products", async (req: Request, res: Response) => {
 
 router.post("/products", async (req: Request, res: Response) => {
   const companyId = resolveCompanyId(req);
-  const { name, sku, unit, price, costPrice, itemType, subcategory, isActive } = req.body as {
+  const { name, sku, unit, price, costPrice, itemType, subcategory, isActive, currencyCode } = req.body as {
     name: string; sku: string; unit?: string; price?: number; costPrice?: number;
-    itemType?: string; subcategory?: string; isActive?: boolean;
+    itemType?: string; subcategory?: string; isActive?: boolean; currencyCode?: string;
   };
   if (!name || !sku) { res.status(400).json({ message: "name dan sku wajib diisi" }); return; }
   const result = await db.execute(sql`
-    INSERT INTO products (company_id, name, sku, unit, price, cost_price, item_type, subcategory, is_active)
+    INSERT INTO products (company_id, name, sku, unit, price, cost_price, item_type, subcategory, is_active, currency_code)
     VALUES (${companyId}, ${name}, ${sku}, ${unit ?? "pcs"}, ${price ?? 0}, ${costPrice ?? 0},
-            ${itemType ?? "barang"}, ${subcategory ?? null}, ${isActive ?? true})
-    RETURNING id, name, sku, unit, price::float, cost_price::float, is_active, item_type, subcategory
+            ${itemType ?? "barang"}, ${subcategory ?? null}, ${isActive ?? true}, ${currencyCode ?? "IDR"})
+    RETURNING id, name, sku, unit, price::float, cost_price::float, is_active, item_type, subcategory, currency_code
   `);
   res.status(201).json(result.rows[0]);
 });
@@ -89,26 +89,88 @@ router.post("/products", async (req: Request, res: Response) => {
 router.put("/products/:id", async (req: Request, res: Response) => {
   const companyId = resolveCompanyId(req);
   const id = Number(String(req.params.id));
-  const { name, sku, unit, price, costPrice, itemType, subcategory, isActive } = req.body as {
+  const { name, sku, unit, price, costPrice, itemType, subcategory, isActive, currencyCode } = req.body as {
     name?: string; sku?: string; unit?: string; price?: number; costPrice?: number;
-    itemType?: string; subcategory?: string; isActive?: boolean;
+    itemType?: string; subcategory?: string; isActive?: boolean; currencyCode?: string;
   };
   const check = await db.execute(sql`SELECT id FROM products WHERE id = ${id} AND company_id = ${companyId}`);
   if (check.rows.length === 0) { res.status(404).json({ message: "Produk tidak ditemukan" }); return; }
   const result = await db.execute(sql`
     UPDATE products SET
-      name        = COALESCE(${name ?? null}, name),
-      sku         = COALESCE(${sku ?? null}, sku),
-      unit        = COALESCE(${unit ?? null}, unit),
-      price       = COALESCE(${price ?? null}, price),
-      cost_price  = COALESCE(${costPrice ?? null}, cost_price),
-      item_type   = COALESCE(${itemType ?? null}, item_type),
-      subcategory = COALESCE(${subcategory ?? null}, subcategory),
-      is_active   = COALESCE(${isActive ?? null}, is_active)
+      name          = COALESCE(${name ?? null}, name),
+      sku           = COALESCE(${sku ?? null}, sku),
+      unit          = COALESCE(${unit ?? null}, unit),
+      price         = COALESCE(${price ?? null}, price),
+      cost_price    = COALESCE(${costPrice ?? null}, cost_price),
+      item_type     = COALESCE(${itemType ?? null}, item_type),
+      subcategory   = COALESCE(${subcategory ?? null}, subcategory),
+      is_active     = COALESCE(${isActive ?? null}, is_active),
+      currency_code = COALESCE(${currencyCode ?? null}, currency_code)
     WHERE id = ${id} AND company_id = ${companyId}
-    RETURNING id, name, sku, unit, price::float, cost_price::float, is_active, item_type, subcategory
+    RETURNING id, name, sku, unit, price::float, cost_price::float, is_active, item_type, subcategory, currency_code
   `);
   res.json(result.rows[0]);
+});
+
+router.post("/products/import", async (req: Request, res: Response) => {
+  const companyId = resolveCompanyId(req);
+  const { rows } = req.body as {
+    rows: Array<{
+      name: string; sku: string; unit?: string; price?: number; costPrice?: number;
+      itemType?: string; subcategory?: string;
+      weightKg?: number; lengthCm?: number; widthCm?: number; heightCm?: number; goodsType?: string;
+    }>;
+  };
+  if (!Array.isArray(rows) || rows.length === 0) {
+    res.status(400).json({ message: "Tidak ada data untuk diimport" }); return;
+  }
+
+  let imported = 0;
+  let skipped = 0;
+  const errors: string[] = [];
+
+  for (const row of rows) {
+    if (!row.name?.trim() || !row.sku?.trim()) {
+      errors.push(`Baris dilewati: nama/SKU kosong (${row.name || "?"})`);
+      skipped++;
+      continue;
+    }
+    try {
+      await db.execute(sql`
+        INSERT INTO products (
+          company_id, name, sku, unit, price, cost_price, item_type, subcategory,
+          weight_kg, length_cm, width_cm, height_cm, goods_type, is_active
+        )
+        VALUES (
+          ${companyId}, ${row.name.trim()}, ${row.sku.trim()},
+          ${row.unit ?? "pcs"}, ${row.price ?? 0}, ${row.costPrice ?? 0},
+          ${row.itemType ?? "barang"}, ${row.subcategory ?? null},
+          ${row.weightKg ?? null}, ${row.lengthCm ?? null},
+          ${row.widthCm ?? null}, ${row.heightCm ?? null},
+          ${row.goodsType ?? null}, true
+        )
+        ON CONFLICT (sku) DO UPDATE SET
+          name        = EXCLUDED.name,
+          unit        = EXCLUDED.unit,
+          price       = EXCLUDED.price,
+          cost_price  = EXCLUDED.cost_price,
+          item_type   = EXCLUDED.item_type,
+          subcategory = EXCLUDED.subcategory,
+          weight_kg   = EXCLUDED.weight_kg,
+          length_cm   = EXCLUDED.length_cm,
+          width_cm    = EXCLUDED.width_cm,
+          height_cm   = EXCLUDED.height_cm,
+          goods_type  = EXCLUDED.goods_type
+      `);
+      imported++;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      errors.push(`SKU ${row.sku}: ${msg}`);
+      skipped++;
+    }
+  }
+
+  res.json({ imported, skipped, errors });
 });
 
 router.delete("/products/:id", async (req: Request, res: Response) => {

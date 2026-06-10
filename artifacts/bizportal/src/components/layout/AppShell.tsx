@@ -1,4 +1,4 @@
-import { ReactNode, useState } from "react";
+import { ReactNode, useState, useEffect, useRef, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { CommandPalette, useCommandPalette, usePageTracker } from "@/components/CommandPalette";
 import { Link, useLocation } from "wouter";
@@ -70,6 +70,10 @@ import {
   Trophy,
   KeyRound,
   PlaneTakeoff,
+  Store,
+  CreditCard,
+  Sparkles,
+  Plane,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -152,8 +156,20 @@ const ALL_ROLES = ["manager", "admin", "owner", "ecommerce", "trading", "logisti
 const getKey = (item: NavItem): string =>
   item.type === "group" ? item.basePath : item.href;
 
+function applySortOrder<T extends { href: string }>(items: T[], order: string[] | undefined): T[] {
+  if (!order || order.length === 0) return items;
+  return [...items].sort((a, b) => {
+    const ia = order.indexOf(a.href);
+    const ib = order.indexOf(b.href);
+    if (ia === -1 && ib === -1) return 0;
+    if (ia === -1) return 1;
+    if (ib === -1) return -1;
+    return ia - ib;
+  });
+}
+
 export function AppShell({ children, noPadding }: AppShellProps) {
-  const [location] = useLocation();
+  const [location, navigate] = useLocation();
   const { t } = useLanguage();
   const { activeCompany, isConsolidated } = useCompany();
   const { data: dbUser } = useGetCurrentUser({
@@ -185,6 +201,8 @@ export function AppShell({ children, noPadding }: AppShellProps) {
         { titleKey: "Analytics", href: "/analytics", icon: BarChart2, roles: ["admin", "owner"] },
         { titleKey: "CEO / Director", href: "/ceo-dashboard", icon: Trophy, roles: ["admin", "owner"] },
         { titleKey: "Profitabilitas", href: "/analytics/profitability", icon: TrendingUp, roles: ["admin", "owner"] },
+        { titleKey: "Route Profitability", href: "/analytics/route-profitability", icon: TrendingUp, roles: ["admin", "owner"] },
+        { titleKey: "Commodity Profitability", href: "/analytics/commodity-profitability", icon: TrendingUp, roles: ["admin", "owner"] },
       ],
     },
 
@@ -197,9 +215,7 @@ export function AppShell({ children, noPadding }: AppShellProps) {
       roles: ["admin", "owner"],
     },
 
-
-    // ── 3. PRODUK & RECIPE/BOM ────────────────────────────────────────
-    // ── 1.5. EXCEPTION MANAGEMENT ─────────────────────────────────────
+    // ── EXCEPTION MANAGEMENT ──────────────────────────────────────────
     {
       type: "group",
       titleKey: "Exception Management",
@@ -258,60 +274,93 @@ export function AppShell({ children, noPadding }: AppShellProps) {
         { titleKey: "Purchase Request (PR)", href: "/purchase/pr", icon: ClipboardList },
         { titleKey: "rfq", href: "/purchase/rfq", icon: FileText },
         { titleKey: "purchaseOrders", href: "/purchase/orders", icon: ShoppingBag },
+        { titleKey: "vendors", href: "/purchase/vendors", icon: UserCircle },
+        { titleKey: "Vendor Catalog", href: "/purchase/vendor-catalog", icon: Store },
+        { titleKey: "Trucking Pricing", href: "/purchase/trucking-pricing", icon: Truck },
+        { titleKey: "AI Image Generator", href: "/marketplace/ai-images", icon: ImageIcon, roles: ["admin", "owner"] },
+        { titleKey: "Approvals Pembelian", href: "/purchase/payment-requests", icon: ClipboardCheck },
         { titleKey: "Terima Barang (GRN)", href: "/purchase/gr", icon: PackageCheck },
         { titleKey: "Terima Barang Cepat", href: "/purchase/receive", icon: PackageOpen },
         { titleKey: "QC Inspection", href: "/purchase/qc", icon: ClipboardCheck },
         { titleKey: "Purchase Return", href: "/purchase/returns", icon: RotateCcw },
         { titleKey: "Vendor Invoice (AP)", href: "/purchase/vendor-invoices", icon: Receipt },
         { titleKey: "Vendor Bills", href: "/purchase/bills", icon: FileText },
-        { titleKey: "Payment Request", href: "/purchase/payment-requests", icon: Wallet },
         { titleKey: "Landed Cost", href: "/purchase/landed-costs", icon: Calculator },
-        { titleKey: "vendors", href: "/purchase/vendors", icon: UserCircle },
         { titleKey: "Vendor Forms", href: "/purchase/vendor-forms", icon: Send },
         { titleKey: "Audit Trail VMF", href: "/purchase/vmf-audit-trail", icon: Activity },
       ],
     },
 
-    // ── 5. LOGISTICS ──────────────────────────────────────────────────
+    // ── 5. OPERATIONS / LOGISTICS ─────────────────────────────────────
+    // Menggabungkan Operations (Trading) + Logistics dalam satu parent
     {
       type: "group",
-      titleKey: "logistics",
+      titleKey: "Operations / Logistics",
       basePath: "/logistics",
       icon: Truck,
-      roles: ["admin", "owner", "logistics"],
+      roles: ["admin", "owner", "logistics", "trading"],
       children: [
+        { titleKey: "trading", href: "/trading", icon: Package, roles: ["admin", "owner", "trading"] },
         { titleKey: "Operational Dashboard", href: "/operational-dashboard", icon: LayoutDashboard },
         { titleKey: "shipments", href: "/logistics", icon: Truck },
         { titleKey: "freightForwarding", href: "/logistics/freight", icon: Ship, companyCodes: ["CST"] },
-        { titleKey: "RFQ Vendor", href: "/logistics/rfq", icon: Send, companyCodes: ["CST"] },
-        { titleKey: "Request Quote", href: "/logistics/quote-requests", icon: FileText, companyCodes: ["CST"] },
         { titleKey: "portalOrders", href: "/logistics/portal-orders", icon: ClipboardList, companyCodes: ["CST"] },
+        { titleKey: "Order Trucking", href: "/logistics/trucking-orders", icon: Truck, companyCodes: ["CST"] },
+        { titleKey: "Vendor Fulfillment", href: "/logistics/vendor-fulfillments", icon: PackageCheck, companyCodes: ["CST"] },
+        { titleKey: "Manajemen Driver", href: "/logistics/drivers", icon: Users, companyCodes: ["CST"] },
         { titleKey: "Performa Driver", href: "/logistics/driver-performance", icon: BarChart2, companyCodes: ["CST"] },
         { titleKey: "Analytics Driver", href: "/logistics/drivers/analytics", icon: BarChart2, companyCodes: ["CST"] },
-        { titleKey: "Manajemen Driver", href: "/logistics/drivers", icon: Users, companyCodes: ["CST"] },
+        { titleKey: "RFQ Vendor", href: "/logistics/rfq", icon: Send, companyCodes: ["CST"] },
+        { titleKey: "Request Quote", href: "/logistics/quote-requests", icon: FileText, companyCodes: ["CST"] },
         { titleKey: "Balasan Quotation WA", href: "/logistics/quotation-reply", icon: MessageCircle, companyCodes: ["CST"] },
+        { titleKey: "AI Import Advisor", href: "/logistics/import-assistant", icon: Bot, companyCodes: ["CST"] },
         { titleKey: "Margin Rules", href: "/logistics/margin-rules", icon: Calculator },
         { titleKey: "Internal Tasks", href: "/logistics/internal-tasks", icon: ClipboardCheck },
         { titleKey: "Air Freight Orders", href: "/logistics/air-freight", icon: PlaneTakeoff, companyCodes: ["CST"] },
         { titleKey: "AI Import Advisor", href: "/logistics/import-assistant", icon: Bot, companyCodes: ["CST"] },
+        { titleKey: "Vendor Recommendation", href: "/logistics/vendor-recommendation", icon: BarChart2, roles: ["admin", "owner"] },
+        { titleKey: "Vendor × Komoditas", href: "/logistics/vendor-commodity-intelligence", icon: BarChart2, roles: ["admin", "owner"] },
         { titleKey: "Pelanggan Portal", href: "/portal/customers", icon: Users },
         { titleKey: "Persetujuan Onboarding", href: "/portal/onboarding-approvals", icon: Users },
+        { titleKey: "Air Freight Orders", href: "/air-freight/orders", icon: Plane, companyCodes: ["CST"] },
+        { titleKey: "Air Freight Rates", href: "/air-freight/rates", icon: Plane, roles: ["admin", "owner"], companyCodes: ["CST"] },
       ],
     },
 
-    // ── 6. OPERATIONS ─────────────────────────────────────────────────
+    // ── 6. EXPENSE MANAGEMENT ─────────────────────────────────────────
     {
       type: "group",
-      titleKey: "Operations",
-      basePath: "/operations",
-      icon: Activity,
-      roles: ["admin", "owner", "trading"],
+      titleKey: "Expense Management",
+      basePath: "/expense",
+      icon: Receipt,
+      roles: ["admin", "owner", "manager"],
       children: [
-        { titleKey: "Biaya Rutin", href: "/expense/routine", icon: Wallet, roles: ["admin", "owner"] },
-        { titleKey: "expenseList", href: "/expense", icon: Receipt, roles: ["admin", "owner"] },
-        { titleKey: "expenseCategories", href: "/expense/categories", icon: Tags, roles: ["admin", "owner"] },
-        { titleKey: "expenseReports", href: "/expense/reports", icon: BarChart2, roles: ["admin", "owner"] },
-        { titleKey: "trading", href: "/trading", icon: Package, roles: ["admin", "owner", "trading"] },
+        { titleKey: "Semua Pengeluaran", href: "/expense", icon: Receipt },
+        { titleKey: "Biaya Rutin", href: "/expense/routine", icon: RotateCcw },
+        { titleKey: "Kategori", href: "/expense/categories", icon: Tags },
+        { titleKey: "Dashboard & Monitor", href: "/expense/dashboard", icon: LayoutDashboard },
+        { titleKey: "Kasbon Karyawan", href: "/expense/kasbon", icon: Wallet },
+        { titleKey: "Dana Talangan", href: "/expense/talangan", icon: DollarSign },
+        { titleKey: "Vendor Installments", href: "/expense/vendor-installments", icon: CalendarDays },
+        { titleKey: "Approvals", href: "/expense/approvals", icon: ClipboardCheck },
+        { titleKey: "Vendor Payments", href: "/expense/vendor-payments", icon: Send },
+        { titleKey: "Templates Expense", href: "/expense/templates", icon: Layers },
+        { titleKey: "Budget & Kurs", href: "/expense/budget", icon: Calculator },
+        { titleKey: "Laporan Expense", href: "/expense/reports", icon: BarChart2 },
+      ],
+    },
+
+    // ── 6.5. ASSET MANAGEMENT ─────────────────────────────────────────
+    {
+      type: "group",
+      titleKey: "Asset Management",
+      basePath: "/assets",
+      icon: Landmark,
+      roles: ["admin", "owner", "manager"],
+      children: [
+        { titleKey: "Fixed Assets", href: "/expense/fixed-assets", icon: Landmark },
+        { titleKey: "Asset Depreciation", href: "/expense/asset-depreciation", icon: TrendingUp },
+        { titleKey: "Laporan Aset", href: "/expense/reports", icon: BarChart2 },
       ],
     },
 
@@ -320,13 +369,16 @@ export function AppShell({ children, noPadding }: AppShellProps) {
       type: "group",
       titleKey: "Finance",
       basePath: "/accounting",
-      icon: Landmark,
+      icon: BookOpen,
       roles: ["admin", "owner"],
       children: [
+        { titleKey: "Dashboard Akuntansi", href: "/accounting/dashboard", icon: BarChart2 },
         { titleKey: "chartOfAccounts", href: "/accounting/accounts", icon: Landmark },
         { titleKey: "journals", href: "/accounting/journals", icon: BookOpen },
         { titleKey: "journalEntry", href: "/accounting/entries", icon: FileText },
         { titleKey: "payments", href: "/accounting/payments", icon: Wallet },
+        { titleKey: "Transaksi Paylabs", href: "/accounting/paylabs", icon: CreditCard },
+        { titleKey: "Penerimaan & Pengeluaran Lain", href: "/accounting/other-transactions", icon: ArrowLeftRight },
         { titleKey: "taxes", href: "/accounting/taxes", icon: Receipt },
         { titleKey: "Cost Center", href: "/accounting/cost-centers", icon: Layers },
         { titleKey: "trialBalance", href: "/accounting/reports/trial-balance", icon: FileSpreadsheet },
@@ -342,6 +394,7 @@ export function AppShell({ children, noPadding }: AppShellProps) {
         { titleKey: "Laporan L/R Holding", href: "/holding/pl-report", icon: TrendingUp, devOnly: true },
         { titleKey: "Laporan Arus Kas", href: "/holding/cashflow-report", icon: Wallet, devOnly: true },
         { titleKey: "Executive Dashboard", href: "/executive", icon: Landmark, roles: ["admin", "owner"] },
+        { titleKey: "Logistics Dashboard", href: "/executive/logistics", icon: Truck, roles: ["admin", "owner"] },
       ],
     },
 
@@ -363,22 +416,27 @@ export function AppShell({ children, noPadding }: AppShellProps) {
       ],
     },
 
-    // ── 9. REPORTS ────────────────────────────────────────────────────
+    // ── 9. REPORTS & DASHBOARD ────────────────────────────────────────
     {
       type: "group",
-      titleKey: "Laporan",
+      titleKey: "Reports & Dashboard",
       basePath: "/reports",
       icon: BarChart2,
       roles: ["manager", "admin", "owner"],
       children: [
+        // Finance Reports
         { titleKey: "Laporan Penjualan B2B", href: "/reports/sales", icon: TrendingUp, roles: ["manager", "admin", "owner"] },
         { titleKey: "Laporan Pembelian", href: "/reports/purchase", icon: ShoppingBag, roles: ["admin", "owner"] },
         { titleKey: "AR Aging", href: "/reports/ar-aging", icon: Receipt, roles: ["admin", "owner"] },
         { titleKey: "AP Aging", href: "/reports/ap-aging", icon: FileText, roles: ["admin", "owner"] },
         { titleKey: "Valuasi Persediaan", href: "/reports/inventory-valuation", icon: PackageSearch, roles: ["admin", "owner"] },
+        // Operations Reports
         { titleKey: "Audit ERP", href: "/audit", icon: ClipboardCheck, roles: ["admin", "owner"] },
         { titleKey: "Audit Log Keamanan", href: "/reports/audit-log", icon: Shield, roles: ["admin", "owner"] },
         { titleKey: "Vendor Leaderboard", href: "/vendors", icon: Trophy, roles: ["manager", "admin", "owner"] },
+        // Sport Center Reports
+        { titleKey: "Laporan Sport Center", href: "/sport-center/reports", icon: Trophy, roles: ["admin", "owner", "manager"] },
+        { titleKey: "Profitabilitas Sport Center", href: "/sport-center/profitability", icon: TrendingUp, roles: ["admin", "owner"] },
       ],
     },
 
@@ -397,13 +455,26 @@ export function AppShell({ children, noPadding }: AppShellProps) {
         { titleKey: "Members", href: "/sport-center/members", icon: Users },
         { titleKey: "Pricing Rules", href: "/sport-center/pricing-rules", icon: Tags },
         { titleKey: "Pembayaran", href: "/sport-center/payments", icon: DollarSign },
-        { titleKey: "Laporan Revenue", href: "/sport-center/reports", icon: BarChart2 },
-        { titleKey: "Profitabilitas", href: "/sport-center/profitability", icon: TrendingUp },
         { titleKey: "Pengaturan", href: "/sport-center/settings", icon: Settings },
       ],
     },
 
-    // ── 9.5. NOTIFICATIONS ────────────────────────────────────────────
+    // ── TENANT / PENYEWA ──────────────────────────────────────────────
+    {
+      type: "group",
+      titleKey: "Tenant / Penyewa",
+      basePath: "/tenant",
+      icon: Store,
+      roles: ["admin", "owner", "manager"],
+      children: [
+        { titleKey: "Dashboard", href: "/tenant/dashboard", icon: LayoutDashboard },
+        { titleKey: "Penyewa", href: "/tenant/tenants", icon: Store },
+        { titleKey: "Penyewaan", href: "/tenant/bookings", icon: FileText },
+        { titleKey: "Pembayaran Sewa", href: "/tenant/payments", icon: DollarSign },
+      ],
+    },
+
+    // ── NOTIFICATIONS ─────────────────────────────────────────────────
     {
       type: "group",
       titleKey: "Notifications",
@@ -416,19 +487,27 @@ export function AppShell({ children, noPadding }: AppShellProps) {
       ],
     },
 
-    // ── 10. ADMINISTRATION ────────────────────────────────────────────
+    // ── 10. ADMINISTRATION / SETTINGS ────────────────────────────────
     {
       type: "group",
-      titleKey: "Administration",
+      titleKey: "Administration / Settings",
       basePath: "/admin",
       icon: Shield,
       roles: ["admin", "owner"],
       children: [
+        // User Management
         { titleKey: "Pengguna", href: "/users", icon: UserCircle },
         { titleKey: "Manajemen Role", href: "/settings/roles", icon: ShieldCheck },
         { titleKey: "Aturan Approval", href: "/settings/approval-rules", icon: ClipboardCheck },
         { titleKey: "Struktur Organisasi", href: "/org", icon: Network },
-        { titleKey: "settings", href: "/settings", icon: Settings },
+        // Document Templates
+        { titleKey: "Product Templates", href: "/settings/product-templates", icon: Layers },
+        { titleKey: "Service Templates", href: "/settings/service-templates", icon: Layers },
+        // COA / Taxes / Payment Methods
+        { titleKey: "chartOfAccounts", href: "/accounting/accounts", icon: Landmark },
+        { titleKey: "taxes", href: "/accounting/taxes", icon: Receipt },
+        { titleKey: "payments", href: "/accounting/payments", icon: Wallet },
+        // Communications & Config
         { titleKey: "correspondences", href: "/correspondences", icon: Mail },
         { titleKey: "emailInbox", href: "/email-inbox", icon: MessageCircle },
         { titleKey: "WA Templates Logistik", href: "/settings/wa-templates", icon: MessageCircle },
@@ -437,8 +516,7 @@ export function AppShell({ children, noPadding }: AppShellProps) {
         { titleKey: "Image Manager", href: "/media", icon: ImageIcon },
         { titleKey: "Short Links", href: "/settings/short-links", icon: Link2 },
         { titleKey: "Konfigurasi Menu", href: "/settings/nav-company-config", icon: LayoutGrid },
-        { titleKey: "Product Templates", href: "/settings/product-templates", icon: Layers },
-        { titleKey: "Service Templates", href: "/settings/service-templates", icon: Layers },
+        { titleKey: "settings", href: "/settings", icon: Settings },
         { titleKey: "Secrets & Env Vars", href: "/settings/secrets", icon: KeyRound, roles: ["admin", "owner"] },
         { titleKey: "Status Sistem", href: "/system-health", icon: Activity, roles: ["admin", "owner"] },
       ],
@@ -460,8 +538,48 @@ export function AppShell({ children, noPadding }: AppShellProps) {
 
   const customRolePermissions = (dbUser as any)?.customRolePermissions as string[] | null | undefined;
 
-  const { hiddenItems, itemOrder, toggle: toggleHidden, reorder, reset: resetHidden } = useNavPreferences();
+  const { hiddenItems, itemOrder, childOrder, toggle: toggleHidden, reorder, reorderChildren, reset: resetHidden } = useNavPreferences();
   const [customizeMode, setCustomizeMode] = useState(false);
+
+  const SIDEBAR_MIN = 200;
+  const SIDEBAR_MAX = 420;
+  const SIDEBAR_DEFAULT = 256;
+  const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
+    const saved = localStorage.getItem("bizportal_sidebar_width");
+    const n = saved ? parseInt(saved, 10) : NaN;
+    return isNaN(n) ? SIDEBAR_DEFAULT : Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, n));
+  });
+  const isDragging = useRef(false);
+  const dragStartX = useRef(0);
+  const dragStartWidth = useRef(0);
+
+  const onDragMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    isDragging.current = true;
+    dragStartX.current = e.clientX;
+    dragStartWidth.current = sidebarWidth;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+
+    const onMouseMove = (ev: MouseEvent) => {
+      if (!isDragging.current) return;
+      const delta = ev.clientX - dragStartX.current;
+      const next = Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, dragStartWidth.current + delta));
+      setSidebarWidth(next);
+    };
+    const onMouseUp = (ev: MouseEvent) => {
+      isDragging.current = false;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      const delta = ev.clientX - dragStartX.current;
+      const next = Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, dragStartWidth.current + delta));
+      localStorage.setItem("bizportal_sidebar_width", String(next));
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+    };
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+  }, [sidebarWidth]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -538,6 +656,14 @@ export function AppShell({ children, noPadding }: AppShellProps) {
     reorder(arrayMove(keys, oldIdx, newIdx));
   };
 
+  const handleChildDragEnd = (basePath: string, orderedHrefs: string[]) => ({ active, over }: DragEndEvent) => {
+    if (!over || active.id === over.id) return;
+    const oldIdx = orderedHrefs.indexOf(String(active.id));
+    const newIdx = orderedHrefs.indexOf(String(over.id));
+    if (oldIdx === -1 || newIdx === -1) return;
+    reorderChildren(basePath, arrayMove(orderedHrefs, oldIdx, newIdx));
+  };
+
   const isGroupActive = (g: GroupItem) => {
     if (location === g.basePath || location.startsWith(`${g.basePath}/`)) return true;
     // Cek apakah salah satu child aktif (untuk grup dengan basePath virtual)
@@ -547,6 +673,39 @@ export function AppShell({ children, noPadding }: AppShellProps) {
 
   const { open: cmdOpen, setOpen: setCmdOpen } = useCommandPalette();
   usePageTracker();
+
+  const [showShortcuts, setShowShortcuts] = useState(false);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if ((e.target as HTMLElement)?.isContentEditable) return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+      if (e.key === "?") {
+        e.preventDefault();
+        setShowShortcuts((s) => !s);
+        return;
+      }
+      if (e.key === "Escape") {
+        setShowShortcuts(false);
+        return;
+      }
+      if (showShortcuts && /^[1-9]$/.test(e.key)) {
+        const idx = parseInt(e.key, 10) - 1;
+        const item = orderedNav[idx];
+        if (item) {
+          e.preventDefault();
+          const href = item.type === "group" ? (item.children[0]?.href ?? item.basePath) : item.href;
+          navigate(href);
+          setShowShortcuts(false);
+        }
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [showShortcuts, orderedNav, navigate]);
 
   const { data: navConfig } = useQuery<Record<string, string[]>>({
     queryKey: ["settings", "nav-company-config"],
@@ -668,6 +827,37 @@ export function AppShell({ children, noPadding }: AppShellProps) {
     const visibleChildren = customizeMode
       ? roleFilteredChildren
       : roleFilteredChildren.filter((c) => !hiddenItems.includes(c.href));
+    const sortedChildren = applySortOrder(visibleChildren, childOrder[item.basePath]);
+
+    const renderChildItem = (c: typeof sortedChildren[0]) => {
+      const childHidden = hiddenItems.includes(c.href);
+      return (
+        <SidebarMenuSubItem key={c.href} className={cn(customizeMode && childHidden && "opacity-40")}>
+          <div className="flex items-center">
+            <SidebarMenuSubButton asChild isActive={isChildActive(c.href)} className="flex-1">
+              <Link href={c.href} className="flex items-center gap-2" data-testid={`nav-sub-${c.titleKey.toLowerCase().replace(/\s+/g, "-")}`}>
+                <c.icon size={14} />
+                <span className="flex-1">{getNavTitle(c.titleKey)}</span>
+                {c.href === "/sales/ai-drafts" && aiDraftCount > 0 && (
+                  <span className="ml-auto inline-flex items-center justify-center rounded-full bg-purple-600 px-1.5 py-0.5 text-[10px] font-bold text-white leading-none min-w-[18px]">
+                    {aiDraftCount}
+                  </span>
+                )}
+              </Link>
+            </SidebarMenuSubButton>
+            {customizeMode && (
+              <button
+                onClick={() => toggleHidden(c.href)}
+                className="shrink-0 p-0.5 rounded text-muted-foreground hover:text-foreground"
+                title={childHidden ? "Tampilkan" : "Sembunyikan"}
+              >
+                {childHidden ? <Eye size={11} /> : <EyeOff size={11} />}
+              </button>
+            )}
+          </div>
+        </SidebarMenuSubItem>
+      );
+    };
 
     return (
       <SidebarMenuItem key={item.basePath} className={cn(customizeMode && isHidden && "opacity-40")}>
@@ -695,68 +885,150 @@ export function AppShell({ children, noPadding }: AppShellProps) {
         </div>
         {open && (
           <SidebarMenuSub>
-            {visibleChildren.map((c) => {
-              const childHidden = hiddenItems.includes(c.href);
-              return (
-                <SidebarMenuSubItem key={c.href} className={cn(customizeMode && childHidden && "opacity-40")}>
-                  <div className="flex items-center">
-                    <SidebarMenuSubButton asChild isActive={isChildActive(c.href)} className="flex-1">
-                      <Link href={c.href} className="flex items-center gap-2" data-testid={`nav-sub-${c.titleKey.toLowerCase().replace(/\s+/g, "-")}`}>
-                        <c.icon size={14} />
-                        <span className="flex-1">{getNavTitle(c.titleKey)}</span>
-                        {c.href === "/sales/ai-drafts" && aiDraftCount > 0 && (
-                          <span className="ml-auto inline-flex items-center justify-center rounded-full bg-purple-600 px-1.5 py-0.5 text-[10px] font-bold text-white leading-none min-w-[18px]">
-                            {aiDraftCount}
-                          </span>
-                        )}
-                      </Link>
-                    </SidebarMenuSubButton>
-                    {customizeMode && (
-                      <button
-                        onClick={() => toggleHidden(c.href)}
-                        className="shrink-0 p-0.5 rounded text-muted-foreground hover:text-foreground"
-                        title={childHidden ? "Tampilkan" : "Sembunyikan"}
-                      >
-                        {childHidden ? <Eye size={11} /> : <EyeOff size={11} />}
-                      </button>
-                    )}
-                  </div>
-                </SidebarMenuSubItem>
-              );
-            })}
+            {customizeMode ? (
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleChildDragEnd(item.basePath, sortedChildren.map((c) => c.href))}
+              >
+                <SortableContext items={sortedChildren.map((c) => c.href)} strategy={verticalListSortingStrategy}>
+                  {sortedChildren.map((c) => (
+                    <SortableNavWrapper key={c.href} id={c.href}>
+                      {renderChildItem(c)}
+                    </SortableNavWrapper>
+                  ))}
+                </SortableContext>
+              </DndContext>
+            ) : (
+              sortedChildren.map(renderChildItem)
+            )}
           </SidebarMenuSub>
         )}
       </SidebarMenuItem>
     );
   };
 
+  const shortcutsOverlay = showShortcuts ? (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      onClick={() => setShowShortcuts(false)}
+    >
+      <div
+        className="relative w-full max-w-3xl max-h-[85vh] overflow-y-auto rounded-xl border border-border bg-background shadow-2xl mx-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-background px-5 py-3">
+          <div>
+            <h2 className="text-sm font-semibold">Keyboard Shortcuts</h2>
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              Tekan <kbd className="rounded border border-border bg-muted px-1 py-0.5 font-mono text-[10px]">1</kbd>–<kbd className="rounded border border-border bg-muted px-1 py-0.5 font-mono text-[10px]">9</kbd> untuk navigasi cepat · <kbd className="rounded border border-border bg-muted px-1 py-0.5 font-mono text-[10px]">?</kbd> tutup · <kbd className="rounded border border-border bg-muted px-1 py-0.5 font-mono text-[10px]">Esc</kbd> tutup
+            </p>
+          </div>
+          <button
+            onClick={() => setShowShortcuts(false)}
+            className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+          >
+            ✕
+          </button>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 p-4">
+          {orderedNav.map((item, idx) => {
+            const shortcutKey = idx < 9 ? String(idx + 1) : null;
+            const title = getNavTitle(item.titleKey);
+            const Icon = item.icon;
+            const children = item.type === "group"
+              ? item.children
+                  .filter((c) => filterChild(c) && (IS_DEV || !("devOnly" in c && c.devOnly)))
+                  .slice(0, 6)
+              : [];
+            return (
+              <div key={item.type === "group" ? item.basePath : item.href} className="rounded-lg border border-border bg-card p-3 space-y-1.5">
+                <div className="flex items-center gap-2">
+                  {shortcutKey && (
+                    <kbd className="shrink-0 rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px] font-bold text-muted-foreground">{shortcutKey}</kbd>
+                  )}
+                  <Icon size={14} className="shrink-0 text-primary" />
+                  <span className="text-xs font-semibold truncate">{title}</span>
+                </div>
+                {children.length > 0 && (
+                  <div className="pl-1 space-y-0.5">
+                    {children.map((c) => (
+                      <button
+                        key={c.href}
+                        onClick={() => { navigate(c.href); setShowShortcuts(false); }}
+                        className="flex w-full items-center gap-1.5 rounded px-1 py-0.5 text-left text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                      >
+                        <c.icon size={11} className="shrink-0" />
+                        <span className="truncate">{getNavTitle(c.titleKey)}</span>
+                      </button>
+                    ))}
+                    {item.type === "group" && item.children.filter((c) => filterChild(c) && (IS_DEV || !("devOnly" in c && c.devOnly))).length > 6 && (
+                      <span className="block pl-1 text-[10px] text-muted-foreground/60">
+                        +{item.children.filter((c) => filterChild(c) && (IS_DEV || !("devOnly" in c && c.devOnly))).length - 6} lainnya…
+                      </span>
+                    )}
+                  </div>
+                )}
+                {item.type === "flat" && (
+                  <button
+                    onClick={() => { navigate(item.href); setShowShortcuts(false); }}
+                    className="flex w-full items-center gap-1.5 rounded px-1 py-0.5 text-left text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                  >
+                    <span className="truncate">→ {item.href}</span>
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <div className="border-t border-border px-5 py-3 text-[11px] text-muted-foreground flex gap-4">
+          <span><kbd className="rounded border border-border bg-muted px-1 py-0.5 font-mono text-[10px]">Ctrl+K</kbd> Command palette</span>
+          <span><kbd className="rounded border border-border bg-muted px-1 py-0.5 font-mono text-[10px]">?</kbd> Toggle overlay ini</span>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
   return (
-    <SidebarProvider>
+    <SidebarProvider style={{ "--sidebar-width": `${sidebarWidth}px` } as React.CSSProperties}>
+      {shortcutsOverlay}
       <div className="flex min-h-[100dvh] w-full bg-background text-foreground">
         <Sidebar className="border-r border-border">
-          <SidebarHeader className="border-b border-border px-4 py-3">
+          <div
+            onMouseDown={onDragMouseDown}
+            className="absolute top-0 right-0 z-50 h-full w-1.5 cursor-col-resize group hidden md:flex items-center justify-center"
+            title="Geser untuk resize sidebar"
+          >
+            <div className="h-12 w-0.5 rounded-full bg-border group-hover:bg-primary transition-colors" />
+          </div>
+          <SidebarHeader className="border-b border-border px-3 py-2">
             <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground shrink-0">
                 <Building2 size={18} />
               </div>
               <span className="text-lg font-bold tracking-tight flex-1">BizPortal</span>
+            </div>
+            {(["admin", "owner", "super_admin", "manager"] as string[]).includes(dbUser?.role as string) && (
               <button
                 onClick={() => setCustomizeMode((m) => !m)}
                 className={cn(
-                  "p-1.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors",
-                  customizeMode && "bg-accent text-foreground"
+                  "mt-1.5 w-full flex items-center gap-2 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium transition-colors",
+                  customizeMode
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "text-foreground hover:bg-accent hover:border-accent-foreground/20"
                 )}
                 title="Sesuaikan tampilan menu"
               >
-                <SlidersHorizontal size={14} />
+                <SlidersHorizontal size={13} />
+                <span>{customizeMode ? "✓ Mode Kustomisasi Aktif" : "Kustomisasi Sidebar"}</span>
               </button>
-            </div>
+            )}
             {customizeMode && (
-              <div className="mt-2 flex items-center justify-between gap-2 rounded-md bg-accent/60 px-2 py-1.5 text-[11px] text-muted-foreground">
-                <span>Klik <EyeOff size={10} className="inline -mt-px" /> untuk sembunyikan item</span>
+              <div className="mt-1 flex items-center justify-between gap-2 rounded-md bg-amber-950/40 border border-amber-700/30 px-2 py-1.5 text-[11px] text-amber-300">
+                <span>Seret <span className="font-mono">⠿</span> untuk reorder · <EyeOff size={10} className="inline -mt-px" /> sembunyikan</span>
                 <button
                   onClick={resetHidden}
-                  className="shrink-0 font-medium text-destructive hover:text-destructive/80"
+                  className="shrink-0 font-semibold text-red-400 hover:text-red-300"
                 >
                   Reset
                 </button>
@@ -799,6 +1071,13 @@ export function AppShell({ children, noPadding }: AppShellProps) {
                 </span>
               )}
               {IS_DEV && <DevUserSwitcher />}
+              <button
+                onClick={() => setShowShortcuts(true)}
+                className="hidden sm:flex items-center justify-center rounded-md border border-border bg-muted/50 px-2 py-1 text-xs text-muted-foreground hover:bg-accent transition-colors"
+                title="Keyboard shortcuts (?)"
+              >
+                <span className="font-mono font-bold">?</span>
+              </button>
               <NotificationBell />
             </div>
           </div>
@@ -821,6 +1100,13 @@ export function AppShell({ children, noPadding }: AppShellProps) {
                 </span>
               )}
               {IS_DEV && <DevUserSwitcher />}
+              <button
+                onClick={() => setShowShortcuts(true)}
+                className="flex items-center justify-center rounded-md border border-border bg-muted/50 px-2 py-1.5 text-xs text-muted-foreground hover:bg-accent transition-colors"
+                title="Keyboard shortcuts (?)"
+              >
+                <span className="font-mono font-bold text-[11px]">?</span>
+              </button>
               <LanguageSelector />
               <NotificationBell />
               <DropdownMenu>

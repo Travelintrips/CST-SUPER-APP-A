@@ -1,0 +1,158 @@
+FIX CUSTOMER PORTAL SERVICES NAVIGATION AND NAVBAR SEARCH.
+
+Scope:
+Customer Portal marketplace / etalase vendor.
+
+Masalah:
+1. Menu Services di navbar hanya menampilkan dropdown, tetapi item layanan belum benar-benar mengarah ke Etalase Vendor layanan/jasa dengan filter aktif.
+2. Tombol search icon di navbar belum berfungsi.
+
+Target:
+
+A. Services Navbar
+
+Saat user klik menu Services:
+
+- Freight Shipment
+- Custom Management / PPJK
+- Domestic Distribution
+- Trucking
+- Shipment Tracking
+
+Masing-masing harus bisa diklik.
+
+Behavior:
+
+1. Freight Shipment
+   → buka marketplace / etalase vendor
+   → tab Layanan / Jasa aktif
+   → filter category = sea_freight atau freight
+
+2. Custom Management / PPJK
+   → tab Layanan / Jasa aktif
+   → filter category = ppjk
+
+3. Domestic Distribution
+   → tab Layanan / Jasa aktif
+   → filter category = domestic_distribution atau trucking
+
+4. Trucking
+   → tab Layanan / Jasa aktif
+   → filter category = trucking
+
+5. Shipment Tracking
+   → arahkan ke halaman tracking
+   → bukan marketplace
+
+Gunakan URL query param agar shareable:
+
+/marketplace?type=service&category=trucking
+/marketplace?type=service&category=ppjk
+/marketplace?type=service&category=sea_freight
+/tracking
+
+B. Marketplace Page
+
+Pastikan marketplace membaca query param:
+
+type=product | service
+category=trucking | sea_freight | air_freight | ppjk | handling | document | exim_service
+
+Jika type=service:
+- otomatis aktifkan tab Layanan / Jasa
+- tampilkan filter layanan
+- sembunyikan filter produk yang tidak relevan
+- tampilkan jasa sesuai category
+
+Jika type=product:
+- aktifkan tab Produk
+
+C. Navbar Search
+
+Tombol search icon di navbar harus berfungsi.
+
+Behavior:
+Saat klik search icon:
+- buka search overlay / dropdown / modal
+- input search autofocus
+- user bisa cari produk dan layanan
+
+Search harus mencari:
+- nama produk
+- nama layanan
+- vendor
+- deskripsi
+- kategori
+- komoditas
+- lokasi
+
+Saat user submit:
+redirect ke:
+
+/marketplace?q={keyword}
+
+Jika sedang search service:
+boleh redirect:
+
+/marketplace?type=service&q={keyword}
+
+D. Marketplace Search Sync
+
+Marketplace harus membaca query param q:
+
+/marketplace?q=kopi
+/marketplace?type=service&q=trucking
+
+dan otomatis mengisi search input serta filter list.
+
+E. UX
+
+Jika hasil kosong:
+Tampilkan:
+"Tidak ada produk atau layanan yang cocok."
+
+F. Jangan ubah backend besar jika data sudah tersedia.
+Utamakan frontend routing, query param, dan filter logic.
+
+G. Test
+
+1. Klik Services → Trucking
+   Hasil:
+   marketplace terbuka
+   tab Layanan/Jasa aktif
+   hanya trucking service tampil
+
+2. Klik Services → PPJK
+   Hasil:
+   marketplace terbuka
+   tab Layanan/Jasa aktif
+   jasa PPJK tampil
+
+3. Klik Services → Freight Shipment
+   Hasil:
+   jasa freight/sea freight tampil
+
+4. Klik Search icon navbar
+   Hasil:
+   search modal/input muncul
+
+5. Search "kopi"
+   Hasil:
+   redirect ke marketplace q=kopi dan produk kopi tampil
+
+6. Search "trucking"
+   Hasil:
+   jasa trucking tampil
+
+7. Refresh halaman dengan URL:
+   /marketplace?type=service&category=trucking&q=jakarta
+
+   Hasil:
+   filter tetap aktif setelah reload
+
+Output:
+A. File yang diubah
+B. Route/query param yang ditambahkan
+C. Search behavior
+D. Test result
+E. Risiko tersisa

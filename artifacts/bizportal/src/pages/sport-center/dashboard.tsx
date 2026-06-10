@@ -76,6 +76,36 @@ interface KpiLiveData {
 
 interface HeatmapRow { hour: string; booking_count: number; }
 
+interface RevenueTxRow {
+  entry_id: number;
+  payment_date: string;
+  amount: number;
+  ref: string | null;
+  booking_number: string | null;
+  customer_name: string | null;
+  facility_name: string | null;
+  booking_date: string | null;
+  start_time: string | null;
+  end_time: string | null;
+  status: string | null;
+  payment_status: string | null;
+  total_amount: string | null;
+}
+type RevenueTxQueryResult = { data: RevenueTxRow[]; total: number };
+
+interface AllBookingRow {
+  booking_code: string | null;
+  customer_name: string | null;
+  facility_name: string | null;
+  date: string | null;
+  start_time: string | null;
+  end_time: string | null;
+  status: string | null;
+  payment_status: string | null;
+  total_price: number | null;
+  created_at: string | null;
+}
+
 export default function SportCenterDashboard() {
   const qc = useQueryClient();
   const [, navigate] = useLocation();
@@ -168,19 +198,27 @@ export default function SportCenterDashboard() {
     retry: 1,
   });
 
+
+  // ── Query: Revenue Transactions (lazy — hanya saat expandedCard === 'revenue') ──────────
+  const {
+    data: revenueTxData,
+    isLoading: revenueTxLoading,
+  } = useQuery<RevenueTxQueryResult>({
+    queryKey: ["sport-center-revenue-tx", activeCompanyId, costCenterId, kpiDate],
+    queryFn: async () => {
+      const qs = new URLSearchParams();
+      if (activeCompanyId) qs.set("companyId", String(activeCompanyId));
+      if (costCenterId) qs.set("costCenterId", String(costCenterId));
+      qs.set("date", kpiDate);
+      const r = await fetch(`/api/sport-center/revenue-transactions?${qs}`, { credentials: "include" });
+      if (!r.ok) throw new Error("Gagal memuat transaksi revenue");
+      return r.json() as Promise<RevenueTxQueryResult>;
+    },
+    enabled: expandedCard === "revenue",
+    staleTime: 30_000,
+  });
+
   // ── Query: Semua booking dari Supabase (lazy — hanya saat expandedCard === 'totalBooking') ──
-  interface AllBookingRow {
-    booking_code: string | null;
-    customer_name: string | null;
-    facility_name: string | null;
-    date: string | null;
-    start_time: string | null;
-    end_time: string | null;
-    status: string | null;
-    payment_status: string | null;
-    total_price: number | null;
-    created_at: string | null;
-  }
   const {
     data: allBookingsData,
     isLoading: allBookingsLoading,
@@ -601,16 +639,49 @@ export default function SportCenterDashboard() {
             ) : (
               <>
                 <Card
-                  className="border-border/60 bg-blue-950/20 cursor-pointer hover:bg-blue-950/40 hover:border-blue-800/60 transition-all duration-150 group"
-                  onClick={() => navigate("/sport-center/payments")}
+                  className={`border-border/60 cursor-pointer transition-all duration-150 group ${
+                    expandedCard === "revenueToday"
+                      ? "bg-blue-900/20 border-blue-500/60 ring-1 ring-blue-500/30"
+                      : "bg-blue-950/20 hover:bg-blue-950/40 hover:border-blue-800/60"
+                  }`}
+                  onClick={() => handleCardClick("revenueToday")}
                 >
                   <CardContent className="p-4">
                     <div className="flex items-center gap-2 mb-1">
                       <DollarSign className="h-3.5 w-3.5 text-blue-400 shrink-0" />
                       <p className="text-xs text-muted-foreground truncate">Revenue Hari Ini</p>
+                      <span className={`text-[9px] font-semibold px-1 py-0.5 rounded border leading-none shrink-0 ${
+                        expandedCard === "revenueToday"
+                          ? "bg-blue-900/60 text-blue-300 border-blue-600"
+                          : "bg-muted/60 text-muted-foreground border-border/60"
+                      }`}>DETAIL</span>
                     </div>
                     <p className="text-lg font-bold text-blue-300">{idr(kpiLive?.revenue_today ?? 0)}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">dari accounting</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {expandedCard === "revenueToday" ? "▲ klik untuk tutup" : "klik untuk detail"}
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card
+                  className={`border-border/60 cursor-pointer transition-all duration-150 group ${
+                    expandedCard === "revenue"
+                      ? "bg-blue-950/40 border-blue-500/60 ring-1 ring-blue-500/30"
+                      : "bg-blue-950/20 hover:bg-blue-950/40 hover:border-blue-800/60"
+                  }`}
+                  onClick={() => handleCardClick("revenue")}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between gap-1 mb-1">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <DollarSign className="h-3.5 w-3.5 text-blue-400 shrink-0" />
+                        <p className="text-xs text-muted-foreground truncate">Revenue (Transaksi)</p>
+                      </div>
+                      <ChevronDown className={`h-3 w-3 shrink-0 text-blue-400 transition-transform duration-200 ${expandedCard === "revenue" ? "rotate-180" : ""}`} />
+                    </div>
+                    <p className="text-lg font-bold text-blue-300">{idr(kpiLive?.revenue_today ?? 0)}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {expandedCard === "revenue" ? "▲ klik untuk tutup" : "klik untuk detail transaksi"}
+                    </p>
                   </CardContent>
                 </Card>
                 <Card
@@ -684,6 +755,105 @@ export default function SportCenterDashboard() {
             )}
           </div>
         </div>
+
+
+        {/* ── Expandable Detail: Revenue Transaksi ─────────────────────────── */}
+        {!kpiLoading && (expandedCard === "revenue" || expandedCard === "revenueToday") && (
+          <div className="border border-blue-700/40 rounded-xl bg-blue-950/10 transition-all">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-blue-700/30">
+              <div className="flex items-center gap-2">
+                <DollarSign className="h-4 w-4 text-blue-400" />
+                <span className="text-sm font-semibold text-blue-300">
+                  Transaksi Revenue — {kpiDateLabel}
+                </span>
+                {!revenueTxLoading && revenueTxData && (
+                  <>
+                    <Badge className="bg-blue-900/40 text-blue-300 border-blue-600 text-xs">
+                      {revenueTxData.data.length} transaksi
+                    </Badge>
+                    <Badge className="bg-emerald-900/40 text-emerald-300 border-emerald-600 text-xs">
+                      {idr(revenueTxData.total)}
+                    </Badge>
+                  </>
+                )}
+              </div>
+              <button
+                onClick={() => setExpandedCard(null)}
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded hover:bg-muted/40"
+              >
+                Tutup ✕
+              </button>
+            </div>
+            {revenueTxLoading ? (
+              <div className="p-4 space-y-2">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <div key={i} className="h-10 rounded-lg bg-muted/20 animate-pulse" />
+                ))}
+              </div>
+
+
+
+            ) : !revenueTxData || revenueTxData.data.length === 0 ? (
+              <div className="py-10 text-center text-muted-foreground text-sm">
+                Tidak ada transaksi revenue untuk {kpiDateLabel}.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-blue-700/20 bg-blue-950/20">
+                      {["No. Booking", "Pelanggan", "Fasilitas", "Tgl Booking", "Jam", "Status", "Pembayaran", "Total"].map(h => (
+                        <th key={h} className="text-left py-2.5 px-3 text-blue-300/70 font-medium whitespace-nowrap">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {revenueTxData.data.map((tx, i) => {
+                      const statusKey = (tx.status ?? "").toLowerCase();
+                      const statusCls = STATUS_COLOR[statusKey] ?? "bg-gray-800/40 text-gray-300 border-gray-600";
+                      const statusLbl = STATUS_LABEL[statusKey] ?? (tx.status ?? "-");
+                      const payKey = (tx.payment_status ?? "").toLowerCase();
+                      const payCls = payKey === "paid" || payKey === "completed"
+                        ? "bg-emerald-900/40 text-emerald-300 border-emerald-600"
+                        : payKey === "pending" || payKey === "unpaid"
+                          ? "bg-yellow-900/40 text-yellow-300 border-yellow-600"
+                          : "bg-gray-800/40 text-gray-300 border-gray-600";
+                      const timeRange = (tx.start_time || tx.end_time)
+                        ? `${tx.start_time ?? "?"} – ${tx.end_time ?? "?"}`
+                        : "-";
+                      return (
+                        <tr key={tx.entry_id ?? i} className="border-b border-blue-700/10 hover:bg-blue-950/20 transition-colors">
+                          <td className="py-2 px-3 font-mono text-blue-300/80 whitespace-nowrap">{tx.booking_number ?? tx.ref ?? "-"}</td>
+                          <td className="py-2 px-3 text-foreground max-w-[140px] truncate">{tx.customer_name ?? "-"}</td>
+                          <td className="py-2 px-3 text-muted-foreground max-w-[120px] truncate">{tx.facility_name ?? "-"}</td>
+                          <td className="py-2 px-3 text-muted-foreground whitespace-nowrap">{tx.booking_date ? fmtDate(tx.booking_date) : "-"}</td>
+                          <td className="py-2 px-3 text-muted-foreground whitespace-nowrap">{timeRange}</td>
+                          <td className="py-2 px-3">
+                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] font-medium ${statusCls}`}>{statusLbl}</span>
+                          </td>
+                          <td className="py-2 px-3">
+                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] font-medium ${payCls}`}>{tx.payment_status ?? "-"}</span>
+                          </td>
+                          <td className="py-2 px-3 text-right font-semibold text-foreground whitespace-nowrap">{idr(Number(tx.amount ?? 0))}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t border-blue-700/30 bg-blue-950/20">
+                      <td colSpan={7} className="py-2 px-3 text-xs text-blue-300/70 font-medium">
+                        Total ({revenueTxData.data.length} transaksi)
+                      </td>
+                      <td className="py-2 px-3 text-right font-bold text-blue-300 whitespace-nowrap">
+                        {idr(revenueTxData.total)}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* ── Error card — Supabase gagal ──────────────────────────────────── */}
         {supaError && (

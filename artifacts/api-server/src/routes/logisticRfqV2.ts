@@ -23,6 +23,8 @@ import { getAdminGroupWa } from "../lib/adminWa.js";
 import { getPreferredDomain } from "../lib/domain.js";
 import { logger } from "../lib/logger.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
+import { createRateLimiter } from "../lib/userRateLimiter.js";
+import { validateUploadFile } from "../lib/uploadValidation.js";
 import {
   sendVendorRequestNotification,
   sendVendorRevisionNotification,
@@ -33,7 +35,9 @@ import {
   renderTemplate,
   sendVendorSelectedAdminWa,
   sendVendorAwardedWa,
+  sendVendorNotSelectedWa,
   sendTruckAssignedCustomerWa,
+  sendOpRequestNotification,
   type LogisticOrderData,
 } from "../lib/orderNotification.js";
 
@@ -99,6 +103,24 @@ async function buildOrderDataWithItems(order: typeof logisticOrdersTable.$inferS
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 const objectStorage = new ObjectStorageService();
+
+// ── RFQ attachment upload — MIME whitelist & rate limiters ────────────────────
+const RFQ_UPLOAD_ALLOWED_MIME = new Set([
+  "image/jpeg", "image/jpg", "image/png", "image/webp",
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+]);
+const RFQ_UPLOAD_ALLOWED_EXT = new Set([
+  "jpg", "jpeg", "png", "webp",
+  "pdf", "doc", "docx", "xls", "xlsx",
+]);
+// Per-IP: max 10 uploads/hour to prevent mass abuse from a single address
+const _rfqUploadIpLimiter = createRateLimiter({ windowMs: 60 * 60_000, limit: 10 });
+// Per-token: max 10 uploads/hour to prevent a single vendor link being used as relay
+const _rfqUploadTokenLimiter = createRateLimiter({ windowMs: 60 * 60_000, limit: 10 });
 
 // ─── Migrations ────────────────────────────────────────────────────────────────
 db.execute(sql`
@@ -487,6 +509,24 @@ logisticRfqV2Router.post("/rfq/create-from-order/:orderId", async (req: Request,
   const [order] = await db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
   if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
 
+  // ── C2 Guard: product_first wajib selesai product phase sebelum shipment RFQ ─
+  if ((order as any).orderType === "product_first") {
+    const o = order as any;
+    const missing: string[] = [];
+    if (!o.productVendorId)           missing.push("product_vendor_id (vendor produk belum dipilih)");
+    if (!o.customerProductApprovedAt) missing.push("customer_product_approved_at (customer belum approve produk)");
+    if (!o.productReadyDate)          missing.push("product_ready_date (tanggal siap produk belum diisi)");
+    if (!o.productPickupLocation)     missing.push("product_pickup_location (lokasi pickup belum diisi)");
+    if (!o.shipmentMode)              missing.push("shipment_mode (mode pengiriman belum dipilih)");
+    if (missing.length > 0) {
+      return res.status(422).json({
+        message: "Product phase belum selesai. Shipment RFQ hanya bisa dibuat setelah vendor produk confirmed, customer approve produk, ready date, pickup location, dan shipment mode tersedia.",
+        missingFields: missing,
+      });
+    }
+  }
+  // ────────────────────────────────────────────────────────────────────────────
+
   const { notes, responseDeadlineHours, basicPrice } = req.body as {
     notes?: string;
     responseDeadlineHours?: number;
@@ -774,17 +814,51 @@ logisticRfqV2Router.get("/vendor-form/:token", async (req: Request, res: Respons
   });
 });
 
-// ─── PUBLIC: POST /vendor-form/:token ────────────────────────────────────────
-logisticRfqV2Router.post("/vendor-form/:token/upload", upload.single("file") as any, async (req: Request, res: Response) => {
+// ─── PUBLIC: POST /vendor-form/:token/upload ─────────────────────────────────
+const _rfqUploadMiddleware = (req: Request, res: Response, next: import("express").NextFunction) =>
+  (upload.single("file") as any)(req, res, (err: any) => {
+    if (err?.code === "LIMIT_FILE_SIZE") {
+      return res.status(413).json({ message: "Ukuran file melebihi batas 10MB." });
+    }
+    next(err);
+  });
+
+logisticRfqV2Router.post("/vendor-form/:token/upload", _rfqUploadMiddleware, async (req: Request, res: Response) => {
   const token = (req.params.token as string | undefined)?.trim();
   if (!token) return res.status(400).json({ message: "Token tidak valid" });
+
+  // Rate limit: per-IP + per-token (10 uploads/jam masing-masing)
+  const ip = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()
+    ?? req.socket.remoteAddress
+    ?? "unknown";
+  if (!_rfqUploadIpLimiter.check(ip)) {
+    return res.status(429).json({ message: "Terlalu banyak upload dari jaringan ini. Coba lagi dalam 1 jam." });
+  }
+  if (!_rfqUploadTokenLimiter.check(token)) {
+    return res.status(429).json({ message: "Batas upload untuk link ini telah tercapai. Coba lagi dalam 1 jam." });
+  }
+
+  if (!req.file) return res.status(400).json({ message: "Tidak ada file" });
+
+  // MIME + extension + size whitelist — dilakukan sebelum DB query agar
+  // file berbahaya ditolak sesegera mungkin tanpa menyentuh database.
+  const validation = validateUploadFile(req.file, {
+    allowedMime: RFQ_UPLOAD_ALLOWED_MIME,
+    allowedExt: RFQ_UPLOAD_ALLOWED_EXT,
+    maxSizeBytes: 10 * 1024 * 1024,
+  });
+  if (!validation.ok) {
+    return res.status(415).json({ message: validation.errorMessage });
+  }
+
   const [link] = await db.select({ id: rfqVendorLinksTable.id, status: rfqVendorLinksTable.status })
     .from(rfqVendorLinksTable).where(eq(rfqVendorLinksTable.token, token));
   if (!link) return res.status(404).json({ message: "Token tidak valid" });
-  if (!req.file) return res.status(400).json({ message: "Tidak ada file" });
+
   try {
     const objectId = randomUUID();
-    const subPath = `rfq-attachments/${objectId}`;
+    const ext = req.file.originalname?.split(".").pop()?.toLowerCase() ?? "bin";
+    const subPath = `rfq-attachments/${objectId}.${ext}`;
     const url = await objectStorage.uploadPublicRaw(subPath, req.file.buffer, req.file.mimetype);
     return res.json({ url });
   } catch (e) {
@@ -970,6 +1044,24 @@ logisticRfqV2Router.post("/orders/:orderId/rfq-blast", async (req: Request, res:
 
   const [order] = await db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
   if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
+
+  // ── C2 Guard: product_first wajib selesai product phase sebelum shipment RFQ ─
+  if ((order as any).orderType === "product_first") {
+    const o = order as any;
+    const missing: string[] = [];
+    if (!o.productVendorId)           missing.push("product_vendor_id (vendor produk belum dipilih)");
+    if (!o.customerProductApprovedAt) missing.push("customer_product_approved_at (customer belum approve produk)");
+    if (!o.productReadyDate)          missing.push("product_ready_date (tanggal siap produk belum diisi)");
+    if (!o.productPickupLocation)     missing.push("product_pickup_location (lokasi pickup belum diisi)");
+    if (!o.shipmentMode)              missing.push("shipment_mode (mode pengiriman belum dipilih)");
+    if (missing.length > 0) {
+      return res.status(422).json({
+        message: "Product phase belum selesai. Shipment RFQ hanya bisa dibuat setelah vendor produk confirmed, customer approve produk, ready date, pickup location, dan shipment mode tersedia.",
+        missingFields: missing,
+      });
+    }
+  }
+  // ────────────────────────────────────────────────────────────────────────────
 
   // Reuse existing RFQ or create new one
   const existingRfqs = await db.select().from(logisticOrderRfqsTable)
@@ -1458,6 +1550,27 @@ logisticRfqV2Router.get("/rfq/:rfqId/comparison", async (req: Request, res: Resp
   const rfqId = parseInt(req.params.rfqId as string, 10);
   if (isNaN(rfqId)) return res.status(400).json({ message: "rfqId tidak valid" });
 
+  // Ensure vendor_performance table exists (may not have been migrated yet)
+  await db.execute(sql.raw(`
+    CREATE TABLE IF NOT EXISTS vendor_performance (
+      id SERIAL PRIMARY KEY,
+      vendor_id INTEGER NOT NULL REFERENCES suppliers(id) ON DELETE CASCADE,
+      total_orders INTEGER NOT NULL DEFAULT 0,
+      completed_orders INTEGER NOT NULL DEFAULT 0,
+      cancelled_orders INTEGER NOT NULL DEFAULT 0,
+      ontime_percentage NUMERIC(5,2) DEFAULT 0,
+      average_response_minutes NUMERIC(10,2) DEFAULT 0,
+      pod_completeness_score NUMERIC(5,2) DEFAULT 0,
+      eta_accuracy_score NUMERIC(5,2) DEFAULT 0,
+      customer_rating NUMERIC(3,2) DEFAULT 0,
+      order_success_rate NUMERIC(5,2) DEFAULT 0,
+      cancel_rate NUMERIC(5,2) DEFAULT 0,
+      total_complaints INTEGER NOT NULL DEFAULT 0,
+      recommendation_score NUMERIC(5,2) DEFAULT 0,
+      updated_at TIMESTAMP DEFAULT NOW() NOT NULL
+    )
+  `)).catch(() => {});
+
   // Use raw SQL to include freight_shipment_id added via migration
   const rfqRows = await db.execute(sql`
     SELECT *, freight_shipment_id FROM logistic_order_rfqs WHERE id = ${rfqId}
@@ -1903,9 +2016,15 @@ logisticRfqV2Router.post("/rfq/:rfqId/select-vendor", async (req: Request, res: 
     force: true,
   });
 
-  const otherLinks = await db.select({ id: rfqVendorLinksTable.id, status: rfqVendorLinksTable.status })
-    .from(rfqVendorLinksTable)
+  const otherLinks = await db.select({
+    id: rfqVendorLinksTable.id,
+    status: rfqVendorLinksTable.status,
+    vendorId: rfqVendorLinksTable.vendorId,
+  }).from(rfqVendorLinksTable)
     .where(and(eq(rfqVendorLinksTable.rfqId, rfqId), sql`id != ${linkId}`));
+
+  // Status yang menandakan vendor sudah berikan penawaran (layak dapat notifikasi)
+  const RESPONDED_STATUSES = ["accepted_basic_price", "counter_offer", "late_response"];
 
   for (const other of otherLinks) {
     if (!["rejected", "expired", "late_response"].includes(other.status)) {
@@ -1915,6 +2034,24 @@ logisticRfqV2Router.post("/rfq/:rfqId/select-vendor", async (req: Request, res: 
         source: "select-vendor/deselect-others",
         force: true,
       });
+      // Kirim WA notif hanya ke vendor yang sudah merespons dengan penawaran
+      if (RESPONDED_STATUSES.includes(other.status) && other.vendorId) {
+        db.select({ name: suppliersTable.name, phone: suppliersTable.phone })
+          .from(suppliersTable)
+          .where(eq(suppliersTable.id, other.vendorId))
+          .then(([vRow]) => {
+            if (vRow?.phone) {
+              sendVendorNotSelectedWa({
+                vendorName: vRow.name ?? `Vendor #${other.vendorId}`,
+                vendorPhone: vRow.phone,
+                rfqNumber: rfqRow?.rfqNumber ?? `RFQ#${rfqId}`,
+                orderNumber: orderRow?.orderNumber ?? "",
+                route: `${orderRow?.origin ?? "—"} → ${orderRow?.destination ?? "—"}`,
+              }).catch(() => {});
+            }
+          })
+          .catch(() => {});
+      }
     }
   }
 
@@ -1943,8 +2080,8 @@ logisticRfqV2Router.post("/rfq/:rfqId/select-vendor", async (req: Request, res: 
     `Admin memilih vendor: ${vendorName} — ${fmtRp(link.offeredPrice ?? link.basicPrice)}`);
 
   // Kirim WA "Penawaran Anda Dipilih" ke vendor
+  const domain = getPreferredDomain() || "cstlogistic.co.id";
   if (vendor?.phone) {
-    const domain = getPreferredDomain() || "cstlogistic.co.id";
     const vendorFormUrl = `https://${domain}/vendor-form/${link.token}`;
     sendVendorAwardedWa({
       vendorName,
@@ -1960,6 +2097,22 @@ logisticRfqV2Router.post("/rfq/:rfqId/select-vendor", async (req: Request, res: 
       fulfillUrl: vendorFormUrl,
     }).catch(() => {});
   }
+
+  // Kirim WA notif ke admin grup bahwa vendor sudah dipilih
+  sendVendorSelectedAdminWa({
+    rfqNumber: rfqRow?.rfqNumber ?? `RFQ#${rfqId}`,
+    orderNumber: orderRow?.orderNumber ?? "",
+    customerName: orderRow?.customerName ?? "—",
+    shipmentType: orderRow?.shipmentType ?? "—",
+    origin: orderRow?.origin ?? "—",
+    destination: orderRow?.destination ?? "—",
+    vendorName,
+    vendorCost: link.offeredPrice ?? link.basicPrice,
+    sellingPrice: sellingPrice ?? null,
+    eta: link.eta ?? null,
+    quoteSentToCustomer: false,
+    forwardVendorUrl: vendor?.phone ? `https://${domain}/vendor-form/${link.token}` : null,
+  }).catch(() => {});
 
   return res.json({ ok: true, selectedVendorName: vendorName });
 });
@@ -1997,6 +2150,22 @@ logisticRfqV2Router.post("/rfq/:rfqId/vendor-link/:linkId/action", async (req: R
     });
     await logActivity(rfqId, "admin", "Admin", "admin_reject_vendor",
       `Admin menolak vendor: ${vendorName}`);
+    // Kirim WA notifikasi ke vendor bahwa penawarannya tidak dipilih
+    if (vendor?.phone) {
+      const [rfqInfo] = await db.select({ rfqNumber: logisticOrderRfqsTable.rfqNumber, orderId: logisticOrderRfqsTable.orderId })
+        .from(logisticOrderRfqsTable).where(eq(logisticOrderRfqsTable.id, rfqId));
+      const orderRow = rfqInfo?.orderId
+        ? (await db.select({ orderNumber: logisticOrdersTable.orderNumber, origin: logisticOrdersTable.origin, destination: logisticOrdersTable.destination })
+            .from(logisticOrdersTable).where(eq(logisticOrdersTable.id, rfqInfo.orderId)))[0] ?? null
+        : null;
+      sendVendorNotSelectedWa({
+        vendorName,
+        vendorPhone: vendor.phone,
+        rfqNumber: rfqInfo?.rfqNumber ?? `RFQ#${rfqId}`,
+        orderNumber: orderRow?.orderNumber ?? "",
+        route: `${orderRow?.origin ?? "—"} → ${orderRow?.destination ?? "—"}`,
+      }).catch(() => {});
+    }
     return res.json({ ok: true });
   }
 
@@ -2197,6 +2366,35 @@ logisticRfqV2Router.post("/rfq/quote-respond", async (req: Request, res: Respons
       quotedPrice: rfq.quotedPrice ? fmtRp(rfq.quotedPrice) : null,
       notes: notes ?? null,
     }).catch(() => {});
+  }
+
+  // Jika customer approve → kirim otomatis WA OP Request ke vendor
+  if (response === "approved") {
+    const selectedLink = await db.select({
+      id: rfqVendorLinksTable.id,
+      token: rfqVendorLinksTable.token,
+      vendorId: rfqVendorLinksTable.vendorId,
+    }).from(rfqVendorLinksTable)
+      .where(and(eq(rfqVendorLinksTable.rfqId, rfq.id), eq(rfqVendorLinksTable.status, "selected")))
+      .limit(1)
+      .then((r) => r[0]);
+
+    if (selectedLink) {
+      const [selectedVendor] = await db.select({ name: suppliersTable.name, phone: suppliersTable.phone })
+        .from(suppliersTable).where(eq(suppliersTable.id, selectedLink.vendorId));
+
+      if (selectedVendor?.phone) {
+        const opDomain = getPreferredDomain() || "cstlogistic.co.id";
+        const operationalFormLink = `https://${opDomain}/vendor-form/${selectedLink.token}`;
+        sendOpRequestNotification(
+          buildOrderData(order),
+          selectedVendor.name ?? `Vendor #${selectedLink.vendorId}`,
+          selectedVendor.phone,
+          operationalFormLink,
+          null,
+        ).catch(() => {});
+      }
+    }
   }
 
   await logActivity(rfq.id, "customer", order.customerName, `customer_${response}`,

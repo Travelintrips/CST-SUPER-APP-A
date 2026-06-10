@@ -23,7 +23,7 @@ export interface LogNotifOptions {
   recipient: string;
   subject?: string;
   message: string;
-  status: "sent" | "failed" | "deduped";
+  status: "sent" | "failed" | "deduped" | "simulated";
   errorMsg?: string;
   context?: string;
   refType?: string;

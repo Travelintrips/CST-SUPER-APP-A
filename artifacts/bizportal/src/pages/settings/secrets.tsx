@@ -28,10 +28,11 @@ interface EnvEntry {
   key: string;
   label: string;
   description: string;
-  configured: boolean;
-  masked?: string;
-  category: string;
-  required: boolean;
+  group: string;
+  sensitive: boolean;
+  hasDbValue: boolean;
+  hasEnvValue: boolean;
+  maskedValue: string;
 }
 
 interface AppConfigEntry {
@@ -101,13 +102,8 @@ function CopyButton({ text, className = "" }: { text: string; className?: string
 }
 
 // ── Env Vars section ───────────────────────────────────────────────────────────
-const ENV_CATEGORIES = [
-  { key: "whatsapp", label: "WhatsApp (Fonnte)" },
-  { key: "email", label: "Email / SMTP" },
-  { key: "portal", label: "Customer Portal" },
-  { key: "auth", label: "Autentikasi & Session" },
-  { key: "other", label: "Lainnya" },
-];
+// Group order for display
+const GROUP_ORDER = ["WhatsApp", "Email", "Auth", "Supabase", "AI", "Notifikasi"];
 
 function EnvVarsTab() {
   const [revealed, setRevealed] = useState<Set<string>>(new Set());
@@ -124,18 +120,32 @@ function EnvVarsTab() {
     });
   }
 
-  const grouped = ENV_CATEGORIES.map(cat => ({
-    ...cat,
-    items: secrets.filter(s => s.category === cat.key),
-  })).filter(g => g.items.length > 0);
+  // Build groups dynamically from API data (group field)
+  const groupMap = new Map<string, EnvEntry[]>();
+  for (const s of secrets) {
+    const g = s.group ?? "Lainnya";
+    if (!groupMap.has(g)) groupMap.set(g, []);
+    groupMap.get(g)!.push(s);
+  }
+  // Sort groups: known order first, then alphabetical
+  const grouped = [...groupMap.entries()]
+    .sort(([a], [b]) => {
+      const ia = GROUP_ORDER.indexOf(a);
+      const ib = GROUP_ORDER.indexOf(b);
+      if (ia !== -1 && ib !== -1) return ia - ib;
+      if (ia !== -1) return -1;
+      if (ib !== -1) return 1;
+      return a.localeCompare(b);
+    })
+    .map(([name, items]) => ({ name, items }));
 
-  const missing = secrets.filter(s => s.required && !s.configured);
+  const unconfigured = secrets.filter(s => !s.hasDbValue && !s.hasEnvValue);
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
-          Environment variables dibaca dari Replit Secrets — hanya bisa diubah dari panel Replit (kunci ikon di sidebar kiri).
+          Nilai dari Replit Secrets (Env) atau DB override. DB override menggantikan env var tanpa restart.
         </p>
         <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching} className="gap-1.5 shrink-0">
           <RefreshCw className={`w-3.5 h-3.5 ${isFetching ? "animate-spin" : ""}`} />
@@ -143,12 +153,12 @@ function EnvVarsTab() {
         </Button>
       </div>
 
-      {!isLoading && missing.length > 0 && (
+      {!isLoading && unconfigured.length > 0 && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 flex items-start gap-2">
           <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-amber-600" />
           <span>
-            <strong>{missing.length} secret wajib</strong> belum diset:{" "}
-            {missing.map(s => s.key).join(", ")}.
+            <strong>{unconfigured.length} secret</strong> belum diset:{" "}
+            {unconfigured.map(s => s.label).join(", ")}.
           </span>
         </div>
       )}
@@ -165,69 +175,87 @@ function EnvVarsTab() {
       )}
 
       {grouped.map(group => (
-        <Card key={group.key}>
+        <Card key={group.name}>
           <CardHeader className="py-3 px-4">
-            <CardTitle className="text-sm font-medium">{group.label}</CardTitle>
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              {group.name}
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal">
+                {group.items.filter(i => i.hasDbValue || i.hasEnvValue).length}/{group.items.length}
+              </Badge>
+            </CardTitle>
           </CardHeader>
           <CardContent className="px-0 pt-0 pb-1">
             <table className="w-full text-xs">
               <colgroup>
-                <col className="w-[38%]" />
-                <col className="w-[40%]" />
-                <col className="w-[22%]" />
+                <col className="w-[35%]" />
+                <col className="w-[15%]" />
+                <col className="w-[30%]" />
+                <col className="w-[20%]" />
               </colgroup>
               <thead>
                 <tr className="border-b text-muted-foreground">
-                  <th className="px-4 pb-2 text-left font-normal">Key</th>
-                  <th className="px-4 pb-2 text-left font-normal">Value</th>
+                  <th className="px-4 pb-2 text-left font-normal">Label / Env Key</th>
+                  <th className="px-4 pb-2 text-center font-normal">Sumber</th>
+                  <th className="px-4 pb-2 text-left font-normal">Nilai</th>
                   <th className="px-4 pb-2 text-right font-normal">Status</th>
                 </tr>
               </thead>
               <tbody>
-                {group.items.map(item => (
-                  <tr key={item.key} className="border-b last:border-b-0 hover:bg-muted/30 transition-colors">
-                    <td className="px-4 py-2.5 align-top">
-                      <div className="flex items-center gap-1.5">
-                        <code className="font-mono bg-muted px-1.5 py-0.5 rounded text-[11px]">{item.key}</code>
-                        <CopyButton text={item.key} />
-                        {item.required && (
-                          <Badge variant="outline" className="text-[10px] px-1 py-0 h-4">wajib</Badge>
+                {group.items.map(item => {
+                  const isConfigured = item.hasDbValue || item.hasEnvValue;
+                  return (
+                    <tr key={item.key} className="border-b last:border-b-0 hover:bg-muted/30 transition-colors">
+                      <td className="px-4 py-2.5 align-top">
+                        <p className="font-medium text-foreground">{item.label}</p>
+                        <code className="font-mono text-[10px] text-muted-foreground">{item.key}</code>
+                        <p className="text-muted-foreground mt-0.5 leading-snug text-[11px]">{item.description}</p>
+                      </td>
+                      <td className="px-4 py-2.5 align-top text-center">
+                        {item.hasDbValue && (
+                          <Badge className="text-[10px] px-1.5 py-0 bg-blue-100 text-blue-700 border-blue-200">DB</Badge>
                         )}
-                      </div>
-                      <p className="text-muted-foreground mt-1 leading-snug">{item.description}</p>
-                    </td>
-                    <td className="px-4 py-2.5 align-top">
-                      {item.configured && item.masked ? (
-                        <div className="flex items-center gap-1.5">
-                          <code className="font-mono text-foreground">
-                            {revealed.has(item.key) ? item.masked : "••••••••••••"}
-                          </code>
-                          <button
-                            onClick={() => toggleReveal(item.key)}
-                            className="text-muted-foreground hover:text-foreground transition-colors"
-                            title={revealed.has(item.key) ? "Sembunyikan" : "Tampilkan nilai"}
-                          >
-                            {revealed.has(item.key) ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                          </button>
-                          {revealed.has(item.key) && <CopyButton text={item.masked} />}
-                        </div>
-                      ) : (
-                        <span className="text-muted-foreground italic">— tidak diset —</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-2.5 align-top text-right">
-                      {item.configured ? (
-                        <span className="inline-flex items-center gap-1 text-green-600">
-                          <CheckCircle2 className="w-3.5 h-3.5" /> Aktif
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 text-muted-foreground">
-                          <XCircle className="w-3.5 h-3.5" /> Belum diset
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                        {item.hasEnvValue && !item.hasDbValue && (
+                          <Badge className="text-[10px] px-1.5 py-0 bg-green-100 text-green-700 border-green-200">Env</Badge>
+                        )}
+                        {!isConfigured && (
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-muted-foreground">—</Badge>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5 align-top">
+                        {isConfigured && item.maskedValue ? (
+                          <div className="flex items-center gap-1.5">
+                            <code className="font-mono text-foreground">
+                              {revealed.has(item.key) ? item.maskedValue : "••••••••••••"}
+                            </code>
+                            {item.sensitive && (
+                              <button
+                                onClick={() => toggleReveal(item.key)}
+                                className="text-muted-foreground hover:text-foreground transition-colors"
+                                title={revealed.has(item.key) ? "Sembunyikan" : "Tampilkan nilai"}
+                              >
+                                {revealed.has(item.key) ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                              </button>
+                            )}
+                            {revealed.has(item.key) && <CopyButton text={item.maskedValue} />}
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground italic">— tidak diset —</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5 align-top text-right">
+                        {isConfigured ? (
+                          <span className="inline-flex items-center gap-1 text-green-600">
+                            <CheckCircle2 className="w-3.5 h-3.5" /> Aktif
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-muted-foreground">
+                            <XCircle className="w-3.5 h-3.5" /> Belum diset
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </CardContent>
@@ -235,10 +263,9 @@ function EnvVarsTab() {
       ))}
 
       <div className="rounded-md border border-dashed p-4 text-xs text-muted-foreground space-y-1">
-        <p className="font-medium text-foreground">Cara set / ubah env var:</p>
-        <p>1. Buka panel <strong>Secrets</strong> di sidebar Replit (ikon kunci 🔑)</p>
-        <p>2. Klik <strong>+ New Secret</strong> atau edit yang sudah ada</p>
-        <p>3. Restart API Server agar perubahan aktif</p>
+        <p className="font-medium text-foreground">Cara set / ubah secret:</p>
+        <p>• <strong>Via Env</strong>: Buka panel Secrets di sidebar Replit (🔑), restart API server setelah ubah.</p>
+        <p>• <strong>Via DB</strong>: Gunakan tab <em>DB Config</em> — aktif tanpa restart, menggantikan env var.</p>
       </div>
     </div>
   );

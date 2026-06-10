@@ -1,0 +1,82 @@
+AUDIT SIDEBAR BIZPORTAL — PARENT, CHILD, FUNCTION, PAGE
+
+Tujuan:
+Mendapatkan daftar lengkap **sidebar menu parent & child**, deskripsi fungsi, dan halaman / panel yang muncul di sisi kanan saat menu diklik.
+
+---
+
+A. BACKEND / DATA SOURCE
+
+1. **Ambil struktur sidebar**
+
+   * Endpoint / state yang menyimpan menu:
+
+     ```ts
+     [
+       {
+         "parent": "Dashboard",
+         "children": ["Dashboard Overview", "Approvals", "Analytics", "CEO / Director", "Profitabilitas"],
+         "route": "/dashboard"
+       },
+       {
+         "parent": "Enterprise Dashboard",
+         "children": [],
+         "route": "/enterprise-dashboard"
+       },
+       ...
+     ]
+     ```
+   * Sertakan informasi route / page component yang muncul saat menu diklik
+
+2. **Audit halaman**
+
+   * Pastikan setiap child menu → route valid dan load panel / page di sisi kanan
+   * Tampilkan metadata / judul panel (header card, table, chart, form) jika ada
+
+---
+
+B. FRONTEND / EXTRACTION
+
+1. **Iterasi Sidebar**
+
+   * Loop parent menu
+   * Loop child menu (jika ada)
+   * Ambil atribut:
+
+     * Label / nama menu
+     * Parent / child
+     * Route / path
+     * Icon / badge (opsional)
+   * Tampilkan halaman panel kanan yang muncul saat menu diklik
+
+2. **Mapping**
+
+   * Buat tabel / list:
+
+     | Parent Menu | Child Menu | Fungsi / Deskripsi | Halaman kanan / panel |
+     | ----------- | ---------- | ------------------ | --------------------- |
+
+3. **Partial Test**
+
+   * Klik menu → pastikan route / page yang muncul sesuai label
+   * Semua parent & child tertangkap
+   * Pastikan halaman kanan sesuai preview / content screenshot
+
+---
+
+C. OUTPUT / REPORT
+
+* Tabel / JSON berisi semua parent & child menu, fungsinya, dan halaman kanan
+* Bisa dijadikan dokumentasi sidebar BizPortal
+* Pastikan list lengkap, tidak ada menu terlewat
+* Bisa digunakan untuk audit UX / navigasi admin
+
+---
+
+Instruksi:
+
+* Ambil data sidebar dari frontend state / backend config
+* Loop semua parent & child
+* Simpan route / page component yang muncul di sisi kanan
+* Buat tabel / JSON lengkap
+* Test partial → klik beberapa menu → page panel kanan sesuai label

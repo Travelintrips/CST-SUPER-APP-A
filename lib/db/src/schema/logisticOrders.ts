@@ -95,6 +95,18 @@ export const logisticOrdersTable = pgTable("logistic_orders", {
   truckSource: text("truck_source"),
   // "internal" | "external" | null
   productPrice: numeric("product_price", { precision: 14, scale: 2 }),
+  // ── Phase 2A: Product-First Flow fields ────────────────────────────────────
+  productRfqId: integer("product_rfq_id"),
+  productVendorId: integer("product_vendor_id").references(() => suppliersTable.id, { onDelete: "set null" }),
+  productVendorConfirmedAt: timestamp("product_vendor_confirmed_at"),
+  productReadyDate: text("product_ready_date"),
+  productPickupLocation: text("product_pickup_location"),
+  productQtyConfirmed: numeric("product_qty_confirmed", { precision: 12, scale: 3 }),
+  shipmentRfqId: integer("shipment_rfq_id"),
+  shipmentMode: text("shipment_mode"),
+  shipmentModeSelectedAt: timestamp("shipment_mode_selected_at"),
+  customerProductApprovalToken: text("customer_product_approval_token").unique(),
+  customerProductApprovedAt: timestamp("customer_product_approved_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (t) => [
@@ -112,6 +124,14 @@ export const logisticOrderItemsTable = pgTable("logistic_order_items", {
   inputData: jsonb("input_data").notNull().default({}),
   calculationResult: jsonb("calculation_result").notNull().default({}),
   subtotal: numeric("subtotal", { precision: 14, scale: 2 }).notNull().default("0"),
+  // vendor catalog reference fields
+  itemSource: text("item_source").default("manual"),
+  vendorCatalogItemId: integer("vendor_catalog_item_id"),
+  vendorId: integer("vendor_id").references(() => suppliersTable.id, { onDelete: "set null" }),
+  serviceType: text("service_type"),
+  priceSnapshot: jsonb("price_snapshot"),
+  calculationInput: jsonb("calculation_input"),
+  templateSnapshot: jsonb("template_snapshot"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -136,6 +156,9 @@ export const logisticOrderRfqsTable = pgTable("logistic_order_rfqs", {
   templateId: integer("template_id"),
   templateVersion: text("template_version"),
   templateSnapshot: jsonb("template_snapshot").$type<Record<string, unknown> | null>(),
+  // ── Phase 2A: Product-First Flow ──────────────────────────────────────────
+  rfqType: text("rfq_type").default("shipment"),
+  phase: text("phase").default("shipment_phase"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

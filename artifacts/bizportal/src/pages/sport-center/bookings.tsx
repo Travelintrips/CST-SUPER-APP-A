@@ -115,11 +115,11 @@ export default function SportCenterBookings() {
       if (!supabase) return [];
       const { data, error } = await supabase
         .from("sport_center_bookings")
-        .select("booking_code, customer_name, customer_phone, facility_name, date, start_time, end_time, total_hours, total_price, status, payment_status, notes, created_at")
+        .select("id, booking_code, customer_name, customer_phone, facility_name, date, start_time, end_time, total_hours, total_price, status, payment_status, notes, created_at")
         .order("created_at", { ascending: false });
       if (error || !data) return [];
       return data.map((b: any) => ({
-        id: b.booking_code ?? "-",
+        id: b.id ?? b.booking_code ?? "-",
         booking_number: b.booking_code ?? "-",
         customer_name: b.customer_name ?? "-",
         customer_phone: b.customer_phone ?? "-",
@@ -173,6 +173,7 @@ export default function SportCenterBookings() {
         qc.invalidateQueries({ queryKey: ["sport-center-bookings"] });
       }
     },
+    onError: () => { /* silent — auto-push gagal tidak perlu overlay */ },
   });
 
   useEffect(() => {
@@ -181,7 +182,7 @@ export default function SportCenterBookings() {
     if (!showingSupabase) return;
     if (!supaBookings || supaBookings.length === 0) return;
     pushDoneRef.current = true;
-    void pushMutation.mutateAsync(supaBookings);
+    void pushMutation.mutateAsync(supaBookings).catch(() => {});
   }, [isLoading, supaLoading, showingSupabase, supaBookings]);
 
   // ── Supabase Realtime: auto-push INSERT/UPDATE ke local tanpa refresh ────────

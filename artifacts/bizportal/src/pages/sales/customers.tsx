@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { GooglePlacesAutocomplete } from "@/components/ui/google-places-autocomplete";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
@@ -275,7 +276,11 @@ export default function CustomersPage() {
                 </div>
                 <div className="grid gap-1.5">
                   <Label htmlFor="address">Alamat</Label>
-                  <Textarea id="address" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
+                  <GooglePlacesAutocomplete
+                    value={form.address}
+                    onChange={(v) => setForm({ ...form, address: v })}
+                    placeholder="Ketik alamat customer..."
+                  />
                 </div>
                 <div className="grid gap-1.5">
                   <Label htmlFor="notes">Catatan</Label>

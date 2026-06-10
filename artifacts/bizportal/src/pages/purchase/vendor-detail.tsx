@@ -1,6 +1,7 @@
 import { useRef, useState, useMemo, useEffect, useCallback } from "react";
 import { useParams, Link } from "wouter";
 import { AppShell } from "@/components/layout/AppShell";
+import { GooglePlacesAutocomplete } from "@/components/ui/google-places-autocomplete";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -47,9 +48,10 @@ import {
   useListProductCategories,
 } from "@workspace/api-client-react";
 import type { Supplier, VendorCatalogItem } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Car, Link2, Pencil, Plus, Power, PowerOff, Search, Tag, Trash2, Upload, X } from "lucide-react";
+import { useQueryClient, useMutation } from "@tanstack/react-query";
+import { ArrowLeft, Car, CheckSquare, Globe, Images, Link2, Pencil, Plus, Power, PowerOff, RotateCcw, Search, Star, Tag, Trash2, Upload, X } from "lucide-react";
 import { useUpload } from "@workspace/object-storage-web";
+import { ProductMediaManager } from "@/components/catalog/ProductMediaManager";
 
 const SERVICE_TYPES = [
   "Import", "Export", "Domestic", "Door to Door",
@@ -95,6 +97,7 @@ type CatalogForm = {
   kategori: string;
   subcategory: string;
   priceBase: string;
+  priceSellOverride: string;
   isActive: boolean;
   isCommodityTag: boolean;
   sortOrder: string;
@@ -109,6 +112,7 @@ const emptyCatalogForm = (): CatalogForm => ({
   kategori: "",
   subcategory: "",
   priceBase: "0",
+  priceSellOverride: "",
   isActive: true,
   isCommodityTag: false,
   sortOrder: "0",
@@ -167,6 +171,58 @@ export default function VendorDetailPage() {
   const updateItem = useUpdateVendorCatalogItem();
   const deleteItem = useDeleteVendorCatalogItem();
   const updateVendor = useUpdateSupplier();
+
+  const publishMutation = useMutation({
+    mutationFn: async ({ itemId, status }: { itemId: number; status: string }) => {
+      const r = await fetch(`/api/trading/suppliers/catalog/${itemId}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ status }),
+      });
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({}));
+        throw new Error(data.message ?? "Gagal mengubah status");
+      }
+      return r.json();
+    },
+    onSuccess: (data, { itemId, status }) => {
+      qc.setQueryData(
+        getListVendorCatalogQueryKey(vendorId),
+        (old: any[] | undefined) =>
+          old?.map((item) =>
+            item.id === itemId
+              ? { ...item, status, isPublished: status === "published", publishedAt: data.publishedAt ?? null }
+              : item
+          ) ?? old,
+      );
+      qc.invalidateQueries({ queryKey: getListVendorCatalogQueryKey(vendorId) });
+      if (status === "published") {
+        toast({ title: "✅ Item dipublikasikan ke Marketplace" });
+      } else {
+        toast({ title: "Item diturunkan dari Marketplace" });
+      }
+    },
+    onError: (err: any) => toast({ variant: "destructive", title: "Gagal mengubah status publikasi", description: err?.message }),
+  });
+
+  const featuredMutation = useMutation({
+    mutationFn: async ({ itemId, isFeatured }: { itemId: number; isFeatured: boolean }) => {
+      const r = await fetch(`/api/trading/suppliers/catalog/${itemId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ isFeatured }),
+      });
+      if (!r.ok) throw new Error("Gagal mengubah status unggulan");
+      return r.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: getListVendorCatalogQueryKey(vendorId) });
+      toast({ title: "Status unggulan berhasil diubah" });
+    },
+    onError: () => toast({ variant: "destructive", title: "Gagal mengubah status unggulan" }),
+  });
 
   const purchaseTaxes = (taxes ?? []).filter((t) => t.kind === "purchase" && t.isActive);
 
@@ -228,8 +284,16 @@ export default function VendorDetailPage() {
 
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<VendorCatalogItem | null>(null);
+  const [mediaItem, setMediaItem] = useState<{ id: number; name: string } | null>(null);
   const [itemForm, setItemForm] = useState<CatalogForm>(emptyCatalogForm());
   const [masterItemSearch, setMasterItemSearch] = useState("");
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkResetting, setBulkResetting] = useState(false);
+  const [inlineEditId, setInlineEditId] = useState<number | null>(null);
+  const [inlineEditValue, setInlineEditValue] = useState("");
+  const [inlineSaving, setInlineSaving] = useState(false);
+  const inlineEditValueRef = useRef("");
+  const inlineSavingRef = useRef(false);
 
   const [linkOpen, setLinkOpen] = useState(false);
   const [linkingItem, setLinkingItem] = useState<VendorCatalogItem | null>(null);
@@ -302,6 +366,7 @@ export default function VendorDetailPage() {
       kategori: (item as any).kategori ?? "",
       subcategory: (item as any).subcategory ?? "",
       priceBase: String(Number(item.priceBase ?? 0)),
+      priceSellOverride: (item as any).priceSellOverride != null ? String((item as any).priceSellOverride) : "",
       isActive: item.isActive,
       isCommodityTag: (item as any).isCommodityTag ?? false,
       sortOrder: String(item.sortOrder),
@@ -322,6 +387,7 @@ export default function VendorDetailPage() {
     }
     const body: Record<string, unknown> = {
       priceBase: parseFloat(itemForm.priceBase) || 0,
+      priceSellOverride: itemForm.priceSellOverride.trim() !== "" ? parseFloat(itemForm.priceSellOverride) || 0 : null,
       isActive: itemForm.isActive,
       isCommodityTag: itemForm.isCommodityTag,
       sortOrder: parseInt(itemForm.sortOrder) || 0,
@@ -392,6 +458,82 @@ export default function VendorDetailPage() {
       toast({ title: t.common.success });
     } catch (e) {
       toast({ title: t.common.error, description: String(e), variant: "destructive" });
+    }
+  };
+
+  const resetOverride = async (item: VendorCatalogItem) => {
+    try {
+      const updated = await updateItem.mutateAsync({ itemId: item.id, data: { priceSellOverride: null } as any });
+      qc.setQueryData<VendorCatalogItem[]>(getListVendorCatalogQueryKey(vendorId), (old) =>
+        old ? old.map((i) => (i.id === updated.id ? { ...i, priceSellOverride: null, priceSell: (updated as any).priceSell } : i)) : [updated]
+      );
+      toast({ title: "Override harga jual dihapus" });
+    } catch (e) {
+      toast({ title: t.common.error, description: String(e), variant: "destructive" });
+    }
+  };
+
+  const bulkResetOverride = async () => {
+    const targets = (filteredCatalog as any[]).filter(
+      (i) => selectedIds.has(i.id) && i.priceSellOverride != null
+    );
+    if (targets.length === 0) return;
+    if (!confirm(`Reset override harga jual untuk ${targets.length} item?`)) return;
+    setBulkResetting(true);
+    try {
+      await Promise.all(
+        targets.map((i) =>
+          updateItem.mutateAsync({ itemId: i.id, data: { priceSellOverride: null } as any })
+        )
+      );
+      await qc.invalidateQueries({ queryKey: getListVendorCatalogQueryKey(vendorId) });
+      setSelectedIds(new Set());
+      toast({ title: `${targets.length} override berhasil dihapus` });
+    } catch (e) {
+      toast({ title: t.common.error, description: String(e), variant: "destructive" });
+    } finally {
+      setBulkResetting(false);
+    }
+  };
+
+  const saveInlineEdit = async (itemId: number) => {
+    if (inlineSavingRef.current) return;
+    const raw = inlineEditValueRef.current.replace(/[^0-9]/g, "");
+    const val = raw === "" ? NaN : parseFloat(raw);
+    if (isNaN(val) || val < 0) { setInlineEditId(null); return; }
+    inlineSavingRef.current = true;
+    setInlineSaving(true);
+    try {
+      await updateItem.mutateAsync({ itemId, data: { priceSellOverride: val } as any });
+      await qc.invalidateQueries({ queryKey: getListVendorCatalogQueryKey(vendorId) });
+      toast({ title: "Override harga jual disimpan" });
+    } catch (e) {
+      toast({ title: t.common.error, description: String(e), variant: "destructive" });
+    } finally {
+      inlineSavingRef.current = false;
+      setInlineSaving(false);
+      setInlineEditId(null);
+    }
+  };
+
+  const overrideItemsInView = (filteredCatalog as any[]).filter((i) => i.priceSellOverride != null);
+  const selectedOverrideIds = overrideItemsInView.filter((i) => selectedIds.has(i.id));
+  const allOverrideSelected = overrideItemsInView.length > 0 && selectedOverrideIds.length === overrideItemsInView.length;
+
+  const toggleSelectItem = (id: number, hasOverride: boolean) => {
+    if (!hasOverride) return;
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (allOverrideSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(overrideItemsInView.map((i) => i.id)));
     }
   };
 
@@ -723,9 +865,49 @@ export default function VendorDetailPage() {
             {catalogLoading ? (
               <p className="text-center text-muted-foreground py-8 text-sm">Memuat...</p>
             ) : (
+              <>
+                {/* ── Bulk action bar — muncul hanya jika ada yang dipilih ── */}
+                {selectedIds.size > 0 && (
+                  <div className="flex items-center gap-3 mb-3 px-3 py-2 rounded-md bg-blue-50 border border-blue-200">
+                    <CheckSquare className="h-4 w-4 text-blue-600 shrink-0" />
+                    <span className="text-sm text-blue-800 flex-1">
+                      <strong>{selectedIds.size}</strong> item dipilih
+                      {selectedOverrideIds.length > 0 && ` (${selectedOverrideIds.length} punya override)`}
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs border-blue-300 text-blue-700 hover:bg-blue-100"
+                      onClick={bulkResetOverride}
+                      disabled={bulkResetting || selectedOverrideIds.length === 0}
+                    >
+                      <RotateCcw className="h-3 w-3 mr-1" />
+                      {bulkResetting ? "Mereset..." : `Reset Override (${selectedOverrideIds.length})`}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 text-xs text-muted-foreground"
+                      onClick={() => setSelectedIds(new Set())}
+                    >
+                      <X className="h-3 w-3 mr-1" /> Batal
+                    </Button>
+                  </div>
+                )}
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-8">
+                      {overrideItemsInView.length > 0 && (
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 rounded border-gray-300 cursor-pointer accent-blue-600"
+                          checked={allOverrideSelected}
+                          onChange={toggleSelectAll}
+                          title="Pilih semua item dengan override"
+                        />
+                      )}
+                    </TableHead>
                     <TableHead>Nama</TableHead>
                     <TableHead>Kategori</TableHead>
                     <TableHead>Tipe</TableHead>
@@ -733,6 +915,7 @@ export default function VendorDetailPage() {
                     <TableHead className="text-right">Harga Dasar</TableHead>
                     <TableHead className="text-right">Harga Jual</TableHead>
                     <TableHead className="text-right">Profit</TableHead>
+                    <TableHead className="text-right">Margin %</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Tag</TableHead>
                     <TableHead className="w-[90px] text-right">Aksi</TableHead>
@@ -743,13 +926,44 @@ export default function VendorDetailPage() {
                     const priceBase = Number(item.priceBase ?? 0);
                     const priceSell = (item as any).priceSell as number | null;
                     const profit = (item as any).profit as number | null;
+                    const profitPct = (profit != null && priceBase > 0) ? (profit / priceBase) * 100 : null;
+                    const hasOverride = (item as any).priceSellOverride != null;
+                    const isSelected = selectedIds.has(item.id);
                     return (
-                      <TableRow key={item.id}>
-                        <TableCell>
-                          <p className="font-medium">{item.name}</p>
-                          {item.description && (
-                            <p className="text-xs text-muted-foreground">{item.description}</p>
+                      <TableRow key={item.id} className={isSelected ? "bg-blue-50/50" : undefined}>
+                        <TableCell className="w-8">
+                          {hasOverride && (
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 rounded border-gray-300 cursor-pointer accent-blue-600"
+                              checked={isSelected}
+                              onChange={() => toggleSelectItem(item.id, hasOverride)}
+                            />
                           )}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-start gap-1.5">
+                            {(item as any).isFeatured && (
+                              <Star className="h-3.5 w-3.5 text-amber-500 fill-amber-500 mt-0.5 shrink-0" />
+                            )}
+                            <div>
+                              <p className="font-medium">{item.name}</p>
+                              {item.description && (
+                                <p className="text-xs text-muted-foreground">{item.description}</p>
+                              )}
+                              <div className="flex gap-2 mt-0.5">
+                                {((item as any).viewCount ?? 0) > 0 && (
+                                  <span className="text-[10px] text-slate-400">👁 {(item as any).viewCount}</span>
+                                )}
+                                {((item as any).quoteCount ?? 0) > 0 && (
+                                  <span className="text-[10px] text-slate-400">📋 {(item as any).quoteCount}</span>
+                                )}
+                                {((item as any).orderCount ?? 0) > 0 && (
+                                  <span className="text-[10px] text-slate-400">🛒 {(item as any).orderCount}</span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
                         </TableCell>
                         <TableCell className="text-sm">
                           {(item as any).kategori
@@ -766,20 +980,87 @@ export default function VendorDetailPage() {
                         <TableCell className="text-right font-mono text-sm text-muted-foreground">
                           {priceBase > 0 ? fmt(priceBase) : <span className="text-muted-foreground/50">—</span>}
                         </TableCell>
-                        <TableCell className="text-right font-mono text-sm font-semibold text-primary">
-                          {priceSell != null
-                            ? fmt(priceSell)
-                            : <span className="text-xs text-amber-500 font-normal">Belum linked</span>}
+                        <TableCell className="text-right font-mono text-sm font-semibold text-primary p-1">
+                          {inlineEditId === item.id ? (
+                            <div className="flex items-center justify-end gap-1">
+                              <input
+                                autoFocus
+                                type="text"
+                                inputMode="numeric"
+                                className="w-28 text-right border rounded px-1.5 py-0.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-primary"
+                                value={inlineEditValue}
+                                onChange={(e) => {
+                                  const v = e.target.value.replace(/[^0-9]/g, "");
+                                  inlineEditValueRef.current = v;
+                                  setInlineEditValue(v);
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); saveInlineEdit(item.id); }
+                                  if (e.key === "Escape") { e.preventDefault(); setInlineEditId(null); }
+                                }}
+                                onBlur={() => saveInlineEdit(item.id)}
+                                disabled={inlineSaving}
+                              />
+                            </div>
+                          ) : (
+                            <span
+                              className="flex flex-col items-end gap-0.5 cursor-pointer group"
+                              title="Klik untuk set override harga jual"
+                              onClick={() => {
+                                const cur = String((item as any).priceSellOverride ?? priceSell ?? "");
+                                inlineEditValueRef.current = cur;
+                                setInlineEditValue(cur);
+                                setInlineEditId(item.id);
+                              }}
+                            >
+                              {priceSell != null ? (
+                                <>
+                                  <span className="group-hover:underline group-hover:text-blue-600 transition-colors">{fmt(priceSell)}</span>
+                                  {(item as any).priceSellOverride != null && (
+                                    <span className="text-[10px] font-normal bg-blue-100 text-blue-700 rounded px-1 py-0">Override</span>
+                                  )}
+                                </>
+                              ) : (
+                                <span className="text-xs text-amber-500 font-normal group-hover:text-blue-600">+ Set harga</span>
+                              )}
+                            </span>
+                          )}
                         </TableCell>
                         <TableCell className="text-right font-mono text-sm font-semibold">
                           {profit != null
                             ? <span className={profit >= 0 ? "text-green-600" : "text-destructive"}>{fmt(profit)}</span>
                             : <span className="text-muted-foreground/40">—</span>}
                         </TableCell>
+                        <TableCell className="text-right text-sm font-semibold">
+                          {profitPct != null ? (
+                            <span className={
+                              profitPct >= 20 ? "text-green-600" :
+                              profitPct >= 10 ? "text-amber-600" :
+                              profitPct >= 0  ? "text-orange-500" :
+                              "text-destructive"
+                            }>
+                              {profitPct.toFixed(1)}%
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground/40">—</span>
+                          )}
+                        </TableCell>
                         <TableCell>
-                          {item.isActive
-                            ? <Badge className="bg-green-100 text-green-800 hover:bg-green-100 text-xs">Aktif</Badge>
-                            : <Badge variant="outline" className="text-xs text-muted-foreground">Nonaktif</Badge>}
+                          <div className="flex flex-col gap-1">
+                            {item.isActive
+                              ? <Badge className="bg-green-100 text-green-800 hover:bg-green-100 text-xs">Aktif</Badge>
+                              : <Badge variant="outline" className="text-xs text-muted-foreground">Nonaktif</Badge>}
+                            {(() => {
+                              const st = (item as any).status as string | undefined;
+                              if (!st || st === "draft") return <Badge variant="outline" className="text-xs text-slate-500">Draft</Badge>;
+                              if (st === "pending_review") return <Badge className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100 text-xs">⏳ Review</Badge>;
+                              if (st === "approved") return <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 text-xs">✅ Approved</Badge>;
+                              if (st === "rejected") return <Badge className="bg-red-100 text-red-800 hover:bg-red-100 text-xs">❌ Rejected</Badge>;
+                              if (st === "published") return <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100 text-xs flex items-center gap-1"><Globe className="h-2.5 w-2.5" />Published</Badge>;
+                              if (st === "archived") return <Badge variant="outline" className="text-xs text-red-500">Archived</Badge>;
+                              return null;
+                            })()}
+                          </div>
                         </TableCell>
                         <TableCell>
                           {(item as any).isCommodityTag && (
@@ -797,6 +1078,55 @@ export default function VendorDetailPage() {
                               <Link2 className="h-4 w-4 text-amber-500" />
                             </Button>
                           )}
+                          {(item as any).priceSellOverride != null && (
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              title="Reset override harga jual"
+                              onClick={() => resetOverride(item)}
+                              disabled={updateItem.isPending}
+                            >
+                              <RotateCcw className="h-4 w-4 text-blue-500" />
+                            </Button>
+                          )}
+                          {(item as any).status !== "published" ? (
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              title="Publish ke Marketplace"
+                              onClick={() => publishMutation.mutate({ itemId: item.id, status: "published" })}
+                              disabled={publishMutation.isPending}
+                            >
+                              <Globe className="h-4 w-4 text-slate-400 hover:text-blue-600" />
+                            </Button>
+                          ) : (
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              title="Unpublish dari Marketplace"
+                              onClick={() => publishMutation.mutate({ itemId: item.id, status: "draft" })}
+                              disabled={publishMutation.isPending}
+                            >
+                              <Globe className="h-4 w-4 text-blue-600" />
+                            </Button>
+                          )}
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            title="Kelola Foto / Video"
+                            onClick={() => setMediaItem({ id: item.id, name: item.name })}
+                          >
+                            <Images className="h-4 w-4 text-sky-500" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            title={(item as any).isFeatured ? "Hapus dari Unggulan" : "Jadikan Unggulan"}
+                            onClick={() => featuredMutation.mutate({ itemId: item.id, isFeatured: !(item as any).isFeatured })}
+                            disabled={featuredMutation.isPending}
+                          >
+                            <Star className={`h-4 w-4 ${(item as any).isFeatured ? "text-amber-500 fill-amber-500" : "text-slate-300 hover:text-amber-400"}`} />
+                          </Button>
                           <Button size="icon" variant="ghost" onClick={() => openEditItem(item)}>
                             <Pencil className="h-4 w-4" />
                           </Button>
@@ -809,7 +1139,7 @@ export default function VendorDetailPage() {
                   })}
                   {filteredCatalog.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={10} className="text-center text-muted-foreground py-10">
+                      <TableCell colSpan={12} className="text-center text-muted-foreground py-10">
                         {(catalogSearch || filterKategoriCatalog !== "all" || filterSubcatCatalog !== "all")
                           ? "Tidak ada item yang cocok dengan filter."
                           : <>Belum ada item. Klik <strong>Tambah Item</strong> untuk mulai mengisi etalase.</>}
@@ -818,6 +1148,7 @@ export default function VendorDetailPage() {
                   )}
                 </TableBody>
               </Table>
+              </>
             )}
           </CardContent>
         </Card>
@@ -1051,7 +1382,28 @@ export default function VendorDetailPage() {
                 placeholder="Harga yang vendor charge ke kita"
               />
               <p className="text-xs text-muted-foreground">
-                Harga beli / biaya vendor. Dipakai untuk RFQ blast. Profit = Harga Jual (master) − Harga Dasar.
+                Harga beli / biaya vendor. Dipakai untuk RFQ blast.
+              </p>
+            </div>
+
+            {/* ── Override Harga Jual ── */}
+            <div className="grid gap-1.5">
+              <Label>Override Harga Jual (Rp) <span className="text-muted-foreground font-normal">— opsional</span></Label>
+              <Input
+                type="number"
+                min="0"
+                step="1000"
+                value={itemForm.priceSellOverride}
+                onChange={(e) => setI("priceSellOverride", e.target.value)}
+                placeholder="Kosongkan = pakai harga Master Item"
+              />
+              <p className="text-xs text-muted-foreground">
+                Jika diisi, harga ini menang atas harga Master Item. Kosongkan untuk kembali ke Master Item.
+                {itemForm.priceSellOverride.trim() !== "" && itemForm.priceBase.trim() !== "" && (
+                  <span className="ml-1 text-primary font-medium">
+                    Profit: {fmt((parseFloat(itemForm.priceSellOverride) || 0) - (parseFloat(itemForm.priceBase) || 0))}
+                  </span>
+                )}
               </p>
             </div>
 
@@ -1211,7 +1563,11 @@ export default function VendorDetailPage() {
                 </div>
                 <div className="grid gap-1.5">
                   <Label>Alamat</Label>
-                  <Textarea value={vendorForm.address} onChange={(e) => setV("address", e.target.value)} rows={2} />
+                  <GooglePlacesAutocomplete
+                    value={vendorForm.address}
+                    onChange={(v) => setV("address", v)}
+                    placeholder="Ketik alamat vendor..."
+                  />
                 </div>
                 <div className="grid gap-1.5">
                   <Label>Tarif Pajak Default (PPN Pembelian)</Label>
@@ -1402,6 +1758,17 @@ export default function VendorDetailPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ── Product Media Manager ── */}
+      {mediaItem && (
+        <ProductMediaManager
+          open={!!mediaItem}
+          onClose={() => setMediaItem(null)}
+          vendorCatalogItemId={mediaItem.id}
+          vendorId={vendorId}
+          itemName={mediaItem.name}
+        />
+      )}
     </AppShell>
   );
 }

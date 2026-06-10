@@ -20,6 +20,7 @@ async function buildAll() {
   const result = await esbuild({
     entryPoints: [path.resolve(artifactDir, "src/index.ts")],
     platform: "node",
+    target: "node20",
     bundle: true,
     format: "esm",
     outdir: distDir,
@@ -57,6 +58,7 @@ async function buildAll() {
       "protobufjs",
       "onnxruntime-node",
       "jose",
+      "fluent-ffmpeg",
       "@tensorflow/*",
       "@prisma/client",
       "@mikro-orm/*",
@@ -104,6 +106,7 @@ async function buildAll() {
       "puppeteer-core",
       "electron",
       "web-push",
+      "compression",
     ],
     alias: {
       "@workspace/logistics-constants": path.resolve(workspaceRoot, "lib/logistics-constants/src/index.ts"),

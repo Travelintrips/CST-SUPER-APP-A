@@ -24,6 +24,7 @@ export default defineConfig({
     "import.meta.env.VITE_SUPABASE_URL_DEV": JSON.stringify(process.env.VITE_SUPABASE_URL_DEV ?? process.env.SUPABASE_URL_DEV ?? ""),
     "import.meta.env.VITE_SUPABASE_ANON_KEY_DEV": JSON.stringify(process.env.VITE_SUPABASE_ANON_KEY_DEV ?? process.env.SUPABASE_ANON_KEY_DEV ?? ""),
     "import.meta.env.VITE_REPLIT_DEV_DOMAIN": JSON.stringify(process.env.REPLIT_DEV_DOMAIN ?? ""),
+    "import.meta.env.VITE_GOOGLE_MAPS_API_KEY": JSON.stringify(process.env.GOOGLE_MAPS_API_KEY ?? ""),
   },
   plugins: [
     react(),
@@ -48,6 +49,7 @@ export default defineConfig({
       "@": path.resolve(import.meta.dirname, "src"),
       "@assets": path.resolve(import.meta.dirname, "..", "..", "attached_assets"),
       "@workspace/product-templates": path.resolve(import.meta.dirname, "../../lib/product-templates/src/index.ts"),
+      "@workspace/service-templates": path.resolve(import.meta.dirname, "../../lib/service-templates/src/index.ts"),
       "@workspace/logistics-constants": path.resolve(import.meta.dirname, "../../lib/logistics-constants/src/index.ts"),
     },
     dedupe: ["react", "react-dom"],

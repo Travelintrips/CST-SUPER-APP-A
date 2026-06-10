@@ -32,7 +32,8 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, ShoppingBag, Pencil, Trash2, Printer, Search, ChevronDown, X, RefreshCw, Clock } from "lucide-react";
+import { Plus, ShoppingBag, Pencil, Trash2, Printer, Search, ChevronDown, X, RefreshCw, Clock, ExternalLink } from "lucide-react";
+import { Plus, ShoppingBag, Pencil, Trash2, Printer, Search, ChevronDown, X, RefreshCw, Clock, ExternalLink, Database, Copy, CheckCheck, Link, Check } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import {
   AlertDialog,
@@ -315,6 +316,17 @@ export default function EcommercePage() {
   const [createProdCategories, setCreateProdCategories] = useState<string[]>([]);
   const [editProdCategories, setEditProdCategories] = useState<string[]>([]);
 
+  const [createWeightKg, setCreateWeightKg] = useState("");
+  const [createLengthCm, setCreateLengthCm] = useState("");
+  const [createWidthCm, setCreateWidthCm] = useState("");
+  const [createHeightCm, setCreateHeightCm] = useState("");
+  const [createGoodsType, setCreateGoodsType] = useState("");
+  const [editWeightKg, setEditWeightKg] = useState("");
+  const [editLengthCm, setEditLengthCm] = useState("");
+  const [editWidthCm, setEditWidthCm] = useState("");
+  const [editHeightCm, setEditHeightCm] = useState("");
+  const [editGoodsType, setEditGoodsType] = useState("");
+
   const [filterSalesTaxId, setFilterSalesTaxId] = useState<string>(() => initialParams.get("salesTax") ?? "all");
   const [filterPurchaseTaxId, setFilterPurchaseTaxId] = useState<string>(() => initialParams.get("purchaseTax") ?? "all");
   const [filterCategories, setFilterCategories] = useState<string[]>(() => {
@@ -418,6 +430,11 @@ export default function EcommercePage() {
         defaultPurchaseTaxId: createProdPurchaseTaxId,
         itemType: "barang",
         unit: "pcs",
+        weightKg: createWeightKg ? parseFloat(createWeightKg) : undefined,
+        lengthCm: createLengthCm ? parseFloat(createLengthCm) : undefined,
+        widthCm: createWidthCm ? parseFloat(createWidthCm) : undefined,
+        heightCm: createHeightCm ? parseFloat(createHeightCm) : undefined,
+        goodsType: createGoodsType || undefined,
       }
     }, {
       onSuccess: () => {
@@ -450,6 +467,11 @@ export default function EcommercePage() {
         defaultPurchaseTaxId: editProdPurchaseTaxId,
         itemType: editingProduct.itemType ?? "barang",
         unit: editingProduct.unit ?? "pcs",
+        weightKg: editWeightKg ? parseFloat(editWeightKg) : null,
+        lengthCm: editLengthCm ? parseFloat(editLengthCm) : null,
+        widthCm: editWidthCm ? parseFloat(editWidthCm) : null,
+        heightCm: editHeightCm ? parseFloat(editHeightCm) : null,
+        goodsType: editGoodsType || null,
       }
     }, {
       onSuccess: () => {
@@ -462,7 +484,10 @@ export default function EcommercePage() {
   };
 
   useEffect(() => {
-    if (!isProductDialogOpen) setCreateImageUrl(null);
+    if (!isProductDialogOpen) {
+      setCreateImageUrl(null);
+      setCreateWeightKg(""); setCreateLengthCm(""); setCreateWidthCm(""); setCreateHeightCm(""); setCreateGoodsType("");
+    }
   }, [isProductDialogOpen]);
 
   useEffect(() => {
@@ -470,6 +495,11 @@ export default function EcommercePage() {
     setEditProdSalesTaxId(editingProduct?.defaultSalesTaxId ?? null);
     setEditProdPurchaseTaxId(editingProduct?.defaultPurchaseTaxId ?? null);
     setEditProdCategories(editingProduct?.categories ?? []);
+    setEditWeightKg(editingProduct?.weightKg != null ? String(editingProduct.weightKg) : "");
+    setEditLengthCm(editingProduct?.lengthCm != null ? String(editingProduct.lengthCm) : "");
+    setEditWidthCm(editingProduct?.widthCm != null ? String(editingProduct.widthCm) : "");
+    setEditHeightCm(editingProduct?.heightCm != null ? String(editingProduct.heightCm) : "");
+    setEditGoodsType(editingProduct?.goodsType ?? "");
   }, [editingProduct]);
 
   const handleCreateCategory = (e: React.FormEvent<HTMLFormElement>) => {
@@ -736,6 +766,7 @@ export default function EcommercePage() {
                         isUploading={createImageUploader.isUploading}
                         onPickFile={(file) => createImageUploader.uploadFile(file)}
                         onRemove={() => setCreateImageUrl(null)}
+                        onSetUrl={(url) => setCreateImageUrl(url)}
                         resolveImage={resolveImage}
                         idPrefix="create"
                       />
@@ -758,6 +789,38 @@ export default function EcommercePage() {
                             {purchaseTaxes.map((t) => <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>)}
                           </SelectContent>
                         </Select>
+                      </div>
+                      <div className="grid gap-2 border rounded-md p-3 bg-muted/30">
+                        <Label className="text-sm font-semibold">Berat &amp; Dimensi Pengiriman</Label>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="grid gap-1">
+                            <Label htmlFor="create-weight" className="text-xs">Berat (kg)</Label>
+                            <Input id="create-weight" type="number" min="0" step="0.001" placeholder="0.000" value={createWeightKg} onChange={e => setCreateWeightKg(e.target.value)} />
+                          </div>
+                          <div className="grid gap-1">
+                            <Label htmlFor="create-goods-type" className="text-xs">Jenis Barang</Label>
+                            <Input id="create-goods-type" placeholder="mis. Elektronik" value={createGoodsType} onChange={e => setCreateGoodsType(e.target.value)} />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-3 gap-3">
+                          <div className="grid gap-1">
+                            <Label htmlFor="create-length" className="text-xs">Panjang (cm)</Label>
+                            <Input id="create-length" type="number" min="0" step="0.01" placeholder="0" value={createLengthCm} onChange={e => setCreateLengthCm(e.target.value)} />
+                          </div>
+                          <div className="grid gap-1">
+                            <Label htmlFor="create-width" className="text-xs">Lebar (cm)</Label>
+                            <Input id="create-width" type="number" min="0" step="0.01" placeholder="0" value={createWidthCm} onChange={e => setCreateWidthCm(e.target.value)} />
+                          </div>
+                          <div className="grid gap-1">
+                            <Label htmlFor="create-height" className="text-xs">Tinggi (cm)</Label>
+                            <Input id="create-height" type="number" min="0" step="0.01" placeholder="0" value={createHeightCm} onChange={e => setCreateHeightCm(e.target.value)} />
+                          </div>
+                        </div>
+                        {createWeightKg && parseFloat(createWeightKg) > 0 && createLengthCm && createWidthCm && createHeightCm && (
+                          <p className="text-xs text-muted-foreground">
+                            Volume: {((parseFloat(createLengthCm)||0)*(parseFloat(createWidthCm)||0)*(parseFloat(createHeightCm)||0)/1000000).toFixed(4)} m³
+                          </p>
+                        )}
                       </div>
                     </div>
                     <DialogFooter>
@@ -964,6 +1027,23 @@ export default function EcommercePage() {
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-1">
+                              <Button
+                                size="icon" variant="ghost"
+                                aria-label="Buku ke Portal"
+                                title="Buku ke Portal"
+                                onClick={() => {
+                                  const params = new URLSearchParams({
+                                    commodity: product.name,
+                                    productId: String(product.id),
+                                    qty: "1",
+                                    productPrice: String(product.price ?? 0),
+                                    unit: product.unit ?? "pcs",
+                                  });
+                                  window.open(`/book?${params}`, "_blank");
+                                }}
+                              >
+                                <ExternalLink className="h-4 w-4 text-blue-500" />
+                              </Button>
                               <Button size="icon" variant="ghost" onClick={() => setEditingProduct(product)} data-testid={`button-edit-product-${product.id}`} aria-label="Edit produk">
                                 <Pencil className="h-4 w-4" />
                               </Button>
@@ -1648,6 +1728,7 @@ export default function EcommercePage() {
                   isUploading={editImageUploader.isUploading}
                   onPickFile={(file) => editImageUploader.uploadFile(file)}
                   onRemove={() => setEditImageUrl(null)}
+                  onSetUrl={(url) => setEditImageUrl(url)}
                   resolveImage={resolveImage}
                   idPrefix="edit"
                 />
@@ -1670,6 +1751,38 @@ export default function EcommercePage() {
                       {purchaseTaxes.map((t) => <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>)}
                     </SelectContent>
                   </Select>
+                </div>
+                <div className="grid gap-2 border rounded-md p-3 bg-muted/30">
+                  <Label className="text-sm font-semibold">Berat &amp; Dimensi Pengiriman</Label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="grid gap-1">
+                      <Label htmlFor="edit-weight" className="text-xs">Berat (kg)</Label>
+                      <Input id="edit-weight" type="number" min="0" step="0.001" placeholder="0.000" value={editWeightKg} onChange={e => setEditWeightKg(e.target.value)} />
+                    </div>
+                    <div className="grid gap-1">
+                      <Label htmlFor="edit-goods-type" className="text-xs">Jenis Barang</Label>
+                      <Input id="edit-goods-type" placeholder="mis. Elektronik" value={editGoodsType} onChange={e => setEditGoodsType(e.target.value)} />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="grid gap-1">
+                      <Label htmlFor="edit-length" className="text-xs">Panjang (cm)</Label>
+                      <Input id="edit-length" type="number" min="0" step="0.01" placeholder="0" value={editLengthCm} onChange={e => setEditLengthCm(e.target.value)} />
+                    </div>
+                    <div className="grid gap-1">
+                      <Label htmlFor="edit-width" className="text-xs">Lebar (cm)</Label>
+                      <Input id="edit-width" type="number" min="0" step="0.01" placeholder="0" value={editWidthCm} onChange={e => setEditWidthCm(e.target.value)} />
+                    </div>
+                    <div className="grid gap-1">
+                      <Label htmlFor="edit-height" className="text-xs">Tinggi (cm)</Label>
+                      <Input id="edit-height" type="number" min="0" step="0.01" placeholder="0" value={editHeightCm} onChange={e => setEditHeightCm(e.target.value)} />
+                    </div>
+                  </div>
+                  {editWeightKg && parseFloat(editWeightKg) > 0 && editLengthCm && editWidthCm && editHeightCm && (
+                    <p className="text-xs text-muted-foreground">
+                      Volume: {((parseFloat(editLengthCm)||0)*(parseFloat(editWidthCm)||0)*(parseFloat(editHeightCm)||0)/1000000).toFixed(4)} m³
+                    </p>
+                  )}
                 </div>
               </div>
               <DialogFooter>
@@ -2093,13 +2206,26 @@ interface ProductImageFieldProps {
   isUploading: boolean;
   onPickFile: (file: File) => void;
   onRemove: () => void;
+  onSetUrl: (url: string) => void;
   resolveImage: (url?: string | null) => string | null;
   idPrefix: string;
 }
 
-function ProductImageField({ imageUrl, isUploading, onPickFile, onRemove, resolveImage, idPrefix }: ProductImageFieldProps) {
+function ProductImageField({ imageUrl, isUploading, onPickFile, onRemove, onSetUrl, resolveImage, idPrefix }: ProductImageFieldProps) {
   const inputId = `${idPrefix}-product-image-input`;
   const preview = resolveImage(imageUrl);
+  const [showUrlInput, setShowUrlInput] = React.useState(false);
+  const [urlValue, setUrlValue] = React.useState("");
+
+  const handleConfirmUrl = () => {
+    const trimmed = urlValue.trim();
+    if (trimmed) {
+      onSetUrl(trimmed);
+      setUrlValue("");
+      setShowUrlInput(false);
+    }
+  };
+
   return (
     <div className="grid gap-2">
       <Label>Foto Produk</Label>
@@ -2118,9 +2244,13 @@ function ProductImageField({ imageUrl, isUploading, onPickFile, onRemove, resolv
               e.target.value = "";
             }}
           />
-          <Button type="button" variant="outline" size="sm" disabled={isUploading} onClick={() => document.getElementById(inputId)?.click()} data-testid={`button-${idPrefix}-upload-image`}>
+          <Button type="button" variant="outline" size="sm" disabled={isUploading} onClick={() => { setShowUrlInput(false); document.getElementById(inputId)?.click(); }} data-testid={`button-${idPrefix}-upload-image`}>
             {isUploading ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <ImagePlus className="h-4 w-4 mr-1.5" />}
             {isUploading ? "Mengunggah..." : imageUrl ? "Ganti Foto" : "Unggah Foto"}
+          </Button>
+          <Button type="button" variant="outline" size="sm" disabled={isUploading} onClick={() => setShowUrlInput((v) => !v)} data-testid={`button-${idPrefix}-url-image`}>
+            <Link className="h-4 w-4 mr-1.5" />
+            Gunakan Link
           </Button>
           {imageUrl && !isUploading && (
             <Button type="button" variant="ghost" size="sm" onClick={onRemove} className="text-muted-foreground hover:text-destructive" data-testid={`button-${idPrefix}-remove-image`}>
@@ -2129,7 +2259,26 @@ function ProductImageField({ imageUrl, isUploading, onPickFile, onRemove, resolv
           )}
         </div>
       </div>
-      <p className="text-xs text-muted-foreground">Format: JPG/PNG, maks 10MB.</p>
+      {showUrlInput && (
+        <div className="flex gap-2 items-center mt-1">
+          <Input
+            type="url"
+            placeholder="https://example.com/gambar.jpg"
+            value={urlValue}
+            onChange={(e) => setUrlValue(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleConfirmUrl(); } }}
+            className="flex-1 h-8 text-sm"
+            data-testid={`input-${idPrefix}-image-url`}
+          />
+          <Button type="button" size="sm" className="h-8 px-3" onClick={handleConfirmUrl} disabled={!urlValue.trim()}>
+            <Check className="h-4 w-4" />
+          </Button>
+          <Button type="button" size="sm" variant="ghost" className="h-8 px-2" onClick={() => { setShowUrlInput(false); setUrlValue(""); }}>
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
+      <p className="text-xs text-muted-foreground">Format: JPG/PNG, maks 10MB. Atau tempel link URL gambar.</p>
     </div>
   );
 }

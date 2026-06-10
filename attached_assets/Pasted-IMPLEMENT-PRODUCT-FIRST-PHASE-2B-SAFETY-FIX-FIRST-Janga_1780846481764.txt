@@ -1,0 +1,120 @@
+IMPLEMENT PRODUCT-FIRST PHASE 2B — SAFETY FIX FIRST.
+
+Jangan ubah UI besar dulu.
+Jangan ubah database lagi.
+Jangan hapus flow lama.
+Fokus menutup temuan Post-Phase-2A Regression Audit.
+
+Wajib dikerjakan:
+
+1. Fix C2 — Guard Shipment RFQ V2
+
+File:
+artifacts/api-server/src/routes/logisticRfqV2.ts
+
+Endpoint:
+POST /orders/:orderId/rfq-blast
+POST /rfq/create-from-order/:orderId jika relevan
+
+Tambahkan guard:
+
+Jika orderType = "product_first", maka shipment RFQ hanya boleh dibuat jika:
+
+- productVendorId sudah ada
+- customerProductApprovedAt sudah ada
+- productReadyDate sudah ada
+- productPickupLocation sudah ada
+- shipmentMode sudah dipilih
+
+Jika belum lengkap:
+return HTTP 422 dengan pesan:
+
+"Product phase belum selesai. Shipment RFQ hanya bisa dibuat setelah vendor produk confirmed, customer approve produk, ready date, pickup location, dan shipment mode tersedia."
+
+Jangan block orderType = "shipment".
+Shipment order lama harus tetap jalan.
+
+2. Fix C3 — WA Customer untuk Shipment Selection Pending & Ready for Pickup
+
+File:
+artifacts/api-server/src/lib/services/logisticOrderStatusService.ts
+atau file constants status notification yang terkait.
+
+Tambahkan ke CUSTOMER_NOTIFY_STATUS_SET:
+
+- Shipment Selection Pending
+- Ready for Pickup
+
+Pastikan CUSTOMER_WA_MESSAGES sudah punya isi untuk dua status ini.
+Jika belum ada, tambahkan pesan:
+
+Shipment Selection Pending:
+"Produk Anda sudah disetujui. Silakan pilih metode pengiriman untuk melanjutkan proses."
+
+Ready for Pickup:
+"Produk Anda sudah siap dijemput. Silakan cek lokasi pickup dan jadwal pengambilan."
+
+3. Fix C4 — Friendly Label Tracking
+
+File:
+artifacts/api-server/src/routes/logisticOrders.ts
+atau file STEP_LABEL_MAP terkait.
+
+Tambahkan label Indonesia untuk:
+
+- Product RFQ Sent = RFQ Produk Terkirim
+- Product Quote Received = Penawaran Produk Masuk
+- Product Vendor Selected = Vendor Produk Dipilih
+- Customer Product Approval = Menunggu Persetujuan Produk
+- Shipment Selection Pending = Menunggu Pilihan Pengiriman
+- Ready for Pickup = Siap Dijemput
+
+4. Optional C1 — Guard Product Endpoint
+
+Pastikan semua endpoint product-first:
+
+- product-rfq
+- select-product-vendor
+- send-product-approval
+- customer-product-approve
+- select-shipment-mode
+- shipment-rfq
+
+menolak orderType selain product_first dengan HTTP 422.
+
+5. Test
+
+Jalankan regression:
+
+A. Legacy shipment order:
+- RFQ V2 blast tetap berhasil
+- tidak terkena guard product_first
+
+B. product_first order belum product approved:
+- RFQ V2 blast harus 422
+
+C. product_first order sudah:
+- productVendorId ada
+- customerProductApprovedAt ada
+- productReadyDate ada
+- productPickupLocation ada
+- shipmentMode ada
+
+RFQ V2 blast boleh jalan.
+
+D. Status Shipment Selection Pending:
+- WA customer tercatat
+
+E. Status Ready for Pickup:
+- WA customer tercatat
+
+F. Tracking label:
+- 6 status baru tampil dengan label Indonesia
+
+Output wajib:
+A. File yang diubah
+B. Guard yang ditambahkan
+C. WA status yang ditambahkan
+D. Tracking label yang ditambahkan
+E. Regression test result
+F. Go/No-Go untuk UI Phase 2B

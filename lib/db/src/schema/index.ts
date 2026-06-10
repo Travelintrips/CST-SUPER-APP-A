@@ -93,4 +93,8 @@ export * from "./vendorInstallments";
 export * from "./bankLoans";
 export * from "./fixedAssets";
 export * from "./expenseApprovals";
-export * from "./airFreight";
+export * from "./productMedia";
+export * from "./vendorCatalogEngine";
+export * from "./logisticVendorFulfillments";
+export * from "./waGateway";
+

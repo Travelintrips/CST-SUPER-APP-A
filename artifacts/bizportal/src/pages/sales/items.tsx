@@ -73,6 +73,8 @@ function useUsdRate(): number {
   return rate;
 }
 
+const CURRENCIES = ["IDR", "USD", "EUR", "SGD", "CNY", "JPY", "MYR", "AUD"];
+
 interface ItemForm {
   name: string;
   sku: string;
@@ -95,6 +97,7 @@ interface ItemForm {
   widthCm: string;
   heightCm: string;
   goodsType: string;
+  currencyCode: string;
 }
 
 interface InlineEdit {
@@ -158,6 +161,18 @@ interface DimRow {
   tinggi_cm: string;
   jenis_barang: string;
 }
+
+interface ScanMatch {
+  productId: number;
+  productName: string;
+  file: string;
+  url: string;
+}
+
+interface ScanFile {
+  file: string;
+  url: string;
+}
 const DIM_COLS: (keyof DimRow)[] = ["sku", "berat_kg", "panjang_cm", "lebar_cm", "tinggi_cm", "jenis_barang"];
 const DIM_HEADERS = ["SKU*", "Berat (kg)", "Panjang (cm)", "Lebar (cm)", "Tinggi (cm)", "Jenis Barang"];
 
@@ -186,6 +201,7 @@ const emptyForm = (): ItemForm => ({
   widthCm: "",
   heightCm: "",
   goodsType: "",
+  currencyCode: "IDR",
 });
 
 function parseMediaItems(raw: MediaItem[] | string | null | undefined): MediaItem[] {
@@ -265,6 +281,7 @@ function formFromProduct(p: Product): ItemForm {
     widthCm:   p.widthCm   != null ? String(p.widthCm)   : "",
     heightCm:  p.heightCm  != null ? String(p.heightCm)  : "",
     goodsType: p.goodsType ?? "",
+    currencyCode: (p as unknown as { currencyCode?: string }).currencyCode ?? "IDR",
   };
 }
 
@@ -321,6 +338,15 @@ export default function SalesItemsPage() {
 
   const [inlineEdit, setInlineEdit] = useState<InlineEdit | null>(null);
   const [inlineSaving, setInlineSaving] = useState<Set<number>>(new Set());
+  const [inlineImgUploading, setInlineImgUploading] = useState<Set<number>>(new Set());
+  const inlineImgRef = useRef<HTMLInputElement>(null);
+  const [inlineImgTarget, setInlineImgTarget] = useState<Product | null>(null);
+
+  const [scanOpen, setScanOpen] = useState(false);
+  const [scanLoading, setScanLoading] = useState(false);
+  const [scanResult, setScanResult] = useState<{ files: number; matched: ScanMatch[]; allFiles: ScanFile[] } | null>(null);
+  const [scanAssign, setScanAssign] = useState<Record<number, string>>({});
+  const [scanApplying, setScanApplying] = useState(false);
 
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkFields, setBulkFields] = useState<BulkFields>(emptyBulkFields());
@@ -362,6 +388,77 @@ export default function SalesItemsPage() {
       toast({ title: t.common.error, description: msg, variant: "destructive" });
     } finally {
       setInlineSaving((s) => { const n = new Set(s); n.delete(p.id); return n; });
+    }
+  };
+
+  const handleInlineImageUpload = async (file: File, product: Product) => {
+    const err = validateMediaFile(file, "image");
+    if (err) { toast({ title: "File tidak valid", description: err, variant: "destructive" }); return; }
+    setInlineImgUploading((s) => new Set(s).add(product.id));
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/storage/uploads/file", { method: "POST", credentials: "include", body: fd });
+      if (!res.ok) { const e = await res.json().catch(() => ({})) as { error?: string }; throw new Error(e.error ?? `Upload gagal (${res.status})`); }
+      const { url } = await res.json() as { url: string };
+      const patchRes = await fetch(`/api/ecommerce/products/${product.id}/image`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageUrl: url }),
+      });
+      if (!patchRes.ok) throw new Error("Gagal menyimpan gambar");
+      qc.invalidateQueries({ queryKey: getListProductsQueryKey({}) });
+      toast({ title: "Gambar berhasil disimpan" });
+    } catch (e) {
+      toast({ title: "Gagal upload gambar", description: String(e), variant: "destructive" });
+    } finally {
+      setInlineImgUploading((s) => { const n = new Set(s); n.delete(product.id); return n; });
+      setInlineImgTarget(null);
+    }
+  };
+
+  const handleScanStorage = async () => {
+    setScanLoading(true);
+    setScanResult(null);
+    setScanAssign({});
+    try {
+      const res = await fetch("/api/ecommerce/products/scan-storage", { method: "POST", credentials: "include" });
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json() as { files: number; matched: ScanMatch[]; allFiles: ScanFile[] };
+      setScanResult(data);
+      const autoAssign: Record<number, string> = {};
+      for (const m of data.matched) autoAssign[m.productId] = m.url;
+      setScanAssign(autoAssign);
+    } catch (e) {
+      toast({ title: "Scan gagal", description: String(e), variant: "destructive" });
+    } finally {
+      setScanLoading(false);
+    }
+  };
+
+  const handleApplyScan = async () => {
+    const assignments = Object.entries(scanAssign)
+      .filter(([, url]) => !!url)
+      .map(([productId, url]) => ({ productId: Number(productId), url }));
+    if (assignments.length === 0) { toast({ title: "Tidak ada yang dipilih" }); return; }
+    setScanApplying(true);
+    try {
+      const res = await fetch("/api/ecommerce/products/apply-storage-images", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assignments }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json() as { applied: number };
+      qc.invalidateQueries({ queryKey: getListProductsQueryKey({}) });
+      toast({ title: `${data.applied} gambar berhasil diterapkan` });
+      setScanOpen(false);
+    } catch (e) {
+      toast({ title: "Gagal menerapkan", description: String(e), variant: "destructive" });
+    } finally {
+      setScanApplying(false);
     }
   };
 
@@ -774,6 +871,7 @@ export default function SalesItemsPage() {
       widthCm:   form.widthCm   !== "" ? Number(form.widthCm)   : null,
       heightCm:  form.heightCm  !== "" ? Number(form.heightCm)  : null,
       goodsType: form.goodsType.trim() || null,
+      currencyCode: form.currencyCode || "IDR",
     };
 
     try {
@@ -862,6 +960,14 @@ export default function SalesItemsPage() {
               onClick={() => { setDimOpen(true); setDimRows([]); setDimResults(null); setDimError(null); }}
             >
               <FileSpreadsheet className="h-4 w-4 mr-1.5" /> Import Dimensi
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-purple-700 text-purple-400 hover:bg-purple-900/40"
+              onClick={() => { setScanOpen(true); setScanResult(null); setScanAssign({}); }}
+            >
+              <ImageIcon className="h-4 w-4 mr-1.5" /> Scan Gambar Storage
             </Button>
             <Button size="sm" className="bg-blue-600 hover:bg-blue-700" onClick={openCreate}>
               <Plus className="h-4 w-4 mr-1.5" /> Tambah Item
@@ -1117,20 +1223,38 @@ export default function SalesItemsPage() {
                         </TableCell>
                         <TableCell className="text-slate-200 font-medium">
                           <div className="flex items-center gap-2.5">
-                            {p.imageUrl ? (
-                              <img
-                                src={resolveMediaUrl(p.imageUrl)}
-                                alt={p.name}
-                                className="h-8 w-8 rounded object-cover shrink-0 border border-slate-700"
-                                onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-                              />
-                            ) : (
-                              p.itemType === "jasa" ? (
-                                <Wrench className="h-3.5 w-3.5 text-blue-400 shrink-0" />
+                            <button
+                              type="button"
+                              title="Klik untuk upload gambar"
+                              className="relative group shrink-0 h-8 w-8 rounded overflow-hidden border border-slate-700 focus:outline-none"
+                              onClick={() => { setInlineImgTarget(p); inlineImgRef.current?.click(); }}
+                              disabled={inlineImgUploading.has(p.id)}
+                            >
+                              {inlineImgUploading.has(p.id) ? (
+                                <div className="h-8 w-8 flex items-center justify-center bg-slate-800">
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-400" />
+                                </div>
+                              ) : p.imageUrl ? (
+                                <>
+                                  <img
+                                    src={resolveMediaUrl(p.imageUrl)}
+                                    alt={p.name}
+                                    className="h-8 w-8 object-cover"
+                                    onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                                  />
+                                  <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                                    <ImageIcon className="h-3 w-3 text-white" />
+                                  </div>
+                                </>
                               ) : (
-                                <Package className="h-3.5 w-3.5 text-amber-400 shrink-0" />
-                              )
-                            )}
+                                <div className="h-8 w-8 flex items-center justify-center bg-slate-800 group-hover:bg-slate-700 transition-colors">
+                                  {p.itemType === "jasa"
+                                    ? <Wrench className="h-3.5 w-3.5 text-blue-400" />
+                                    : <ImageIcon className="h-3 w-3 text-slate-500 group-hover:text-amber-400 transition-colors" />
+                                  }
+                                </div>
+                              )}
+                            </button>
                             {p.name}
                           </div>
                           {p.description && (
@@ -1393,6 +1517,19 @@ export default function SalesItemsPage() {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
+                <Label className="text-slate-300">Mata Uang</Label>
+                <Select value={form.currencyCode} onValueChange={(v) => setF("currencyCode", v)}>
+                  <SelectTrigger className="bg-slate-800 border-slate-600 text-slate-200">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-slate-800 border-slate-700">
+                    {CURRENCIES.map((c) => (
+                      <SelectItem key={c} value={c}>{c}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
                 <Label className="text-slate-300">Harga Jual Default</Label>
                 <Input
                   type="number"
@@ -1403,7 +1540,7 @@ export default function SalesItemsPage() {
                 />
               </div>
               {form.itemType === "barang" && (
-                <div className="space-y-1.5">
+                <div className="space-y-1.5 col-span-2">
                   <Label className="text-slate-300">Stok</Label>
                   <Input
                     type="number"
@@ -2055,6 +2192,111 @@ export default function SalesItemsPage() {
             {dimResults && (
               <Button variant="outline" onClick={() => { setDimRows([]); setDimResults(null); setDimError(null); }} className="border-slate-600 text-slate-300">
                 Import Lagi
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* Hidden inline image file input */}
+      <input
+        ref={inlineImgRef}
+        type="file"
+        accept="image/jpeg,image/jpg,image/png,image/webp"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file && inlineImgTarget) void handleInlineImageUpload(file, inlineImgTarget);
+          e.target.value = "";
+        }}
+      />
+
+      {/* Scan Storage Modal */}
+      <Dialog open={scanOpen} onOpenChange={setScanOpen}>
+        <DialogContent className="bg-slate-900 border-slate-700 text-slate-100 max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ImageIcon className="h-5 w-5 text-purple-400" />
+              Scan &amp; Pulihkan Gambar dari Storage
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-sm text-slate-400">
+              Scan file gambar di Supabase storage dan cocokkan dengan produk yang belum punya gambar.
+            </p>
+
+            {!scanResult && (
+              <Button
+                onClick={handleScanStorage}
+                disabled={scanLoading}
+                className="gap-2 bg-purple-700 hover:bg-purple-600"
+              >
+                {scanLoading ? <><Loader2 className="h-4 w-4 animate-spin" /> Scanning...</> : <><ImageIcon className="h-4 w-4" /> Mulai Scan</>}
+              </Button>
+            )}
+
+            {scanResult && (
+              <div className="space-y-4">
+                <div className="flex gap-4 text-sm">
+                  <span className="text-slate-300">File ditemukan: <strong className="text-purple-300">{scanResult.files}</strong></span>
+                  <span className="text-slate-300">Cocok otomatis: <strong className="text-green-400">{scanResult.matched.length}</strong></span>
+                </div>
+
+                {/* Products without images — assign manually */}
+                <div className="space-y-2">
+                  <p className="text-sm font-semibold text-slate-300">Assign Gambar ke Produk:</p>
+                  <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
+                    {products.filter((p) => !p.imageUrl).map((p) => (
+                      <div key={p.id} className="flex items-center gap-3 p-2 rounded bg-slate-800 border border-slate-700">
+                        <div className="shrink-0 h-10 w-10 rounded border border-slate-600 overflow-hidden bg-slate-900 flex items-center justify-center">
+                          {scanAssign[p.id] ? (
+                            <img src={resolveMediaUrl(scanAssign[p.id])} alt="" className="h-10 w-10 object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+                          ) : (
+                            <ImageIcon className="h-4 w-4 text-slate-600" />
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-slate-200 font-medium truncate">{p.name}</p>
+                          <p className="text-xs text-slate-500 font-mono">{p.sku}</p>
+                        </div>
+                        <select
+                          className="text-xs bg-slate-900 border border-slate-600 text-slate-200 rounded px-2 py-1 max-w-[200px] truncate"
+                          value={scanAssign[p.id] ?? ""}
+                          onChange={(e) => setScanAssign((prev) => ({ ...prev, [p.id]: e.target.value }))}
+                        >
+                          <option value="">— pilih file —</option>
+                          {scanResult.allFiles.map((f) => (
+                            <option key={f.file} value={f.url}>{f.file.split("/").pop()}</option>
+                          ))}
+                        </select>
+                      </div>
+                    ))}
+                    {products.filter((p) => !p.imageUrl).length === 0 && (
+                      <p className="text-sm text-green-400 py-4 text-center">Semua produk sudah punya gambar!</p>
+                    )}
+                  </div>
+                </div>
+
+                {scanResult.files === 0 && (
+                  <p className="text-sm text-amber-400 py-2">
+                    Tidak ada file gambar ditemukan di storage <code className="text-xs bg-slate-800 px-1 rounded">public-assets/portal-assets/</code>. Upload gambar dulu via portal admin atau dialog Edit Item.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="pt-3 border-t border-slate-700">
+            <Button variant="outline" onClick={() => setScanOpen(false)} className="border-slate-600 text-slate-300">
+              Tutup
+            </Button>
+            {scanResult && !scanResult.files && (
+              <Button onClick={handleScanStorage} disabled={scanLoading} variant="outline" className="border-purple-700 text-purple-400">
+                {scanLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Scan Ulang"}
+              </Button>
+            )}
+            {scanResult && Object.values(scanAssign).some(Boolean) && (
+              <Button onClick={handleApplyScan} disabled={scanApplying} className="gap-2 bg-green-700 hover:bg-green-600">
+                {scanApplying ? <><Loader2 className="h-4 w-4 animate-spin" /> Menerapkan...</> : <><CheckCircle2 className="h-4 w-4" /> Terapkan {Object.values(scanAssign).filter(Boolean).length} Gambar</>}
               </Button>
             )}
           </DialogFooter>

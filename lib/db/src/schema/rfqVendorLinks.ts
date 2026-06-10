@@ -24,6 +24,12 @@ export const rfqVendorLinksTable = pgTable("rfq_vendor_links", {
   submittedAt: timestamp("submitted_at"),
   lastUpdatedAt: timestamp("last_updated_at"),
   expiredAt: timestamp("expired_at"),
+  // ── Phase 2A: Product-First Flow ──────────────────────────────────────────
+  rfqType: text("rfq_type"),
+  pickupAddress: text("pickup_address"),
+  readyDate: text("ready_date"),
+  qtyConfirmed: numeric("qty_confirmed", { precision: 12, scale: 3 }),
+  qtyUnit: text("qty_unit"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

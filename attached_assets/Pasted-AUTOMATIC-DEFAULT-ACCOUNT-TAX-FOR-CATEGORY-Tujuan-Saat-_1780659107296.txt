@@ -1,0 +1,80 @@
+AUTOMATIC DEFAULT ACCOUNT & TAX FOR CATEGORY
+
+Tujuan:
+Saat admin memilih kategori biaya di form, secara otomatis terisi:
+
+* Akun Biaya (Debit)
+* Akun Hutang (Kredit)
+* Pajak Default (Auto-fill)
+
+---
+
+A. BACKEND
+
+1. **Add default fields to category schema**
+
+   * `default_debit_account_id`
+   * `default_credit_account_id`
+   * `default_tax_id`
+   * Bisa diset saat buat kategori baru atau update kategori existing
+
+2. **Update API GET category**
+
+   * Endpoint yang dikembalikan ke form sekarang sertakan field default:
+
+     ```
+     {
+       category_id,
+       name,
+       code,
+       default_debit_account_id,
+       default_credit_account_id,
+       default_tax_id
+     }
+     ```
+
+3. **API PATCH / POST**
+
+   * Saat kategori disimpan / update → default values tetap bisa diubah manual
+   * Validasi: field optional, tapi jika ada default → frontend bisa auto-fill
+
+---
+
+B. FRONTEND
+
+1. **Form Kategori**
+
+   * Saat pilih kategori:
+
+     ```ts
+     debitAccountDropdown.value = category.default_debit_account_id || ""
+     creditAccountDropdown.value = category.default_credit_account_id || ""
+     taxDropdown.value = category.default_tax_id || ""
+     ```
+   * Masih bisa override manual
+
+2. **UI**
+
+   * Dropdown Akun Biaya / Akun Hutang / Pajak Default sudah auto-fill
+   * Wajib lampiran & Aktif toggle tetap seperti sekarang
+
+---
+
+C. TESTING / QA
+
+| No | Step                          | Expected Result                                                 |
+| -- | ----------------------------- | --------------------------------------------------------------- |
+| 1  | Pilih kategori dengan default | Dropdown Akun Biaya, Akun Hutang, Pajak Default otomatis terisi |
+| 2  | Ubah manual                   | Nilai override tersimpan di DB                                  |
+| 3  | Pilih kategori tanpa default  | Dropdown tetap kosong / pilih manual                            |
+| 4  | Partial test                  | Tidak mengganggu kategori lain, build / TS clean                |
+
+---
+
+Instruksi:
+
+* Tambahkan default_debit_account_id, default_credit_account_id, default_tax_id di backend schema category
+* Sertakan default fields di API GET kategori
+* Frontend form dropdown auto-fill saat kategori dipilih
+* Masih bisa override manual
+* Test partial → pilih kategori → dropdown auto-fill sesuai default

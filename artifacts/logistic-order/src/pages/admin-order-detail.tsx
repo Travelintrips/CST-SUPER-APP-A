@@ -167,13 +167,37 @@ export default function AdminOrderDetail() {
             {order.items.map((item) => (
               <div key={item.id} className="bg-muted/30 rounded-lg p-4">
                 <div className="flex items-start justify-between gap-3 mb-2">
-                  <div>
-                    <Badge variant="outline" className="text-xs mb-1">{item.category}</Badge>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex flex-wrap gap-1 mb-1">
+                      <Badge variant="outline" className="text-xs">{item.category}</Badge>
+                      {item.itemSource === "vendor_catalog_item" && (
+                        <Badge className="text-xs bg-blue-100 text-blue-700 border-blue-200">Vendor Marketplace</Badge>
+                      )}
+                      {item.serviceType && (
+                        <Badge variant="secondary" className="text-xs">{item.serviceType}</Badge>
+                      )}
+                    </div>
                     <p className="font-semibold text-foreground text-sm">{item.serviceName}</p>
                     <p className="text-xs text-muted-foreground">Tipe: {item.calculatorType}</p>
                   </div>
                   <span className="font-bold text-accent text-sm flex-shrink-0">{formatCurrency(item.subtotal)}</span>
                 </div>
+                {item.itemSource === "vendor_catalog_item" && item.priceSnapshot && typeof item.priceSnapshot === "object" && (
+                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs bg-blue-50 rounded px-2 py-1.5">
+                    {(item.priceSnapshot as Record<string, unknown>).vendorName && (
+                      <span><span className="text-muted-foreground">Vendor: </span><span className="font-medium">{String((item.priceSnapshot as Record<string, unknown>).vendorName)}</span></span>
+                    )}
+                    {(item.priceSnapshot as Record<string, unknown>).itemName && (
+                      <span><span className="text-muted-foreground">Item: </span><span className="font-medium">{String((item.priceSnapshot as Record<string, unknown>).itemName)}</span></span>
+                    )}
+                    {(item.priceSnapshot as Record<string, unknown>).priceBase != null && (
+                      <span><span className="text-muted-foreground">Harga Dasar: </span><span className="font-medium">{formatCurrency(Number((item.priceSnapshot as Record<string, unknown>).priceBase))}</span></span>
+                    )}
+                    {(item.priceSnapshot as Record<string, unknown>).markupPct != null && (
+                      <span><span className="text-muted-foreground">Markup: </span><span className="font-medium">{String((item.priceSnapshot as Record<string, unknown>).markupPct)}%</span></span>
+                    )}
+                  </div>
+                )}
                 {!!item.inputData && typeof item.inputData === "object" && Object.keys(item.inputData as Record<string, unknown>).length > 0 && (
                   <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 gap-1">
                     {Object.entries(item.inputData as Record<string, unknown>)

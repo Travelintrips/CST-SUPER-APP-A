@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from "express";
+import multer from "multer";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { invalidateAppConfig } from "../lib/appConfig.js";
 import { getAdminWa, setAdminWa, getAdminGroupWa, setAdminGroupWa, getAdminPhones, setAdminPhones } from "../lib/adminWa.js";
@@ -14,10 +15,14 @@ import { resolveCompanyId } from "../lib/resolveCompany.js";
 import { getAiIntakeSettings, saveAiIntakeSettings, type VendorFilterMode } from "../lib/aiOrderIntake.js";
 import { LOGISTICS_SUBCATEGORIES } from "@workspace/logistics-constants";
 import { SECRETS_CATALOG, getSetting, setSetting, maskSecret, invalidateSettingCache } from "../lib/appSecrets.js";
+import { uploadToSupabase } from "../lib/supabaseStorage.js";
 
 const router = Router();
+const _upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 const CALC_RATES_KEY = "calculator_rates";
+const VEHICLE_IMAGES_KEY = "vehicle_images";
+const VEHICLE_ORDER_KEY  = "vehicle_order";
 const CARGO_TYPES_KEY = "cargo_types";
 const DEFAULT_CARGO_TYPES = ["Electronics", "Textiles", "Furniture", "Food & Beverage", "Chemicals", "Machinery", "Automotive Parts", "Medical Supplies", "Paper & Printing", "Raw Materials"];
 const LOGISTICS_SUBCATEGORIES_KEY = "logistics_subcategories";
@@ -1065,139 +1070,6 @@ router.delete("/app-config/:key", async (req: Request, res: Response) => {
   return res.json({ ok: true });
 });
 
-// GET /api/settings/secrets — daftar env vars dan status konfigurasi (admin only)
-router.get("/secrets", async (req: Request, res: Response) => {
-  if (!(await requireAdmin(req, res))) return;
-
-  function masked(val: string | undefined): string | undefined {
-    if (!val) return undefined;
-    if (val.length <= 6) return "••••";
-    return val.slice(0, 4) + "••••••••" + val.slice(-3);
-  }
-
-  const entries = [
-    {
-      key: "FONNTE_TOKEN",
-      label: "Fonnte Token",
-      description: "API token untuk pengiriman pesan WhatsApp via Fonnte",
-      category: "whatsapp",
-      required: true,
-      configured: !!process.env.FONNTE_TOKEN,
-      masked: masked(process.env.FONNTE_TOKEN),
-    },
-    {
-      key: "FONNTE_ADMIN_WA",
-      label: "WhatsApp Admin Group",
-      description: "ID grup WhatsApp admin sebagai fallback notifikasi (bisa di-override dari DB)",
-      category: "whatsapp",
-      required: false,
-      configured: !!process.env.FONNTE_ADMIN_WA,
-      masked: masked(process.env.FONNTE_ADMIN_WA),
-    },
-    {
-      key: "ADMIN_EMAIL",
-      label: "Admin Email",
-      description: "Alamat email admin untuk notifikasi sistem",
-      category: "email",
-      required: false,
-      configured: !!process.env.ADMIN_EMAIL,
-      masked: masked(process.env.ADMIN_EMAIL),
-    },
-    {
-      key: "SMTP_HOST",
-      label: "SMTP Host",
-      description: "Host server SMTP untuk pengiriman email",
-      category: "email",
-      required: false,
-      configured: !!process.env.SMTP_HOST,
-      masked: masked(process.env.SMTP_HOST),
-    },
-    {
-      key: "SMTP_USER",
-      label: "SMTP Username",
-      description: "Username/email untuk autentikasi SMTP",
-      category: "email",
-      required: false,
-      configured: !!process.env.SMTP_USER,
-      masked: masked(process.env.SMTP_USER),
-    },
-    {
-      key: "SMTP_PASS",
-      label: "SMTP Password",
-      description: "Password untuk autentikasi SMTP",
-      category: "email",
-      required: false,
-      configured: !!process.env.SMTP_PASS,
-      masked: masked(process.env.SMTP_PASS),
-    },
-    {
-      key: "PORTAL_ADMIN_KEY",
-      label: "Portal Admin Key",
-      description: "Kunci untuk klaim role admin di Customer Portal",
-      category: "portal",
-      required: false,
-      configured: !!process.env.PORTAL_ADMIN_KEY,
-      masked: masked(process.env.PORTAL_ADMIN_KEY),
-    },
-    {
-      key: "SESSION_SECRET",
-      label: "Session Secret",
-      description: "Secret untuk enkripsi session cookie BizPortal",
-      category: "auth",
-      required: true,
-      configured: !!process.env.SESSION_SECRET,
-      masked: masked(process.env.SESSION_SECRET),
-    },
-    {
-      key: "DRIVER_JWT_SECRET",
-      label: "Driver JWT Secret",
-      description: "Secret untuk JWT token autentikasi aplikasi driver (fallback ke SESSION_SECRET)",
-      category: "auth",
-      required: false,
-      configured: !!process.env.DRIVER_JWT_SECRET,
-      masked: masked(process.env.DRIVER_JWT_SECRET),
-    },
-    {
-      key: "DATABASE_URL",
-      label: "Database URL",
-      description: "Connection string PostgreSQL",
-      category: "other",
-      required: true,
-      configured: !!process.env.DATABASE_URL,
-      masked: masked(process.env.DATABASE_URL),
-    },
-    {
-      key: "OPENAI_API_KEY",
-      label: "OpenAI API Key",
-      description: "API key OpenAI untuk fitur AI (OCR, chat). Bisa via Replit AI Integration.",
-      category: "other",
-      required: false,
-      configured: !!process.env.OPENAI_API_KEY,
-      masked: masked(process.env.OPENAI_API_KEY),
-    },
-    {
-      key: "GOOGLE_CLIENT_ID",
-      label: "Google OAuth Client ID",
-      description: "Client ID untuk login via Google OAuth (opsional)",
-      category: "auth",
-      required: false,
-      configured: !!process.env.GOOGLE_CLIENT_ID,
-      masked: masked(process.env.GOOGLE_CLIENT_ID),
-    },
-    {
-      key: "GOOGLE_CLIENT_SECRET",
-      label: "Google OAuth Client Secret",
-      description: "Client secret untuk login via Google OAuth (opsional)",
-      category: "auth",
-      required: false,
-      configured: !!process.env.GOOGLE_CLIENT_SECRET,
-      masked: masked(process.env.GOOGLE_CLIENT_SECRET),
-    },
-  ];
-
-  return res.json(entries);
-});
-
 // ── App Secrets (admin) ────────────────────────────────────────────────────
 
 // GET /api/settings/secrets — list all secrets with masked values
@@ -1206,7 +1078,11 @@ router.get("/secrets", async (req: Request, res: Response) => {
   try {
     const results = await Promise.all(
       SECRETS_CATALOG.map(async (def) => {
-        const envValue = process.env[def.envFallback]?.trim() ?? "";
+        const envValue = (
+          process.env[def.envFallback]?.trim() ||
+          def.envFallbackAlt?.map(k => process.env[k]?.trim()).find(v => !!v) ||
+          ""
+        );
         const dbValue = await (async () => {
           try {
             const [row] = await db
@@ -1340,8 +1216,46 @@ router.get("/company-pickup-address", async (_req: Request, res: Response) => {
   }
 });
 
+// ── Bank Transfer Info ────────────────────────────────────────────────────────
+const BANK_TRANSFER_KEY = "bank_transfer_info";
+const DEFAULT_BANK_INFO = {
+  bankName: "BCA",
+  accountNumber: "123-456-7890",
+  accountName: "PT CST Logistik Indonesia",
+  branch: "Jakarta Pusat",
+  notes: "Cantumkan nomor pesanan sebagai keterangan transfer.",
+};
+
+// GET /api/settings/bank-transfer-info — public (dipakai customer portal step pembayaran)
+router.get("/bank-transfer-info", async (_req: Request, res: Response) => {
+  try {
+    const [row] = await db.select().from(portalContentTable).where(eq(portalContentTable.key, BANK_TRANSFER_KEY));
+    const info = row ? { ...DEFAULT_BANK_INFO, ...(JSON.parse(row.value) as Partial<typeof DEFAULT_BANK_INFO>) } : DEFAULT_BANK_INFO;
+    return res.json(info);
+  } catch {
+    return res.json(DEFAULT_BANK_INFO);
+  }
+});
+
+// PUT /api/settings/bank-transfer-info — admin only
+router.put("/bank-transfer-info", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  try {
+    const { bankName, accountNumber, accountName, branch, notes } = req.body as Record<string, string>;
+    const value = JSON.stringify({ bankName: bankName?.trim(), accountNumber: accountNumber?.trim(), accountName: accountName?.trim(), branch: branch?.trim(), notes: notes?.trim() });
+    await db.execute(sql`
+      INSERT INTO portal_content (key, value) VALUES (${BANK_TRANSFER_KEY}, ${value})
+      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+    `);
+    return res.json({ ok: true });
+  } catch (err) {
+    return res.status(500).json({ message: String(err) });
+  }
+});
+
 // GET /api/settings/quick-stats — ringkasan jumlah item utama ERP (admin)
-router.get("/quick-stats", requireAdmin, async (req: Request, res: Response) => {
+router.get("/quick-stats", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
   try {
     const companyId = await resolveCompanyId(req);
     const [[orders], [salesOrders], [customers], [vendors], [shipments], [staff]] = await Promise.all([
@@ -1362,6 +1276,147 @@ router.get("/quick-stats", requireAdmin, async (req: Request, res: Response) => 
     });
   } catch (err) {
     return res.status(500).json({ message: String(err) });
+  }
+});
+
+// ── Vehicle Order ─────────────────────────────────────────────────────────────
+
+// GET /api/settings/vehicle-order — public, returns string[] of vehicleIds
+router.get("/vehicle-order", async (_req: Request, res: Response) => {
+  const [row] = await db.select().from(portalContentTable).where(eq(portalContentTable.key, VEHICLE_ORDER_KEY));
+  return res.json(row ? JSON.parse(row.value) : []);
+});
+
+// PUT /api/settings/vehicle-order — admin only, save ordered array
+router.put("/vehicle-order", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const order = Array.isArray(req.body) ? req.body : [];
+  await db.insert(portalContentTable)
+    .values({ key: VEHICLE_ORDER_KEY, value: JSON.stringify(order) })
+    .onConflictDoUpdate({ target: portalContentTable.key, set: { value: JSON.stringify(order), updatedAt: new Date() } });
+  return res.json({ ok: true });
+});
+
+// ── Vehicle Images ────────────────────────────────────────────────────────────
+
+// GET /api/settings/vehicle-images — public, returns { vehicleId: imageUrl }
+router.get("/vehicle-images", async (_req: Request, res: Response) => {
+  const [row] = await db.select().from(portalContentTable).where(eq(portalContentTable.key, VEHICLE_IMAGES_KEY));
+  return res.json(row ? JSON.parse(row.value) : {});
+});
+
+// PUT /api/settings/vehicle-images — admin only, save full map
+router.put("/vehicle-images", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const images = req.body ?? {};
+  await db.insert(portalContentTable)
+    .values({ key: VEHICLE_IMAGES_KEY, value: JSON.stringify(images) })
+    .onConflictDoUpdate({ target: portalContentTable.key, set: { value: JSON.stringify(images), updatedAt: new Date() } });
+  return res.json({ ok: true });
+});
+
+// POST /api/settings/vehicle-images/upload — admin only, upload single image
+router.post("/vehicle-images/upload", _upload.single("file"), async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  if (!req.file) return res.status(400).json({ error: "Tidak ada file" });
+  const mime = req.file.mimetype;
+  if (!mime.startsWith("image/")) return res.status(400).json({ error: "Hanya file gambar yang diizinkan" });
+  try {
+    const { publicUrl } = await uploadToSupabase(req.file.buffer, mime, "vehicle-images");
+    return res.json({ url: publicUrl });
+  } catch (err) {
+    return res.status(500).json({ error: String(err) });
+  }
+});
+
+// GET /api/settings/secrets/:key — single secret (untuk halaman WA Gateway settings)
+router.get("/secrets/:key", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const { key } = req.params as { key: string };
+  const def = SECRETS_CATALOG.find((d) => d.key === key);
+  if (!def) return res.status(404).json({ message: `Key '${key}' tidak dikenal` });
+  try {
+    const envValue = (
+      process.env[def.envFallback]?.trim() ||
+      def.envFallbackAlt?.map(k => process.env[k]?.trim()).find(v => !!v) ||
+      ""
+    );
+    const [row] = await db
+      .select()
+      .from(portalContentTable)
+      .where(eq(portalContentTable.key, key));
+    const dbValue = row?.value?.trim() ?? "";
+    const effectiveValue = dbValue || envValue;
+    return res.json({
+      key,
+      hasValue: !!effectiveValue,
+      maskedValue: def.sensitive ? maskSecret(effectiveValue) : effectiveValue,
+      source: dbValue ? "db" : envValue ? "env" : "",
+    });
+  } catch (err) {
+    return res.status(500).json({ message: String(err) });
+  }
+});
+
+// GET /api/settings/wa-gateway/status — status WA Gateway (apakah terkonfigurasi + device status)
+router.get("/wa-gateway/status", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const { getWaGatewayConfig } = await import("../lib/appSecrets.js");
+  const config = await getWaGatewayConfig();
+  if (!config) {
+    return res.json({ configured: false, provider: "fonnte" });
+  }
+  // Ping WA Gateway untuk status device
+  try {
+    const statusUrl = `${config.url.replace(/\/$/, "")}/wa-gateway/api/devices/${config.deviceId}`;
+    const r = await fetch(statusUrl, {
+      headers: { Authorization: `Bearer ${config.apiKey}` },
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (!r.ok) {
+      return res.json({
+        configured: true, provider: "wa-gateway",
+        gatewayUrl: config.url, deviceId: config.deviceId,
+        deviceStatus: "disconnected",
+        error: `Device not found (HTTP ${r.status})`,
+      });
+    }
+    const device = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+    const rawStatus = (device.status ?? device.connectionStatus ?? "disconnected") as string;
+    const deviceStatus = rawStatus === "connected" || rawStatus === "open" ? "connected" : "disconnected";
+    return res.json({
+      configured: true, provider: "wa-gateway",
+      gatewayUrl: config.url, deviceId: config.deviceId,
+      deviceStatus,
+      deviceName: (device.name ?? device.deviceName ?? null) as string | null,
+    });
+  } catch (err: any) {
+    return res.json({
+      configured: true, provider: "wa-gateway",
+      gatewayUrl: config.url, deviceId: config.deviceId,
+      deviceStatus: null,
+      error: `Tidak dapat menjangkau WA Gateway: ${err.message ?? err}`,
+    });
+  }
+});
+
+// POST /api/settings/wa-gateway/test — kirim pesan test via WA Gateway
+router.post("/wa-gateway/test", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const { phone } = req.body as { phone?: string };
+  if (!phone?.trim()) return res.status(400).json({ error: "phone diperlukan" });
+  try {
+    const { getWaGatewayConfig } = await import("../lib/appSecrets.js");
+    const config = await getWaGatewayConfig();
+    if (!config) return res.status(400).json({ error: "WA Gateway belum dikonfigurasi (URL, API Key, dan Device ID harus diisi)" });
+    const { sendTextViaGateway } = await import("../lib/waGatewayProvider.js");
+    await sendTextViaGateway(config, phone.trim(),
+      "✅ Test pesan dari BizPortal — WA Gateway berhasil dikonfigurasi!",
+      { context: "test-wa-gateway", refId: `test-${Date.now()}` },
+    );
+    return res.json({ ok: true });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message ?? String(err) });
   }
 });
 

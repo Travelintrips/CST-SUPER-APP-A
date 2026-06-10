@@ -1929,6 +1929,11 @@ export interface Expense {
   salesDocId?: number | null;
   shipmentId?: number | null;
   categoryId?: number | null;
+  categoryName?: string | null;
+  sourceAccountId?: number | null;
+  sourceAccountName?: string | null;
+  vendorId?: number | null;
+  vendorName?: string | null;
   description?: string | null;
   qty: number;
   unit?: string | null;
@@ -1975,6 +1980,7 @@ export const CreateExpenseBodyExpenseType = {
 export interface CreateExpenseBody {
   date: string;
   vendorEmployee?: string | null;
+  vendorId?: number | null;
   expenseType?: CreateExpenseBodyExpenseType;
   salesDocId?: number | null;
   shipmentId?: number | null;
@@ -1988,6 +1994,7 @@ export interface CreateExpenseBody {
   notes?: string | null;
   expenseAccountId?: number | null;
   payableAccountId?: number | null;
+  sourceAccountId?: number | null;
 }
 
 export interface CreateExpenseAttachmentBody {
@@ -2231,6 +2238,15 @@ export interface LogisticOrderItem {
   inputData: unknown;
   calculationResult: unknown;
   subtotal: number;
+  itemSource?: string | null;
+  vendorCatalogItemId?: number | null;
+  vendorId?: number | null;
+  serviceType?: string | null;
+  priceSnapshot?: unknown | null;
+  calculationInput?: unknown | null;
+  vendorFulfillmentId?: number | null;
+  vendorFulfillmentStatus?: string | null;
+  vendorFulfillmentCreatedAt?: string | null;
   createdAt: string;
 }
 
@@ -2245,6 +2261,12 @@ export interface CreateLogisticOrderItemBody {
   inputData: unknown;
   calculationResult: unknown;
   subtotal: number;
+  itemSource?: string | null;
+  vendorCatalogItemId?: number | null;
+  vendorId?: number | null;
+  serviceType?: string | null;
+  priceSnapshot?: unknown | null;
+  calculationInput?: unknown | null;
 }
 
 export interface CreateLogisticOrderBody {
@@ -2911,6 +2933,7 @@ export const ExpenseActionBodyAction = {
 export type ExpenseActionBody = {
   action: ExpenseActionBodyAction;
   reason?: string | null;
+  paymentMethod?: string | null;
 };
 
 export type ListPortalProductOrdersParams = {

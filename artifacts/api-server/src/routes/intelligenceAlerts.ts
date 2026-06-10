@@ -190,6 +190,7 @@ intelligenceAlertsRouter.get("/settings", async (req: Request, res: Response) =>
         marginMinPct: "5.00",
         etaAlertEnabled: true,
         quoteExpiredAlertEnabled: true,
+        invoiceReminderEnabled: true,
         alertWindowStart: "00:00",
         alertWindowEnd: "23:59",
         updatedAt: null,
@@ -215,6 +216,7 @@ intelligenceAlertsRouter.put("/settings", async (req: Request, res: Response) =>
       marginMinPct,
       etaAlertEnabled,
       quoteExpiredAlertEnabled,
+      invoiceReminderEnabled,
       alertWindowStart,
       alertWindowEnd,
     } = req.body as Record<string, unknown>;
@@ -228,6 +230,7 @@ intelligenceAlertsRouter.put("/settings", async (req: Request, res: Response) =>
       marginMinPct: String(parseFloat(String(marginMinPct ?? "5")).toFixed(2)),
       etaAlertEnabled: Boolean(etaAlertEnabled),
       quoteExpiredAlertEnabled: Boolean(quoteExpiredAlertEnabled),
+      invoiceReminderEnabled: invoiceReminderEnabled !== undefined ? Boolean(invoiceReminderEnabled) : true,
       alertWindowStart: String(alertWindowStart ?? "00:00"),
       alertWindowEnd: String(alertWindowEnd ?? "23:59"),
       updatedAt: new Date(),

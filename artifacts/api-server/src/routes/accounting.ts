@@ -5,6 +5,8 @@ import {
   clearAndWriteSheet,
   readSheet,
   ensureSheets,
+  batchUpdateSheet,
+  getServiceAccountEmail,
 } from "../lib/googleSheets.js";
 import {
   db,
@@ -51,6 +53,17 @@ import { notifyPaymentConfirmation } from "../lib/enterpriseWorkflowNotify.js";
 import { transactionTaxesTable } from "@workspace/db";
 import { recordTransactionTax } from "../lib/taxAutoService.js";
 import { handleTaxSse, broadcastTaxUpdate } from "../lib/taxSseBroadcast.js";
+import {
+  postKasbonJournal,
+  postKasbonRepaymentJournal,
+  postTalanganJournal,
+  postTalanganRepaymentJournal,
+  postLoanDisbursementJournal,
+  postLoanRepaymentJournal,
+  postAssetPurchaseJournal,
+  postDepreciationJournal,
+  getJournalMappingSummary,
+} from "../lib/journalMappingService.js";
 
 function serializeCompany(c: typeof companiesTable.$inferSelect) {
   return { ...c, createdAt: c.createdAt.toISOString() };
@@ -1266,7 +1279,7 @@ router.get("/dashboard-kpi", async (req, res) => {
   const companyId = resolveCompanyId(req);
 
   const companyFilter = companyId
-    ? sql`AND ael.company_id = ${companyId}`
+    ? sql`AND ae.company_id = ${companyId}`
     : sql``;
   const sdCompanyFilter = companyId
     ? sql`AND sd.company_id = ${companyId}`
@@ -1497,6 +1510,201 @@ router.post("/payments/:id/void", async (req, res) => {
     return res
       .status(400)
       .json({ message: String((err as Error)?.message ?? err) });
+  }
+});
+
+// ============ Penerimaan & Pengeluaran Lain (Other Transactions) ==================
+
+router.get("/other-transactions/monthly-summary", async (req, res) => {
+  const companyId = resolveCompanyId(req);
+  const year = Number(req.query.year ?? new Date().getFullYear());
+
+  const companyCond = companyId
+    ? sql`AND ae.company_id = ${companyId}`
+    : sql``;
+
+  const monthly = await db.execute(sql`
+    SELECT
+      to_char(ae.date::date, 'YYYY-MM') AS month,
+      CASE WHEN ae.description ILIKE '[OTH] Penerimaan%' THEN 'income' ELSE 'expense' END AS tx_type,
+      COALESCE(SUM(ae.total_debit), 0)::numeric AS amount
+    FROM accounting_entries ae
+    WHERE ae.description ILIKE '[OTH]%'
+      AND ae.status = 'posted'
+      AND extract(year FROM ae.date::date) = ${year}
+      ${companyCond}
+    GROUP BY month, tx_type
+    ORDER BY month
+  `);
+
+  const byAccount = await db.execute(sql`
+    SELECT
+      coa.id AS account_id,
+      coa.code AS account_code,
+      coa.name AS account_name,
+      coa.type AS account_type,
+      CASE WHEN ae.description ILIKE '[OTH] Penerimaan%' THEN 'income' ELSE 'expense' END AS tx_type,
+      COALESCE(SUM(ael.credit), 0)::numeric AS credit_total,
+      COALESCE(SUM(ael.debit), 0)::numeric AS debit_total,
+      COUNT(DISTINCT ae.id)::integer AS tx_count
+    FROM accounting_entry_lines ael
+    JOIN accounting_entries ae ON ael.entry_id = ae.id
+    JOIN chart_of_accounts coa ON ael.account_id = coa.id
+    WHERE ae.description ILIKE '[OTH]%'
+      AND ae.status = 'posted'
+      AND extract(year FROM ae.date::date) = ${year}
+      ${companyCond}
+    GROUP BY coa.id, coa.code, coa.name, coa.type, tx_type
+    ORDER BY debit_total + credit_total DESC
+  `);
+
+  const MONTHS = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agt","Sep","Okt","Nov","Des"];
+  const trend = Array.from({ length: 12 }, (_, i) => {
+    const key = `${year}-${String(i + 1).padStart(2, "0")}`;
+    const inc = (monthly.rows as any[]).find((r) => r.month === key && r.tx_type === "income");
+    const exp = (monthly.rows as any[]).find((r) => r.month === key && r.tx_type === "expense");
+    const income = Number(inc?.amount ?? 0);
+    const expense = Number(exp?.amount ?? 0);
+    return { month: MONTHS[i], income, expense, net: income - expense };
+  });
+
+  return res.json({
+    year,
+    trend,
+    byAccount: (byAccount.rows as any[]).map((r) => ({
+      accountId: r.account_id,
+      accountCode: r.account_code,
+      accountName: r.account_name,
+      accountType: r.account_type,
+      txType: r.tx_type,
+      creditTotal: Number(r.credit_total),
+      debitTotal: Number(r.debit_total),
+      txCount: Number(r.tx_count),
+    })),
+  });
+});
+
+router.get("/other-transactions", async (req, res) => {
+  const companyId = resolveCompanyId(req);
+  const limit = Math.min(Number(req.query.limit ?? 100), 500);
+  const offset = Number(req.query.offset ?? 0);
+  const cond = companyId
+    ? and(eq(accountingEntriesTable.companyId, companyId), ilike(accountingEntriesTable.description, "[OTH]%"))
+    : ilike(accountingEntriesTable.description, "[OTH]%");
+  const rows = await db
+    .select()
+    .from(accountingEntriesTable)
+    .where(cond)
+    .orderBy(desc(accountingEntriesTable.date), desc(accountingEntriesTable.id))
+    .limit(limit)
+    .offset(offset);
+  const result = await Promise.all(rows.map(async (entry) => {
+    const lines = await db
+      .select({
+        id: accountingEntryLinesTable.id,
+        accountId: accountingEntryLinesTable.accountId,
+        debit: accountingEntryLinesTable.debit,
+        credit: accountingEntryLinesTable.credit,
+        description: accountingEntryLinesTable.description,
+        accountName: chartOfAccountsTable.name,
+        accountCode: chartOfAccountsTable.code,
+      })
+      .from(accountingEntryLinesTable)
+      .leftJoin(chartOfAccountsTable, eq(accountingEntryLinesTable.accountId, chartOfAccountsTable.id))
+      .where(eq(accountingEntryLinesTable.entryId, entry.id));
+    return {
+      ...serializeEntry(entry),
+      lines: lines.map((l) => ({ ...l, debit: Number(l.debit ?? 0), credit: Number(l.credit ?? 0) })),
+    };
+  }));
+  return res.json(result);
+});
+
+router.post("/other-transactions", async (req, res) => {
+  const companyId = resolveCompanyId(req);
+  const { type, journalId, counterAccountId, amount, date: dateStr, description, ref } = req.body ?? {};
+  if (!type || !journalId || !counterAccountId || !amount || !dateStr)
+    return res.status(400).json({ message: "type, journalId, counterAccountId, amount, date wajib diisi" });
+  if (type !== "income" && type !== "expense")
+    return res.status(400).json({ message: "type harus 'income' atau 'expense'" });
+  const amt = Number(amount);
+  if (Number.isNaN(amt) || amt <= 0)
+    return res.status(400).json({ message: "amount harus angka positif" });
+  const date = new Date(dateStr);
+  if (Number.isNaN(date.getTime()))
+    return res.status(400).json({ message: "Tanggal tidak valid" });
+
+  const [journal] = await db.select().from(accountingJournalsTable).where(eq(accountingJournalsTable.id, Number(journalId)));
+  if (!journal) return res.status(404).json({ message: "Jurnal tidak ditemukan" });
+  if (journal.type !== "bank" && journal.type !== "cash")
+    return res.status(400).json({ message: "Jurnal harus bertipe bank atau cash" });
+
+  const settings = await ensureAccountingSettings(companyId);
+  const bankAccountId = journal.defaultDebitAccountId ?? settings.defaultBankAccountId;
+  if (!bankAccountId)
+    return res.status(400).json({ message: "Tidak ada akun kas/bank yang dikonfigurasi untuk jurnal ini" });
+
+  const [counterAccount] = await db.select().from(chartOfAccountsTable).where(eq(chartOfAccountsTable.id, Number(counterAccountId)));
+  if (!counterAccount) return res.status(404).json({ message: "Akun lawan tidak ditemukan" });
+
+  const desc = `[OTH] ${type === "income" ? "Penerimaan" : "Pengeluaran"}: ${description ?? counterAccount.name}`;
+  const round2 = (n: number) => Math.round(n * 100) / 100;
+  const lines: PostingLine[] = type === "income"
+    ? [
+        { accountId: bankAccountId, debit: round2(amt), credit: 0, description: `Penerimaan - ${description ?? ""}` },
+        { accountId: Number(counterAccountId), debit: 0, credit: round2(amt), description: `Pendapatan - ${counterAccount.name}` },
+      ]
+    : [
+        { accountId: Number(counterAccountId), debit: round2(amt), credit: 0, description: `Beban - ${counterAccount.name}` },
+        { accountId: bankAccountId, debit: 0, credit: round2(amt), description: `Pengeluaran - ${description ?? ""}` },
+      ];
+
+  try {
+    const entry = await postEntry(
+      { journalId: journal.id, date, ref: ref ?? null, description: desc, lines, source: "manual", companyId: companyId ?? 1 },
+      journal.code,
+    );
+    return res.status(201).json(serializeEntry(entry));
+  } catch (err: any) {
+    return res.status(500).json({ message: err?.message ?? "Gagal membuat transaksi" });
+  }
+});
+
+router.post("/other-transactions/:id/void", async (req, res) => {
+  const id = Number(req.params.id);
+  if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
+  const [entry] = await db.select().from(accountingEntriesTable).where(eq(accountingEntriesTable.id, id));
+  if (!entry) return res.status(404).json({ message: "Entri tidak ditemukan" });
+  if (!entry.description?.startsWith("[OTH]"))
+    return res.status(400).json({ message: "Bukan transaksi lain-lain" });
+  if (entry.status !== "posted")
+    return res.status(400).json({ message: "Hanya entri berstatus posted yang bisa dibatalkan" });
+
+  const origLines = await db.select().from(accountingEntryLinesTable).where(eq(accountingEntryLinesTable.entryId, id));
+  const [journal] = await db.select().from(accountingJournalsTable).where(eq(accountingJournalsTable.id, entry.journalId));
+
+  try {
+    await postEntry(
+      {
+        journalId: entry.journalId,
+        date: new Date(),
+        ref: `VOID-${entry.ref ?? entry.id}`,
+        description: `[BATAL] ${entry.description}`,
+        lines: origLines.map((l) => ({
+          accountId: l.accountId,
+          debit: Number(l.credit ?? 0),
+          credit: Number(l.debit ?? 0),
+          description: `Pembatalan: ${l.description ?? ""}`,
+        })),
+        source: "manual",
+        companyId: entry.companyId ?? 1,
+      },
+      journal?.code ?? "MISC",
+    );
+    await db.update(accountingEntriesTable).set({ status: "draft" }).where(eq(accountingEntriesTable.id, id));
+    return res.json({ ok: true });
+  } catch (err: any) {
+    return res.status(500).json({ message: err?.message ?? "Gagal membatalkan transaksi" });
   }
 });
 
@@ -1762,6 +1970,74 @@ router.get("/reports/trial-balance", async (req, res) => {
   });
 });
 
+/** GET /accounting/dashboard/monthly-cash — saldo kas/bank per bulan 12 bulan terakhir */
+router.get("/dashboard/monthly-cash", async (req, res) => {
+  const scope = resolveCompanyScope(req);
+
+  // 1. Ambil semua akun kas/bank (asset, nama mengandung kas/bank/cash)
+  const allAccounts = await db.select().from(chartOfAccountsTable);
+  const cashAccountIds = allAccounts
+    .filter((a) => {
+      const scopeOk = scope === "all" || a.companyId === scope || a.companyId === null;
+      return scopeOk && a.type === "asset" && /kas|bank|cash/i.test(a.name);
+    })
+    .map((a) => a.id);
+
+  if (cashAccountIds.length === 0) return res.json({ months: [] });
+
+  // 2. Semua entry lines untuk akun tersebut (posted), join dengan entry untuk tanggal
+  const raw = await db
+    .select({
+      date: accountingEntriesTable.date,
+      debit: accountingEntryLinesTable.debit,
+      credit: accountingEntryLinesTable.credit,
+    })
+    .from(accountingEntryLinesTable)
+    .innerJoin(accountingEntriesTable, eq(accountingEntryLinesTable.entryId, accountingEntriesTable.id))
+    .where(
+      and(
+        inArray(accountingEntryLinesTable.accountId, cashAccountIds),
+        eq(accountingEntriesTable.status, "posted"),
+      ),
+    );
+
+  // 3. Agregasi per bulan
+  const monthMap = new Map<string, { debit: number; credit: number }>();
+  for (const r of raw) {
+    const d = r.date instanceof Date ? r.date : new Date(r.date as string);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    const cur = monthMap.get(key) ?? { debit: 0, credit: 0 };
+    cur.debit += Number(r.debit);
+    cur.credit += Number(r.credit);
+    monthMap.set(key, cur);
+  }
+
+  // 4. Buat array 12 bulan terakhir dengan saldo kumulatif
+  const now = new Date();
+  const months: { month: string; label: string; saldo: number }[] = [];
+  // Hitung opening balance sebelum 12 bulan lalu
+  const cutoff = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+  const cutoffKey = `${cutoff.getFullYear()}-${String(cutoff.getMonth() + 1).padStart(2, "0")}`;
+  let opening = 0;
+  for (const [k, v] of monthMap.entries()) {
+    if (k < cutoffKey) opening += v.debit - v.credit;
+  }
+  let running = opening;
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    const mv = monthMap.get(key) ?? { debit: 0, credit: 0 };
+    running += mv.debit - mv.credit;
+    months.push({
+      month: key,
+      label: d.toLocaleString("id-ID", { month: "short", year: "2-digit" }),
+      saldo: Math.round(running * 100) / 100,
+    });
+  }
+
+  return res.json({ months, accountCount: cashAccountIds.length });
+});
+
 router.get("/reports/general-ledger", async (req, res) => {
   const scope = resolveCompanyScope(req);
   const range = parseDateRange(req);
@@ -1906,6 +2182,49 @@ router.get("/reports/profit-loss", async (req, res) => {
   });
 });
 
+router.get("/reports/profit-loss-monthly", async (req, res) => {
+  const scope = resolveCompanyScope(req);
+  const range = parseDateRange(req);
+  if (range.error) return res.status(400).json({ message: range.error });
+
+  const dateFrom = range.from ? range.from.toISOString().slice(0, 10) : null;
+  const dateTo   = range.to   ? range.to.toISOString().slice(0, 10)   : null;
+
+  const dateFilter = dateFrom && dateTo
+    ? `AND ae.entry_date BETWEEN '${dateFrom}' AND '${dateTo}'`
+    : dateFrom ? `AND ae.entry_date >= '${dateFrom}'`
+    : dateTo   ? `AND ae.entry_date <= '${dateTo}'`
+    : "";
+
+  const companyFilter = scope === "all" || !scope
+    ? ""
+    : `AND ae.company_id = ${Number(scope)}`;
+
+  const result = await db.execute(sql.raw(`
+    SELECT
+      TO_CHAR(ae.entry_date, 'YYYY-MM') AS month,
+      COALESCE(SUM(CASE WHEN coa.type = 'revenue' THEN COALESCE(ael.credit,0) - COALESCE(ael.debit,0) ELSE 0 END), 0) AS revenue,
+      COALESCE(SUM(CASE WHEN coa.type = 'expense' THEN COALESCE(ael.debit,0) - COALESCE(ael.credit,0) ELSE 0 END), 0) AS expense
+    FROM accounting_entry_lines ael
+    JOIN chart_of_accounts coa ON coa.id = ael.account_id
+    JOIN accounting_entries ae ON ae.id = ael.entry_id
+    WHERE ae.status = 'posted'
+      ${dateFilter}
+      ${companyFilter}
+    GROUP BY month
+    ORDER BY month
+  `));
+
+  const months = (result.rows as any[]).map((r) => ({
+    month: r.month as string,
+    revenue:   Math.round(Number(r.revenue)  * 100) / 100,
+    expense:   Math.round(Number(r.expense)  * 100) / 100,
+    netIncome: Math.round((Number(r.revenue) - Number(r.expense)) * 100) / 100,
+  }));
+
+  return res.json({ months });
+});
+
 router.get("/reports/balance-sheet", async (req, res) => {
   const scope = resolveCompanyScope(req);
   // Balance sheet is "as of" date — use 'to' as cutoff, ignore 'from'
@@ -1974,8 +2293,13 @@ router.get("/reports/balance-sheet", async (req, res) => {
 
 /**
  * GET /accounting/reports/freight-profitability
- * Laporan profitabilitas per shipment VMF:
- * Revenue (SO.grand_total) vs Biaya Vendor (approved quote vendor_price) = Gross Margin
+ * Laporan profitabilitas per shipment VMF (Phase 1 fix):
+ *   Revenue      = sales_documents.grand_total
+ *   Vendor Cost  = logistic_order_quotes.vendor_price (approved quote)
+ *   Truck Cost   = logistic_orders.truck_price
+ *   Tax          = logistic_orders.tax
+ *   Gross Margin = Revenue - Vendor Cost - Truck Cost
+ *   Margin %     = Gross Margin / Revenue * 100
  */
 router.get("/reports/freight-profitability", async (req, res) => {
   if (!(await requireAdmin(req, res))) return;
@@ -2002,19 +2326,21 @@ router.get("/reports/freight-profitability", async (req, res) => {
 
   const rows = await db.execute(sql.raw(`
     SELECT
-      sd.id                                        AS so_id,
-      sd.doc_number                                AS so_number,
-      sd.status                                    AS so_status,
+      sd.id                                                   AS so_id,
+      sd.doc_number                                           AS so_number,
+      sd.status                                               AS so_status,
       sd.customer_name,
-      sd.grand_total                               AS revenue,
+      sd.grand_total                                          AS revenue,
       sd.created_at,
       lo.order_number,
       lo.origin,
       lo.destination,
       lo.shipment_type,
       lo.transport_mode,
-      COALESCE(loq.vendor_price, 0)                AS vendor_cost,
-      s.name                                       AS vendor_name
+      COALESCE(loq.vendor_price, 0)                          AS vendor_cost,
+      COALESCE(lo.truck_price, 0)                            AS truck_cost,
+      COALESCE(lo.tax, 0)                                    AS tax,
+      s.name                                                  AS vendor_name
     FROM sales_documents sd
     JOIN logistic_orders lo ON lo.id = sd.logistic_order_id
     LEFT JOIN logistic_order_quotes loq ON loq.id = lo.approved_quote_id
@@ -2029,14 +2355,17 @@ router.get("/reports/freight-profitability", async (req, res) => {
     customer_name: string; revenue: string; created_at: string;
     order_number: string; origin: string; destination: string;
     shipment_type: string; transport_mode: string | null;
-    vendor_cost: string; vendor_name: string | null;
+    vendor_cost: string; truck_cost: string; tax: string;
+    vendor_name: string | null;
   };
 
   const items = (rows.rows as Row[]).map((r) => {
-    const revenue    = Math.round(Number(r.revenue    ?? 0) * 100) / 100;
+    const revenue    = Math.round(Number(r.revenue     ?? 0) * 100) / 100;
     const vendorCost = Math.round(Number(r.vendor_cost ?? 0) * 100) / 100;
-    const margin     = Math.round((revenue - vendorCost) * 100) / 100;
-    const marginPct  = revenue > 0 ? Math.round((margin / revenue) * 10000) / 100 : 0;
+    const truckCost  = Math.round(Number(r.truck_cost  ?? 0) * 100) / 100;
+    const tax        = Math.round(Number(r.tax         ?? 0) * 100) / 100;
+    const grossMargin = Math.round((revenue - vendorCost - truckCost) * 100) / 100;
+    const marginPct   = revenue > 0 ? Math.round((grossMargin / revenue) * 10000) / 100 : 0;
     return {
       soId: Number(r.so_id),
       soNumber: r.so_number,
@@ -2050,7 +2379,11 @@ router.get("/reports/freight-profitability", async (req, res) => {
       vendorName: r.vendor_name ?? null,
       revenue,
       vendorCost,
-      margin,
+      truckCost,
+      tax,
+      grossMargin,
+      // legacy alias
+      margin: grossMargin,
       marginPct,
       createdAt: r.created_at,
     };
@@ -2058,13 +2391,18 @@ router.get("/reports/freight-profitability", async (req, res) => {
 
   const totalRevenue    = Math.round(items.reduce((s, r) => s + r.revenue,    0) * 100) / 100;
   const totalVendorCost = Math.round(items.reduce((s, r) => s + r.vendorCost, 0) * 100) / 100;
-  const totalMargin     = Math.round((totalRevenue - totalVendorCost) * 100) / 100;
+  const totalTruckCost  = Math.round(items.reduce((s, r) => s + r.truckCost,  0) * 100) / 100;
+  const totalTax        = Math.round(items.reduce((s, r) => s + r.tax,        0) * 100) / 100;
+  const totalMargin     = Math.round((totalRevenue - totalVendorCost - totalTruckCost) * 100) / 100;
   const totalMarginPct  = totalRevenue > 0 ? Math.round((totalMargin / totalRevenue) * 10000) / 100 : 0;
 
   return res.json({
     from: fromDate?.toISOString() ?? null,
     to:   toDate?.toISOString()   ?? null,
-    summary: { totalRevenue, totalVendorCost, totalMargin, totalMarginPct, count: items.length },
+    summary: {
+      totalRevenue, totalVendorCost, totalTruckCost, totalTax,
+      totalMargin, totalMarginPct, count: items.length,
+    },
     items,
   });
 });
@@ -2158,7 +2496,7 @@ router.get("/holding/summary", async (req, res) => {
     JOIN chart_of_accounts coa ON coa.id = ael.account_id
     JOIN accounting_entries ae ON ae.id = ael.entry_id
     WHERE ae.status::text = 'posted'
-      AND ael.company_id = ANY(${companyIdsArr})
+      AND ae.company_id = ANY(${companyIdsArr})
       ${dateFilter}
   `);
 
@@ -2219,7 +2557,7 @@ router.get("/holding/breakdown", async (req, res) => {
 
   const result = await db.execute(sql`
     SELECT
-      ael.company_id,
+      ae.company_id,
       COALESCE(SUM(CASE WHEN coa.type::text = 'revenue' THEN COALESCE(ael.credit, 0) - COALESCE(ael.debit, 0) ELSE 0 END), 0) AS revenue,
       COALESCE(SUM(CASE WHEN coa.type::text = 'expense' THEN COALESCE(ael.debit, 0) - COALESCE(ael.credit, 0) ELSE 0 END), 0) AS expense,
       COALESCE(SUM(
@@ -2239,9 +2577,9 @@ router.get("/holding/breakdown", async (req, res) => {
     JOIN chart_of_accounts coa ON coa.id = ael.account_id
     JOIN accounting_entries ae ON ae.id = ael.entry_id
     WHERE ae.status::text = 'posted'
-      AND ael.company_id = ANY(${companyIdsArr})
+      AND ae.company_id = ANY(${companyIdsArr})
       ${dateFilter}
-    GROUP BY ael.company_id
+    GROUP BY ae.company_id
   `);
 
   const byCompanyId = new Map(
@@ -2374,17 +2712,17 @@ router.get("/holding/pl-monthly", async (req, res) => {
   const result = await db.execute(sql`
     SELECT
       TO_CHAR(ae.entry_date, 'YYYY-MM') AS month,
-      ael.company_id,
+      ae.company_id,
       COALESCE(SUM(CASE WHEN coa.type::text = 'revenue' THEN COALESCE(ael.credit, 0) - COALESCE(ael.debit, 0) ELSE 0 END), 0) AS revenue,
       COALESCE(SUM(CASE WHEN coa.type::text = 'expense' THEN COALESCE(ael.debit, 0) - COALESCE(ael.credit, 0) ELSE 0 END), 0) AS expense
     FROM accounting_entry_lines ael
     JOIN chart_of_accounts coa ON coa.id = ael.account_id
     JOIN accounting_entries ae ON ae.id = ael.entry_id
     WHERE ae.status::text = 'posted'
-      AND ael.company_id = ANY(${companyIdsArr})
+      AND ae.company_id = ANY(${companyIdsArr})
       ${dateFilter}
-    GROUP BY month, ael.company_id
-    ORDER BY month, ael.company_id
+    GROUP BY month, ae.company_id
+    ORDER BY month, ae.company_id
   `);
 
   type Row = { month: string; company_id: number; revenue: string; expense: string };
@@ -2445,7 +2783,7 @@ router.get("/holding/cashflow-monthly", async (req, res) => {
   const result = await db.execute(sql`
     SELECT
       TO_CHAR(ae.entry_date, 'YYYY-MM') AS month,
-      ael.company_id,
+      ae.company_id,
       -- Arus Operasi: penerimaan dari pendapatan
       COALESCE(SUM(CASE WHEN coa.type::text = 'revenue'
         THEN COALESCE(ael.credit, 0) - COALESCE(ael.debit, 0) ELSE 0 END), 0) AS op_inflow,
@@ -2481,10 +2819,10 @@ router.get("/holding/cashflow-monthly", async (req, res) => {
     JOIN chart_of_accounts coa ON coa.id = ael.account_id
     JOIN accounting_entries ae ON ae.id = ael.entry_id
     WHERE ae.status::text = 'posted'
-      AND ael.company_id = ANY(${companyIdsArr})
+      AND ae.company_id = ANY(${companyIdsArr})
       ${dateFilter}
-    GROUP BY month, ael.company_id
-    ORDER BY month, ael.company_id
+    GROUP BY month, ae.company_id
+    ORDER BY month, ae.company_id
   `);
 
   type Row = {
@@ -2837,6 +3175,62 @@ router.get("/holding/groups/:id/cashflow", async (req, res) => {
 
 // ─── GOOGLE SHEETS SYNC ───────────────────────────────────────────────────────
 
+// GET /accounting/rekon-schedule — baca konfigurasi jadwal rekonsiliasi otomatis
+router.get("/rekon-schedule", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  const companyId = resolveCompanyId(req);
+  const [settings] = await db
+    .select({ id: accountingSettingsTable.id, meta: accountingSettingsTable.meta })
+    .from(accountingSettingsTable)
+    .where(companyId ? eq(accountingSettingsTable.companyId, companyId) : isNull(accountingSettingsTable.companyId));
+  const meta = (settings?.meta ?? {}) as Record<string, unknown>;
+  return res.json({ config: meta.rekonSchedule ?? null, lastManualRekonAt: meta.lastManualRekonAt ?? null });
+});
+
+// POST /accounting/rekon-schedule — simpan/update konfigurasi jadwal
+router.post("/rekon-schedule", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  const companyId = resolveCompanyId(req);
+  const {
+    enabled, spreadsheetId, sheetName, colKey, colStatus, startRow, hourWib,
+  } = req.body as {
+    enabled: boolean;
+    spreadsheetId: string;
+    sheetName?: string;
+    colKey?: number;
+    colStatus?: number;
+    startRow?: number;
+    hourWib?: number;
+  };
+
+  if (enabled && !spreadsheetId) {
+    return res.status(400).json({ message: "spreadsheetId wajib diisi saat aktif" });
+  }
+
+  const newConfig = { enabled, spreadsheetId, sheetName: sheetName ?? "Mutasi", colKey: colKey ?? 4, colStatus: colStatus ?? 5, startRow: startRow ?? 2, hourWib: hourWib ?? 2, companyId: companyId ?? null };
+
+  const [existing] = await db
+    .select({ id: accountingSettingsTable.id, meta: accountingSettingsTable.meta })
+    .from(accountingSettingsTable)
+    .where(companyId ? eq(accountingSettingsTable.companyId, companyId) : isNull(accountingSettingsTable.companyId));
+
+  const baseMeta = (existing?.meta ?? {}) as Record<string, unknown>;
+  const newMeta = { ...baseMeta, rekonSchedule: { ...((baseMeta.rekonSchedule as object) ?? {}), ...newConfig } };
+
+  if (existing) {
+    await db.update(accountingSettingsTable).set({ meta: newMeta }).where(eq(accountingSettingsTable.id, existing.id));
+  } else {
+    await db.insert(accountingSettingsTable).values({ companyId: companyId ?? null, meta: newMeta } as typeof accountingSettingsTable.$inferInsert);
+  }
+  return res.json({ ok: true, config: newMeta.rekonSchedule });
+});
+
+// GET /accounting/gsheet/sa-email — kembalikan email Service Account (untuk panduan share spreadsheet)
+router.get("/gsheet/sa-email", (req, res) => {
+  const email = getServiceAccountEmail();
+  return res.json({ email });
+});
+
 // GET /accounting/gsheet/config — ambil spreadsheetId yang tersimpan (dari env atau DB settings)
 router.get("/gsheet/config", async (req, res) => {
   const companyId = resolveCompanyId(req);
@@ -2900,6 +3294,7 @@ router.post("/gsheet/push", async (req, res) => {
   const spreadsheetId = settings?.gsheetSpreadsheetId;
   if (!spreadsheetId) return res.status(400).json({ message: "Spreadsheet belum dikonfigurasi. Jalankan setup terlebih dahulu." });
 
+  try {
   // Pastikan semua tab yang dibutuhkan ada (buat jika belum ada)
   const REQUIRED_SHEETS = ["CoA", "Jurnal", "Lines", "TrialBalance", "GL"];
   await ensureSheets(spreadsheetId, REQUIRED_SHEETS);
@@ -3028,6 +3423,16 @@ router.post("/gsheet/push", async (req, res) => {
     spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${spreadsheetId}`,
     pushed: { accounts: accounts.length, entries: entries.length, lines: lineRows.length - 1, glLines: glRows.length - 1 },
   });
+  } catch (e: unknown) {
+    const raw = (e as Error).message ?? String(e);
+    const saEmail = getServiceAccountEmail();
+    const msg = raw.includes("has not been used") || raw.includes("is disabled")
+      ? `Google Sheets API belum diaktifkan di project GCP ini. Aktifkan di: https://console.developers.google.com/apis/api/sheets.googleapis.com/overview — kemudian coba lagi.`
+      : raw.includes("does not have permission") || raw.includes("caller does not have permission")
+      ? `Service Account tidak punya akses ke spreadsheet ini.${saEmail ? ` Share spreadsheet ke: ${saEmail} (Editor)` : ""}`
+      : raw;
+    return res.status(500).json({ message: msg });
+  }
 });
 
 // POST /accounting/gsheet/pull — baca dari Google Sheets → update DB
@@ -3341,6 +3746,347 @@ router.patch("/tax-transactions/bulk-mark", async (req, res) => {
 
 router.get("/tax-stream", (req, res) => {
   handleTaxSse(req, res);
+});
+
+// ── Journal Mapping Routes ────────────────────────────────────────────────────
+
+router.get("/journal-mapping/summary", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  const companyId = resolveCompanyId(req) ?? 1;
+  const summary = await getJournalMappingSummary(companyId);
+  return res.json(summary);
+});
+
+router.post("/journal-mapping/kasbon", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  const companyId = resolveCompanyId(req) ?? 1;
+  const { ref, description, amount, date, paymentMethod, repayment } = req.body as {
+    ref: string; description?: string; amount: number; date: string;
+    paymentMethod?: "cash" | "bank"; repayment?: boolean;
+  };
+  if (!ref || !amount || !date) return res.status(400).json({ message: "ref, amount, date wajib diisi" });
+
+  const fn = repayment ? postKasbonRepaymentJournal : postKasbonJournal;
+  const entry = await fn({ companyId, ref, description, amount, date: new Date(date), paymentMethod });
+  return res.json({ ok: true, entryId: entry.id, entryNumber: entry.entryNumber });
+});
+
+router.post("/journal-mapping/talangan", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  const companyId = resolveCompanyId(req) ?? 1;
+  const { ref, description, amount, date, paymentMethod, repayment } = req.body as {
+    ref: string; description?: string; amount: number; date: string;
+    paymentMethod?: "cash" | "bank"; repayment?: boolean;
+  };
+  if (!ref || !amount || !date) return res.status(400).json({ message: "ref, amount, date wajib diisi" });
+
+  const fn = repayment ? postTalanganRepaymentJournal : postTalanganJournal;
+  const entry = await fn({ companyId, ref, description, amount, date: new Date(date), paymentMethod });
+  return res.json({ ok: true, entryId: entry.id, entryNumber: entry.entryNumber });
+});
+
+router.post("/journal-mapping/loan-disbursement", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  const companyId = resolveCompanyId(req) ?? 1;
+  const { ref, description, principalAmount, adminFee, date, loanType, isLongTerm } = req.body as {
+    ref: string; description?: string; principalAmount: number; adminFee?: number;
+    date: string; loanType?: "bank" | "leasing"; isLongTerm?: boolean;
+  };
+  if (!ref || !principalAmount || !date) return res.status(400).json({ message: "ref, principalAmount, date wajib diisi" });
+
+  const entry = await postLoanDisbursementJournal({
+    companyId, ref, description, principalAmount, adminFee, date: new Date(date), loanType, isLongTerm,
+  });
+  return res.json({ ok: true, entryId: entry.id, entryNumber: entry.entryNumber });
+});
+
+router.post("/journal-mapping/loan-repayment", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  const companyId = resolveCompanyId(req) ?? 1;
+  const { ref, description, principalAmount, interestAmount, date, loanType, isLongTerm } = req.body as {
+    ref: string; description?: string; principalAmount: number; interestAmount: number;
+    date: string; loanType?: "bank" | "leasing"; isLongTerm?: boolean;
+  };
+  if (!ref || principalAmount == null || interestAmount == null || !date) {
+    return res.status(400).json({ message: "ref, principalAmount, interestAmount, date wajib diisi" });
+  }
+
+  const entry = await postLoanRepaymentJournal({
+    companyId, ref, description, principalAmount, interestAmount, date: new Date(date), loanType, isLongTerm,
+  });
+  return res.json({ ok: true, entryId: entry.id, entryNumber: entry.entryNumber });
+});
+
+router.post("/journal-mapping/asset-purchase", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  const companyId = resolveCompanyId(req) ?? 1;
+  const { ref, description, assetName, purchasePrice, date, paymentMethod, assetAccountId } = req.body as {
+    ref: string; description?: string; assetName: string; purchasePrice: number;
+    date: string; paymentMethod?: "cash" | "bank"; assetAccountId?: number;
+  };
+  if (!ref || !assetName || !purchasePrice || !date) {
+    return res.status(400).json({ message: "ref, assetName, purchasePrice, date wajib diisi" });
+  }
+
+  const entry = await postAssetPurchaseJournal({
+    companyId, ref, description, assetName, purchasePrice, date: new Date(date), paymentMethod, assetAccountId,
+  });
+  return res.json({ ok: true, entryId: entry.id, entryNumber: entry.entryNumber });
+});
+
+router.post("/journal-mapping/depreciation", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  const companyId = resolveCompanyId(req) ?? 1;
+  const { ref, description, assetName, depreciationAmount, date, accumAccountId } = req.body as {
+    ref: string; description?: string; assetName: string; depreciationAmount: number;
+    date: string; accumAccountId?: number;
+  };
+  if (!ref || !assetName || !depreciationAmount || !date) {
+    return res.status(400).json({ message: "ref, assetName, depreciationAmount, date wajib diisi" });
+  }
+
+  const entry = await postDepreciationJournal({
+    companyId, ref, description, assetName, depreciationAmount, date: new Date(date), accumAccountId,
+  });
+  return res.json({ ok: true, entryId: entry.id, entryNumber: entry.entryNumber });
+});
+
+// Helper: konversi index kolom (0-based) ke huruf kolom GSheet (A, B, ..., Z, AA, ...)
+function colToLetter(n: number): string {
+  let s = "";
+  let col = n;
+  while (col >= 0) {
+    s = String.fromCharCode((col % 26) + 65) + s;
+    col = Math.floor(col / 26) - 1;
+  }
+  return s;
+}
+
+// POST /accounting/rekonsiliasi-gsheet — cocokkan entry lines DB dengan mutasi di Google Sheets
+router.post("/rekonsiliasi-gsheet", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  const {
+    spreadsheetId,
+    sheetName = "Mutasi",
+    dateFrom,
+    dateTo,
+    companyId: companyIdRaw,
+    colKey = 4,      // default kolom E (0-indexed)
+    colStatus = 5,   // default kolom F (0-indexed)
+    startRow = 2,    // default mulai baris 2 (skip header)
+  } = req.body as {
+    spreadsheetId: string;
+    sheetName?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    companyId?: number | string;
+    colKey?: number;
+    colStatus?: number;
+    startRow?: number;
+  };
+
+  if (!spreadsheetId) {
+    return res.status(400).json({ message: "spreadsheetId wajib diisi" });
+  }
+
+  try {
+
+  function generateKey(tanggal: Date | string, debit: number, kredit: number): string {
+    const d = new Date(tanggal);
+    const dateStr =
+      `${d.getFullYear()}` +
+      String(d.getMonth() + 1).padStart(2, "0") +
+      String(d.getDate()).padStart(2, "0");
+    // Debit ke akun bank = uang MASUK (IN), kredit = uang KELUAR (OUT)
+    const amount = debit > 0 ? debit : kredit;
+    const type = debit > 0 ? "IN" : "OUT";
+    return `${dateStr}_${amount}_${type}`;
+  }
+
+  const companyId = companyIdRaw ? Number(companyIdRaw) : null;
+  const conds = [eq(accountingEntriesTable.status, "posted")] as ReturnType<typeof eq>[];
+  if (companyId) conds.push(eq(accountingEntriesTable.companyId, companyId));
+  if (dateFrom) conds.push(gte(accountingEntriesTable.date, dateFrom));
+  if (dateTo) conds.push(lte(accountingEntriesTable.date, dateTo));
+
+  const [dbLines, allRows] = await Promise.all([
+    db
+      .select({
+        id: accountingEntryLinesTable.id,
+        debit: accountingEntryLinesTable.debit,
+        credit: accountingEntryLinesTable.credit,
+        description: accountingEntryLinesTable.description,
+        entryDate: accountingEntriesTable.date,
+        entryNumber: accountingEntriesTable.entryNumber,
+      })
+      .from(accountingEntryLinesTable)
+      .innerJoin(accountingEntriesTable, eq(accountingEntryLinesTable.entryId, accountingEntriesTable.id))
+      .where(and(...conds)),
+    readSheet(spreadsheetId, sheetName),
+  ]);
+
+  const dataRows = allRows.slice(startRow - 1);
+
+  // Hitung frekuensi key dari GSheet dan simpan baris pertama kemunculan
+  const keyFrequency: Record<string, number> = {};
+  const keyToFirstRow: Record<string, number> = {};
+  dataRows.forEach((row, idx) => {
+    const key = (row[colKey] ?? "").trim();
+    if (key) {
+      keyFrequency[key] = (keyFrequency[key] || 0) + 1;
+      if (keyToFirstRow[key] === undefined) keyToFirstRow[key] = idx + startRow;
+    }
+  });
+
+  const results: Array<{
+    id: number;
+    entryNumber: string;
+    entryDate: string;
+    debit: number;
+    credit: number;
+    description: string | null;
+    key: string;
+    status: string;
+    gsRow: number | null;
+  }> = [];
+  const updateRequests: Array<{ range: string; values: string[][] }> = [];
+
+  for (const line of dbLines) {
+    const debit = Number(line.debit ?? 0);
+    const credit = Number(line.credit ?? 0);
+    const key = generateKey(line.entryDate, debit, credit);
+    const count = keyFrequency[key] ?? 0;
+
+    let status: string;
+    if (count > 1) status = "⚠️ DUPLIKAT";
+    else if (count === 1) status = "✅ COCOK";
+    else status = "❌ TIDAK ADA";
+
+    const gsRow = keyToFirstRow[key] ?? null;
+    results.push({
+      id: line.id,
+      entryNumber: line.entryNumber ?? "",
+      entryDate: line.entryDate instanceof Date ? line.entryDate.toISOString() : String(line.entryDate),
+      debit,
+      credit,
+      description: line.description ?? null,
+      key,
+      status,
+      gsRow,
+    });
+
+    if (gsRow !== null) {
+      updateRequests.push({
+        range: `'${sheetName}'!${colToLetter(colStatus)}${gsRow}`,
+        values: [[status]],
+      });
+    }
+  }
+
+  await batchUpdateSheet(spreadsheetId, updateRequests);
+
+  // Simpan lastManualRekonAt ke meta
+  (async () => {
+    try {
+      const [existingRow] = await db
+        .select({ id: accountingSettingsTable.id, meta: accountingSettingsTable.meta })
+        .from(accountingSettingsTable)
+        .where(companyId ? eq(accountingSettingsTable.companyId, companyId) : isNull(accountingSettingsTable.companyId));
+      const baseMeta = (existingRow?.meta ?? {}) as Record<string, unknown>;
+      const newMeta = { ...baseMeta, lastManualRekonAt: new Date().toISOString() };
+      if (existingRow) {
+        await db.update(accountingSettingsTable).set({ meta: newMeta }).where(eq(accountingSettingsTable.id, existingRow.id));
+      } else {
+        await db.insert(accountingSettingsTable).values({ companyId: companyId ?? null, meta: newMeta } as typeof accountingSettingsTable.$inferInsert);
+      }
+    } catch { /* non-fatal */ }
+  })();
+
+  const matched = results.filter((r) => r.status.startsWith("✅")).length;
+  const duplicate = results.filter((r) => r.status.startsWith("⚠️")).length;
+  const notFound = results.filter((r) => r.status.startsWith("❌")).length;
+
+  // Kirim ringkasan + detail ke WA admin (non-blocking)
+  (async () => {
+    try {
+      const { getAdminGroupWa } = await import("../lib/adminWa.js");
+      const { sendWhatsApp } = await import("../lib/fonnte.js");
+      const group = await getAdminGroupWa();
+      if (!group) return;
+      const todayStr = new Date().toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" });
+      const periodStr = dateFrom && dateTo ? `${dateFrom} s/d ${dateTo}` : dateFrom ? `sejak ${dateFrom}` : dateTo ? `s/d ${dateTo}` : "semua periode";
+      const idr = (n: number) => new Intl.NumberFormat("id-ID").format(n);
+      const fmtDate = (s: string) => new Date(s).toLocaleDateString("id-ID", { day: "2-digit", month: "2-digit", year: "numeric" });
+      const statusIcon = (st: string) => st.startsWith("✅") ? "✅" : st.startsWith("⚠️") ? "⚠️" : "❌";
+
+      // Pesan 1: Ringkasan
+      const msg1 =
+        `📊 *Rekonsiliasi Bank Selesai*\n\n` +
+        `📅 Tanggal: ${todayStr}\n` +
+        `📋 Sheet: ${sheetName}\n` +
+        `📆 Periode: ${periodStr}\n\n` +
+        `✅ Cocok: ${matched}\n` +
+        `⚠️ Duplikat: ${duplicate}\n` +
+        `❌ Tidak Ada: ${notFound}\n` +
+        `📝 Total Entry DB: ${results.length}\n` +
+        `🔄 Baris GSheet diperbarui: ${updateRequests.length}`;
+      await sendWhatsApp(group, msg1, { context: "rekon_gsheet_manual" });
+
+      // Pesan 2: Detail entri yang TIDAK ADA, dikelompokkan per tanggal
+      const tidakAda = results.filter((r) => r.status.startsWith("❌"));
+      if (tidakAda.length > 0) {
+        const MAX_TOTAL = 30;
+        const byDate: Record<string, typeof tidakAda> = {};
+        for (const r of tidakAda) {
+          const dk = fmtDate(r.entryDate);
+          if (!byDate[dk]) byDate[dk] = [];
+          byDate[dk].push(r);
+        }
+        let count = 0;
+        const groupLines: string[] = [];
+        for (const [tgl, rows] of Object.entries(byDate)) {
+          if (count >= MAX_TOTAL) break;
+          groupLines.push(`📅 *${tgl}*`);
+          for (const r of rows) {
+            if (count >= MAX_TOTAL) { groupLines.push(`_...dan lebih banyak lagi_`); break; }
+            const nominal = r.debit > 0 ? `D: ${idr(r.debit)}` : `K: ${idr(r.credit)}`;
+            const desc = (r.description ?? "").slice(0, 35);
+            groupLines.push(`  ❌ *${r.entryNumber}* | ${nominal} | ${desc}`);
+            count++;
+          }
+        }
+        const truncatedNote = tidakAda.length > MAX_TOTAL ? `\n_...dan ${tidakAda.length - MAX_TOTAL} baris lainnya_` : "";
+        const msg2 =
+          `⚠️ *Entri Tidak Ditemukan di Bank (${tidakAda.length} baris)*\n` +
+          `_Entri berikut ada di BizPortal tapi tidak cocok di Google Sheet — mohon periksa:_\n\n` +
+          groupLines.join("\n") + truncatedNote;
+        await sendWhatsApp(group, msg2, { context: "rekon_gsheet_manual_detail" });
+      }
+    } catch { /* non-fatal */ }
+  })();
+
+  return res.json({
+    ok: true,
+    summary: {
+      total: results.length,
+      matched,
+      duplicate,
+      notFound,
+      updated: updateRequests.length,
+    },
+    results,
+  });
+
+  } catch (e: unknown) {
+    const raw = (e as Error).message ?? String(e);
+    const saEmail = getServiceAccountEmail();
+    const msg = raw.includes("has not been used") || raw.includes("is disabled")
+      ? `Google Sheets API belum diaktifkan di project GCP ini. Aktifkan di: https://console.developers.google.com/apis/api/sheets.googleapis.com/overview — kemudian coba lagi.`
+      : raw.includes("does not have permission") || raw.includes("caller does not have permission")
+      ? `Service Account tidak punya akses ke spreadsheet ini.${saEmail ? ` Share spreadsheet ke: ${saEmail} (Editor)` : ""}`
+      : raw;
+    return res.status(500).json({ message: msg });
+  }
 });
 
 export default router;

@@ -1,0 +1,67 @@
+TASK: Perbaiki sinkronisasi pembayaran Sport Center agar muncul di Revenue report
+
+Tujuan:
+- Semua pembayaran Sport Center tercatat di:
+  - sport_payments
+  - sport_bookings.payment_status
+  - Supabase (sport_center_bookings)
+  - Accounting (accounting_entries + accounting_payments)
+- Dashboard Revenue Sport Center menampilkan transaksi secara akurat
+
+Instruksi:
+
+1. Database Migration:
+- ALTER TABLE sport_payments ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'SPORT_CENTER';
+- Jalankan idempoten saat server start
+
+2. Backend: POST /api/sport-center/payments
+- Fetch booking terlebih dahulu → ambil company_id
+- Generate payment_number setelah company_id valid
+- Insert ke sport_payments:
+  - booking_id, amount, payment_method, paid_at = COALESCE(payment_date, NOW())
+  - source = 'SPORT_CENTER'
+  - payment_status = 'paid'
+  - payment_type = 'booking'
+- Update sport_bookings.payment_status = 'paid'
+- Supabase sync → syncBookingUpsert() fire-and-forget
+- Accounting:
+  - postSportCenterBookingWithTax() / postSportCenterBooking() fire-and-forget
+  - Debit Kas ← Credit Pendapatan Sport Center
+  - company_id dari booking
+  - source = 'sport_center_booking'
+- Accounting Payments:
+  - insertAccountingPaymentForSportCenter() → muncul di Finance → Payments
+- Audit Log:
+  - catat booking_id, amount, method, payment_number, source
+- Error handling:
+  - catch(err) → console.error lengkap
+
+3. Backend: GET /api/sport-center/reports
+- Return array transaksi lengkap:
+  - booking_id, amount, payment_method, paid_at, fasilitas, customer, status
+- Filter source='sport_center_booking' dan tanggal sesuai "Dari"/"Sampai"
+- Pastikan data sama dengan KPI Live revenue_today
+
+4. Frontend:
+- Saat klik statscard Revenue:
+  - Panggil endpoint GET /reports dengan filter yang sama
+  - Render tabel expandable di bawah card:
+    | No. Booking | Pelanggan | Fasilitas | Tanggal | Jam | Status | Pembayaran | Total |
+
+5. Dashboard:
+- Revenue Hari Ini, Total Revenue, Revenue per Fasilitas, Revenue per Metode Pembayaran → ambil dari accounting_entries/accounting_payments source='sport_center_booking'
+- Pastikan konsisten dengan data pembayaran
+
+6. Middleware:
+- requireAdmin (hanya admin BizPortal dapat akses)
+
+7. Testing:
+- Buat booking → bayar
+- Cek:
+  - sport_payments record ada
+  - sport_bookings.payment_status='paid'
+  - Supabase sync jalan
+  - Accounting journal terbentuk
+  - Accounting Payments muncul di Finance → Payments
+  - KPI Live dan Revenue report menampilkan transaksi
+  - Audit log terisi

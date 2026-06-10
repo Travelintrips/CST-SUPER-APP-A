@@ -185,6 +185,7 @@ export default function ProductOrderPage() {
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [orderNumber, setOrderNumber] = useState("");
+  const [productFirstMode, setProductFirstMode] = useState(false);
 
   // Service state
   const [selectedService, setSelectedService] = useState<SelectedService | null>(null);
@@ -387,9 +388,9 @@ export default function ProductOrderPage() {
     if (!customerName.trim() || !email.trim() || !phone.trim()) {
       toast({ title: "Isi semua kolom data pemesan", variant: "destructive" }); return;
     }
-    if (!address.trim()) {
+    if (selectedService && !address.trim()) {
       setCheckoutAddressError(true);
-      toast({ title: "Alamat Pengiriman wajib diisi", variant: "destructive" }); return;
+      toast({ title: "Alamat Pengiriman wajib diisi jika menggunakan layanan pengiriman", variant: "destructive" }); return;
     }
     const formErrors = validateTemplatePayload(template, dynamicValues);
     if (formErrors.length > 0) { toast({ title: formErrors[0], variant: "destructive" }); return; }
@@ -400,15 +401,24 @@ export default function ProductOrderPage() {
         productId: i.product.id, productName: i.product.name, productSku: i.product.sku,
         unit: i.product.unit ?? "pcs", unitPrice: i.product.price, qty: i.qty,
         subtotal: i.product.price * i.qty,
+        weightKg: i.product.weightKg ?? null,
+        lengthCm: i.product.lengthCm ?? null,
+        widthCm: i.product.widthCm ?? null,
+        heightCm: i.product.heightCm ?? null,
+        goodsType: i.product.goodsType ?? null,
       }));
+      const isPickup = !selectedService && !address.trim();
       const result = await submitOrder({
         customerName: customerName.trim(), email: email.trim(), phone: phone.trim(),
-        shippingAddress: address.trim(), notes: notes.trim() || undefined,
+        shippingAddress: address.trim() || null,
+        shippingMethod: productFirstMode ? "pending" : (isPickup ? "pickup" : (selectedService ? selectedService.serviceId : "delivery")),
+        notes: notes.trim() || undefined,
         items, productCategory, templateId: template.category, templateVersion: template.version,
         customFieldValues: dynamicValues.customFieldValues, uploadedDocuments: dynamicValues.uploadedDocuments,
         checklistStatus: dynamicValues.checklistStatus, packagingNotes: dynamicValues.packagingNotes || undefined,
         conditionalFlags: dynamicValues.conditionalFlags,
-        selectedService: selectedService ? {
+        orderType: productFirstMode ? "product_first" : "standard",
+        selectedService: (!productFirstMode && selectedService) ? {
           serviceId: selectedService.serviceId, serviceName: selectedService.serviceName,
           estimatedCost: selectedService.estimatedCost, summaryLine: selectedService.summaryLine,
         } : undefined,
@@ -502,14 +512,28 @@ export default function ProductOrderPage() {
                   </div>
                 )}
                 <div className="flex gap-2">
-                  <Button variant="outline" className="flex-1 gap-1.5" onClick={() => setStep("service-catalog")}>
-                    <Truck className="w-4 h-4" />
-                    {selectedService ? "Ganti Layanan" : "Pilih Layanan"}
-                  </Button>
+                  {!productFirstMode && (
+                    <Button variant="outline" className="flex-1 gap-1.5" onClick={() => setStep("service-catalog")}>
+                      <Truck className="w-4 h-4" />
+                      {selectedService ? "Ganti Layanan" : "Pilih Layanan"}
+                    </Button>
+                  )}
                   <Button className="flex-1 gap-1.5" onClick={() => setStep("checkout")}>
-                    Lanjut ke Checkout <ChevronRight className="w-4 h-4" />
+                    {productFirstMode ? "Lanjut Checkout" : "Lanjut ke Checkout"} <ChevronRight className="w-4 h-4" />
                   </Button>
                 </div>
+                <button
+                  onClick={() => { setProductFirstMode(v => !v); setSelectedService(null); }}
+                  className={`w-full text-xs py-1.5 rounded-lg border transition-colors ${
+                    productFirstMode
+                      ? "bg-amber-50 border-amber-200 text-amber-700 font-medium"
+                      : "border-dashed border-muted-foreground/30 text-muted-foreground hover:bg-muted"
+                  }`}
+                >
+                  {productFirstMode
+                    ? "✅ Mode: Produk Dulu (pilih pengiriman nanti) — klik untuk batal"
+                    : "⚡ Pesan produk dulu, pilih pengiriman setelah dikonfirmasi"}
+                </button>
               </div>
             </div>
           )}
@@ -831,8 +855,19 @@ export default function ProductOrderPage() {
               ))}
             </div>
 
-            {/* Selected Service */}
-            {selectedService ? (
+            {/* Selected Service — hanya tampil jika bukan productFirstMode */}
+            {productFirstMode ? (
+              <>
+                <Separator />
+                <div className="flex items-center gap-2 rounded-lg bg-amber-50 border border-amber-200 p-3">
+                  <span className="text-amber-600 text-lg">⚡</span>
+                  <div>
+                    <p className="text-xs font-semibold text-amber-700">Mode: Produk Dulu</p>
+                    <p className="text-xs text-amber-600">Pilihan pengiriman ditentukan setelah produk dikonfirmasi vendor.</p>
+                  </div>
+                </div>
+              </>
+            ) : selectedService ? (
               <>
                 <Separator />
                 <div className="flex items-start justify-between text-sm">
@@ -924,12 +959,22 @@ export default function ProductOrderPage() {
                 <Input value={email} onChange={e => setEmail(e.target.value)} placeholder="email@example.com" type="email" />
               </div>
               <div className="space-y-1.5 sm:col-span-2">
-                <Label className="text-xs">Alamat Pengiriman <span className="text-destructive">*</span></Label>
+                <Label className="text-xs">
+                  Alamat Pengiriman{" "}
+                  {selectedService
+                    ? <span className="text-destructive">*</span>
+                    : <span className="text-muted-foreground font-normal">(opsional — kosongkan jika ambil sendiri)</span>}
+                </Label>
                 <Input value={address}
                   className={checkoutAddressError ? "border-destructive focus-visible:ring-destructive" : ""}
                   onChange={e => { setCheckoutAddressError(false); setAddress(e.target.value); }}
-                  placeholder="Jl. ..., Kota, Provinsi" />
-                {checkoutAddressError && <p className="text-[11px] text-destructive">Alamat pengiriman wajib diisi.</p>}
+                  placeholder={selectedService ? "Jl. ..., Kota, Provinsi" : "Kosongkan jika ambil sendiri di gudang kami"} />
+                {checkoutAddressError && <p className="text-[11px] text-destructive">Alamat pengiriman wajib diisi jika menggunakan layanan pengiriman.</p>}
+                {!selectedService && !address.trim() && (
+                  <p className="text-[11px] text-green-600 flex items-center gap-1">
+                    <Warehouse className="w-3 h-3" /> Pesanan akan disiapkan untuk diambil di gudang kami
+                  </p>
+                )}
               </div>
               <div className="space-y-1.5 sm:col-span-2">
                 <Label className="text-xs">Catatan Tambahan (opsional)</Label>
@@ -953,21 +998,37 @@ export default function ProductOrderPage() {
   return (
     <div className="min-h-screen bg-background flex items-center justify-center px-4">
       <div className="max-w-md w-full text-center space-y-6">
-        <div className="bg-green-50 border border-green-200 rounded-2xl p-8">
-          <CheckCircle2 className="w-16 h-16 text-green-500 mx-auto mb-4" />
-          <h1 className="text-2xl font-bold text-green-800 mb-2">Pesanan Berhasil!</h1>
-          <p className="text-green-700 text-sm mb-4">
+        <div className={`border rounded-2xl p-8 ${productFirstMode ? "bg-amber-50 border-amber-200" : "bg-green-50 border-green-200"}`}>
+          <CheckCircle2 className={`w-16 h-16 mx-auto mb-4 ${productFirstMode ? "text-amber-500" : "text-green-500"}`} />
+          <h1 className={`text-2xl font-bold mb-2 ${productFirstMode ? "text-amber-800" : "text-green-800"}`}>
+            {productFirstMode ? "Pesanan Produk Diterima!" : "Pesanan Berhasil!"}
+          </h1>
+          <p className={`text-sm mb-4 ${productFirstMode ? "text-amber-700" : "text-green-700"}`}>
             No. Pesanan: <strong className="font-mono">{orderNumber}</strong>
           </p>
-          {selectedService && (
-            <p className="text-green-600 text-xs mb-2">
-              Layanan: <strong>{selectedService.serviceName}</strong>
-              {selectedService.estimatedCost ? ` · ${formatCurrency(selectedService.estimatedCost)}` : " · Harga menyusul"}
-            </p>
+          {productFirstMode ? (
+            <div className="space-y-2 text-left">
+              <p className="text-amber-700 text-sm font-medium">Langkah selanjutnya:</p>
+              <ol className="text-amber-600 text-xs space-y-1 list-decimal list-inside">
+                <li>Admin akan mencari vendor produk terbaik</li>
+                <li>Anda akan menerima penawaran produk via WhatsApp</li>
+                <li>Setujui atau tolak penawaran produk</li>
+                <li>Pilih mode pengiriman yang Anda inginkan</li>
+              </ol>
+            </div>
+          ) : (
+            <>
+              {selectedService && (
+                <p className="text-green-600 text-xs mb-2">
+                  Layanan: <strong>{selectedService.serviceName}</strong>
+                  {selectedService.estimatedCost ? ` · ${formatCurrency(selectedService.estimatedCost)}` : " · Harga menyusul"}
+                </p>
+              )}
+              <p className="text-green-600 text-sm">
+                Tim kami akan menghubungi Anda via WhatsApp atau email untuk konfirmasi dan pembayaran.
+              </p>
+            </>
           )}
-          <p className="text-green-600 text-sm">
-            Tim kami akan menghubungi Anda via WhatsApp atau email untuk konfirmasi dan pembayaran.
-          </p>
         </div>
         <div className="flex flex-col sm:flex-row gap-3 justify-center">
           <Button variant="outline" onClick={() => setLocation("/products")}>Lihat Produk Lain</Button>
@@ -975,6 +1036,7 @@ export default function ProductOrderPage() {
             setCart([]); setStep("products"); setCustomerName(""); setEmail(""); setPhone("");
             setAddress(""); setNotes(""); setProductCategory("general"); setDynamicValues(EMPTY_FORM);
             setSelectedService(null); setTruckingForm(EMPTY_TRUCKING); setTruckingEstimate(null);
+            setProductFirstMode(false);
           }}>Pesan Lagi</Button>
         </div>
       </div>

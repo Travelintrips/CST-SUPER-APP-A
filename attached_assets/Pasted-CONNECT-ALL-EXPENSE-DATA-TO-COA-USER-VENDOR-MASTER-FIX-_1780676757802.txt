@@ -1,0 +1,96 @@
+CONNECT ALL EXPENSE DATA TO COA, USER & VENDOR MASTER — FIX
+
+Tujuan:
+Pastikan semua expense di sistem terhubung dengan data master, termasuk:
+
+* COA Bank / Kas untuk sumber dana
+* User / Karyawan untuk kasbon karyawan
+* Vendor / Pihak penerima untuk Dana Talangan / Pembayaran Vendor
+* Kategori expense / preset category
+* Mapping otomatis ke jurnal DR/CR
+
+---
+
+A. BACKEND
+
+1. **Update Expense Table**
+
+   * Pastikan field:
+
+     * `source_account_id` → link ke COA Bank / Kas
+     * `category_id` → link ke kategori expense
+     * `user_id` → untuk kasbon karyawan
+     * `vendor_id` / `recipient_id` → untuk Dana Talangan / Pembayaran Vendor
+
+2. **Endpoints GET**
+
+   * `/api/expenses`, `/api/kasbon`, `/api/dana-talangan`
+   * Sertakan full mapping:
+
+     ```json
+     {
+       "expense_id": "...",
+       "category": {"id":"...","name":"..."},
+       "source_account": {"id":"...","name":"Bank BCA","type":"bank"},
+       "user": {"id":"...","name":"John Doe"},
+       "vendor": {"id":"...","name":"PT Supplier"},
+       "amount": 100000,
+       "tax": "PPN 11%"
+     }
+     ```
+
+3. **Validation / Auto-fill**
+
+   * Saat buat expense:
+
+     * Dropdown Sumber Dana → fetch dari COA (`type = bank/kas`)
+     * Dropdown Karyawan → fetch user master
+     * Dropdown Vendor / Pihak Penerima → fetch vendor master
+     * Dropdown Kategori → fetch kategori preset
+   * Auto-fill default jika kategori punya default akun / pajak
+
+---
+
+B. FRONTEND
+
+1. **Form Expense**
+
+   * Dropdown auto-fill:
+
+     * Sumber Dana = `coa_id`
+     * Karyawan = `user_id`
+     * Vendor = `vendor_id`
+     * Kategori = `category_id`
+   * Selected value dikirim ke backend untuk mapping jurnal
+
+2. **Expense List**
+
+   * Kolom:
+
+     * Sumber Dana → `source_account.name`
+     * Karyawan → `user.name`
+     * Vendor / Pihak Penerima → `vendor.name`
+     * Kategori → `category.name`
+   * Pastikan semua kolom tampil lengkap
+
+---
+
+C. VALIDASI & TESTING
+
+| No | Step                  | Expected Result                                                  |
+| -- | --------------------- | ---------------------------------------------------------------- |
+| 1  | Pilih kategori        | Akun & pajak auto-fill jika default                              |
+| 2  | Pilih sumber dana     | Dropdown menampilkan nama Bank/Kas dari COA                      |
+| 3  | Pilih karyawan        | Dropdown menampilkan user master                                 |
+| 4  | Pilih vendor/penerima | Dropdown menampilkan vendor master                               |
+| 5  | Simpan expense        | Mapping tersimpan → list expense menampilkan semua kolom lengkap |
+| 6  | Partial test          | Tidak mengganggu expense lain, build / TS clean                  |
+
+---
+
+Instruksi:
+
+* Backend → pastikan semua field mapping ke COA, User, Vendor, Kategori
+* Frontend → dropdown auto-fill & tampil nama sesuai mapping
+* Expense list → tampil kolom lengkap
+* Test partial → buat expense dummy → mapping muncul, override manual tetap bisa

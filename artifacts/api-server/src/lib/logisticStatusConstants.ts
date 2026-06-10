@@ -6,6 +6,14 @@
 export const LOGISTIC_STATUSES = [
   "Order Received",
   "Admin Review",
+  // ── Phase 2A: Product-First statuses (only active for orderType="product_first") ──
+  "Product RFQ Sent",
+  "Product Quote Received",
+  "Product Vendor Selected",
+  "Customer Product Approval",
+  "Shipment Selection Pending",
+  "Ready for Pickup",
+  // ─────────────────────────────────────────────────────────────────────────────────
   "RFQ Sent",
   "Quote Received",
   "Customer Approval",
@@ -25,28 +33,42 @@ export const LOGISTIC_STATUSES = [
 export type LogisticStatus = (typeof LOGISTIC_STATUSES)[number];
 
 export const STATUS_RANK: Record<string, number> = {
-  "Order Received":   0,
-  "Admin Review":     1,
-  "RFQ Sent":         2,
-  "Quote Received":   3,
-  "Customer Approval": 4,
-  "Vendor Confirmed": 5,
-  "In Progress":      6,
-  "Pickup":           7,
-  "In Transit":       8,
-  "Arrived":          9,
-  "Delivered":        10,
-  "POD Uploaded":     11,
-  "Invoice Issued":   12,
-  "Payment Received": 13,
-  "Completed":        14,
-  "Cancelled":        99,
+  "Order Received":             0,
+  "Admin Review":               1,
+  // Phase 2A: product-first sub-ranks (between Admin Review and RFQ Sent)
+  "Product RFQ Sent":           1.2,
+  "Product Quote Received":     1.4,
+  "Product Vendor Selected":    1.6,
+  "Customer Product Approval":  1.8,
+  "Shipment Selection Pending": 1.9,
+  "Ready for Pickup":           5.5,
+  // ─────────────────────────────────────────────────────────────────────────
+  "RFQ Sent":                   2,
+  "Quote Received":             3,
+  "Customer Approval":          4,
+  "Vendor Confirmed":           5,
+  "In Progress":                6,
+  "Pickup":                     7,
+  "In Transit":                 8,
+  "Arrived":                    9,
+  "Delivered":                  10,
+  "POD Uploaded":               11,
+  "Invoice Issued":             12,
+  "Payment Received":           13,
+  "Completed":                  14,
+  "Cancelled":                  99,
 };
 
 export const STATUS_LABEL_ID: Record<string, string> = {
-  "Order Received":   "Order Diterima",
-  "Admin Review":     "Ditinjau Admin",
-  "RFQ Sent":         "RFQ Terkirim",
+  "Order Received":             "Order Diterima",
+  "Admin Review":               "Ditinjau Admin",
+  "Product RFQ Sent":           "RFQ Produk Terkirim",
+  "Product Quote Received":     "Penawaran Produk Masuk",
+  "Product Vendor Selected":    "Vendor Produk Dipilih",
+  "Customer Product Approval":  "Menunggu Persetujuan Harga Produk",
+  "Shipment Selection Pending": "Menunggu Pilihan Pengiriman",
+  "Ready for Pickup":           "Siap Dijemput",
+  "RFQ Sent":                   "RFQ Terkirim",
   "Quote Received":   "Penawaran Masuk",
   "Customer Approval": "Menunggu Persetujuan",
   "Vendor Confirmed": "Vendor Dikonfirmasi",
@@ -109,6 +131,50 @@ export function normalizeStatus(raw: string): string {
  *  @param trackUrl     URL tracking publik langsung ke detail order (opsional)
  */
 export const CUSTOMER_WA_MESSAGES: Record<string, (orderNumber: string, trackUrl?: string) => string> = {
+  // ── Phase 2A: Product-First status WA messages ─────────────────────────
+  "Product RFQ Sent": (n, u) =>
+    `📋 *Permintaan Penawaran Produk Dikirim*\n` +
+    `━━━━━━━━━━━━━━━━\n` +
+    `No Order : *${n}*\n\n` +
+    `Kami sedang mengumpulkan penawaran terbaik dari vendor produk kami untuk Anda.` +
+    (u ? `\n\n🔗 Pantau status:\n${u}` : ""),
+
+  "Product Quote Received": (n, u) =>
+    `💰 *Penawaran Produk Diterima*\n` +
+    `━━━━━━━━━━━━━━━━\n` +
+    `No Order : *${n}*\n\n` +
+    `Penawaran dari vendor produk sudah masuk. Tim kami sedang mengevaluasi dan akan segera menghubungi Anda.` +
+    (u ? `\n\n🔗 Pantau status:\n${u}` : ""),
+
+  "Product Vendor Selected": (n, u) =>
+    `✅ *Vendor Produk Dipilih*\n` +
+    `━━━━━━━━━━━━━━━━\n` +
+    `No Order : *${n}*\n\n` +
+    `Tim kami telah memilih vendor produk terbaik untuk order Anda. Kami akan segera mengirimkan detail penawaran.` +
+    (u ? `\n\n🔗 Pantau status:\n${u}` : ""),
+
+  "Customer Product Approval": (n, u) =>
+    `✅ *Penawaran Harga Produk Siap Disetujui*\n` +
+    `━━━━━━━━━━━━━━━━\n` +
+    `No Order : *${n}*\n\n` +
+    `Penawaran harga produk sudah siap. Silakan cek link yang dikirimkan untuk menyetujui atau menolak harga produk.` +
+    (u ? `\n\n🔗 Detail order:\n${u}` : ""),
+
+  "Shipment Selection Pending": (n, u) =>
+    `🚚 *Pilih Metode Pengiriman*\n` +
+    `━━━━━━━━━━━━━━━━\n` +
+    `No Order : *${n}*\n\n` +
+    `Harga produk Anda sudah dikonfirmasi! Silakan pilih metode pengiriman yang Anda inginkan melalui link berikut.` +
+    (u ? `\n\n🔗 Pilih pengiriman:\n${u}` : ""),
+
+  "Ready for Pickup": (n, u) =>
+    `📦 *Produk Siap Dijemput*\n` +
+    `━━━━━━━━━━━━━━━━\n` +
+    `No Order : *${n}*\n\n` +
+    `Produk Anda sudah siap untuk dijemput! Tim kami akan menghubungi Anda dengan detail lokasi pengambilan.` +
+    (u ? `\n\n🔗 Detail order:\n${u}` : ""),
+
+  // ── Existing statuses ───────────────────────────────────────────────────
   "Order Received": (n, u) =>
     `📦 *Order Anda Diterima*\n` +
     `━━━━━━━━━━━━━━━━\n` +

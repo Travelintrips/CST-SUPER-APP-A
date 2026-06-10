@@ -1,0 +1,102 @@
+IMPLEMENT PRODUCT-FIRST PHASE 2B-1 — CUSTOMER PORTAL UI.
+
+Jangan ubah backend besar.
+Jangan ubah DB.
+Jangan ubah shipment flow lama.
+
+Tujuan:
+Customer bisa menjalankan product-first flow dari portal.
+
+Scope:
+
+1. Update product-order.tsx
+- Customer pilih produk dulu
+- Customer submit orderType = product_first
+- Shipment mode tidak wajib di awal
+- Jangan otomatis forward ke shipper
+
+2. Buat halaman baru:
+/product-approve/:token
+
+Fungsi:
+- tampilkan detail produk
+- vendor produk
+- harga produk
+- qty
+- ready date
+- pickup location
+- dokumen produk jika ada
+- tombol Approve
+- tombol Reject
+
+Approve:
+POST /api/logistic/orders/:token/customer-product-approve
+
+3. Buat halaman baru:
+/shipment-selection/:token
+
+Fungsi:
+- hanya bisa dibuka jika status = Shipment Selection Pending
+- tampilkan data produk confirmed
+- pilihan shipment:
+  - Pickup sendiri
+  - Trucking
+  - Air Freight
+  - Sea Freight
+  - Door to Door
+
+Jika Pickup sendiri:
+POST select-shipment-mode dengan shipmentMode = pickup_self
+
+Jika memilih shipment lain:
+POST select-shipment-mode dengan shipmentMode sesuai pilihan
+lalu tampilkan pesan:
+"Tim kami akan mengirimkan penawaran pengiriman."
+
+4. Update tracking customer
+
+Untuk orderType = product_first, tampilkan step:
+
+Order Received
+Admin Review
+Product RFQ Sent
+Product Quote Received
+Product Vendor Selected
+Customer Product Approval
+Shipment Selection Pending
+Ready for Pickup / Shipment RFQ Sent
+Vendor Confirmed
+In Progress
+Pickup
+In Transit
+Arrived
+Delivered
+POD Uploaded
+Invoice Issued
+Payment Received
+Completed
+
+Untuk orderType = shipment, jangan berubah.
+
+5. Routing
+Pastikan halaman baru masuk router customer-portal.
+
+6. Test
+Gunakan E2E_TEST_MODE=true.
+
+Test:
+A. product_first order bisa dibuat dari customer portal
+B. product approve page bisa dibuka dengan token valid
+C. token invalid tampil error
+D. approve product → status Shipment Selection Pending
+E. shipment selection page tampil
+F. pilih pickup_self → status Ready for Pickup
+G. pilih trucking → shipmentMode tersimpan
+H. shipment order lama tetap tracking normal
+
+Output:
+A. File yang diubah
+B. Page baru
+C. Route baru
+D. Test result
+E. Risk tersisa

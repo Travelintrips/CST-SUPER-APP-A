@@ -9,6 +9,7 @@ export interface SecretDef {
   label: string;
   description: string;
   envFallback: string;
+  envFallbackAlt?: string[];
   sensitive: boolean;
   group: string;
 }
@@ -78,6 +79,151 @@ export const SECRETS_CATALOG: SecretDef[] = [
     sensitive: true,
     group: "Auth",
   },
+  {
+    key: "google_client_secret",
+    label: "Google OAuth Client Secret",
+    description: "Client secret untuk login via Google OAuth",
+    envFallback: "GOOGLE_CLIENT_SECRET",
+    sensitive: true,
+    group: "Auth",
+  },
+  {
+    key: "openai_api_key",
+    label: "OpenAI API Key",
+    description: "API key OpenAI untuk fitur AI (OCR, scan dokumen, chat)",
+    envFallback: "OPENAI_API_KEY",
+    sensitive: true,
+    group: "AI",
+  },
+  {
+    key: "supabase_url",
+    label: "Supabase URL (Prod)",
+    description: "URL project Supabase produksi — dipakai storage & admin API (VITE_SUPABASE_URL atau SUPABASE_URL)",
+    envFallback: "VITE_SUPABASE_URL",
+    envFallbackAlt: ["SUPABASE_URL"],
+    sensitive: false,
+    group: "Supabase",
+  },
+  {
+    key: "supabase_service_role_key",
+    label: "Supabase Service Role Key (Prod)",
+    description: "Service role key Supabase produksi — untuk storage, admin API. Nilai JWT dimulai 'eyJ'",
+    envFallback: "SUPABASE_SERVICE_ROLE_KEY",
+    sensitive: true,
+    group: "Supabase",
+  },
+  {
+    key: "supabase_anon_key",
+    label: "Supabase Anon Key (Prod)",
+    description: "Anon/public key Supabase produksi — dipakai frontend & Expo",
+    envFallback: "SUPABASE_ANON_KEY",
+    sensitive: true,
+    group: "Supabase",
+  },
+  {
+    key: "supabase_url_dev",
+    label: "Supabase URL (Dev)",
+    description: "URL project Supabase untuk environment development",
+    envFallback: "SUPABASE_URL_DEV",
+    sensitive: false,
+    group: "Supabase",
+  },
+  {
+    key: "supabase_service_role_key_dev",
+    label: "Supabase Service Role Key (Dev)",
+    description: "Service role key Supabase untuk environment development",
+    envFallback: "SUPABASE_SERVICE_ROLE_KEY_DEV",
+    sensitive: true,
+    group: "Supabase",
+  },
+  {
+    key: "supabase_anon_key_dev",
+    label: "Supabase Anon Key (Dev)",
+    description: "Anon key Supabase untuk environment development",
+    envFallback: "SUPABASE_ANON_KEY_DEV",
+    sensitive: true,
+    group: "Supabase",
+  },
+  {
+    key: "expo_public_supabase_url",
+    label: "Expo Supabase URL",
+    description: "URL Supabase untuk aplikasi driver (EXPO_PUBLIC_SUPABASE_URL)",
+    envFallback: "EXPO_PUBLIC_SUPABASE_URL",
+    sensitive: false,
+    group: "Supabase",
+  },
+  {
+    key: "expo_public_supabase_anon_key",
+    label: "Expo Supabase Anon Key",
+    description: "Anon key Supabase untuk aplikasi driver (EXPO_PUBLIC_SUPABASE_ANON_KEY)",
+    envFallback: "EXPO_PUBLIC_SUPABASE_ANON_KEY",
+    sensitive: true,
+    group: "Supabase",
+  },
+  {
+    key: "vapid_public_key",
+    label: "VAPID Public Key",
+    description: "Public key untuk Web Push Notifications",
+    envFallback: "VAPID_PUBLIC_KEY",
+    sensitive: false,
+    group: "Notifikasi",
+  },
+  {
+    key: "vapid_private_key",
+    label: "VAPID Private Key",
+    description: "Private key untuk Web Push Notifications",
+    envFallback: "VAPID_PRIVATE_KEY",
+    sensitive: true,
+    group: "Notifikasi",
+  },
+  {
+    key: "wati_base_url",
+    label: "WATI Base URL",
+    description: "URL endpoint WATI WhatsApp Business API (contoh: https://live-server-XXXXX.wati.io)",
+    envFallback: "WATI_BASE_URL",
+    sensitive: false,
+    group: "WhatsApp",
+  },
+  {
+    key: "wati_api_token",
+    label: "WATI API Token",
+    description: "Bearer token untuk autentikasi WATI API",
+    envFallback: "WATI_API_TOKEN",
+    sensitive: true,
+    group: "WhatsApp",
+  },
+  {
+    key: "wati_phone_number",
+    label: "Nomor WhatsApp WATI",
+    description: "Nomor WA yang terdaftar di WATI (format: 628xxx). Diisi manual jika tidak terdeteksi otomatis.",
+    envFallback: "WATI_PHONE_NUMBER",
+    sensitive: false,
+    group: "WhatsApp",
+  },
+  {
+    key: "wa_gateway_url",
+    label: "WA Gateway URL",
+    description: "Base URL WA Gateway sendiri (contoh: http://localhost:8000). Jika diisi bersama API Key dan Device ID, pesan WA akan dikirim lewat gateway ini, bukan Fonnte.",
+    envFallback: "WA_GATEWAY_URL",
+    sensitive: false,
+    group: "WhatsApp",
+  },
+  {
+    key: "wa_gateway_api_key",
+    label: "WA Gateway API Key",
+    description: "API key bertipe wag_xxx dari dashboard WA Gateway (/wa-gateway). Harus diisi bersama URL dan Device ID.",
+    envFallback: "WA_GATEWAY_API_KEY",
+    sensitive: true,
+    group: "WhatsApp",
+  },
+  {
+    key: "wa_gateway_device_id",
+    label: "WA Gateway Device ID",
+    description: "ID device WA yang sudah connected di WA Gateway (angka, lihat di dashboard /wa-gateway).",
+    envFallback: "WA_GATEWAY_DEVICE_ID",
+    sensitive: false,
+    group: "WhatsApp",
+  },
 ];
 
 export function maskSecret(value: string): string {
@@ -142,4 +288,16 @@ export async function getAdminEmail(): Promise<string> {
 
 export async function getPortalAdminKey(): Promise<string> {
   return getSetting("portal_admin_key", process.env.PORTAL_ADMIN_KEY ?? "");
+}
+
+export async function getWaGatewayConfig(): Promise<{ url: string; apiKey: string; deviceId: number } | null> {
+  const [url, apiKey, deviceIdStr] = await Promise.all([
+    getSetting("wa_gateway_url", process.env.WA_GATEWAY_URL ?? ""),
+    getSetting("wa_gateway_api_key", process.env.WA_GATEWAY_API_KEY ?? ""),
+    getSetting("wa_gateway_device_id", process.env.WA_GATEWAY_DEVICE_ID ?? ""),
+  ]);
+  if (!url || !apiKey || !deviceIdStr) return null;
+  const deviceId = Number(deviceIdStr);
+  if (!Number.isFinite(deviceId) || deviceId <= 0) return null;
+  return { url, apiKey, deviceId };
 }

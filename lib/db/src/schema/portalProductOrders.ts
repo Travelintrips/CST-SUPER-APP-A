@@ -34,7 +34,26 @@ export const portalProductOrdersTable = pgTable("portal_product_orders", {
   // the order was placed. Lets old orders keep rendering correctly even if
   // an admin later edits/deactivates the template definition.
   templateSnapshot: jsonb("template_snapshot").$type<Record<string, unknown> | null>(),
+  // Payment tracking
+  paymentStatus: text("payment_status").default("unpaid"),
+  paidAt: timestamp("paid_at", { withTimezone: true }),
+  // Product-first order fields (Phase 2B)
+  orderType: text("order_type").default("standard"),
+  productApproveToken: text("product_approve_token"),
+  shipmentMode: text("shipment_mode"),
+  vendorQuotedPrice: numeric("vendor_quoted_price", { precision: 14, scale: 2 }),
+  vendorNameSelected: text("vendor_name_selected"),
+  readyDate: text("ready_date"),
+  pickupLocation: text("pickup_location"),
+  // Phase 2B-4: invoice cost breakdown
+  shipmentCost: numeric("shipment_cost", { precision: 14, scale: 2 }),
+  truckCost: numeric("truck_cost", { precision: 14, scale: 2 }),
+  // Analytics / profitability fields
+  productPrice: numeric("product_price", { precision: 14, scale: 2 }),
+  companyId: integer("company_id"),
+  // Audit timestamps
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });
 
 export const portalProductOrderItemsTable = pgTable("portal_product_order_items", {
@@ -47,6 +66,12 @@ export const portalProductOrderItemsTable = pgTable("portal_product_order_items"
   unitPrice: numeric("unit_price", { precision: 14, scale: 2 }).notNull().default("0"),
   qty: integer("qty").notNull().default(1),
   subtotal: numeric("subtotal", { precision: 14, scale: 2 }).notNull().default("0"),
+  // Shipping specs — auto-filled from product catalog, no customer input needed
+  weightKg: numeric("weight_kg", { precision: 10, scale: 3 }),
+  lengthCm: numeric("length_cm", { precision: 10, scale: 2 }),
+  widthCm: numeric("width_cm", { precision: 10, scale: 2 }),
+  heightCm: numeric("height_cm", { precision: 10, scale: 2 }),
+  goodsType: text("goods_type"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

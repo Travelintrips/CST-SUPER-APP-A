@@ -1,7 +1,7 @@
 import { db, suppliersTable, vendorCatalogItemsTable, waTemplateConfigsTable, logisticOrderRfqsTable, vendorMiniFormLinksTable } from "@workspace/db";
 import { eq, and, ilike, sql, desc } from "drizzle-orm";
 import { sendViaService as sendWhatsApp, sendMediaViaService } from "./waTransport.js";
-import { getAdminGroupWa } from "./adminWa";
+import { getAdminGroupWa, getAdminWa, getAdminPhones } from "./adminWa";
 import { getPreferredDomain } from "./domain";
 import { sendMail, isSmtpConfigured } from "./mailer";
 import { logger } from "./logger";
@@ -1278,6 +1278,22 @@ const DEFAULT_TPL = {
       "Terima kasih atas kepercayaan dan kerja sama Anda 🙏",
       "_CST Logistics_",
     ].join("\n"),
+    vendor_not_selected: [
+      "📋 *Informasi Status Penawaran — CST Logistics*",
+      "━━━━━━━━━━━━━━━━━━",
+      "Kepada Yth. *{{vendorName}}*,",
+      "",
+      "Terima kasih telah berpartisipasi dalam proses penawaran untuk:",
+      "",
+      "📋 No. RFQ  : {{rfqNumber}}",
+      "📄 No. Order: {{orderNumber}}",
+      "📍 Rute     : {{route}}",
+      "━━━━━━━━━━━━━━━━━━",
+      "Kami mohon maaf, penawaran Anda *tidak dapat dipilih* untuk pengiriman ini.",
+      "",
+      "Kami berharap dapat bekerja sama kembali di kesempatan mendatang 🙏",
+      "_CST Logistics_",
+    ].join("\n"),
     vendor_selected_admin: [
       "✅ *Vendor Dipilih — RFQ {{rfqNumber}}*",
       "━━━━━━━━━━━━━━━━━━",
@@ -1295,6 +1311,118 @@ const DEFAULT_TPL = {
       "{{quoteSentInfo}}",
       "📦 Forward ke vendor: {{forwardVendorUrl}}",
       "_{{timestamp}}_",
+    ].join("\n"),
+  },
+  invoice_reminder: {
+    h7: [
+      "📅 *Pengingat Pembayaran — H-7*",
+      "━━━━━━━━━━━━━━━━━━",
+      "Kepada Yth. *{{customerName}}*,",
+      "",
+      "Invoice Anda akan jatuh tempo dalam *7 hari lagi*.",
+      "",
+      "📄 Invoice    : *{{invoiceNumber}}*",
+      "📋 No. Order  : {{orderNumber}}",
+      "💰 Total      : {{totalAmount}}",
+      "💳 Sisa Bayar : {{outstandingAmount}}",
+      "📅 Jatuh Tempo: *{{dueDate}}*",
+      "━━━━━━━━━━━━━━━━━━",
+      "{{#if invoiceUrl}}",
+      "Lihat & bayar invoice:",
+      "{{invoiceUrl}}",
+      "",
+      "{{/if}}",
+      "Mohon lakukan pembayaran sebelum tanggal jatuh tempo.",
+      "Terima kasih 🙏",
+      "_CST Logistics_",
+    ].join("\n"),
+    h3: [
+      "⚠️ *Pengingat Pembayaran — H-3*",
+      "━━━━━━━━━━━━━━━━━━",
+      "Kepada Yth. *{{customerName}}*,",
+      "",
+      "Invoice Anda akan jatuh tempo dalam *3 hari lagi*.",
+      "",
+      "📄 Invoice    : *{{invoiceNumber}}*",
+      "📋 No. Order  : {{orderNumber}}",
+      "💰 Total      : {{totalAmount}}",
+      "💳 Sisa Bayar : {{outstandingAmount}}",
+      "📅 Jatuh Tempo: *{{dueDate}}*",
+      "━━━━━━━━━━━━━━━━━━",
+      "{{#if invoiceUrl}}",
+      "Segera bayar invoice Anda:",
+      "{{invoiceUrl}}",
+      "",
+      "{{/if}}",
+      "Mohon segera lakukan pembayaran untuk menghindari keterlambatan.",
+      "Terima kasih 🙏",
+      "_CST Logistics_",
+    ].join("\n"),
+    h1: [
+      "🔔 *Pengingat PENTING — H-1 Jatuh Tempo*",
+      "━━━━━━━━━━━━━━━━━━",
+      "Kepada Yth. *{{customerName}}*,",
+      "",
+      "Invoice Anda akan jatuh tempo *BESOK*.",
+      "",
+      "📄 Invoice    : *{{invoiceNumber}}*",
+      "📋 No. Order  : {{orderNumber}}",
+      "💰 Total      : {{totalAmount}}",
+      "💳 Sisa Bayar : {{outstandingAmount}}",
+      "📅 Jatuh Tempo: *{{dueDate}}*",
+      "━━━━━━━━━━━━━━━━━━",
+      "{{#if invoiceUrl}}",
+      "Bayar sekarang:",
+      "{{invoiceUrl}}",
+      "",
+      "{{/if}}",
+      "Harap segera selesaikan pembayaran sebelum besok untuk menghindari denda keterlambatan.",
+      "Terima kasih 🙏",
+      "_CST Logistics_",
+    ].join("\n"),
+    due_today: [
+      "🚨 *HARI INI Tanggal Jatuh Tempo Invoice*",
+      "━━━━━━━━━━━━━━━━━━",
+      "Kepada Yth. *{{customerName}}*,",
+      "",
+      "Hari ini adalah tanggal jatuh tempo invoice Anda.",
+      "",
+      "📄 Invoice    : *{{invoiceNumber}}*",
+      "📋 No. Order  : {{orderNumber}}",
+      "💰 Total      : {{totalAmount}}",
+      "💳 Sisa Bayar : {{outstandingAmount}}",
+      "📅 Jatuh Tempo: *{{dueDate}}*",
+      "━━━━━━━━━━━━━━━━━━",
+      "{{#if invoiceUrl}}",
+      "Bayar sekarang sebelum terlambat:",
+      "{{invoiceUrl}}",
+      "",
+      "{{/if}}",
+      "Mohon lakukan pembayaran hari ini. Hubungi kami jika ada pertanyaan.",
+      "Terima kasih 🙏",
+      "_CST Logistics_",
+    ].join("\n"),
+    overdue: [
+      "🔴 *Invoice JATUH TEMPO — Segera Bayar*",
+      "━━━━━━━━━━━━━━━━━━",
+      "Kepada Yth. *{{customerName}}*,",
+      "",
+      "Invoice Anda telah melewati tanggal jatuh tempo selama *{{daysOverdue}} hari*.",
+      "",
+      "📄 Invoice    : *{{invoiceNumber}}*",
+      "📋 No. Order  : {{orderNumber}}",
+      "💰 Total      : {{totalAmount}}",
+      "💳 Sisa Bayar : {{outstandingAmount}}",
+      "📅 Jatuh Tempo: *{{dueDate}}* (lewat {{daysOverdue}} hari)",
+      "━━━━━━━━━━━━━━━━━━",
+      "{{#if invoiceUrl}}",
+      "Bayar sekarang:",
+      "{{invoiceUrl}}",
+      "",
+      "{{/if}}",
+      "Mohon segera selesaikan pembayaran. Hubungi tim kami jika memerlukan bantuan.",
+      "Terima kasih 🙏",
+      "_CST Logistics_",
     ].join("\n"),
   },
 } as const;
@@ -1401,6 +1529,7 @@ export function getWaDefaultTemplatesFlatMap(): Record<string, string> {
   add("vendor", "revision_fallback", v.revision_fallback);
   add("vendor", "vendor_assignment", v.vendor_assignment);
   add("vendor", "vendor_order_status_change", v.vendor_order_status_change);
+  add("vendor", "vendor_not_selected", ape.vendor_not_selected);
 
   // product_order → workflow key: product_order_new
   const po = DEFAULT_TPL.product_order;
@@ -1413,6 +1542,14 @@ export function getWaDefaultTemplatesFlatMap(): Record<string, string> {
   add("admin_personal", "product_order_status_update", pos.admin_personal);
   add("admin_group",    "product_order_status_update", pos.admin_group);
   add("customer",       "product_order_status_update", pos.customer);
+
+  // invoice_reminder
+  const ir = DEFAULT_TPL.invoice_reminder;
+  add("customer", "invoice_reminder_h7",  ir.h7);
+  add("customer", "invoice_reminder_h3",  ir.h3);
+  add("customer", "invoice_reminder_h1",  ir.h1);
+  add("customer", "invoice_due_today",    ir.due_today);
+  add("customer", "invoice_overdue",      ir.overdue);
 
   return m;
 }
@@ -1438,32 +1575,49 @@ async function notifyAdmin(order: LogisticOrderData): Promise<void> {
   // Generate admin review link upfront — used in both WA and email
   const adminReviewUrl = await createAdminReviewLink(order.id).catch(() => "");
 
-  // order_new → hanya kirim ke Admin Group (bukan Admin Pribadi)
-  const [tplAdminGroup, adminGroupWa] = await Promise.all([
+  // order_new → kirim ke Admin Personal DAN Admin Group secara terpisah (bukan OR)
+  const [tplAdminPersonal, tplAdminGroup, adminGroupWa, personalAdminWa] = await Promise.all([
+    getWaTemplateConfig("admin_personal", "order_new", DEFAULT_TPL.admin_personal.order_new),
     getWaTemplateConfig("admin_group", "order_new", DEFAULT_TPL.admin_group.order_new),
     getAdminGroupWa(),
+    getAdminWa(),
   ]);
-  if (adminGroupWa) {
-    logger.info({ groupId: adminGroupWa, orderNumber: order.orderNumber }, "Sending group WA notification");
-    let groupActionUrl: string | undefined;
-    if (order.publicRfqToken) {
-      const domain = getPreferredDomain() || "cstlogistic.co.id";
-      const longUrl = `https://${domain}/admin-action/${order.publicRfqToken}`;
-      groupActionUrl = await generateShortLink(longUrl, {
-        context: "admin_action",
-        refType: "order",
-        refId: order.orderNumber,
-      }).catch((err: unknown) => {
-        logger.warn({ err }, "group WA: failed to generate short link, using long URL");
-        return longUrl;
-      });
-    }
-    const wrappedActionUrl = groupActionUrl ? `_${groupActionUrl}_` : groupActionUrl;
-    sendWhatsApp(adminGroupWa, buildAdminGroupWaMessage(order, tplAdminGroup, wrappedActionUrl)).catch((err: unknown) =>
-      logger.error({ err }, "WA group notification failed")
+
+  if (!adminGroupWa && !personalAdminWa) {
+    logger.warn("Admin WA not configured — skipping (set FONNTE_ADMIN_WA atau FONNTE_ADMIN_GROUP_ID, atau konfigurasikan via admin panel)");
+  }
+
+  // Buat short link sekali — dipakai bersama oleh personal & group
+  let adminActionUrl: string | undefined;
+  if (order.publicRfqToken) {
+    const domain = getPreferredDomain() || "cstlogistic.co.id";
+    const longUrl = `https://${domain}/admin-action/${order.publicRfqToken}`;
+    adminActionUrl = await generateShortLink(longUrl, {
+      context: "admin_action",
+      refType: "order",
+      refId: order.orderNumber,
+    }).catch((err: unknown) => {
+      logger.warn({ err }, "admin WA: failed to generate short link, using long URL");
+      return longUrl;
+    });
+  }
+
+  // Kirim ke Admin Personal (template detail dengan semua info)
+  if (personalAdminWa) {
+    logger.info({ target: personalAdminWa, orderNumber: order.orderNumber }, "Sending admin personal WA notification");
+    const personalActionUrl = adminActionUrl;
+    sendWhatsApp(personalAdminWa, buildAdminWaMessage(order, tplAdminPersonal, personalActionUrl)).catch((err: unknown) =>
+      logger.error({ err }, "WA admin personal notification failed")
     );
-  } else {
-    logger.info("Admin WA group not configured — skipping (set FONNTE_ADMIN_GROUP_ID or configure via admin panel)");
+  }
+
+  // Kirim ke Admin Group (template ringkas untuk grup)
+  if (adminGroupWa) {
+    logger.info({ target: adminGroupWa, orderNumber: order.orderNumber }, "Sending admin group WA notification");
+    const wrappedActionUrl = adminActionUrl ? `_${adminActionUrl}_` : adminActionUrl;
+    sendWhatsApp(adminGroupWa, buildAdminGroupWaMessage(order, tplAdminGroup, wrappedActionUrl)).catch((err: unknown) =>
+      logger.error({ err }, "WA admin group notification failed")
+    );
   }
 
   if (isSmtpConfigured()) {
@@ -2108,6 +2262,7 @@ export interface ProductOrderData {
   email: string;
   phone: string;
   shippingAddress: string;
+  shippingMethod?: string | null;
   notes?: string | null;
   grandTotal: number;
   subtotal?: number | null;
@@ -2184,22 +2339,83 @@ export async function sendProductOrderWaNotification(order: ProductOrderData): P
     timestamp: nowWIB(),
   };
 
-  // product_order_new → hanya kirim ke Admin Group (bukan Admin Pribadi)
-  const [tplAdminGroup, tplCustomer, adminGroupWa] = await Promise.all([
+  // product_order_new → kirim ke Admin Group dan nomor admin pribadi
+  const [tplAdminGroup, tplCustomer, adminGroupWa, adminPhones] = await Promise.all([
     getWaTemplateConfig("admin_group", "product_order_new", DEFAULT_TPL.product_order.admin_group),
     getWaTemplateConfig("customer", "product_order_new", DEFAULT_TPL.product_order.customer),
     getAdminGroupWa(),
+    getAdminPhones(),
   ]);
 
   if (adminGroupWa) {
-    sendWhatsApp(adminGroupWa, renderTemplate(tplAdminGroup, vars)).catch((err: unknown) =>
+    sendWhatsApp(adminGroupWa, renderTemplate(tplAdminGroup, vars), { forceFonnte: true, context: "product_order_new", refType: "portal_product_order", refId: order.orderNumber }).catch((err: unknown) =>
       logger.error({ err }, "WA product_order_new (admin_group) failed"),
     );
   }
 
+  for (const phone of adminPhones) {
+    sendWhatsApp(phone, renderTemplate(tplAdminGroup, vars), { forceFonnte: true, context: "product_order_new_admin", refType: "portal_product_order", refId: `${order.orderNumber}:${phone}` }).catch((err: unknown) =>
+      logger.error({ err, phone }, "WA product_order_new (admin pribadi) failed"),
+    );
+  }
+
   if (order.phone) {
-    sendWhatsApp(order.phone, renderTemplate(tplCustomer, vars)).catch((err: unknown) =>
+    sendWhatsApp(order.phone, renderTemplate(tplCustomer, vars), { forceFonnte: true, context: "product_order_new", refType: "portal_product_order", refId: order.orderNumber }).catch((err: unknown) =>
       logger.error({ err }, "WA product_order_new (customer) failed"),
+    );
+  }
+}
+
+// ── sendProductOrderPickupWaNotification ─────────────────────────────────────
+export async function sendProductOrderPickupWaNotification(order: {
+  orderNumber: string;
+  customerName: string;
+  phone: string;
+  email: string;
+  grandTotal: number;
+  notes?: string | null;
+  items: { productName: string; qty: number; unit?: string | null; subtotal: number; sku?: string | null }[];
+  orderUrl?: string;
+}): Promise<void> {
+  const itemList = order.items
+    .map((i) => {
+      const skuPart = i.sku ? ` [${i.sku}]` : "";
+      return `• ${i.productName}${skuPart} — ${i.qty} ${i.unit ?? "pcs"} (Rp ${formatRupiah(i.subtotal)})`;
+    })
+    .join("\n");
+
+  const [adminGroupWa, adminPhones] = await Promise.all([getAdminGroupWa(), getAdminPhones()]);
+  const msg = [
+    "🏭 *[AMBIL SENDIRI] PESANAN PRODUK BARU*",
+    "━━━━━━━━━━━━━━━━━━",
+    `No. Order   : \`${order.orderNumber}\``,
+    `👤 Customer  : *${order.customerName}*`,
+    `📞 HP        : ${order.phone}`,
+    `📧 Email     : ${order.email}`,
+    "━━━━━━━━━━━━━━━━━━",
+    "⚠️ *Customer akan AMBIL SENDIRI di gudang*",
+    "Mohon tim gudang menyiapkan barang sebelum customer tiba.",
+    "━━━━━━━━━━━━━━━━━━",
+    "📦 Detail Produk:",
+    itemList,
+    "────────────────",
+    `💰 Grand Total: *Rp ${formatRupiah(order.grandTotal)}*`,
+    order.notes ? `📝 Catatan     : ${order.notes}` : null,
+    "━━━━━━━━━━━━━━━━━━",
+    order.orderUrl ? `🔗 Lihat di BizPortal:\n${order.orderUrl}` : null,
+    "",
+    `_Dikirim: ${nowWIB()}_`,
+  ].filter((l) => l !== null).join("\n");
+
+  if (adminGroupWa) {
+    sendWhatsApp(adminGroupWa, msg, { forceFonnte: true, context: "product_order_pickup", refType: "portal_product_order", refId: order.orderNumber }).catch((err: unknown) =>
+      logger.error({ err }, "WA product_order_pickup (admin_group) failed"),
+    );
+  }
+
+  for (const phone of adminPhones) {
+    sendWhatsApp(phone, msg, { forceFonnte: true, context: "product_order_pickup_admin", refType: "portal_product_order", refId: `${order.orderNumber}:${phone}` }).catch((err: unknown) =>
+      logger.error({ err, phone }, "WA product_order_pickup (admin pribadi) failed"),
     );
   }
 }
@@ -2502,6 +2718,34 @@ export async function sendVendorAwardedWa(data: VendorAwardedData): Promise<void
     refType: "rfq",
     refId: data.rfqNumber,
   }).catch((e: unknown) => logger.error({ e, vendorName: data.vendorName }, "sendVendorAwardedWa failed"));
+}
+
+// ── sendVendorNotSelectedWa ────────────────────────────────────────────────────
+export interface VendorNotSelectedData {
+  vendorName: string;
+  vendorPhone: string;
+  rfqNumber: string;
+  orderNumber: string;
+  route: string;
+}
+
+export async function sendVendorNotSelectedWa(data: VendorNotSelectedData): Promise<void> {
+  const tpl = await getWaTemplateConfig(
+    "vendor",
+    "vendor_not_selected",
+    DEFAULT_TPL.admin_personal_extra.vendor_not_selected,
+  );
+  const msg = renderTemplate(tpl, {
+    vendorName: data.vendorName,
+    rfqNumber: data.rfqNumber,
+    orderNumber: data.orderNumber,
+    route: data.route,
+  });
+  sendWhatsApp(data.vendorPhone, msg, {
+    context: "vendor-not-selected",
+    refType: "rfq",
+    refId: data.rfqNumber,
+  }).catch((e: unknown) => logger.error({ e, vendorName: data.vendorName }, "sendVendorNotSelectedWa failed"));
 }
 
 // ── sendVendorSelectedAdminWa ──────────────────────────────────────────────────
@@ -3306,6 +3550,294 @@ export async function sendInvoiceIssuedNotification(
   }
 }
 
+// ── sendInvoiceReminderWa ──────────────────────────────────────────────────────
+// Kirim WA reminder invoice ke customer sesuai tipe reminder.
+// Dipanggil oleh invoiceReminderWorker.
+export async function sendInvoiceReminderWa(
+  phone: string,
+  reminderType: string,
+  vars: {
+    customerName: string;
+    invoiceNumber: string;
+    orderNumber?: string | null;
+    totalAmount: string;
+    outstandingAmount: string;
+    dueDate: string;
+    invoiceUrl?: string | null;
+    daysOverdue?: number;
+  },
+): Promise<void> {
+  const workflowKeyMap: Record<string, string> = {
+    h7:        "invoice_reminder_h7",
+    h3:        "invoice_reminder_h3",
+    h1:        "invoice_reminder_h1",
+    due_today: "invoice_due_today",
+    overdue_1: "invoice_overdue",
+    overdue_7: "invoice_overdue",
+  };
+  const workflowKey = workflowKeyMap[reminderType];
+  if (!workflowKey) return;
+
+  const defaultBodyMap: Record<string, string> = {
+    invoice_reminder_h7: DEFAULT_TPL.invoice_reminder.h7,
+    invoice_reminder_h3: DEFAULT_TPL.invoice_reminder.h3,
+    invoice_reminder_h1: DEFAULT_TPL.invoice_reminder.h1,
+    invoice_due_today:   DEFAULT_TPL.invoice_reminder.due_today,
+    invoice_overdue:     DEFAULT_TPL.invoice_reminder.overdue,
+  };
+
+  const tplBody = await getWaTemplateConfig("customer", workflowKey, defaultBodyMap[workflowKey] ?? "");
+  const tvars: Record<string, string | null | undefined> = {
+    customerName:      vars.customerName,
+    invoiceNumber:     vars.invoiceNumber,
+    orderNumber:       vars.orderNumber ?? null,
+    totalAmount:       vars.totalAmount,
+    outstandingAmount: vars.outstandingAmount,
+    dueDate:           vars.dueDate,
+    invoiceUrl:        vars.invoiceUrl ?? null,
+    daysOverdue:       vars.daysOverdue != null ? String(vars.daysOverdue) : null,
+    timestamp:         nowWIB(),
+  };
+  const msg = renderTemplate(tplBody, tvars);
+  await sendWhatsApp(phone, msg, {
+    context: `invoice_reminder_${reminderType}`,
+    refType: "invoice",
+    refId:   vars.invoiceNumber,
+  });
+}
+
+// ── Product-First Flow WA Helpers ─────────────────────────────────────────────
+// Semua fungsi di bawah menggunakan context+refId yang unik per vendor/event
+// agar notification_logs dapat melakukan dedup dengan benar.
+
+/**
+ * WA ke vendor produk saat Product RFQ dikirim.
+ * refId: "{orderId}-{vendorId}" — unik per vendor agar dedup tidak antar-vendor.
+ */
+export async function sendProductRfqVendorWa(params: {
+  vendorPhone: string;
+  vendorId: number | string;
+  orderId: number | string;
+  orderNumber: string;
+  rfqNumber: string;
+  commodity: string | null;
+  origin?: string | null;
+  destination?: string | null;
+  formUrl: string;
+  notes?: string | null;
+}): Promise<void> {
+  const msg = [
+    `📦 *Permintaan Penawaran Produk*`,
+    `━━━━━━━━━━━━━━━━`,
+    `No RFQ   : *${params.rfqNumber}*`,
+    `No Order : *${params.orderNumber}*`,
+    `Produk   : ${params.commodity ?? "-"}`,
+    `Rute     : ${params.origin ?? "-"} → ${params.destination ?? "-"}`,
+    ``,
+    `Silakan berikan penawaran harga produk, ketersediaan stok, dan tanggal siap melalui link berikut:`,
+    `🔗 ${params.formUrl}`,
+    params.notes ? `\n*Catatan:* ${params.notes}` : null,
+    ``,
+    `Terima kasih atas kerja sama Anda.`,
+    `_${nowWIB()}_`,
+  ].filter((l) => l !== null).join("\n");
+
+  sendWhatsApp(params.vendorPhone.trim(), msg, {
+    context: "product-rfq-blast",
+    refType: "logistic_order",
+    refId: `${params.orderId}-${params.vendorId}`,
+  }).catch(() => {});
+}
+
+/**
+ * WA ke customer setelah menyetujui harga produk (transisi → Shipment Selection Pending).
+ * context="product-approved-customer-wa", refId=orderId
+ */
+export async function sendShipmentSelectionCustomerWa(params: {
+  customerPhone: string;
+  customerName: string;
+  orderId: number | string;
+  orderNumber: string;
+  selectionUrl?: string | null;
+}): Promise<void> {
+  const urlPart = params.selectionUrl
+    ? `\n\nSilakan pilih mode pengiriman:\n🔗 ${params.selectionUrl}`
+    : "\n\nTim kami akan segera menghubungi Anda untuk memilih layanan pengiriman. 🚚";
+  const msg = `✅ *Produk Disetujui*\n\nHalo ${params.customerName}, Anda telah menyetujui penawaran produk untuk order *${params.orderNumber}*.${urlPart}`;
+
+  sendWhatsApp(params.customerPhone.trim(), msg, {
+    context: "product-approved-customer-wa",
+    refType: "portal_product_order",
+    refId: String(params.orderId),
+  }).catch(() => {});
+}
+
+/**
+ * WA ke admin group saat customer memilih mode pengiriman (non-pickup_self).
+ * context="shipment-mode-selected-admin", refId=orderId
+ */
+export async function sendShipmentModeSelectedAdminWa(params: {
+  orderId: number | string;
+  orderNumber: string;
+  customerName: string;
+  shipmentMode: string;
+  adminGroupWa?: string | null;
+}): Promise<void> {
+  const target = params.adminGroupWa ?? (await getAdminGroupWa());
+  if (!target) return;
+
+  const modeLabel: Record<string, string> = {
+    trucking: "Trucking (darat)",
+    air_freight: "Kargo Udara",
+    sea_freight: "Kargo Laut",
+    door_to_door: "Door-to-Door",
+    courier: "Kurir",
+    air_cargo: "Kargo Udara",
+  };
+
+  const msg = [
+    `🚚 *Customer Pilih Mode Pengiriman*`,
+    `━━━━━━━━━━━━━━━━`,
+    `No Order : *${params.orderNumber}*`,
+    `Customer : ${params.customerName}`,
+    `Mode     : *${modeLabel[params.shipmentMode] ?? params.shipmentMode}*`,
+    ``,
+    `Silakan proses RFQ pengiriman ke vendor yang sesuai.`,
+    `_${nowWIB()}_`,
+  ].join("\n");
+
+  sendWhatsApp(target, msg, {
+    context: "shipment-mode-selected-admin",
+    refType: "portal_product_order",
+    refId: String(params.orderId),
+  }).catch(() => {});
+}
+
+/**
+ * WA ke vendor shipper saat Shipment RFQ dikirim.
+ * refId: "{orderId}-{vendorId}" — unik per vendor.
+ */
+export async function sendShipmentRfqVendorWa(params: {
+  vendorPhone: string;
+  vendorId: number | string;
+  orderId: number | string;
+  orderNumber: string;
+  rfqNumber: string;
+  commodity: string | null;
+  pickupLocation?: string | null;
+  destination?: string | null;
+  readyDate?: string | null;
+  formUrl: string;
+  notes?: string | null;
+}): Promise<void> {
+  const msg = [
+    `🚚 *Permintaan Penawaran Pengiriman*`,
+    `━━━━━━━━━━━━━━━━`,
+    `No RFQ   : *${params.rfqNumber}*`,
+    `No Order : *${params.orderNumber}*`,
+    `Muatan   : ${params.commodity ?? "-"}`,
+    `Pickup   : ${params.pickupLocation ?? "-"}`,
+    `Tujuan   : ${params.destination ?? "-"}`,
+    `Tgl Siap : ${params.readyDate ?? "-"}`,
+    ``,
+    `Silakan berikan penawaran biaya pengiriman melalui link berikut:`,
+    `🔗 ${params.formUrl}`,
+    params.notes ? `\n*Catatan:* ${params.notes}` : null,
+    ``,
+    `Terima kasih.`,
+    `_${nowWIB()}_`,
+  ].filter((l) => l !== null).join("\n");
+
+  sendWhatsApp(params.vendorPhone.trim(), msg, {
+    context: "shipment-rfq-blast",
+    refType: "logistic_order",
+    refId: `${params.orderId}-${params.vendorId}`,
+  }).catch(() => {});
+}
+
+/**
+ * WA ke customer saat produk/order siap diambil (Ready for Pickup).
+ * context="ready-for-pickup-customer", refId=orderId
+ */
+export async function sendReadyForPickupCustomerWa(params: {
+  customerPhone: string;
+  customerName: string;
+  orderId: number | string;
+  orderNumber: string;
+  pickupLocation?: string | null;
+  readyDate?: string | null;
+}): Promise<void> {
+  const loc = params.pickupLocation ? `\n📍 Lokasi: ${params.pickupLocation}` : "";
+  const rd = params.readyDate ? `\n📅 Jadwal: ${params.readyDate}` : "";
+  const msg = `📦 *Produk Siap Diambil*\n\nHalo ${params.customerName}, pesanan Anda *${params.orderNumber}* sudah siap untuk diambil.${loc}${rd}\n\nHarap bawa bukti pemesanan. Terima kasih! 🙏`;
+
+  sendWhatsApp(params.customerPhone.trim(), msg, {
+    context: "ready-for-pickup-customer",
+    refType: "portal_product_order",
+    refId: String(params.orderId),
+  }).catch(() => {});
+}
+
+/**
+ * WA ke customer dan admin group saat shipment vendor dikonfirmasi.
+ * context: "shipment-vendor-confirmed-admin" / "shipment-vendor-confirmed-customer"
+ */
+export async function sendShipmentVendorConfirmedWa(params: {
+  orderId: number | string;
+  orderNumber: string;
+  customerName: string;
+  customerPhone?: string | null;
+  vendorName: string;
+  shipmentMode?: string | null;
+  eta?: string | null;
+  adminGroupWa?: string | null;
+}): Promise<void> {
+  const target = params.adminGroupWa ?? (await getAdminGroupWa());
+
+  const modeLabel: Record<string, string> = {
+    trucking: "Trucking (darat)",
+    air_freight: "Kargo Udara",
+    sea_freight: "Kargo Laut",
+    door_to_door: "Door-to-Door",
+    courier: "Kurir",
+    air_cargo: "Kargo Udara",
+  };
+  const modeStr = params.shipmentMode
+    ? ` (${modeLabel[params.shipmentMode] ?? params.shipmentMode})`
+    : "";
+  const etaStr = params.eta ? `\nETA      : ${params.eta}` : "";
+
+  if (target) {
+    const adminMsg = [
+      `🤝 *Vendor Pengiriman Dikonfirmasi*`,
+      `━━━━━━━━━━━━━━━━`,
+      `No Order : *${params.orderNumber}*`,
+      `Customer : ${params.customerName}`,
+      `Vendor   : *${params.vendorName}*`,
+      `Mode     : ${modeStr || "-"}`,
+      params.eta ? `ETA      : ${params.eta}` : null,
+      ``,
+      `_${nowWIB()}_`,
+    ].filter((l) => l !== null).join("\n");
+
+    sendWhatsApp(target, adminMsg, {
+      context: "shipment-vendor-confirmed-admin",
+      refType: "portal_product_order",
+      refId: String(params.orderId),
+    }).catch(() => {});
+  }
+
+  if (params.customerPhone) {
+    const customerMsg = `🚚 *Vendor Pengiriman Dikonfirmasi*\n\nHalo ${params.customerName}, vendor pengiriman untuk order *${params.orderNumber}* telah dikonfirmasi: *${params.vendorName}*${modeStr}.${etaStr}\n\nBarang Anda akan segera diproses. Terima kasih! 🙏`;
+
+    sendWhatsApp(params.customerPhone.trim(), customerMsg, {
+      context: "shipment-vendor-confirmed-customer",
+      refType: "portal_product_order",
+      refId: String(params.orderId),
+    }).catch(() => {});
+  }
+}
+
 // ── runWaTemplateMigration ─────────────────────────────────────────────────────
 // Creates the whatsapp_template_configs table if missing, seeds default templates,
 // and upgrades stale rows that are missing required markers.
@@ -3331,14 +3863,26 @@ export async function runWaTemplateMigration(): Promise<void> {
       ["customer",       "order_new"],
       ["vendor",         "vendor_request"],
       ["vendor",         "order_new"],
+      ["vendor",         "vendor_not_selected"],
+      ["customer",       "invoice_reminder_h7"],
+      ["customer",       "invoice_reminder_h3"],
+      ["customer",       "invoice_reminder_h1"],
+      ["customer",       "invoice_due_today"],
+      ["customer",       "invoice_overdue"],
     ];
 
     const tplMap: Record<string, string> = {
-      "admin_personal__order_new": DEFAULT_TPL.admin_personal.order_new,
-      "admin_group__order_new":    DEFAULT_TPL.admin_group.order_new,
-      "customer__order_new":       DEFAULT_TPL.customer.order_new,
-      "vendor__vendor_request":    DEFAULT_TPL.vendor.vendor_request,
-      "vendor__order_new":         DEFAULT_TPL.vendor.order_new,
+      "admin_personal__order_new":      DEFAULT_TPL.admin_personal.order_new,
+      "admin_group__order_new":         DEFAULT_TPL.admin_group.order_new,
+      "customer__order_new":            DEFAULT_TPL.customer.order_new,
+      "vendor__vendor_request":         DEFAULT_TPL.vendor.vendor_request,
+      "vendor__order_new":              DEFAULT_TPL.vendor.order_new,
+      "vendor__vendor_not_selected":    DEFAULT_TPL.admin_personal_extra.vendor_not_selected,
+      "customer__invoice_reminder_h7":  DEFAULT_TPL.invoice_reminder.h7,
+      "customer__invoice_reminder_h3":  DEFAULT_TPL.invoice_reminder.h3,
+      "customer__invoice_reminder_h1":  DEFAULT_TPL.invoice_reminder.h1,
+      "customer__invoice_due_today":    DEFAULT_TPL.invoice_reminder.due_today,
+      "customer__invoice_overdue":      DEFAULT_TPL.invoice_reminder.overdue,
     };
 
     // Required marker per pair — if missing from the DB row, force-upgrade it

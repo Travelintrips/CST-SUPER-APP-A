@@ -415,6 +415,8 @@ export default function VendorMiniFormPage() {
   // Vendor-only fields when productTemplate is active
   const [tplStockStatus, setTplStockStatus] = useState("");
   const [tplHarga, setTplHarga] = useState("");
+  const [tplHargaError, setTplHargaError] = useState(false);
+  const tplHargaRef = useRef<HTMLDivElement>(null);
   const [tplLeadTime, setTplLeadTime] = useState("");
   const [tplMoq, setTplMoq] = useState("");
   const [tplNotes, setTplNotes] = useState("");
@@ -423,6 +425,52 @@ export default function VendorMiniFormPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  type MediaAssetItem = { role: string; objectPath: string; filename: string; mimeType: string; size: number; localPreview?: string };
+  const [mediaAssets, setMediaAssets] = useState<MediaAssetItem[]>([]);
+  const [mediaUploadingRoles, setMediaUploadingRoles] = useState<Set<string>>(new Set());
+  const [mediaErrors, setMediaErrors] = useState<Record<string, string>>({});
+
+  const handleMediaUpload = async (role: string, file: File) => {
+    setMediaUploadingRoles(prev => new Set(prev).add(role));
+    setMediaErrors(prev => { const n = { ...prev }; delete n[role]; return n; });
+    const localPreview = file.type.startsWith("image/") ? URL.createObjectURL(file) : undefined;
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("role", role);
+      const res = await fetch(`/api/vendor-form/upload-media/${token}`, { method: "POST", body: fd });
+      const data = await res.json() as { objectPath?: string; filename?: string; mimeType?: string; size?: number; role?: string; error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Upload gagal");
+      const item: MediaAssetItem = {
+        role,
+        objectPath: data.objectPath!,
+        filename: data.filename ?? file.name,
+        mimeType: data.mimeType ?? file.type,
+        size: data.size ?? file.size,
+        localPreview,
+      };
+      setMediaAssets(prev => {
+        const isSingle = ["cover", "video", "brochure"].includes(role);
+        return isSingle
+          ? [...prev.filter(m => m.role !== role), item]
+          : [...prev, item];
+      });
+    } catch (err) {
+      if (localPreview) URL.revokeObjectURL(localPreview);
+      setMediaErrors(prev => ({ ...prev, [role]: (err as Error).message }));
+    } finally {
+      setMediaUploadingRoles(prev => { const n = new Set(prev); n.delete(role); return n; });
+    }
+  };
+
+  const handleMediaRemove = (objectPath: string) => {
+    setMediaAssets(prev => {
+      const item = prev.find(m => m.objectPath === objectPath);
+      if (item?.localPreview) URL.revokeObjectURL(item.localPreview);
+      return prev.filter(m => m.objectPath !== objectPath);
+    });
+  };
 
   useEffect(() => {
     if (!token) { setError("Token tidak ditemukan"); setLoading(false); return; }
@@ -452,19 +500,39 @@ export default function VendorMiniFormPage() {
 
     // Validate required fields — prefer serviceTemplate fields, fallback to schema
     if (meta?.serviceTemplate && !meta?.productTemplate) {
-      const missing = (meta.serviceTemplate.fields ?? [])
+      const phase = meta.phase ?? "quotation";
+      const visibleFields = (meta.serviceTemplate.fields ?? []).filter(f =>
+        phase === "operational"
+          ? (f.section === "operational" || f.section === "both")
+          : (f.section === "quotation" || f.section === "both" || !f.section)
+      );
+      const missing = visibleFields
         .filter(f => f.required && !f.isUpload && !values[f.key]?.trim())
         .map(f => f.label);
       if (missing.length) { setSubmitError(`Field wajib belum diisi: ${missing.join(", ")}`); return; }
     } else if (meta?.schema) {
+      const phase = meta.phase ?? "quotation";
+      // Ketika productTemplate ada, field product_name / unit_price / unit
+      // dihandle oleh template — tidak perlu divalidasi dari schema umum
+      const tplManagedKeys = meta?.productTemplate ? ["product_name", "unit_price", "unit"] : [];
       const missing = meta.schema.fields
-        .filter(f => f.required && !values[f.key]?.trim())
+        .filter(f =>
+          f.required &&
+          !f.isUpload &&
+          !tplManagedKeys.includes(f.key) &&
+          (!f.section || f.section === phase || f.section === "both") &&
+          !values[f.key]?.trim()
+        )
         .map(f => f.label);
       if (missing.length) { setSubmitError(`Field wajib belum diisi: ${missing.join(", ")}`); return; }
     }
 
     if (meta?.productTemplate && (!tplHarga || Number(tplHarga) <= 0)) {
-      setSubmitError("Harga dasar wajib diisi"); return;
+      setTplHargaError(true);
+      setSubmitError("Harga dasar wajib diisi");
+      tplHargaRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      tplHargaRef.current?.querySelector("input")?.focus();
+      return;
     }
     if (meta?.mode === "order_based" && !meta?.productTemplate && (!vendorUnitPrice || Number(vendorUnitPrice) <= 0)) {
       setSubmitError("Harga satuan dasar wajib diisi"); return;
@@ -515,6 +583,9 @@ export default function VendorMiniFormPage() {
           } : {}),
         },
         attachmentUrl,
+        mediaAssets: mediaAssets.length > 0
+          ? mediaAssets.map(({ role, objectPath, filename, mimeType, size }) => ({ role, objectPath, filename, mimeType, size }))
+          : undefined,
       };
       if (meta.mode === "order_based") {
         body["vendorPrice"] = subtotal > 0 ? subtotal : undefined;
@@ -968,16 +1039,30 @@ export default function VendorMiniFormPage() {
                 Isi <strong>Harga Dasar</strong> dan detail penawaran Anda. Harga jual ke customer ditentukan oleh admin.
               </p>
               <div className="space-y-4">
-                <FormField label="Harga Dasar (Rp, belum PPN)" required>
-                  <div className="flex gap-2">
-                    <select value={currency} onChange={e => setCurrency(e.target.value)}
-                      className="rounded-lg border border-slate-200 px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white w-24">
-                      {["IDR","USD","SGD","EUR"].map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                    <input type="number" min="0" step="any" value={tplHarga} onChange={e => setTplHarga(e.target.value)}
-                      required placeholder="Contoh: 5000000" className={`${INPUT_CLS} flex-1`} />
-                  </div>
-                </FormField>
+                <div ref={tplHargaRef}>
+                  <FormField label="Harga Dasar (Rp, belum PPN)" required>
+                    <div className={`flex gap-2 rounded-lg transition-all ${tplHargaError ? "ring-2 ring-red-400" : ""}`}>
+                      <select value={currency} onChange={e => setCurrency(e.target.value)}
+                        className={`rounded-lg border px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white w-24 ${tplHargaError ? "border-red-400" : "border-slate-200"}`}>
+                        {["IDR","USD","SGD","EUR"].map(c => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                      <input
+                        type="number" min="0" step="any" value={tplHarga}
+                        onChange={e => { setTplHarga(e.target.value); if (tplHargaError) setTplHargaError(false); }}
+                        required placeholder="Contoh: 5000000"
+                        className={`flex-1 rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 ${tplHargaError ? "border-red-400 focus:ring-red-400 bg-red-50" : "border-slate-200 focus:ring-indigo-400"}`}
+                      />
+                    </div>
+                    {tplHargaError && (
+                      <p className="mt-1.5 flex items-center gap-1 text-xs text-red-600 font-medium">
+                        <svg className="w-3.5 h-3.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd"/>
+                        </svg>
+                        Harga dasar wajib diisi dan harus lebih dari 0
+                      </p>
+                    )}
+                  </FormField>
+                </div>
                 <FormField label="Status Stok">
                   <select value={tplStockStatus} onChange={e => setTplStockStatus(e.target.value)}
                     className={`${INPUT_CLS} bg-white`}>
@@ -1054,13 +1139,183 @@ export default function VendorMiniFormPage() {
             )}
           </div>
 
+          {/* ── Media Produk/Jasa ──────────────────────────────────────── */}
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+            <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">📷 Media Produk/Jasa</h2>
+            <p className="text-xs text-slate-500 mb-5">Opsional — unggah foto, video, atau brosur untuk memperkuat penawaran Anda.</p>
+
+            {/* Cover Image */}
+            {(() => {
+              const items = mediaAssets.filter(m => m.role === "cover");
+              const busy = mediaUploadingRoles.has("cover");
+              const err = mediaErrors["cover"];
+              return (
+                <div className="mb-5">
+                  <p className="text-sm font-medium text-slate-700 mb-1">🖼️ Cover Image <span className="text-slate-400 font-normal text-xs">(1 foto, maks. 10 MB)</span></p>
+                  {items.length === 0 ? (
+                    <label className={`flex items-center gap-3 cursor-pointer w-fit ${busy ? "pointer-events-none opacity-60" : ""}`}>
+                      <span className="inline-flex items-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 hover:bg-slate-100 px-4 py-2.5 text-sm text-slate-600 transition-colors">
+                        {busy ? <span className="h-4 w-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin inline-block" /> : "📤"} {busy ? "Mengupload..." : "Pilih Foto Cover"}
+                      </span>
+                      <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" disabled={busy}
+                        onChange={e => { const f = e.target.files?.[0]; if (f) handleMediaUpload("cover", f); e.target.value = ""; }} />
+                    </label>
+                  ) : (
+                    <div className="flex items-center gap-3">
+                      <div className="relative">
+                        <img src={items[0].localPreview ?? ""} alt="cover" className="w-20 h-20 object-cover rounded-lg border border-slate-200 shadow-sm" />
+                        <button type="button" onClick={() => handleMediaRemove(items[0].objectPath)}
+                          className="absolute -top-2 -right-2 h-5 w-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center shadow hover:bg-red-600">✕</button>
+                      </div>
+                      <div>
+                        <p className="text-sm text-slate-700 font-medium truncate max-w-[160px]">{items[0].filename}</p>
+                        <p className="text-xs text-green-600 mt-0.5">✓ Terupload</p>
+                      </div>
+                    </div>
+                  )}
+                  {err && <p className="text-xs text-red-500 mt-1">{err}</p>}
+                </div>
+              );
+            })()}
+
+            {/* Gallery */}
+            {(() => {
+              const items = mediaAssets.filter(m => m.role === "gallery");
+              const busy = mediaUploadingRoles.has("gallery");
+              const err = mediaErrors["gallery"];
+              return (
+                <div className="mb-5">
+                  <p className="text-sm font-medium text-slate-700 mb-1">🖼️ Gallery Foto <span className="text-slate-400 font-normal text-xs">(beberapa foto, maks. 10 MB/file)</span></p>
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {items.map(item => (
+                      <div key={item.objectPath} className="relative">
+                        <img src={item.localPreview ?? ""} alt={item.filename} className="w-16 h-16 object-cover rounded-lg border border-slate-200 shadow-sm" />
+                        <button type="button" onClick={() => handleMediaRemove(item.objectPath)}
+                          className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center shadow hover:bg-red-600">✕</button>
+                      </div>
+                    ))}
+                    <label className={`cursor-pointer flex items-center justify-center w-16 h-16 rounded-lg border border-dashed border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-400 text-xl transition-colors ${busy ? "pointer-events-none opacity-60" : ""}`}>
+                      {busy ? <span className="h-4 w-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" /> : "+"}
+                      <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" disabled={busy} multiple
+                        onChange={e => { Array.from(e.target.files ?? []).forEach(f => handleMediaUpload("gallery", f)); e.target.value = ""; }} />
+                    </label>
+                  </div>
+                  {err && <p className="text-xs text-red-500">{err}</p>}
+                </div>
+              );
+            })()}
+
+            {/* Video */}
+            {(() => {
+              const items = mediaAssets.filter(m => m.role === "video");
+              const busy = mediaUploadingRoles.has("video");
+              const err = mediaErrors["video"];
+              return (
+                <div className="mb-5">
+                  <p className="text-sm font-medium text-slate-700 mb-1">🎬 Video Profil <span className="text-slate-400 font-normal text-xs">(1 video MP4/MOV/WebM, maks. 50 MB)</span></p>
+                  {items.length === 0 ? (
+                    <label className={`flex items-center gap-3 cursor-pointer w-fit ${busy ? "pointer-events-none opacity-60" : ""}`}>
+                      <span className="inline-flex items-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 hover:bg-slate-100 px-4 py-2.5 text-sm text-slate-600 transition-colors">
+                        {busy ? <span className="h-4 w-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin inline-block" /> : "🎥"} {busy ? "Mengupload..." : "Pilih Video"}
+                      </span>
+                      <input type="file" accept="video/mp4,video/quicktime,video/webm,video/x-msvideo" className="hidden" disabled={busy}
+                        onChange={e => { const f = e.target.files?.[0]; if (f) handleMediaUpload("video", f); e.target.value = ""; }} />
+                    </label>
+                  ) : (
+                    <div className="flex items-center gap-3 bg-slate-50 rounded-lg px-3 py-2 border border-slate-200 w-fit">
+                      <span className="text-xl">🎬</span>
+                      <div className="min-w-0">
+                        <p className="text-sm text-slate-700 font-medium truncate max-w-[200px]">{items[0].filename}</p>
+                        <p className="text-xs text-green-600">✓ Terupload · {(items[0].size / 1024 / 1024).toFixed(1)} MB</p>
+                      </div>
+                      <button type="button" onClick={() => handleMediaRemove(items[0].objectPath)}
+                        className="text-red-400 hover:text-red-600 ml-2 text-xs">✕ Hapus</button>
+                    </div>
+                  )}
+                  {err && <p className="text-xs text-red-500 mt-1">{err}</p>}
+                </div>
+              );
+            })()}
+
+            {/* Brochure PDF */}
+            {(() => {
+              const items = mediaAssets.filter(m => m.role === "brochure");
+              const busy = mediaUploadingRoles.has("brochure");
+              const err = mediaErrors["brochure"];
+              return (
+                <div className="mb-5">
+                  <p className="text-sm font-medium text-slate-700 mb-1">📄 Brosur / Katalog PDF <span className="text-slate-400 font-normal text-xs">(1 PDF, maks. 10 MB)</span></p>
+                  {items.length === 0 ? (
+                    <label className={`flex items-center gap-3 cursor-pointer w-fit ${busy ? "pointer-events-none opacity-60" : ""}`}>
+                      <span className="inline-flex items-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 hover:bg-slate-100 px-4 py-2.5 text-sm text-slate-600 transition-colors">
+                        {busy ? <span className="h-4 w-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin inline-block" /> : "📁"} {busy ? "Mengupload..." : "Pilih PDF"}
+                      </span>
+                      <input type="file" accept="application/pdf" className="hidden" disabled={busy}
+                        onChange={e => { const f = e.target.files?.[0]; if (f) handleMediaUpload("brochure", f); e.target.value = ""; }} />
+                    </label>
+                  ) : (
+                    <div className="flex items-center gap-3 bg-red-50 rounded-lg px-3 py-2 border border-red-100 w-fit">
+                      <span className="text-xl">📄</span>
+                      <div className="min-w-0">
+                        <p className="text-sm text-slate-700 font-medium truncate max-w-[200px]">{items[0].filename}</p>
+                        <p className="text-xs text-green-600">✓ Terupload</p>
+                      </div>
+                      <button type="button" onClick={() => handleMediaRemove(items[0].objectPath)}
+                        className="text-red-400 hover:text-red-600 ml-2 text-xs">✕ Hapus</button>
+                    </div>
+                  )}
+                  {err && <p className="text-xs text-red-500 mt-1">{err}</p>}
+                </div>
+              );
+            })()}
+
+            {/* Certificates */}
+            {(() => {
+              const items = mediaAssets.filter(m => m.role === "certificate");
+              const busy = mediaUploadingRoles.has("certificate");
+              const err = mediaErrors["certificate"];
+              return (
+                <div>
+                  <p className="text-sm font-medium text-slate-700 mb-1">🏆 Sertifikat / Dokumen Pendukung <span className="text-slate-400 font-normal text-xs">(PDF atau foto, maks. 10 MB/file)</span></p>
+                  {items.length > 0 && (
+                    <div className="space-y-1.5 mb-2">
+                      {items.map(item => (
+                        <div key={item.objectPath} className="flex items-center gap-2 bg-slate-50 rounded-lg px-3 py-1.5 border border-slate-200">
+                          <span>{item.mimeType === "application/pdf" ? "📄" : "🖼️"}</span>
+                          <span className="text-sm text-slate-700 truncate max-w-[200px] flex-1">{item.filename}</span>
+                          <span className="text-xs text-green-600">✓</span>
+                          <button type="button" onClick={() => handleMediaRemove(item.objectPath)}
+                            className="text-red-400 hover:text-red-600 text-xs">✕</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <label className={`flex items-center gap-3 cursor-pointer w-fit ${busy ? "pointer-events-none opacity-60" : ""}`}>
+                    <span className="inline-flex items-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 hover:bg-slate-100 px-4 py-2.5 text-sm text-slate-600 transition-colors">
+                      {busy ? <span className="h-4 w-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin inline-block" /> : "➕"} {busy ? "Mengupload..." : "Tambah Sertifikat"}
+                    </span>
+                    <input type="file" accept="application/pdf,image/jpeg,image/png,image/webp" className="hidden" disabled={busy} multiple
+                      onChange={e => { Array.from(e.target.files ?? []).forEach(f => handleMediaUpload("certificate", f)); e.target.value = ""; }} />
+                  </label>
+                  {err && <p className="text-xs text-red-500 mt-1">{err}</p>}
+                </div>
+              );
+            })()}
+
+            {mediaAssets.length > 0 && (
+              <p className="text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2 mt-4">
+                ✓ {mediaAssets.length} file media siap dikirim bersama penawaran
+              </p>
+            )}
+          </div>
+
           {meta.productTemplate && (
             <>
               <TemplateFieldRenderer
                 template={meta.productTemplate}
                 values={templateValues}
                 onChange={setTemplateValues}
-                readOnly={true}
+                readOnly={submitting}
               />
               <TemplateDocumentRenderer
                 documents={meta.productTemplate.requiredDocuments}

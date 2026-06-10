@@ -6,6 +6,7 @@ import { handleSportCenterSse, broadcastSportCenterEvent } from "./broadcast.js"
 import { postSportCenterBooking, postSportCenterBookingReversal, postSportCenterRefund, postSportCenterMembershipPayment, postSportCenterBookingWithTax, postSportCenterBookingRefundDirect } from "../../lib/accounting.js";
 import { ensureAccountingSettings } from "../../lib/accountingSeed.js";
 import { syncFacilityUpsert, syncFacilityDelete, syncAllFacilities, syncBookingUpsert, syncAllBookings, getLastSyncLogs, pullLegacyBookingsFromSupabase } from "./supabaseSync.js";
+import { saveAndBroadcast } from "../../lib/notificationStore.js";
 
 async function insertAccountingPaymentForSportCenter(args: {
   companyId: number;
@@ -20,15 +21,45 @@ async function insertAccountingPaymentForSportCenter(args: {
   createdById?: string | null;
 }): Promise<void> {
   try {
+
+    // Idempotency: skip jika sudah ada accounting_payment untuk sourceDocId ini
+    const existing = await db.execute(sql`
+      SELECT id FROM accounting_payments
+      WHERE source_type = 'sport_center' AND source_doc_id = ${args.sourceDocId}
+      LIMIT 1
+    `);
+    if (existing.rows.length > 0) {
+      console.log(`[sport-center] insertAccountingPaymentForSportCenter: already exists for source_doc_id=${args.sourceDocId} — skip`);
+      return;
+    }
+    // Idempoten: skip jika accounting_payment untuk sport_payment ini sudah ada
+    const dupCheck = await db.execute(sql`
+      SELECT 1 FROM accounting_payments
+      WHERE source_type = 'sport_center' AND source_doc_id = ${args.sourceDocId}
+      LIMIT 1
+    `);
+    if (dupCheck.rows.length > 0) return;
+
     const settings = await ensureAccountingSettings(args.companyId);
     const isCash = ["cash", "tunai"].includes(args.method?.toLowerCase() ?? "");
     const journalId = isCash
       ? (settings.cashJournalId ?? settings.bankJournalId)
       : (settings.bankJournalId ?? settings.cashJournalId);
-    if (!journalId) return;
+    if (!journalId) {
+      console.error(
+        `[sport-center] insertAccountingPaymentForSportCenter: journal tidak ditemukan untuk company_id=${args.companyId} method=${args.method}. ` +
+        `cashJournalId=${settings.cashJournalId} bankJournalId=${settings.bankJournalId}. ` +
+        `Pastikan Accounting → Settings sudah dikonfigurasi jurnal Kas/Bank.`
+      );
+      console.error(`[sport-center] insertAccountingPaymentForSportCenter: tidak ada jurnal kas/bank untuk companyId=${args.companyId}, sourceDocId=${args.sourceDocId}`);
+      return;
+    }
     const payDate = args.date ?? new Date().toISOString().split("T")[0]!;
     const year = payDate.slice(0, 4);
-    const cntRes = await db.execute(sql`SELECT CAST(COUNT(*) AS int) AS seq FROM accounting_payments`);
+    const cntRes = await db.execute(sql`
+      SELECT CAST(COUNT(*) AS int) AS seq FROM accounting_payments
+      WHERE company_id = ${args.companyId}
+    `);
     const seq = Number((cntRes.rows[0] as any)?.seq ?? 0);
     const paySeq = (seq + 1).toString().padStart(4, "0");
     const acctPayNumber = `PAY/${year}/${paySeq}`;
@@ -48,6 +79,7 @@ async function insertAccountingPaymentForSportCenter(args: {
       sourceDocId: args.sourceDocId,
       createdById: args.createdById ?? null,
     });
+    console.log(`[sport-center] accounting_payment created: ${acctPayNumber} amount=${args.amount} source_doc_id=${args.sourceDocId}`);
   } catch (err) {
     console.error("[sport-center] insertAccountingPaymentForSportCenter failed:", err);
   }
@@ -76,6 +108,70 @@ async function nextMemberNumber(companyId?: number): Promise<string> {
 async function nextPaymentNumber(companyId?: number): Promise<string> {
   const res = await db.execute(sql`SELECT COUNT(*) AS cnt FROM sport_payments WHERE (${companyId ?? null}::int IS NULL OR company_id = ${companyId ?? null})`);
   return `PAY/${new Date().getFullYear()}/${pad(Number((res.rows[0] as any).cnt) + 1)}`;
+}
+
+// Pastikan booking yang sudah 'paid' punya record di sport_payments (+ jurnal akuntansi).
+// Dipakai oleh PATCH /bookings/:id dan legacy sync push-bookings agar booking lunas
+// selalu muncul di daftar Pembayaran. Idempoten: skip jika payment sudah ada.
+async function ensurePaymentForPaidBooking(
+  row: Record<string, unknown>,
+  createdById: string | null,
+): Promise<void> {
+  const id = Number(row.id);
+  if (!id) return;
+  const existingPayment = await db.execute(sql`
+    SELECT id FROM sport_payments WHERE booking_id = ${id} LIMIT 1
+  `);
+  if (existingPayment.rows.length) return;
+
+  const bCompanyId = row.company_id != null ? Number(row.company_id) : null;
+  const bTaxAmount = Number(row.tax_amount ?? 0);
+  const bTotalAmount = Number(row.total_amount ?? 0);
+  const paymentNumber = await nextPaymentNumber(bCompanyId ?? undefined);
+  const payR = await db.execute(sql`
+    INSERT INTO sport_payments
+      (company_id, booking_id, payment_number, amount, method, status,
+       paid_at, notes, source, payment_type)
+    VALUES
+      (${bCompanyId}, ${id}, ${paymentNumber}, ${bTotalAmount}, 'cash', 'paid',
+       NOW(), 'Auto-created (paid booking)', 'SPORT_CENTER', 'booking')
+    RETURNING *
+  `);
+
+  if (bTaxAmount > 0) {
+    postSportCenterBookingWithTax({
+      bookingId: id,
+      bookingCode: String(row.booking_number ?? paymentNumber),
+      customerName: String(row.customer_name ?? ""),
+      facilityName: String(row.facility_name ?? ""),
+      date: String(row.booking_date ?? new Date().toISOString().slice(0, 10)),
+      baseAmount: bTotalAmount,
+      taxAmount: bTaxAmount,
+      createdById,
+      companyId: bCompanyId,
+    }).catch((err: unknown) => console.error('[sport-center] postSportCenterBookingWithTax (ensurePayment) failed:', err));
+  } else {
+    postSportCenterBooking({
+      bookingId: id,
+      bookingCode: String(row.booking_number ?? paymentNumber),
+      customerName: String(row.customer_name ?? ""),
+      facilityName: String(row.facility_name ?? ""),
+      date: String(row.booking_date ?? new Date().toISOString().slice(0, 10)),
+      totalPrice: bTotalAmount,
+      createdById,
+      companyId: bCompanyId,
+    }).catch((err: unknown) => console.error('[sport-center] postSportCenterBooking (ensurePayment) failed:', err));
+  }
+
+  await db.execute(sql`
+    INSERT INTO sport_audit_logs (company_id, entity_type, entity_id, action, actor, new_data)
+    VALUES (
+      ${bCompanyId}, 'payment', ${(payR.rows[0] as Record<string, unknown>)?.id ?? null},
+      'PAYMENT_AUTO_CREATED', ${createdById},
+      ${JSON.stringify(payR.rows[0])}::jsonb
+    )
+  `);
+  broadcastSportCenterEvent({ module: "sport-center", entity: "payment", action: "created", data: payR.rows[0] as Record<string, unknown>, timestamp: new Date().toISOString() }, bCompanyId as number | undefined);
 }
 
 async function nextPrSeq(): Promise<string> {
@@ -363,11 +459,17 @@ router.get("/heatmap", async (req, res) => {
 router.get("/facilities", async (req, res) => {
   if (!await requireAdmin(req, res)) return;
   try {
-    const cId = req.query.companyId ? Number(req.query.companyId) : null;
-    const result = await db.execute(sql`SELECT * FROM sport_facilities WHERE (${cId}::int IS NULL OR company_id = ${cId}) ORDER BY sort_order ASC, id ASC`);
+    const raw = req.query.companyId;
+    const parsed = raw ? Number(raw) : NaN;
+    // companyId=0 (consolidated) or "all" or NaN → fetch semua company
+    const cId = (!isNaN(parsed) && parsed > 0) ? parsed : null;
+    const result = cId
+      ? await db.execute(sql`SELECT * FROM sport_facilities WHERE company_id = ${cId} ORDER BY sort_order ASC, id ASC`)
+      : await db.execute(sql`SELECT * FROM sport_facilities ORDER BY sort_order ASC, id ASC`);
     res.json(result.rows);
-  } catch {
-    res.status(500).json({ error: "Gagal" });
+  } catch (err) {
+    console.error("[sport-center] GET /facilities error:", err);
+    res.status(500).json({ error: "Gagal memuat fasilitas" });
   }
 });
 
@@ -568,6 +670,18 @@ router.post("/sync/push-bookings", async (req, res) => {
                ${row.created_at ?? new Date().toISOString()}::TIMESTAMPTZ, NOW())
           `);
         }
+        // Legacy booking yang sudah lunas harus tetap muncul di daftar Pembayaran:
+        // buat sport_payments + jurnal jika belum ada (idempoten).
+        if (paymentStatus === 'paid') {
+          const br = await db.execute(sql`
+            SELECT id, company_id, total_amount, tax_amount, booking_number,
+                   customer_name, facility_name, booking_date
+            FROM sport_bookings WHERE booking_number = ${bookingNumber} LIMIT 1
+          `);
+          if (br.rows.length) {
+            await ensurePaymentForPaidBooking(br.rows[0] as Record<string, unknown>, null);
+          }
+        }
         pushed++;
       } catch (err) {
         console.error("[sport-center] push-bookings row error:", err);
@@ -708,6 +822,29 @@ router.post("/bookings", async (req, res) => {
     const taxRate   = applyTax ? TAX_RATE : 0;
     const taxAmount = applyTax ? Math.round(resolvedTotal * TAX_RATE) / 100 : 0;
 
+    // Auto-upsert customer ke sport_customers (by name+phone per company)
+    let resolvedCustomerId: number | null = customer_id ?? null;
+    if (!resolvedCustomerId && customer_name) {
+      const cIdForCustomer = company_id ?? null;
+      const existingCust = await db.execute(sql`
+        SELECT id FROM sport_customers
+        WHERE (${cIdForCustomer}::int IS NULL OR company_id = ${cIdForCustomer})
+          AND LOWER(name) = LOWER(${customer_name})
+          AND (${customer_phone ?? null}::text IS NULL OR phone = ${customer_phone ?? null})
+        LIMIT 1
+      `);
+      if (existingCust.rows.length > 0) {
+        resolvedCustomerId = (existingCust.rows[0] as any).id as number;
+      } else {
+        const newCust = await db.execute(sql`
+          INSERT INTO sport_customers (company_id, name, phone, email)
+          VALUES (${cIdForCustomer}, ${customer_name}, ${customer_phone ?? null}, ${customerEmail ?? null})
+          RETURNING id
+        `);
+        resolvedCustomerId = (newCust.rows[0] as any).id as number;
+      }
+    }
+
     const bookingNumber = await nextBookingNumber(company_id);
     const r = await db.execute(sql`
       INSERT INTO sport_bookings
@@ -716,7 +853,7 @@ router.post("/bookings", async (req, res) => {
          tax_rate, tax_amount,
          promo_id, promo_code, notes, status, payment_status)
       VALUES
-        (${company_id ?? null}, ${bookingNumber}, ${customer_id ?? null}, ${customer_name}, ${customerEmail ?? null}, ${customer_phone ?? null},
+        (${company_id ?? null}, ${bookingNumber}, ${resolvedCustomerId}, ${customer_name}, ${customerEmail ?? null}, ${customer_phone ?? null},
          ${facility_id ?? null}, ${facility_name}, ${booking_date}, ${start_time}, ${end_time},
          ${duration_hours}, ${base_amount}, ${resolvedDiscount}, ${resolvedTotal},
          ${taxRate}, ${taxAmount},
@@ -732,6 +869,21 @@ router.post("/bookings", async (req, res) => {
     const row = r.rows[0] as Record<string, unknown>;
     broadcastSportCenterEvent({ module: "sport-center", entity: "booking", action: "created", data: row, timestamp: new Date().toISOString() }, company_id);
     void syncBookingUpsert(row as any);
+
+    void saveAndBroadcast("new_sport_booking", {
+      type: "sport_booking",
+      orderId: row.id as number,
+      orderNumber: row.booking_number as string,
+      customerName: row.customer_name as string,
+      companyName: null,
+      facilityName: row.facility_name as string,
+      bookingDate: row.booking_date as string,
+      startTime: row.start_time as string,
+      endTime: row.end_time as string,
+      grandTotal: Number(row.total_amount ?? 0),
+      createdAt: new Date().toISOString(),
+    });
+
     res.status(201).json(row);
   } catch {
     res.status(500).json({ error: "Gagal membuat booking" });
@@ -757,55 +909,8 @@ router.patch("/bookings/:id", async (req, res) => {
     // Safety net: jika payment_status di-set ke 'paid' lewat PATCH (bukan POST /payments),
     // pastikan sport_payment record dan jurnal akuntansi tetap dibuat
     if (payment_status === 'paid') {
-      const existingPayment = await db.execute(sql`
-        SELECT id FROM sport_payments WHERE booking_id = ${id} LIMIT 1
-      `);
-      if (!existingPayment.rows.length) {
-        const createdById = (req.user as { id: string } | undefined)?.id ?? null;
-        const paymentNumber = await nextPaymentNumber(Number(row.company_id ?? null));
-        const payR = await db.execute(sql`
-          INSERT INTO sport_payments (company_id, booking_id, payment_number, amount, method, status, paid_at, notes)
-          VALUES (${row.company_id ?? null}, ${id}, ${paymentNumber}, ${row.total_amount}, 'cash', 'paid', NOW(), 'Auto-created via PATCH')
-          RETURNING *
-        `);
-        const bTaxAmount = Number(row.tax_amount ?? 0);
-        const bTotalAmount = Number(row.total_amount ?? 0);
-        const bCompanyId = row.company_id != null ? Number(row.company_id) : null;
-        if (bTaxAmount > 0) {
-          postSportCenterBookingWithTax({
-            bookingId: id,
-            bookingCode: String(row.booking_number ?? paymentNumber),
-            customerName: String(row.customer_name ?? ""),
-            facilityName: String(row.facility_name ?? ""),
-            date: String(row.booking_date ?? new Date().toISOString().slice(0, 10)),
-            baseAmount: bTotalAmount,
-            taxAmount: bTaxAmount,
-            createdById,
-            companyId: bCompanyId,
-          }).catch((err: unknown) => console.error('[sport-center] postSportCenterBookingWithTax (PATCH safety net) failed:', err));
-        } else {
-          postSportCenterBooking({
-            bookingId: id,
-            bookingCode: String(row.booking_number ?? paymentNumber),
-            customerName: String(row.customer_name ?? ""),
-            facilityName: String(row.facility_name ?? ""),
-            date: String(row.booking_date ?? new Date().toISOString().slice(0, 10)),
-            totalPrice: bTotalAmount,
-            createdById,
-            companyId: bCompanyId,
-          }).catch((err: unknown) => console.error('[sport-center] postSportCenterBooking (PATCH safety net) failed:', err));
-        }
-        // Audit log untuk auto-payment
-        await db.execute(sql`
-          INSERT INTO sport_audit_logs (company_id, entity_type, entity_id, action, actor, new_data)
-          VALUES (
-            ${bCompanyId}, 'payment', ${(payR.rows[0] as Record<string, unknown>)?.id ?? null},
-            'PAYMENT_AUTO_CREATED_VIA_PATCH', ${createdById},
-            ${JSON.stringify(payR.rows[0])}::jsonb
-          )
-        `);
-        broadcastSportCenterEvent({ module: "sport-center", entity: "payment", action: "created", data: payR.rows[0] as Record<string, unknown>, timestamp: new Date().toISOString() }, bCompanyId as number | undefined);
-      }
+      const createdById = (req.user as { id: string } | undefined)?.id ?? null;
+      await ensurePaymentForPaidBooking(row, createdById);
     }
 
     broadcastSportCenterEvent({ module: "sport-center", entity: "booking", action: "updated", data: row, timestamp: new Date().toISOString() });
@@ -987,22 +1092,68 @@ router.get("/members", async (req, res) => {
 
     const [dataRes, countRes] = await Promise.all([
       db.execute(sql`
-        SELECT * FROM sport_members
+        SELECT
+          'sm-' || id::text AS id,
+          id AS source_id,
+          'sport_members' AS source_table,
+          company_id, name, email, phone,
+          member_type, member_number,
+          start_date::text, end_date::text, status, notes,
+          NULL::numeric AS total_price,
+          NULL::text AS payment_method,
+          NULL::int AS months,
+          created_at,
+          CASE
+            WHEN start_date IS NOT NULL AND end_date IS NOT NULL
+            THEN (
+              (EXTRACT(YEAR FROM end_date) - EXTRACT(YEAR FROM start_date)) * 12
+              + (EXTRACT(MONTH FROM end_date) - EXTRACT(MONTH FROM start_date))
+              + 1
+            )::int
+            ELSE NULL
+          END AS duration_months
+        FROM sport_members
         WHERE (${cId}::int IS NULL OR company_id = ${cId})
           AND (${memberType}::text IS NULL OR member_type = ${memberType})
+          AND (${status}::text IS NULL OR status = ${status})
+        UNION ALL
+        SELECT
+          'scm-' || id::text AS id,
+          id AS source_id,
+          'sport_center_memberships' AS source_table,
+          NULL::int AS company_id, name, email, phone,
+          'gym' AS member_type,
+          'SCM-' || LPAD(id::text, 4, '0') AS member_number,
+          start_date::text, end_date::text, status, notes,
+          total_price, payment_method, months,
+          created_at,
+          months AS duration_months
+        FROM sport_center_memberships
+        WHERE (${memberType}::text IS NULL OR ${memberType} = 'gym' OR ${memberType} = 'all')
           AND (${status}::text IS NULL OR status = ${status})
         ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}
       `),
       db.execute(sql`
-        SELECT COUNT(*) AS cnt FROM sport_members
-        WHERE (${cId}::int IS NULL OR company_id = ${cId})
-          AND (${memberType}::text IS NULL OR member_type = ${memberType})
-          AND (${status}::text IS NULL OR status = ${status})
+        SELECT (
+          (SELECT COUNT(*) FROM sport_members
+           WHERE (${cId}::int IS NULL OR company_id = ${cId})
+             AND (${memberType}::text IS NULL OR member_type = ${memberType})
+             AND (${status}::text IS NULL OR status = ${status}))
+          +
+          (SELECT COUNT(*) FROM sport_center_memberships
+           WHERE (${memberType}::text IS NULL OR ${memberType} = 'gym' OR ${memberType} = 'all')
+             AND (${status}::text IS NULL OR status = ${status}))
+        ) AS cnt
       `),
     ]);
 
-    res.json({ data: dataRes.rows, total: Number((countRes.rows[0] as any).cnt) });
-  } catch {
+    const data = (dataRes.rows as any[]).map((m) => ({
+      ...m,
+      duration: m.duration_months != null ? `${m.duration_months} bulan` : null,
+    }));
+    res.json({ data, total: Number((countRes.rows[0] as any).cnt) });
+  } catch (e) {
+    console.error("GET /members error:", e);
     res.status(500).json({ error: "Gagal" });
   }
 });
@@ -1338,16 +1489,48 @@ router.get("/payments", async (req, res) => {
     const limit = 50;
     const offset = (page - 1) * limit;
 
+    const statusFilter = req.query.status ? String(req.query.status) : null;
+    const dateFrom = req.query.date_from ? String(req.query.date_from) : null;
+    const dateTo   = req.query.date_to   ? String(req.query.date_to)   : null;
+    const search   = req.query.search    ? String(req.query.search).trim() : null;
+    const searchPattern = search ? `%${search}%` : null;
+
     const [dataRes, countRes] = await Promise.all([
       db.execute(sql`
-        SELECT p.*, b.booking_number, b.customer_name FROM sport_payments p
+        SELECT
+          p.*,
+          b.booking_number,
+          b.customer_name,
+          b.booking_date,
+          COALESCE(f.name, b.facility_name) AS facility_name,
+          p.paid_at
+        FROM sport_payments p
         LEFT JOIN sport_bookings b ON p.booking_id = b.id
+        LEFT JOIN sport_facilities f ON f.id = b.facility_id
         WHERE (${cId}::int IS NULL OR p.company_id = ${cId})
+          AND (${statusFilter}::text IS NULL OR p.status = ${statusFilter})
+          AND (${dateFrom}::date IS NULL OR p.paid_at::date >= ${dateFrom}::date)
+          AND (${dateTo}::date   IS NULL OR p.paid_at::date <= ${dateTo}::date)
+          AND (${searchPattern}::text IS NULL
+               OR b.booking_number ILIKE ${searchPattern}
+               OR b.customer_name  ILIKE ${searchPattern}
+               OR p.payment_number ILIKE ${searchPattern}
+               OR COALESCE(f.name, b.facility_name) ILIKE ${searchPattern})
         ORDER BY p.created_at DESC LIMIT ${limit} OFFSET ${offset}
       `),
       db.execute(sql`
         SELECT COUNT(*) AS cnt FROM sport_payments p
+        LEFT JOIN sport_bookings b ON p.booking_id = b.id
+        LEFT JOIN sport_facilities f ON f.id = b.facility_id
         WHERE (${cId}::int IS NULL OR p.company_id = ${cId})
+          AND (${statusFilter}::text IS NULL OR p.status = ${statusFilter})
+          AND (${dateFrom}::date IS NULL OR p.paid_at::date >= ${dateFrom}::date)
+          AND (${dateTo}::date   IS NULL OR p.paid_at::date <= ${dateTo}::date)
+          AND (${searchPattern}::text IS NULL
+               OR b.booking_number ILIKE ${searchPattern}
+               OR b.customer_name  ILIKE ${searchPattern}
+               OR p.payment_number ILIKE ${searchPattern}
+               OR COALESCE(f.name, b.facility_name) ILIKE ${searchPattern})
       `),
     ]);
     res.json({ data: dataRes.rows, total: Number((countRes.rows[0] as any).cnt) });
@@ -1394,9 +1577,13 @@ router.post("/payments", async (req, res) => {
     const bFacility = String(b.facility_name ?? "");
     const createdById = (req.user as { id: string } | undefined)?.id ?? null;
 
-    // Validasi payment_date
+    // Validasi payment_date — gunakan sebagai tanggal efektif accounting jika valid
     const isValidDate = payment_date && /^\d{4}-\d{2}-\d{2}$/.test(payment_date);
     const paidAt = isValidDate ? `${payment_date}T00:00:00Z` : null; // null → NOW() di SQL
+    const effectiveDate = isValidDate ? (payment_date as string) : bBookingDate;
+    // Tanggal untuk accounting: payment_date jika valid, atau hari ini — BUKAN booking_date
+    // Ini penting agar KPI revenue_today dan Finance → Payments menampilkan data yang benar
+    const paymentAccountingDate: string = isValidDate ? (payment_date as string) : new Date().toISOString().slice(0, 10);
 
     // 2. Generate payment number dengan company_id yang benar
     const paymentNumber = await nextPaymentNumber(bCompanyId);
@@ -1443,13 +1630,14 @@ router.post("/payments", async (req, res) => {
     });
 
     // 6. Post jurnal accounting (Debit Kas ← Credit Pendapatan) — fire-and-forget
+    // Pakai paymentAccountingDate (bukan bBookingDate) agar KPI revenue_today akurat
     if (bTaxAmount > 0) {
       postSportCenterBookingWithTax({
         bookingId: Number(booking_id),
         bookingCode: bCode,
         customerName: bCustomer,
         facilityName: bFacility,
-        date: bBookingDate,
+        date: paymentAccountingDate,
         baseAmount: bTotalAmount,
         taxAmount: bTaxAmount,
         createdById,
@@ -1461,14 +1649,14 @@ router.post("/payments", async (req, res) => {
         bookingCode: bCode,
         customerName: bCustomer,
         facilityName: bFacility,
-        date: bBookingDate,
+        date: paymentAccountingDate,
         totalPrice: bTotalAmount,
         createdById,
         companyId: bCompanyId,
       }).catch((err: unknown) => console.error('[sport-center] postSportCenterBooking failed:', err));
     }
 
-    // 7. Accounting Payments — agar muncul di Accounting → Payments
+    // 7. Accounting Payments — agar muncul di Finance BizPortal → Payments
     insertAccountingPaymentForSportCenter({
       companyId: bCompanyId,
       paymentNumber,
@@ -1478,7 +1666,7 @@ router.post("/payments", async (req, res) => {
       ref: bCode,
       memo: `Pembayaran booking sport center ${bCode}`,
       sourceDocId: Number(payRow.id),
-      date: bBookingDate,
+      date: paymentAccountingDate,
       createdById,
     }).catch((err: unknown) => console.error("[sport-center] insertAccountingPayment failed:", err));
 
@@ -1494,6 +1682,7 @@ router.post("/payments", async (req, res) => {
           method: finalMethod,
           payment_number: paymentNumber,
           source: 'SPORT_CENTER',
+          payment_date: effectiveDate,
         })}::jsonb
       )
     `).catch((err: unknown) => console.error('[sport-center] audit log failed:', err));
@@ -1506,6 +1695,52 @@ router.post("/payments", async (req, res) => {
   } catch (err) {
     console.error('[sport-center] POST /payments error:', err);
     res.status(500).json({ error: "Gagal mencatat pembayaran" });
+  }
+});
+
+// ── REVENUE TRANSACTIONS (untuk expandable card di dashboard) ────────────────
+router.get("/revenue-transactions", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  try {
+    const cId = req.query.companyId ? Number(req.query.companyId) : null;
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const date = (req.query.date as string | undefined) ?? todayStr;
+    const from = (req.query.from as string | undefined) ?? date;
+    const to   = (req.query.to   as string | undefined) ?? date;
+
+    const rows = await db.execute(sql`
+      SELECT
+        ae.id           AS entry_id,
+        ae.date         AS payment_date,
+        ae.total_debit  AS amount,
+        ae.ref,
+        ae.source,
+        ae.source_id    AS booking_id,
+        b.booking_number,
+        b.customer_name,
+        b.facility_name,
+        b.booking_date,
+        b.start_time,
+        b.end_time,
+        b.status,
+        b.payment_status,
+        b.total_amount
+      FROM accounting_entries ae
+      LEFT JOIN sport_bookings b ON b.id = ae.source_id
+      WHERE ae.source = 'sport_center_booking'
+        AND ae.status  = 'posted'
+        AND ae.date   >= ${from}::date
+        AND ae.date   <= ${to}::date
+        AND (${cId}::int IS NULL OR ae.company_id = ${cId})
+      ORDER BY ae.date DESC, ae.id DESC
+      LIMIT 500
+    `);
+
+    const total = rows.rows.reduce((s, r) => s + Number((r as any).amount ?? 0), 0);
+    res.json({ data: rows.rows, total, date, from, to });
+  } catch (err) {
+    console.error("[sport-center] GET /revenue-transactions error:", err);
+    res.status(500).json({ error: "Gagal memuat transaksi revenue" });
   }
 });
 
@@ -1540,7 +1775,6 @@ router.get("/reports", async (req, res) => {
         WHERE (${cId}::int IS NULL OR company_id = ${cId})
         GROUP BY status
       `),
-      // Booking revenue dalam range
       db.execute(sql`
         SELECT COALESCE(SUM(total_amount),0) AS revenue FROM sport_bookings
         WHERE status != 'cancelled'
@@ -1548,7 +1782,6 @@ router.get("/reports", async (req, res) => {
           AND (${from}::date IS NULL OR booking_date >= ${from}::date)
           AND (${to}::date IS NULL OR booking_date <= ${to}::date)
       `),
-      // Membership revenue dalam range
       db.execute(sql`
         SELECT COALESCE(SUM(amount),0) AS revenue FROM sport_payments
         WHERE payment_type = 'membership' AND status = 'paid'
@@ -1570,6 +1803,106 @@ router.get("/reports", async (req, res) => {
     });
   } catch {
     res.status(500).json({ error: "Gagal" });
+  }
+});
+
+// ── GET /reports/revenue — data dari accounting_entries (konsisten dengan KPI Live) ──
+router.get("/reports/revenue", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  try {
+    const cId = req.query.companyId ? Number(req.query.companyId) : null;
+    const from = (req.query.from as string) ?? null;
+    const to = (req.query.to as string) ?? null;
+
+    const [monthlyRes, byFacilityRes, byMethodRes, transactionsRes] = await Promise.all([
+      // Monthly: dari accounting_entries (konsisten dengan KPI Live)
+      db.execute(sql`
+        SELECT
+          TO_CHAR(ae.date, 'YYYY-MM') AS month,
+          COALESCE(SUM(ae.total_debit), 0) AS revenue,
+          COUNT(*) AS transactions
+        FROM accounting_entries ae
+        WHERE ae.source IN ('sport_center_booking', 'sport_center_membership')
+          AND ae.status = 'posted'
+          AND (${cId}::int IS NULL OR ae.company_id = ${cId})
+          AND (${from}::date IS NULL OR ae.date >= ${from}::date)
+          AND (${to}::date IS NULL OR ae.date <= ${to}::date)
+        GROUP BY TO_CHAR(ae.date, 'YYYY-MM')
+        ORDER BY month DESC
+        LIMIT 24
+      `),
+      // Revenue per fasilitas: dari sport_payments JOIN sport_bookings JOIN sport_facilities
+      db.execute(sql`
+        SELECT
+          COALESCE(f.name, sb.facility_name, 'Lainnya') AS facility_name,
+          COUNT(sp.id) AS bookings,
+          COALESCE(SUM(sp.amount), 0) AS revenue
+        FROM sport_payments sp
+        JOIN sport_bookings sb ON sb.id = sp.booking_id
+        LEFT JOIN sport_facilities f ON f.id = sb.facility_id
+        WHERE sp.status = 'paid'
+          AND sp.source = 'SPORT_CENTER'
+          AND (${cId}::int IS NULL OR sp.company_id = ${cId})
+          AND (${from}::date IS NULL OR sp.paid_at::date >= ${from}::date)
+          AND (${to}::date IS NULL OR sp.paid_at::date <= ${to}::date)
+        GROUP BY COALESCE(f.name, sb.facility_name, 'Lainnya')
+        ORDER BY revenue DESC
+      `),
+      // Revenue per metode pembayaran
+      db.execute(sql`
+        SELECT
+          COALESCE(sp.method, 'cash') AS method,
+          COUNT(sp.id) AS transactions,
+          COALESCE(SUM(sp.amount), 0) AS total
+        FROM sport_payments sp
+        WHERE sp.status = 'paid'
+          AND sp.source = 'SPORT_CENTER'
+          AND (${cId}::int IS NULL OR sp.company_id = ${cId})
+          AND (${from}::date IS NULL OR sp.paid_at::date >= ${from}::date)
+          AND (${to}::date IS NULL OR sp.paid_at::date <= ${to}::date)
+        GROUP BY sp.method
+        ORDER BY total DESC
+      `),
+      // Transaksi detail: sport_payments JOIN sport_bookings JOIN sport_facilities
+      db.execute(sql`
+        SELECT
+          sp.id,
+          sp.payment_number,
+          sp.booking_id,
+          sp.amount,
+          sp.method AS payment_method,
+          sp.paid_at,
+          sp.payment_type,
+          sp.status AS payment_status,
+          COALESCE(f.name, sb.facility_name, 'Lainnya') AS facility_name,
+          COALESCE(sb.customer_name, '') AS customer_name,
+          sb.booking_number,
+          sb.booking_date,
+          sb.start_time,
+          sb.end_time,
+          sb.payment_status AS booking_payment_status
+        FROM sport_payments sp
+        LEFT JOIN sport_bookings sb ON sb.id = sp.booking_id
+        LEFT JOIN sport_facilities f ON f.id = sb.facility_id
+        WHERE sp.status = 'paid'
+          AND sp.source = 'SPORT_CENTER'
+          AND (${cId}::int IS NULL OR sp.company_id = ${cId})
+          AND (${from}::date IS NULL OR sp.paid_at::date >= ${from}::date)
+          AND (${to}::date IS NULL OR sp.paid_at::date <= ${to}::date)
+        ORDER BY sp.paid_at DESC
+        LIMIT 500
+      `),
+    ]);
+
+    res.json({
+      monthly: monthlyRes.rows,
+      byFacility: byFacilityRes.rows,
+      byMethod: byMethodRes.rows,
+      transactions: transactionsRes.rows,
+    });
+  } catch (err) {
+    console.error('[sport-center] GET /reports/revenue error:', err);
+    res.status(500).json({ error: "Gagal memuat laporan revenue" });
   }
 });
 
@@ -2088,6 +2421,19 @@ router.get("/purchase-requests", async (req, res) => {
   }
 });
 
+// Inline migrations: add reminder_days + wa_template columns if not exists
+(async () => {
+  try {
+    await db.execute(sql`ALTER TABLE sport_settings ADD COLUMN IF NOT EXISTS reminder_days TEXT NOT NULL DEFAULT '4,1'`);
+  } catch {}
+  try {
+    await db.execute(sql`
+      ALTER TABLE sport_settings ADD COLUMN IF NOT EXISTS wa_template TEXT NOT NULL DEFAULT
+        E'Halo *{{name}}*! 👋\n\nKami ingin menginformasikan bahwa masa keanggotaan Anda di *{{center_name}}* akan berakhir *{{days_label}}* ({{end_date}}).\n\nSegera perpanjang keanggotaan Anda agar tetap dapat menikmati fasilitas kami tanpa gangguan.\n\nUntuk informasi perpanjangan, silakan hubungi kami atau kunjungi langsung Sport Center.\n\nTerima kasih atas kepercayaan Anda! 🏆'
+    `);
+  } catch {}
+})();
+
 router.get("/settings", async (req, res) => {
   if (!await requireAdmin(req, res)) return;
   try {
@@ -2099,27 +2445,59 @@ router.get("/settings", async (req, res) => {
   }
 });
 
+const DEFAULT_WA_TEMPLATE =
+  "Halo *{{name}}*! 👋\n\n" +
+  "Kami ingin menginformasikan bahwa masa keanggotaan Anda di *{{center_name}}* akan berakhir *{{days_label}}* ({{end_date}}).\n\n" +
+  "Segera perpanjang keanggotaan Anda agar tetap dapat menikmati fasilitas kami tanpa gangguan.\n\n" +
+  "Untuk informasi perpanjangan, silakan hubungi kami atau kunjungi langsung Sport Center.\n\n" +
+  "Terima kasih atas kepercayaan Anda! 🏆";
+
+async function upsertSettings(body: Record<string, unknown>) {
+  const { company_id, center_name, address, phone, open_time, close_time,
+          booking_advance_days, min_booking_hours, cancellation_hours, reminder_days, wa_template } = body;
+  const reminderDaysStr = Array.isArray(reminder_days)
+    ? (reminder_days as number[]).filter((d) => Number.isInteger(d) && d >= 1 && d <= 90).join(",")
+    : typeof reminder_days === "string" ? reminder_days : "4,1";
+  const waTemplateStr = typeof wa_template === "string" && wa_template.trim()
+    ? wa_template.trim()
+    : DEFAULT_WA_TEMPLATE;
+  return db.execute(sql`
+    INSERT INTO sport_settings (company_id, center_name, address, phone, open_time, close_time,
+      booking_advance_days, min_booking_hours, cancellation_hours, reminder_days, wa_template)
+    VALUES (${company_id ?? null}, ${center_name ?? "Sport Center"}, ${address ?? null}, ${phone ?? null},
+            ${open_time ?? "06:00"}::time, ${close_time ?? "22:00"}::time,
+            ${booking_advance_days ?? 30}, ${min_booking_hours ?? 1}, ${cancellation_hours ?? 2},
+            ${reminderDaysStr}, ${waTemplateStr})
+    ON CONFLICT (company_id) DO UPDATE SET
+      center_name = EXCLUDED.center_name,
+      address = EXCLUDED.address,
+      phone = EXCLUDED.phone,
+      open_time = EXCLUDED.open_time,
+      close_time = EXCLUDED.close_time,
+      booking_advance_days = EXCLUDED.booking_advance_days,
+      min_booking_hours = EXCLUDED.min_booking_hours,
+      cancellation_hours = EXCLUDED.cancellation_hours,
+      reminder_days = EXCLUDED.reminder_days,
+      wa_template = EXCLUDED.wa_template,
+      updated_at = NOW()
+    RETURNING *
+  `);
+}
+
 router.post("/settings", async (req, res) => {
   if (!await requireAdmin(req, res)) return;
   try {
-    const { company_id, center_name, address, phone, open_time, close_time, booking_advance_days, min_booking_hours, cancellation_hours } = req.body;
-    const r = await db.execute(sql`
-      INSERT INTO sport_settings (company_id, center_name, address, phone, open_time, close_time, booking_advance_days, min_booking_hours, cancellation_hours)
-      VALUES (${company_id ?? null}, ${center_name ?? "Sport Center"}, ${address ?? null}, ${phone ?? null},
-              ${open_time ?? "06:00"}::time, ${close_time ?? "22:00"}::time,
-              ${booking_advance_days ?? 30}, ${min_booking_hours ?? 1}, ${cancellation_hours ?? 2})
-      ON CONFLICT (company_id) DO UPDATE SET
-        center_name = EXCLUDED.center_name,
-        address = EXCLUDED.address,
-        phone = EXCLUDED.phone,
-        open_time = EXCLUDED.open_time,
-        close_time = EXCLUDED.close_time,
-        booking_advance_days = EXCLUDED.booking_advance_days,
-        min_booking_hours = EXCLUDED.min_booking_hours,
-        cancellation_hours = EXCLUDED.cancellation_hours,
-        updated_at = NOW()
-      RETURNING *
-    `);
+    const r = await upsertSettings(req.body);
+    res.json(r.rows[0]);
+  } catch {
+    res.status(500).json({ error: "Gagal menyimpan settings" });
+  }
+});
+
+router.put("/settings", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  try {
+    const r = await upsertSettings(req.body);
     res.json(r.rows[0]);
   } catch {
     res.status(500).json({ error: "Gagal menyimpan settings" });
@@ -2550,6 +2928,129 @@ router.delete("/recurring-expenses/:id", async (req, res) => {
   } catch (err) {
     console.error("[sport-center] DELETE /recurring-expenses/:id error:", err);
     res.status(500).json({ error: "Gagal hapus recurring expense" });
+  }
+});
+
+// ── MEMBER REMINDER WA ────────────────────────────────────────────────────────
+
+/**
+ * POST /api/sport-center/member-reminders/run
+ * Trigger manual pengiriman reminder WA ke member yang akan expired.
+ */
+router.post("/member-reminders/run", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  try {
+    const { runMemberReminders } = await import("./memberReminderWorker.js");
+    const daysAhead = req.body?.daysAhead;
+    let reminders;
+    if (daysAhead !== undefined) {
+      const d = Number(daysAhead);
+      if (isNaN(d) || d < 1 || d > 90) {
+        return res.status(400).json({ error: "daysAhead harus antara 1–90" });
+      }
+      reminders = [{ daysAhead: d, reminderType: `${d}days`, label: `${d} hari lagi` }];
+    }
+    const result = await runMemberReminders(reminders);
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    console.error("[sport-center] POST /member-reminders/run error:", err);
+    res.status(500).json({ error: "Gagal menjalankan reminder" });
+  }
+});
+
+/**
+ * POST /api/sport-center/member-reminders/test-wa
+ * Kirim test WA ke nomor HP tertentu menggunakan template yang sedang aktif.
+ */
+router.post("/member-reminders/test-wa", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  try {
+    const { phone, template, center_name, days_label, end_date, company_id } = req.body as Record<string, string | undefined>;
+    if (!phone?.trim()) {
+      return res.status(400).json({ error: "Nomor HP wajib diisi" });
+    }
+
+    const { getWaTemplate } = await import("./memberReminderWorker.js");
+    const cId = company_id ? Number(company_id) : null;
+    const { template: dbTemplate, centerName: dbCenterName } = await getWaTemplate(cId);
+
+    const useTemplate   = template?.trim()     || dbTemplate;
+    const useCenterName = center_name?.trim()  || dbCenterName;
+    const useDaysLabel  = days_label?.trim()   || "4 hari lagi";
+    const useEndDate    = end_date?.trim()      || new Intl.DateTimeFormat("id-ID", {
+      day: "2-digit", month: "long", year: "numeric", timeZone: "Asia/Jakarta",
+    }).format(new Date(Date.now() + 4 * 86400_000));
+
+    const message = useTemplate
+      .replace(/\{\{name\}\}/g,        "Test Member")
+      .replace(/\{\{end_date\}\}/g,    useEndDate)
+      .replace(/\{\{days_label\}\}/g,  useDaysLabel)
+      .replace(/\{\{center_name\}\}/g, useCenterName);
+
+    const { sendViaService } = await import("../../lib/waTransport.js");
+    await sendViaService(phone.trim(), message, {
+      context: "sport_member_reminder_test",
+      refType:  "test",
+      refId:    `test_${Date.now()}`,
+    });
+
+    res.json({ ok: true, phone: phone.trim(), message });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[sport-center] POST /member-reminders/test-wa error:", err);
+    res.status(500).json({ error: msg || "Gagal kirim test WA" });
+  }
+});
+
+/**
+ * GET /api/sport-center/member-reminders/logs
+ * Ambil log reminder WA member terbaru.
+ */
+router.get("/member-reminders/logs", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  try {
+    const { getMemberReminderLogs } = await import("./memberReminderWorker.js");
+    const limit = req.query.limit ? Math.min(Number(req.query.limit), 200) : 50;
+    const logs = await getMemberReminderLogs(limit);
+    res.json(logs);
+  } catch (err) {
+    console.error("[sport-center] GET /member-reminders/logs error:", err);
+    res.status(500).json({ error: "Gagal memuat log" });
+  }
+});
+
+/**
+ * GET /api/sport-center/member-reminders/upcoming
+ * Daftar member yang akan menerima reminder dalam N hari ke depan.
+ */
+router.get("/member-reminders/upcoming", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  try {
+    const days = req.query.days ? Number(req.query.days) : 7;
+    const cId = req.query.companyId ? Number(req.query.companyId) : null;
+    const rows = await db.execute(sql`
+      SELECT
+        m.id,
+        m.name,
+        m.phone,
+        m.email,
+        m.member_number,
+        m.member_type,
+        m.end_date,
+        m.status,
+        (m.end_date::date - CURRENT_DATE) AS days_remaining
+      FROM sport_members m
+      WHERE m.status = 'active'
+        AND m.end_date IS NOT NULL
+        AND m.end_date::date >= CURRENT_DATE
+        AND m.end_date::date <= (CURRENT_DATE + ${days} * INTERVAL '1 day')::date
+        AND (${cId}::int IS NULL OR m.company_id = ${cId})
+      ORDER BY m.end_date ASC
+    `);
+    res.json(rows.rows);
+  } catch (err) {
+    console.error("[sport-center] GET /member-reminders/upcoming error:", err);
+    res.status(500).json({ error: "Gagal memuat data" });
   }
 });
 

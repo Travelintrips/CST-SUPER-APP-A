@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { Router, Request, Response } from "express";
-import { randomBytes } from "crypto";
+import { randomBytes, createSign, createHash, randomUUID } from "crypto";
 import { db } from "@workspace/db";
 import {
   logisticOrdersTable,
@@ -18,11 +18,14 @@ import {
   rfqVendorLinksTable,
   freightShipmentsTable,
   productTemplatesTable,
+  vendorFulfillmentLinksTable,
+  logisticVendorFulfillmentsTable,
+  orderAuditLogsTable,
 } from "@workspace/db";
 import { resolveTemplate } from "@workspace/product-templates";
 import { deleteFromSupabase } from "../lib/supabaseStorage.js";
 import { eq, ilike, and, gte, lte, or, sql, desc, inArray, isNotNull } from "drizzle-orm";
-import { salesDocumentsTable, customerInvoiceLinksTable } from "@workspace/db";
+import { salesDocumentsTable, customerInvoiceLinksTable, paymentsTable } from "@workspace/db";
 import { requireClerkUser, requireRole } from "../lib/requireAdmin.js";
 import { calcTax, calcGrandTotal } from "../lib/taxHelper.js";
 import { resolveCompanyId } from "../lib/resolveCompany.js";
@@ -44,6 +47,7 @@ import { logOrderStatusChange, logOrderAudit } from "../lib/auditTrail.js";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { saveAndBroadcast } from "../lib/notificationStore";
 import { broadcastToPortal } from "../lib/sseManager.js";
+import { broadcastInvalidation } from "../lib/alertsBroadcast.js";
 import { sendPushToOrder } from "../lib/webPush.js";
 import { updateOrderProgress, getOrderProgressEvents, deleteOrderProgress, PROGRESS_STEPS, type StepKey } from "../lib/orderProgress.js";
 import {
@@ -69,6 +73,22 @@ import { wasRecentlyNotified } from "../lib/notificationLog.js";
 import { getAdminWa } from "../lib/adminWa.js";
 
 export const logisticOrdersRouter = Router();
+
+// Inline migration: payment_proof_url column
+db.execute(sql`ALTER TABLE logistic_orders ADD COLUMN IF NOT EXISTS payment_proof_url TEXT`)
+  .catch(() => {});
+
+// Inline migration: vendor catalog reference columns on logistic_order_items
+db.execute(sql`
+  ALTER TABLE logistic_order_items
+    ADD COLUMN IF NOT EXISTS item_source TEXT DEFAULT 'manual',
+    ADD COLUMN IF NOT EXISTS vendor_catalog_item_id INTEGER,
+    ADD COLUMN IF NOT EXISTS vendor_id INTEGER REFERENCES suppliers(id) ON DELETE SET NULL,
+    ADD COLUMN IF NOT EXISTS service_type TEXT,
+    ADD COLUMN IF NOT EXISTS price_snapshot JSONB,
+    ADD COLUMN IF NOT EXISTS calculation_input JSONB,
+    ADD COLUMN IF NOT EXISTS vendor_fulfillment_id INTEGER
+`).catch(() => {});
 
 // [C4-FIX] IP-based rate limit for public order creation: max 10 orders per IP per hour
 const _publicOrderRateMap = new Map<string, { count: number; resetAt: number }>();
@@ -153,6 +173,16 @@ function toItem(row: typeof logisticOrderItemsTable.$inferSelect) {
     inputData: row.inputData,
     calculationResult: row.calculationResult,
     subtotal: parseFloat(row.subtotal),
+    itemSource: row.itemSource ?? "manual",
+    vendorCatalogItemId: row.vendorCatalogItemId ?? null,
+    vendorId: row.vendorId ?? null,
+    serviceType: row.serviceType ?? null,
+    priceSnapshot: row.priceSnapshot ?? null,
+    calculationInput: row.calculationInput ?? null,
+    templateSnapshot: row.templateSnapshot ?? null,
+    vendorFulfillmentId: (row as any).vendorFulfillmentId ?? null,
+    vendorFulfillmentStatus: (row as any).vendorFulfillmentStatus ?? null,
+    vendorFulfillmentCreatedAt: (row as any).vendorFulfillmentCreatedAt ? new Date((row as any).vendorFulfillmentCreatedAt).toISOString() : null,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -199,6 +229,7 @@ db.execute(sql.raw(`
   ALTER TABLE logistic_orders ADD COLUMN IF NOT EXISTS template_id INTEGER;
   ALTER TABLE logistic_orders ADD COLUMN IF NOT EXISTS template_version TEXT;
   ALTER TABLE logistic_orders ADD COLUMN IF NOT EXISTS template_snapshot JSONB;
+  ALTER TABLE logistic_orders ADD COLUMN IF NOT EXISTS tracking_token TEXT;
   ALTER TABLE logistic_order_rfqs ADD COLUMN IF NOT EXISTS template_id INTEGER;
   ALTER TABLE logistic_order_rfqs ADD COLUMN IF NOT EXISTS template_version TEXT;
   ALTER TABLE logistic_order_rfqs ADD COLUMN IF NOT EXISTS template_snapshot JSONB;
@@ -399,6 +430,15 @@ logisticOrdersRouter.post("/", async (req: Request, res: Response) => {
     inputData: item.inputData as Record<string, unknown>,
     calculationResult: item.calculationResult as Record<string, unknown>,
     subtotal: String(item.subtotal),
+    itemSource: item.itemSource ?? "manual",
+    vendorCatalogItemId: item.vendorCatalogItemId ?? null,
+    vendorId: item.vendorId ?? null,
+    serviceType: item.serviceType ?? null,
+    priceSnapshot: (item.priceSnapshot as Record<string, unknown> | null) ?? null,
+    calculationInput: (item.calculationInput as Record<string, unknown> | null) ?? null,
+    templateSnapshot: (item.templateSnapshot as Record<string, unknown> | null)
+      ?? ((item.inputData as Record<string, unknown> | null)?.templateSnapshot as Record<string, unknown> | null)
+      ?? null,
   }));
 
   const items =
@@ -472,6 +512,9 @@ sendLogisticOrderNotification({
     grandTotal: Number(body.grandTotal),
     createdAt: order.createdAt.toISOString(),
   }).catch(() => {});
+
+  // Broadcast ke BizPortal SSE agar dashboard & order list auto-refresh
+  broadcastInvalidation("logistic_orders", order.id);
 
   // Broadcast ke Customer Portal agar logistic-admin page auto-refresh
   broadcastToPortal("new_logistic_order", {
@@ -608,7 +651,30 @@ logisticOrdersRouter.get(
 
     // Run all independent queries in parallel — eliminates N+1 sequential awaits
     const [items, [driverJob], [latestRfq], orderUpdates, progressEvents, podSubmissionsRaw, invoiceLinksRaw, autoInvoiceRaw] = await Promise.all([
-      db.select().from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, order.id)),
+      db.select({
+        id: logisticOrderItemsTable.id,
+        orderId: logisticOrderItemsTable.orderId,
+        category: logisticOrderItemsTable.category,
+        serviceName: logisticOrderItemsTable.serviceName,
+        calculatorType: logisticOrderItemsTable.calculatorType,
+        inputData: logisticOrderItemsTable.inputData,
+        calculationResult: logisticOrderItemsTable.calculationResult,
+        subtotal: logisticOrderItemsTable.subtotal,
+        itemSource: logisticOrderItemsTable.itemSource,
+        vendorCatalogItemId: logisticOrderItemsTable.vendorCatalogItemId,
+        vendorId: logisticOrderItemsTable.vendorId,
+        serviceType: logisticOrderItemsTable.serviceType,
+        priceSnapshot: logisticOrderItemsTable.priceSnapshot,
+        calculationInput: logisticOrderItemsTable.calculationInput,
+        templateSnapshot: logisticOrderItemsTable.templateSnapshot,
+        createdAt: logisticOrderItemsTable.createdAt,
+        vendorFulfillmentId: logisticVendorFulfillmentsTable.id,
+        vendorFulfillmentStatus: logisticVendorFulfillmentsTable.status,
+        vendorFulfillmentCreatedAt: logisticVendorFulfillmentsTable.createdAt,
+      })
+        .from(logisticOrderItemsTable)
+        .leftJoin(logisticVendorFulfillmentsTable, eq(logisticVendorFulfillmentsTable.orderItemId, logisticOrderItemsTable.id))
+        .where(eq(logisticOrderItemsTable.orderId, order.id)),
       db.select().from(driverJobsTable)
         .where(eq(driverJobsTable.logisticOrderId, order.id))
         .orderBy(desc(driverJobsTable.assignedAt))
@@ -679,6 +745,15 @@ logisticOrdersRouter.get(
           photoType: p.photoType,
           takenAt: p.takenAt.toISOString(),
         })),
+        truckPlate: driverJob.truckPlate ?? null,
+        driverNameOverride: driverJob.driverNameOverride ?? null,
+        podReceiverName: driverJob.podReceiverName ?? null,
+        podGeoLat: driverJob.podGeoLat ?? null,
+        podGeoLng: driverJob.podGeoLng ?? null,
+        podMapUrl: (driverJob as any).podMapUrl ?? null,
+        podStreetViewUrl: (driverJob as any).podStreetViewUrl ?? null,
+        podDeviceTimestamp: (driverJob as any).podDeviceTimestamp ? new Date((driverJob as any).podDeviceTimestamp).toISOString() : null,
+        podSubmittedAt: driverJob.podSubmittedAt?.toISOString() ?? null,
       };
     }
 
@@ -706,6 +781,14 @@ logisticOrdersRouter.get(
     const STEP_LABEL_MAP: Record<string, string> = {
       ORDER_RECEIVED:    "Order Diterima",
       ADMIN_REVIEW:      "Ditinjau Admin",
+      // ── Phase 2A: product-first status labels ─────────────────────────────
+      PRODUCT_RFQ_SENT:           "RFQ Produk Terkirim",
+      PRODUCT_QUOTE_RECEIVED:     "Penawaran Produk Masuk",
+      PRODUCT_VENDOR_SELECTED:    "Vendor Produk Dipilih",
+      CUSTOMER_PRODUCT_APPROVAL:  "Menunggu Persetujuan Produk",
+      SHIPMENT_SELECTION_PENDING: "Menunggu Pilihan Pengiriman",
+      READY_FOR_PICKUP:           "Siap Dijemput",
+      // ─────────────────────────────────────────────────────────────────────
       RFQ_SENT:          "RFQ ke Vendor",
       QUOTE_RECEIVED:    "Penawaran Masuk",
       CUSTOMER_APPROVAL: "Menunggu Persetujuan",
@@ -811,6 +894,201 @@ logisticOrdersRouter.get("/vendors", async (req: Request, res: Response) => {
   const offset = Math.max(Number(req.query["offset"] ?? 0), 0);
   const rows = await db.select().from(suppliersTable).orderBy(suppliersTable.sortOrder).limit(limit).offset(offset);
   return res.json(rows.map((v) => ({ ...v, fee: Number(v.fee ?? 0), email: v.contactEmail })));
+});
+
+// ── Paylabs helpers (PUBLIC) ──────────────────────────────────────────────────
+const _PAYLABS_MERCHANT_ID_2 = process.env["PAYLABS_MERCHANT_ID"] ?? "";
+const _PAYLABS_API_URL_2 =
+  process.env["PAYLABS_API_URL"] ?? "https://sit-pay.paylabs.co.id/payment/v2.1/h5/createLink";
+
+function _normalizePemKey2(raw: string): string {
+  if (!raw) return raw;
+  if (raw.includes("\n")) return raw;
+  const isRsa = raw.includes("RSA PRIVATE KEY");
+  const header = isRsa ? "RSA PRIVATE KEY" : "PRIVATE KEY";
+  const body = raw
+    .replace(/-----BEGIN [^-]+-----/g, "")
+    .replace(/-----END [^-]+-----/g, "")
+    .replace(/\s+/g, "");
+  const chunks = body.match(/.{1,64}/g) ?? [];
+  return `-----BEGIN ${header}-----\n${chunks.join("\n")}\n-----END ${header}-----`;
+}
+
+const _PAYLABS_PRIVATE_KEY_2 = _normalizePemKey2(process.env["PAYLABS_PRIVATE_KEY"] ?? "");
+
+function _paylabsSign2(payload: string): string {
+  const s = createSign("RSA-SHA256");
+  s.update(payload);
+  return s.sign(_PAYLABS_PRIVATE_KEY_2, "base64");
+}
+
+function _paylabsBuildSigPayload2(method: string, endpoint: string, bodyJson: string, ts: string): string {
+  const bodyHash = createHash("sha256").update(bodyJson).digest("hex").toLowerCase();
+  return `${method}:${endpoint}:${bodyHash}:${ts}`;
+}
+
+// POST /api/logistic/orders/:orderNumber/create-paylabs-link — PUBLIC
+logisticOrdersRouter.post("/:orderNumber/create-paylabs-link", async (req: Request, res: Response) => {
+  const { orderNumber } = req.params;
+  const [order] = await db
+    .select({
+      id: logisticOrdersTable.id,
+      orderNumber: logisticOrdersTable.orderNumber,
+      customerName: logisticOrdersTable.customerName,
+      phone: logisticOrdersTable.phone,
+      grandTotal: logisticOrdersTable.grandTotal,
+      status: logisticOrdersTable.status,
+    })
+    .from(logisticOrdersTable)
+    .where(eq(logisticOrdersTable.orderNumber, orderNumber))
+    .limit(1);
+  if (!order) return res.status(404).json({ message: "Pesanan tidak ditemukan" });
+  if (order.status === "Cancelled") {
+    return res.status(400).json({ message: "Order sudah dibatalkan" });
+  }
+
+  const existing = await db
+    .select()
+    .from(paymentsTable)
+    .where(and(
+      eq(paymentsTable.refId, order.id),
+      eq(paymentsTable.refKind, "logistic"),
+      eq(paymentsTable.status, "pending"),
+      eq(paymentsTable.provider, "paylabs"),
+    ))
+    .orderBy(desc(paymentsTable.createdAt))
+    .limit(1);
+
+  if (existing.length > 0 && existing[0].paymentUrl) {
+    const notExpired = !existing[0].expiredAt || existing[0].expiredAt > new Date();
+    if (notExpired) {
+      return res.json({
+        reused: true,
+        paymentUrl: existing[0].paymentUrl,
+        amount: Number(existing[0].amount),
+        expiredAt: existing[0].expiredAt?.toISOString() ?? null,
+      });
+    }
+  }
+
+  const amount = Number(order.grandTotal ?? 0);
+  const merchantTradeNo = `LOG-${order.id}-${Date.now()}`;
+
+  if (!_PAYLABS_MERCHANT_ID_2 || !_PAYLABS_PRIVATE_KEY_2) {
+    await db.insert(paymentsTable).values({
+      refKind: "logistic",
+      refId: order.id,
+      refDocNumber: orderNumber,
+      amount: String(amount),
+      status: "pending",
+      provider: "paylabs",
+      providerMerchantTradeNo: merchantTradeNo,
+      paymentUrl: null,
+      raw: { simulation: true, reason: "PAYLABS credentials not configured" },
+      expiredAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+    });
+    return res.status(202).json({
+      configured: false,
+      message: "Paylabs belum terkonfigurasi. Simulasi payment dibuat.",
+      paymentUrl: null,
+      amount,
+    });
+  }
+
+  const requestId = `${Date.now()}${Math.floor(Math.random() * 100000).toString().padStart(5, "0")}`;
+  const timestamp = new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().replace(/\.\d+Z$/, "+07:00");
+  const host = (req.headers["x-forwarded-proto"] ?? "https") + "://" + (req.headers.host ?? "");
+  const notifyUrl = `${host}/api/payments/paylabs/webhook`;
+  const redirectUrl = `${host}/track?order=${orderNumber}`;
+
+  const rawPhone = (order.phone ?? "").replace(/\D/g, "");
+  const phoneNumber = rawPhone.startsWith("62")
+    ? rawPhone
+    : rawPhone.startsWith("0")
+      ? "62" + rawPhone.slice(1)
+      : rawPhone ? "62" + rawPhone : "628000000000";
+
+  const body = {
+    merchantId: _PAYLABS_MERCHANT_ID_2,
+    merchantTradeNo,
+    requestId,
+    amount: amount.toFixed(2),
+    productName: `Pembayaran ${orderNumber}`,
+    payer: order.customerName,
+    phoneNumber,
+    notifyUrl,
+    redirectUrl,
+  };
+  const bodyJson = JSON.stringify(body);
+  const sigPayload = _paylabsBuildSigPayload2("POST", new URL(_PAYLABS_API_URL_2).pathname, bodyJson, timestamp);
+  let signature: string;
+  try {
+    signature = _paylabsSign2(sigPayload);
+  } catch (err: unknown) {
+    return res.status(500).json({ message: "Paylabs signing gagal", error: (err as Error)?.message });
+  }
+
+  let paylabsResp: Record<string, unknown> = {};
+  try {
+    const r = await fetch(_PAYLABS_API_URL_2, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-TIMESTAMP": timestamp,
+        "X-SIGNATURE": signature,
+        "X-PARTNER-ID": _PAYLABS_MERCHANT_ID_2,
+        "X-REQUEST-ID": requestId,
+      },
+      body: bodyJson,
+    });
+    paylabsResp = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+    if (!r.ok || paylabsResp?.["errCode"] !== "0") {
+      return res.status(502).json({ message: "Paylabs error", response: paylabsResp });
+    }
+  } catch (err: unknown) {
+    return res.status(502).json({ message: "Paylabs request gagal", error: (err as Error)?.message });
+  }
+
+  const paymentUrl = (paylabsResp?.["url"] ?? paylabsResp?.["h5Url"] ?? null) as string | null;
+  const [created] = await db.insert(paymentsTable).values({
+    refKind: "logistic",
+    refId: order.id,
+    refDocNumber: orderNumber,
+    amount: String(amount),
+    status: "pending",
+    provider: "paylabs",
+    providerOrderId: (paylabsResp?.["platformTradeNo"] as string | undefined) ?? null,
+    providerMerchantTradeNo: merchantTradeNo,
+    paymentUrl,
+    raw: paylabsResp,
+    expiredAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+  }).returning();
+
+  return res.status(201).json({
+    configured: true,
+    paymentUrl,
+    amount,
+    expiredAt: created.expiredAt?.toISOString() ?? null,
+  });
+});
+
+// PATCH /api/logistic/orders/:orderNumber/payment-proof — PUBLIC
+logisticOrdersRouter.patch("/:orderNumber/payment-proof", async (req: Request, res: Response) => {
+  const { orderNumber } = req.params;
+  const { proofUrl } = req.body as { proofUrl?: unknown };
+  if (!proofUrl || typeof proofUrl !== "string" || !proofUrl.trim()) {
+    return res.status(400).json({ message: "proofUrl wajib diisi" });
+  }
+  const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const [order] = await db
+    .select({ id: logisticOrdersTable.id, createdAt: logisticOrdersTable.createdAt })
+    .from(logisticOrdersTable)
+    .where(eq(logisticOrdersTable.orderNumber, orderNumber))
+    .limit(1);
+  if (!order) return res.status(404).json({ message: "Pesanan tidak ditemukan" });
+  if (order.createdAt < dayAgo) return res.status(403).json({ message: "Batas waktu upload bukti telah lewat (24 jam)" });
+  await db.execute(sql`UPDATE logistic_orders SET payment_proof_url = ${proofUrl.trim()} WHERE id = ${order.id}`);
+  return res.json({ ok: true });
 });
 
 // ─── AUTH WALL: all routes below require a valid session ─────────────────────
@@ -1125,6 +1403,91 @@ logisticOrdersRouter.delete("/vendors/:id", async (req: Request, res: Response) 
   return res.json({ success: true });
 });
 
+// GET /vendor-fulfillments — daftar semua vendor fulfillment
+logisticOrdersRouter.get("/vendor-fulfillments", requireClerkUser, async (req: Request, res: Response) => {
+  const { status, vendorId, serviceType, dateFrom, dateTo, search } = req.query as Record<string, string>;
+
+  const conditions: ReturnType<typeof eq>[] = [];
+  if (status && status !== "all") conditions.push(eq(logisticVendorFulfillmentsTable.status, status));
+  if (vendorId) conditions.push(eq(logisticVendorFulfillmentsTable.vendorId, parseInt(vendorId, 10)));
+  if (serviceType && serviceType !== "all") conditions.push(eq(logisticVendorFulfillmentsTable.serviceType, serviceType));
+  if (dateFrom) conditions.push(gte(logisticVendorFulfillmentsTable.createdAt, new Date(dateFrom)));
+  if (dateTo) {
+    const dt = new Date(dateTo);
+    dt.setDate(dt.getDate() + 1);
+    conditions.push(lte(logisticVendorFulfillmentsTable.createdAt, dt));
+  }
+  if (search && search.trim()) {
+    const pat = `%${search.trim()}%`;
+    conditions.push(
+      or(
+        ilike(logisticOrdersTable.customerName, pat),
+        ilike(logisticOrdersTable.companyName, pat),
+        ilike(logisticOrdersTable.orderNumber, pat),
+        ilike(suppliersTable.name, pat),
+      ) as any,
+    );
+  }
+
+  const rows = await db
+    .select({
+      id: logisticVendorFulfillmentsTable.id,
+      orderId: logisticVendorFulfillmentsTable.orderId,
+      orderItemId: logisticVendorFulfillmentsTable.orderItemId,
+      vendorId: logisticVendorFulfillmentsTable.vendorId,
+      vendorName: suppliersTable.name,
+      serviceType: logisticVendorFulfillmentsTable.serviceType,
+      status: logisticVendorFulfillmentsTable.status,
+      adminNotes: logisticVendorFulfillmentsTable.adminNotes,
+      createdAt: logisticVendorFulfillmentsTable.createdAt,
+      orderNumber: logisticOrdersTable.orderNumber,
+      customerName: logisticOrdersTable.customerName,
+      companyName: logisticOrdersTable.companyName,
+      subtotal: logisticOrderItemsTable.subtotal,
+      itemServiceName: logisticOrderItemsTable.serviceName,
+    })
+    .from(logisticVendorFulfillmentsTable)
+    .leftJoin(logisticOrdersTable, eq(logisticOrdersTable.id, logisticVendorFulfillmentsTable.orderId))
+    .leftJoin(suppliersTable, eq(suppliersTable.id, logisticVendorFulfillmentsTable.vendorId))
+    .leftJoin(logisticOrderItemsTable, eq(logisticOrderItemsTable.id, logisticVendorFulfillmentsTable.orderItemId))
+    .where(conditions.length > 0 ? and(...(conditions as any[])) : undefined)
+    .orderBy(desc(logisticVendorFulfillmentsTable.createdAt))
+    .limit(300);
+
+  const allStats = await db
+    .select({
+      status: logisticVendorFulfillmentsTable.status,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(logisticVendorFulfillmentsTable)
+    .groupBy(logisticVendorFulfillmentsTable.status);
+
+  const stats: Record<string, number> = { pending: 0, in_progress: 0, completed: 0, cancelled: 0 };
+  for (const s of allStats) {
+    if (s.status && s.status in stats) stats[s.status] = s.count;
+  }
+
+  return res.json({
+    data: rows.map((r) => ({
+      id: r.id,
+      orderId: r.orderId,
+      orderItemId: r.orderItemId,
+      orderNumber: r.orderNumber ?? "",
+      vendorId: r.vendorId,
+      vendorName: r.vendorName ?? "—",
+      serviceType: r.serviceType ?? "—",
+      itemServiceName: r.itemServiceName ?? "—",
+      status: r.status,
+      adminNotes: r.adminNotes ?? null,
+      customerName: r.customerName ?? "",
+      companyName: r.companyName ?? "",
+      subtotal: r.subtotal ? parseFloat(r.subtotal) : 0,
+      createdAt: r.createdAt?.toISOString() ?? "",
+    })),
+    stats,
+  });
+});
+
 // GET /api/logistic/orders/:id/progress — timeline events untuk order
 logisticOrdersRouter.get("/:id/progress", async (req: Request, res: Response) => {
   const id = parseInt(String(req.params.id), 10);
@@ -1224,7 +1587,30 @@ logisticOrdersRouter.get("/:id", async (req: Request, res: Response) => {
   }
 
   const [items, linkedDocRows] = await Promise.all([
-    db.select().from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, id)),
+    db.select({
+      id: logisticOrderItemsTable.id,
+      orderId: logisticOrderItemsTable.orderId,
+      category: logisticOrderItemsTable.category,
+      serviceName: logisticOrderItemsTable.serviceName,
+      calculatorType: logisticOrderItemsTable.calculatorType,
+      inputData: logisticOrderItemsTable.inputData,
+      calculationResult: logisticOrderItemsTable.calculationResult,
+      subtotal: logisticOrderItemsTable.subtotal,
+      itemSource: logisticOrderItemsTable.itemSource,
+      vendorCatalogItemId: logisticOrderItemsTable.vendorCatalogItemId,
+      vendorId: logisticOrderItemsTable.vendorId,
+      serviceType: logisticOrderItemsTable.serviceType,
+      priceSnapshot: logisticOrderItemsTable.priceSnapshot,
+      calculationInput: logisticOrderItemsTable.calculationInput,
+      templateSnapshot: logisticOrderItemsTable.templateSnapshot,
+      createdAt: logisticOrderItemsTable.createdAt,
+      vendorFulfillmentId: logisticVendorFulfillmentsTable.id,
+      vendorFulfillmentStatus: logisticVendorFulfillmentsTable.status,
+      vendorFulfillmentCreatedAt: logisticVendorFulfillmentsTable.createdAt,
+    })
+      .from(logisticOrderItemsTable)
+      .leftJoin(logisticVendorFulfillmentsTable, eq(logisticVendorFulfillmentsTable.orderItemId, logisticOrderItemsTable.id))
+      .where(eq(logisticOrderItemsTable.orderId, id)),
     db.select({ id: salesDocumentsTable.id, docNumber: salesDocumentsTable.docNumber })
       .from(salesDocumentsTable)
       .where(eq(salesDocumentsTable.logisticOrderId, id))
@@ -2036,3 +2422,180 @@ logisticOrdersRouter.post("/:id/delivery/:phase", async (req: Request, res: Resp
 
   return res.json({ ok: true, status: cfg.status, orderId: id, phase });
 });
+
+// POST /api/logistic/orders/export-gsheet — export semua order ke Google Sheets baru (admin only)
+logisticOrdersRouter.post("/export-gsheet", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  if (!(await requireRole(req, res, ["admin", "owner"]))) return;
+  const companyId = resolveCompanyId(req);
+  const { dateFrom, dateTo, status } = req.body as { dateFrom?: string; dateTo?: string; status?: string };
+
+  const { exportToNewSpreadsheet } = await import("../lib/googleSheets.js");
+
+  const conditions = [];
+  if (companyId) conditions.push(eq(logisticOrdersTable.companyId, companyId));
+  if (dateFrom) conditions.push(gte(logisticOrdersTable.createdAt, new Date(dateFrom)));
+  if (dateTo) {
+    const end = new Date(dateTo);
+    end.setHours(23, 59, 59, 999);
+    conditions.push(lte(logisticOrdersTable.createdAt, end));
+  }
+  if (status) conditions.push(eq(logisticOrdersTable.status, status as typeof logisticOrdersTable.$inferSelect["status"]));
+
+  const orders = await db
+    .select()
+    .from(logisticOrdersTable)
+    .where(conditions.length ? and(...conditions) : undefined)
+    .orderBy(desc(logisticOrdersTable.createdAt))
+    .limit(5000);
+
+  const orderRows: unknown[][] = [
+    ["No. Order", "Tanggal", "Perusahaan", "Nama Customer", "Email", "No. HP",
+     "Tipe Shipment", "Asal", "Tujuan", "Komoditi", "Berat (kg)", "Volume (CBM)",
+     "Jml Koli", "Pembayaran", "Subtotal", "Pajak", "Grand Total", "Status", "Sumber", "Catatan"],
+    ...orders.map((o) => [
+      o.orderNumber,
+      o.createdAt.toISOString().slice(0, 10),
+      o.companyName ?? "",
+      o.customerName,
+      o.email ?? "",
+      o.phone ?? "",
+      o.shipmentType ?? "",
+      o.origin ?? "",
+      o.destination ?? "",
+      o.commodity ?? "",
+      o.grossWeight ? parseFloat(o.grossWeight) : "",
+      o.volumeCbm ? parseFloat(o.volumeCbm) : "",
+      o.jumlahKoli ?? "",
+      o.paymentType ?? "",
+      parseFloat(o.subtotal),
+      parseFloat(o.tax),
+      parseFloat(o.grandTotal),
+      o.status,
+      (o as unknown as { source?: string }).source ?? "manual",
+      o.notes ?? "",
+    ]),
+  ];
+
+  const now = new Date();
+  const titleDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const filterLabel = status ? ` [${status}]` : "";
+  const title = `Logistic Orders${filterLabel} — ${titleDate}`;
+
+  const result = await exportToNewSpreadsheet(title, [
+    { name: "Orders", rows: orderRows },
+  ]);
+
+  return res.json({ ok: true, total: orders.length, ...result });
+});
+
+// ─── POST /:orderId/items/:itemId/vendor-fulfillment ────────────────────────
+// Buat logistic vendor fulfillment untuk item Vendor Marketplace
+logisticOrdersRouter.post(
+  "/:orderId/items/:itemId/vendor-fulfillment",
+  requireClerkUser,
+  async (req: Request, res: Response) => {
+    const orderId = parseInt(req.params.orderId ?? "", 10);
+    const itemId  = parseInt(req.params.itemId  ?? "", 10);
+    if (isNaN(orderId) || isNaN(itemId)) {
+      return res.status(400).json({ success: false, message: "Parameter tidak valid" });
+    }
+
+    const body = req.body as { notes?: string } | undefined;
+    const adminNotes = body?.notes?.trim() || null;
+
+    // ── 1. Validasi order ──────────────────────────────────────────────────
+    const [order] = await db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
+    if (!order) return res.status(404).json({ success: false, message: "Order tidak ditemukan" });
+
+    // ── 2. Validasi item ───────────────────────────────────────────────────
+    const [item] = await db.select().from(logisticOrderItemsTable)
+      .where(and(eq(logisticOrderItemsTable.id, itemId), eq(logisticOrderItemsTable.orderId, orderId)));
+    if (!item) return res.status(404).json({ success: false, message: "Item tidak ditemukan" });
+
+    if (item.itemSource !== "vendor_catalog_item") {
+      return res.status(400).json({ success: false, message: "Item bukan Vendor Marketplace" });
+    }
+    if (!item.vendorCatalogItemId) {
+      return res.status(400).json({ success: false, message: "vendorCatalogItemId tidak ada pada item ini" });
+    }
+
+    // ── 3. Resolve vendorId (item atau vendor catalog) ────────────────────
+    let vendorId = item.vendorId ?? null;
+    if (!vendorId && item.vendorCatalogItemId) {
+      const row = await db.execute(sql`
+        SELECT vendor_id FROM vendor_catalog_items WHERE id = ${item.vendorCatalogItemId} LIMIT 1
+      `);
+      const r = (row as { rows?: Array<{ vendor_id?: number | null }> }).rows?.[0];
+      vendorId = r?.vendor_id ?? null;
+    }
+    if (!vendorId) {
+      return res.status(422).json({ success: false, message: "Vendor tidak ditemukan untuk item ini" });
+    }
+
+    // ── 4. Cek duplikat via unique constraint ─────────────────────────────
+    const [existing] = await db.select()
+      .from(logisticVendorFulfillmentsTable)
+      .where(eq(logisticVendorFulfillmentsTable.orderItemId, itemId));
+    if (existing) {
+      return res.status(200).json({
+        success: true,
+        message: "already_exists",
+        fulfillment: existing,
+      });
+    }
+
+    // ── 5. Siapkan snapshot payload ───────────────────────────────────────
+    const serviceType = item.serviceType
+      ?? ((item.templateSnapshot as Record<string,unknown> | null)?.serviceType as string | undefined)
+      ?? null;
+
+    const fulfillmentPayload: Record<string, unknown> = {
+      orderId,
+      orderNumber: order.orderNumber,
+      itemId,
+      serviceName: item.serviceName,
+      category: item.category,
+      calculatorType: item.calculatorType,
+      serviceType,
+      subtotal: item.subtotal,
+    };
+
+    // ── 6. Insert ──────────────────────────────────────────────────────────
+    const [fulfillment] = await db.insert(logisticVendorFulfillmentsTable).values({
+      orderId,
+      orderItemId: itemId,
+      vendorCatalogItemId: item.vendorCatalogItemId,
+      vendorId,
+      serviceType,
+      status: "pending",
+      fulfillmentPayload,
+      calculationInput: item.calculationInput as Record<string,unknown> | null,
+      templateSnapshot: item.templateSnapshot as Record<string,unknown> | null,
+      priceSnapshot: item.priceSnapshot as Record<string,unknown> | null,
+      adminNotes,
+    }).returning();
+
+    // ── 7. Audit log ───────────────────────────────────────────────────────
+    const actor = req.user as { id?: string; name?: string; username?: string } | undefined;
+    logOrderAudit({
+      orderId,
+      orderNumber: order.orderNumber,
+      actorType: "admin",
+      actorId: actor?.id ?? null,
+      actorName: actor?.name ?? actor?.username ?? null,
+      action: "vendor_fulfillment_created",
+      description: `Vendor fulfillment created from marketplace service item: ${item.serviceName} (item #${itemId})`,
+      newValue: { fulfillmentId: fulfillment.id, vendorId, serviceType, status: "pending" },
+      ipAddress: req.ip ?? null,
+    }).catch(() => {});
+
+    return res.status(201).json({
+      success: true,
+      message: "created",
+      fulfillment,
+    });
+  }
+);
+
+// NOTE: create-paylabs-link & payment-proof endpoints are registered ABOVE the auth wall (public).

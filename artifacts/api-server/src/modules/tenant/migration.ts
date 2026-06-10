@@ -1,0 +1,78 @@
+import { db } from "@workspace/db";
+import { sql } from "drizzle-orm";
+import { logger } from "../../lib/logger.js";
+
+export async function runTenantMigration(): Promise<void> {
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS tenants (
+        id SERIAL PRIMARY KEY,
+        company_id INTEGER DEFAULT 1,
+        user_id INTEGER,
+        business_name TEXT NOT NULL,
+        owner_name TEXT NOT NULL,
+        phone TEXT,
+        email TEXT,
+        business_category TEXT,
+        logo_url TEXT,
+        address TEXT,
+        status TEXT NOT NULL DEFAULT 'active',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS tenant_bookings (
+        id SERIAL PRIMARY KEY,
+        company_id INTEGER DEFAULT 1,
+        order_number TEXT NOT NULL,
+        tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        user_id INTEGER,
+        booking_type TEXT NOT NULL DEFAULT 'rental',
+        start_date DATE,
+        end_date DATE,
+        duration_months INTEGER,
+        requested_area TEXT,
+        description TEXT,
+        price NUMERIC(14,2) NOT NULL DEFAULT 0,
+        payment_status TEXT NOT NULL DEFAULT 'unpaid',
+        status TEXT NOT NULL DEFAULT 'pending',
+        admin_notes TEXT,
+        payment_period_type TEXT NOT NULL DEFAULT 'monthly',
+        period_start_month INTEGER,
+        period_start_year INTEGER,
+        period_end_month INTEGER,
+        period_end_year INTEGER,
+        total_months INTEGER,
+        monthly_price NUMERIC(14,2),
+        yearly_price NUMERIC(14,2),
+        total_price NUMERIC(14,2),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS tenant_payments (
+        id SERIAL PRIMARY KEY,
+        company_id INTEGER DEFAULT 1,
+        tenant_booking_id INTEGER NOT NULL REFERENCES tenant_bookings(id) ON DELETE CASCADE,
+        payment_number TEXT,
+        proof_image_url TEXT,
+        amount NUMERIC(14,2) NOT NULL DEFAULT 0,
+        method TEXT NOT NULL DEFAULT 'transfer',
+        notes TEXT,
+        status TEXT NOT NULL DEFAULT 'pending',
+        paid_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_tenant_bookings_tenant ON tenant_bookings(tenant_id);
+      CREATE INDEX IF NOT EXISTS idx_tenant_payments_booking ON tenant_payments(tenant_booking_id);
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_tenant_bookings_order_number ON tenant_bookings(order_number);
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_tenant_payments_payment_number ON tenant_payments(payment_number);
+    `);
+    logger.info("Tenant migration OK");
+  } catch (err) {
+    logger.error({ err }, "Tenant migration failed");
+    throw err;
+  }
+}

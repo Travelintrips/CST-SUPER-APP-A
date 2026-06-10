@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useLocation } from "wouter";
 import {
   X, Trash2, Plus, ShoppingCart, ArrowRight,
@@ -74,6 +74,17 @@ function getItemDetails(item: CartItem): string[] {
   const d = item.inputData;
   const str = (v: unknown) => (v != null && v !== "" ? String(v) : "");
   const details: string[] = [];
+
+  // ── Vendor catalog item: tampilkan qty + unit dari calculationResult ──
+  if (item.itemSource === "vendor_catalog_item") {
+    const cr = item.calculationResult as Record<string, unknown>;
+    const qty = cr.chargeableQty ?? d.quantity;
+    const unit = cr.chargeableUnit ?? d.unit;
+    if (qty != null) details.push(`Qty: ${str(qty)}${unit ? ` ${str(unit)}` : ""}`);
+    if (item.vendorName) details.push(`Vendor: ${item.vendorName}`);
+    return details;
+  }
+
   switch (item.calculatorType) {
     case "product":
       if (d.qty) details.push(`Qty: ${str(d.qty)}${d.unit ? ` ${str(d.unit)}` : ""}`);
@@ -136,18 +147,28 @@ function CartItemCard({ item, onRemove }: { item: CartItem; onRemove: (id: strin
   const Icon   = meta.icon;
   const details = getItemDetails(item);
   const isTrucking = item.calculatorType === "trucking";
+  const isVendorCatalog = item.itemSource === "vendor_catalog_item";
+  const ps = item.priceSnapshot;
+
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-3.5 shadow-sm">
       <div className="flex items-start gap-3">
-        <div className={`w-8 h-8 rounded-lg ${meta.iconBg} flex items-center justify-center shrink-0`}>
-          <Icon className="w-4 h-4 text-slate-600" />
+        <div className={`w-8 h-8 rounded-lg ${isVendorCatalog ? "bg-sky-50" : meta.iconBg} flex items-center justify-center shrink-0`}>
+          <Icon className={`w-4 h-4 ${isVendorCatalog ? "text-sky-600" : "text-slate-600"}`} />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2 mb-1">
-            <div>
-              <span className={`inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold border ${meta.color} mb-0.5`}>
-                {meta.label}
-              </span>
+            <div className="flex flex-col gap-0.5">
+              <div className="flex items-center gap-1 flex-wrap">
+                <span className={`inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold border ${meta.color}`}>
+                  {meta.label}
+                </span>
+                {isVendorCatalog && (
+                  <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold border bg-sky-50 text-sky-700 border-sky-200">
+                    Vendor Marketplace
+                  </span>
+                )}
+              </div>
               <p className="text-xs font-semibold text-slate-800 leading-snug">{item.serviceName}</p>
             </div>
             <button onClick={() => onRemove(item.cartId)} className="text-slate-300 hover:text-red-400 transition-colors mt-0.5 shrink-0">
@@ -159,7 +180,18 @@ function CartItemCard({ item, onRemove }: { item: CartItem; onRemove: (id: strin
               <p key={i} className="text-[11px] text-slate-400 leading-snug">{d}</p>
             ))}
           </div>
-          {item.subtotal > 0 ? (
+          {/* Price display */}
+          {isVendorCatalog && ps ? (
+            <div className="mt-1.5 space-y-0.5">
+              <p className="text-[11px] text-slate-400">
+                {formatCurrency(ps.priceSell)} / {ps.unit}
+              </p>
+              {ps.tax != null && ps.tax > 0 && (
+                <p className="text-[11px] text-slate-400">PPN: {formatCurrency(ps.tax)}</p>
+              )}
+              <p className="text-xs font-bold text-sky-700">{formatCurrency(item.subtotal)}</p>
+            </div>
+          ) : item.subtotal > 0 ? (
             <p className="text-xs font-bold text-sky-700 mt-1.5">{formatCurrency(item.subtotal)}</p>
           ) : isTrucking ? (
             <span className="inline-block mt-1.5 text-[10px] font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded px-1.5 py-0.5">Harga menyusul</span>
@@ -174,7 +206,16 @@ function CartItemCard({ item, onRemove }: { item: CartItem; onRemove: (id: strin
 
 // ── Main CartDrawer ───────────────────────────────────────────────────────────
 
-type DrawerView = "cart" | "service-catalog" | "trucking";
+type DrawerView = "cart" | "service-catalog" | "trucking" | "freight";
+type FreightSvcId = "sea" | "air" | "storage" | "customs" | "additional";
+
+const FREIGHT_SVC_META: Record<FreightSvcId, { name: string; calcType: string; color: string }> = {
+  sea:       { name: "Kargo Laut",         calcType: "sea_lcl",     color: "blue"    },
+  air:       { name: "Kargo Udara",        calcType: "air_freight", color: "sky"     },
+  storage:   { name: "Pergudangan",        calcType: "storage",     color: "emerald" },
+  customs:   { name: "Custom Clearance",   calcType: "customs",     color: "slate"   },
+  additional:{ name: "Asuransi & Lainnya", calcType: "additional",  color: "purple"  },
+};
 
 const DEFAULT_PICKUP = "Jl. Logistik No. 1, Jakarta";
 
@@ -187,13 +228,39 @@ export function CartDrawer() {
   const [truckEstimating, setTruckEstimating] = useState(false);
   const [vehicleComparison, setVehicleComparison] = useState<Array<{ type: string; label: string; desc: string; estimate: number; suitable: boolean }> | null>(null);
   const [deliveryAddressError, setDeliveryAddressError] = useState(false);
+  const [freightDestError, setFreightDestError] = useState(false);
+  const [companyFetchFailed, setCompanyFetchFailed] = useState(false);
   const [companyPickup, setCompanyPickup] = useState<{ name: string; address: string; originCity: string } | null>(null);
   const [cartAutoFilled, setCartAutoFilled] = useState(false);
   const [apiRates, setApiRates] = useState<Array<{ type: string; label: string; description: string; max_kg: string | null; rate_per_kg: string; min_price: string }> | null>(null);
+  const [freightSvc, setFreightSvc]         = useState<FreightSvcId>("sea");
+  const [freightData, setFreightData]       = useState<Record<string, string>>({});
+  const [freightEstimate, setFreightEstimate] = useState<number | null>(null);
+  const [freightEstimating, setFreightEstimating] = useState(false);
+  const [freightAutoFilled, setFreightAutoFilled] = useState(false);
   const [, setLocation]        = useLocation();
   const { toast }              = useToast();
 
-  const { items, addItem, removeItem, clearCart, subtotal, tax, grandTotal, taxRate } = useCart();
+  const { items, addItem, replaceItemByType, removeItem, clearCart, subtotal, tax, grandTotal, taxRate } = useCart();
+
+  const hasProductOnly = items.length > 0 && items.every(i => i.calculatorType === "product");
+
+  const [selectedShipping, setSelectedShipping] = useState<"pickup" | "darat" | "laut" | "udara" | null>(() => {
+    try { return (JSON.parse(localStorage.getItem("logistic_product_shipping") ?? "null") as { method?: string } | null)?.method as "pickup" | "darat" | "laut" | "udara" | null ?? null; }
+    catch { return null; }
+  });
+
+  const daratEstimate = useMemo(() => {
+    const productItems = items.filter(i => i.calculatorType === "product");
+    if (productItems.length === 0) return null;
+    const itemsWithWeight = productItems.filter(i => Number(i.inputData.weightKg ?? 0) > 0);
+    const totalWeight = itemsWithWeight.length > 0
+      ? itemsWithWeight.reduce((s, i) => s + Number(i.inputData.weightKg) * Number(i.inputData.qty ?? 1), 0)
+      : productItems.reduce((s, i) => s + Number(i.inputData.qty ?? 1), 0);
+    if (totalWeight <= 0) return null;
+    const vehicleType = suggestVehicleType(totalWeight);
+    return offlineEstimateForVehicle(totalWeight, vehicleType, 0);
+  }, [items]);
 
   function computeCartAutoFill(): { hasData: boolean; weight?: string; vehicleType?: string; length?: string; width?: string; height?: string; goodsType?: string } {
     const productItems = items.filter(i => i.calculatorType === "product");
@@ -252,7 +319,7 @@ export function CartDrawer() {
   }, [view]);
 
   useEffect(() => {
-    if (view !== "trucking" || companyPickup) return;
+    if (!open || companyPickup) return;
     fetch("/api/settings/company-pickup-address")
       .then(r => r.ok ? r.json() : null)
       .then((d: { companyName: string; companyAddress: string; originCity?: string } | null) => {
@@ -262,8 +329,11 @@ export function CartDrawer() {
           setCompanyPickup({ name: "CST Logistics", address: DEFAULT_PICKUP, originCity: "Jakarta" });
         }
       })
-      .catch(() => setCompanyPickup({ name: "CST Logistics", address: DEFAULT_PICKUP, originCity: "Jakarta" }));
-  }, [view, companyPickup]);
+      .catch(() => {
+        setCompanyPickup({ name: "CST Logistics", address: DEFAULT_PICKUP, originCity: "Jakarta" });
+        setCompanyFetchFailed(true);
+      });
+  }, [open, companyPickup]);
 
   function close() { setOpen(false); }
 
@@ -272,9 +342,22 @@ export function CartDrawer() {
     setTruckData({});
     setTruckEstimate(null);
     setTruckMode("detail");
+    setFreightData({});
+    setFreightEstimate(null);
+    setFreightAutoFilled(false);
   }
 
   function handleCheckout() {
+    if (hasProductOnly) {
+      try {
+        localStorage.setItem("logistic_product_shipping", JSON.stringify({
+          method: selectedShipping ?? "pickup",
+          estimate: selectedShipping === "darat" ? daratEstimate : null,
+          companyName: companyPickup?.name ?? "CST Logistics",
+          companyAddress: companyPickup?.address ?? DEFAULT_PICKUP,
+        }));
+      } catch { /**/ }
+    }
     close();
     setLocation("/book?step=3");
   }
@@ -287,7 +370,7 @@ export function CartDrawer() {
     }
     const name = truckMode === "detail" ? "Trucking — Pickup & Delivery" : "Trucking — Kargo";
     const pickupAddr = companyPickup?.address ?? DEFAULT_PICKUP;
-    addItem({
+    replaceItemByType({
       category: "Trucking",
       serviceName: name,
       calculatorType: "trucking",
@@ -299,20 +382,114 @@ export function CartDrawer() {
       calculationResult: truckEstimate ? { estimated_price: truckEstimate } : {},
       subtotal: 0,
     });
-    toast({ title: `${name} ditambahkan ke keranjang` });
+    toast({ title: `${name} diperbarui di keranjang` });
     setTruckData({});
     setTruckEstimate(null);
     setView("cart");
   }
 
   function handleNonTruckingService(id: string) {
-    close();
-    const catMap: Record<string, string> = {
-      sea: "Freight", air: "Freight", storage: "Storage",
-      customs: "Customs", additional: "Additional",
-    };
-    const cat = catMap[id];
-    setLocation(cat ? `/book?cat=${cat}` : "/book");
+    const svcId = id as FreightSvcId;
+    setFreightSvc(svcId);
+    setFreightEstimate(null);
+    setFreightEstimating(false);
+    // Auto-fill berat & dimensi dari produk di keranjang
+    const af = computeCartAutoFill();
+    if (af.hasData) {
+      setFreightData({
+        originCountry: "Indonesia",
+        weight: af.weight || "",
+        length: af.length || "",
+        width:  af.width  || "",
+        height: af.height || "",
+        goodsType: af.goodsType || "",
+      });
+      setFreightAutoFilled(true);
+    } else {
+      setFreightData({ originCountry: "Indonesia" });
+      setFreightAutoFilled(false);
+    }
+    setFreightDestError(false);
+    setView("freight");
+  }
+
+  function computeFreightEstimate() {
+    // Validasi destination sebelum hitung estimasi
+    if (freightSvc === "sea" && !freightData.destCountry?.trim()) {
+      setFreightDestError(true);
+      toast({ title: "Isi Negara Tujuan terlebih dahulu", variant: "destructive" });
+      return;
+    }
+    if (freightSvc === "air" && !freightData.destAirport?.trim()) {
+      setFreightDestError(true);
+      toast({ title: "Isi Bandara Tujuan terlebih dahulu", variant: "destructive" });
+      return;
+    }
+    setFreightDestError(false);
+    setFreightEstimating(true);
+    const fd = freightData;
+    setTimeout(() => {
+      let estimate = 0;
+      if (freightSvc === "sea") {
+        const w   = parseFloat(fd.weight || "0") || 0;
+        const l   = parseFloat(fd.length || "0") || 0;
+        const wi  = parseFloat(fd.width  || "0") || 0;
+        const h   = parseFloat(fd.height || "0") || 0;
+        const cbm = (l * wi * h) / 1_000_000;
+        const chargeable = Math.max(w / 1000, cbm);
+        estimate = Math.max(500_000, Math.round(chargeable * 150_000));
+      } else if (freightSvc === "air") {
+        const w  = parseFloat(fd.weight || "0") || 0;
+        const l  = parseFloat(fd.length || "0") || 0;
+        const wi = parseFloat(fd.width  || "0") || 0;
+        const h  = parseFloat(fd.height || "0") || 0;
+        const volW = (l * wi * h) / 6_000;
+        const chargeable = Math.max(w, volW);
+        estimate = Math.max(200_000, Math.round(chargeable * 25_000));
+      } else if (freightSvc === "storage") {
+        const vol = parseFloat(fd.volume   || "0") || 0;
+        const dur = parseFloat(fd.duration || "1") || 1;
+        estimate = Math.max(200_000, Math.round(vol * dur * 50_000));
+      } else if (freightSvc === "customs") {
+        const val = parseFloat(fd.cargoValue || "0") || 0;
+        estimate = Math.max(500_000, Math.round(val * 0.025));
+      }
+      setFreightEstimate(estimate > 0 ? estimate : null);
+      setFreightEstimating(false);
+    }, 600);
+  }
+
+  function handleAddFreightItem() {
+    // Validasi destination wajib untuk sea/air
+    if (freightSvc === "sea" && !freightData.destCountry?.trim()) {
+      setFreightDestError(true);
+      toast({ title: "Negara Tujuan wajib diisi", variant: "destructive" });
+      return;
+    }
+    if (freightSvc === "air" && !freightData.destAirport?.trim()) {
+      setFreightDestError(true);
+      toast({ title: "Bandara Tujuan wajib diisi", variant: "destructive" });
+      return;
+    }
+    const meta = FREIGHT_SVC_META[freightSvc];
+    let name = meta.name;
+    if (freightSvc === "sea")       name = `Kargo Laut — ${freightData.shipType || "LCL"}`;
+    else if (freightSvc === "air")  name = "Kargo Udara";
+    else if (freightSvc === "customs") name = `Custom Clearance — ${freightData.customsType || "Import"}`;
+    else if (freightSvc === "additional") name = freightData.addlType || "Asuransi & Lainnya";
+    replaceItemByType({
+      serviceName: name,
+      category: meta.name,
+      calculatorType: meta.calcType,
+      inputData: { ...freightData },
+      calculationResult: freightEstimate ? { estimated_price: freightEstimate } : {},
+      subtotal: freightEstimate ?? 0,
+    });
+    toast({ title: `${name} diperbarui di keranjang` });
+    setFreightData({});
+    setFreightEstimate(null);
+    setFreightAutoFilled(false);
+    setView("cart");
   }
 
   async function handleCompareVehicles() {
@@ -394,8 +571,14 @@ export function CartDrawer() {
   const hasNegotiable = grandTotal === 0 && items.length > 0;
 
   // ── Header title / back button ──────────────────────────────────────────────
-  const headerTitle = view === "service-catalog" ? "Pilih Layanan" : view === "trucking" ? "Layanan Trucking" : "Keranjang Pesanan";
-  const headerSub   = view === "service-catalog" ? "Pilih layanan logistik Anda" : view === "trucking" ? "Isi detail atau hitung estimasi" : items.length === 0 ? "Belum ada item" : `${items.length} item · 1 pesanan`;
+  const headerTitle = view === "service-catalog" ? "Pilih Layanan"
+    : view === "trucking" ? "Layanan Trucking"
+    : view === "freight"  ? FREIGHT_SVC_META[freightSvc].name
+    : "Keranjang Pesanan";
+  const headerSub = view === "service-catalog" ? "Pilih layanan logistik Anda"
+    : view === "trucking" ? "Isi detail atau hitung estimasi"
+    : view === "freight"  ? "Isi detail & hitung estimasi biaya"
+    : items.length === 0 ? "Belum ada item" : `${items.length} item · 1 pesanan`;
 
   return (
     <>
@@ -414,7 +597,7 @@ export function CartDrawer() {
           <div className="flex items-center gap-3">
             {view !== "cart" && (
               <button
-                onClick={() => view === "trucking" ? setView("service-catalog") : setView("cart")}
+                onClick={() => (view === "trucking" || view === "freight") ? setView("service-catalog") : setView("cart")}
                 className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
               >
                 <ChevronLeft className="w-4 h-4" />
@@ -478,12 +661,63 @@ export function CartDrawer() {
                     </div>
                   );
                 })}
-                <button
-                  onClick={openServiceCatalog}
-                  className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-slate-200 text-sm text-slate-400 hover:border-sky-300 hover:text-sky-600 hover:bg-sky-50/60 transition-colors"
-                >
-                  <Plus className="w-4 h-4" /> Tambah Layanan / Produk
-                </button>
+                {/* ── Metode Pengiriman (product-only cart) ── */}
+                {hasProductOnly ? (
+                  <div className="pt-1">
+                    <div className="flex items-center gap-2 mb-2.5 px-0.5">
+                      <Truck className="w-3.5 h-3.5 text-slate-400" />
+                      <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">
+                        Metode Pengiriman
+                      </span>
+                      <span className="text-[10px] text-slate-500 italic">(opsional)</span>
+                    </div>
+                    <div className="space-y-2">
+                      {([
+                        { id: "pickup" as const, name: "Ambil Sendiri",    Icon: Warehouse, desc: "Ambil langsung di gudang kami", activeColor: "border-green-400 bg-green-50",  iconColor: "text-green-600",  iconBg: "bg-green-100",  estimate: null },
+                        { id: "darat"  as const, name: "Pengiriman Darat", Icon: Truck,     desc: "Trucking kota ke kota",         activeColor: "border-orange-400 bg-orange-50", iconColor: "text-orange-600", iconBg: "bg-orange-100", estimate: daratEstimate },
+                        { id: "laut"   as const, name: "Pengiriman Laut",  Icon: Ship,      desc: "Sea freight LCL / FCL",         activeColor: "border-blue-400 bg-blue-50",    iconColor: "text-blue-600",   iconBg: "bg-blue-100",   estimate: null },
+                        { id: "udara"  as const, name: "Pengiriman Udara", Icon: Plane,     desc: "Air freight ekspres",           activeColor: "border-sky-400 bg-sky-50",      iconColor: "text-sky-600",    iconBg: "bg-sky-100",    estimate: null },
+                      ]).map(m => (
+                        <button key={m.id}
+                          onClick={() => setSelectedShipping(selectedShipping === m.id ? null : m.id)}
+                          className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left ${selectedShipping === m.id ? m.activeColor + " shadow-sm" : "border-slate-200 bg-white hover:border-slate-300"}`}
+                        >
+                          <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${selectedShipping === m.id ? m.iconBg : "bg-slate-100"}`}>
+                            <m.Icon className={`w-5 h-5 ${selectedShipping === m.id ? m.iconColor : "text-slate-400"}`} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className={`text-sm font-semibold leading-tight ${selectedShipping === m.id ? "text-slate-900" : "text-slate-700"}`}>{m.name}</p>
+                            <p className="text-[11px] text-slate-400 mt-0.5">{m.desc}</p>
+                          </div>
+                          <div className="text-right shrink-0 flex flex-col items-end gap-1">
+                            {m.id !== "pickup" && (m.estimate ? (
+                              <p className="text-xs font-bold text-slate-800">{formatCurrency(m.estimate)}</p>
+                            ) : (
+                              <p className="text-[10px] text-slate-400 italic">Sesuai rute</p>
+                            ))}
+                            <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${selectedShipping === m.id ? "border-primary bg-primary" : "border-slate-300 bg-white"}`}>
+                              {selectedShipping === m.id && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                    {selectedShipping === "pickup" && (
+                      <div className="mt-2 rounded-lg border border-green-200 bg-green-50/80 px-3 py-2.5">
+                        <p className="text-[10px] font-bold text-green-600 uppercase tracking-wide mb-1">Lokasi Pengambilan</p>
+                        <p className="text-[11px] font-semibold text-green-800 leading-snug">🏭 {companyPickup?.name ?? "CST Logistics"}</p>
+                        <p className="text-[11px] text-green-700 mt-0.5 leading-snug">{companyPickup?.address ?? DEFAULT_PICKUP}</p>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <button
+                    onClick={openServiceCatalog}
+                    className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-slate-200 text-sm text-slate-400 hover:border-sky-300 hover:text-sky-600 hover:bg-sky-50/60 transition-colors"
+                  >
+                    <Plus className="w-4 h-4" /> Tambah Layanan / Produk
+                  </button>
+                )}
               </div>
             )
           )}
@@ -537,11 +771,17 @@ export function CartDrawer() {
                       <div>
                         <p className="font-semibold text-sm leading-tight">{svc.name}</p>
                         <p className="text-[11px] opacity-70 mt-0.5 leading-snug">{svc.desc}</p>
-                        {svc.isTrucking && (
-                          <span className="inline-block mt-1.5 text-[10px] bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded-full font-medium">
-                            Kalkulator tersedia
-                          </span>
-                        )}
+                        <span className={`inline-block mt-1.5 text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                          svc.isTrucking
+                            ? "bg-orange-100 text-orange-700"
+                            : svc.id === "sea"       ? "bg-blue-100 text-blue-700"
+                            : svc.id === "air"       ? "bg-sky-100 text-sky-700"
+                            : svc.id === "storage"   ? "bg-emerald-100 text-emerald-700"
+                            : svc.id === "customs"   ? "bg-slate-100 text-slate-600"
+                            : "bg-purple-100 text-purple-700"
+                        }`}>
+                          Kalkulator tersedia
+                        </span>
                       </div>
                     </div>
                   </button>
@@ -671,35 +911,46 @@ export function CartDrawer() {
                       </div>
                     </div>
                     <div>
-                      <Label className="text-[11px] mb-1 block flex items-center gap-1"><MapPin className="w-3 h-3" /> Kota Tujuan *</Label>
-                      <Input className="h-8 text-xs" placeholder="Surabaya" value={truckData.destCity||""} onChange={e => {
-                        const dc = e.target.value;
-                        setTruckData(p => ({ ...p, destCity: dc }));
-                        setVehicleComparison(null);
-                        try { localStorage.setItem("truck_pref", JSON.stringify({ destCity: dc, vehicleType: truckData.vehicleType ?? "" })); } catch { /**/ }
-                      }} />
+                      <Label className="text-[11px] mb-1 flex items-center gap-1"><MapPin className="w-3 h-3 text-blue-500" /> Kota Tujuan <span className="text-destructive">*</span></Label>
+                      <Input
+                        className={`h-8 text-xs ${!truckData.destCity && vehicleComparison !== null ? "border-destructive" : ""}`}
+                        placeholder="Surabaya, Medan, Makassar..."
+                        value={truckData.destCity||""}
+                        onChange={e => {
+                          const dc = e.target.value;
+                          setTruckData(p => ({ ...p, destCity: dc }));
+                          setVehicleComparison(null);
+                          try { localStorage.setItem("truck_pref", JSON.stringify({ destCity: dc, vehicleType: truckData.vehicleType ?? "" })); } catch { /**/ }
+                        }}
+                      />
                     </div>
                     <div>
                       <Label className="text-[11px] mb-1 flex items-center gap-1">
                         Berat (kg) *
-                        {cartAutoFilled && <span className="ml-auto text-[10px] font-semibold bg-sky-100 text-sky-600 px-1.5 py-0.5 rounded-full">Otomatis</span>}
+                        {cartAutoFilled && truckData.weight && <span className="ml-auto text-[10px] font-semibold bg-sky-100 text-sky-600 px-1.5 py-0.5 rounded-full">Otomatis</span>}
                       </Label>
-                      <Input
-                        type="number" min={0} className="h-8 text-xs" placeholder="100"
-                        value={truckData.weight||""}
-                        onChange={e => {
-                          const w = e.target.value;
-                          setVehicleComparison(null);
-                          setTruckData(p => {
-                            const kg = parseFloat(w) || 0;
-                            const updates: Record<string, string> = { ...p, weight: w };
-                            if (kg > 0 && !p.vehicleType) {
-                              updates.vehicleType = suggestVehicleType(kg);
-                            }
-                            return updates;
-                          });
-                        }}
-                      />
+                      {cartAutoFilled && truckData.weight ? (
+                        <div className="h-8 flex items-center px-2.5 bg-sky-50 border border-sky-200 rounded-md">
+                          <span className="text-xs font-semibold text-slate-800">{truckData.weight} kg</span>
+                        </div>
+                      ) : (
+                        <Input
+                          type="number" min={0} className="h-8 text-xs" placeholder="100"
+                          value={truckData.weight||""}
+                          onChange={e => {
+                            const w = e.target.value;
+                            setVehicleComparison(null);
+                            setTruckData(p => {
+                              const kg = parseFloat(w) || 0;
+                              const updates: Record<string, string> = { ...p, weight: w };
+                              if (kg > 0 && !p.vehicleType) {
+                                updates.vehicleType = suggestVehicleType(kg);
+                              }
+                              return updates;
+                            });
+                          }}
+                        />
+                      )}
                     </div>
                     <div>
                       {(() => {
@@ -848,6 +1099,364 @@ export function CartDrawer() {
               )}
             </div>
           )}
+
+          {/* ── View: Freight Form (Sea / Air / Storage / Customs / Additional) ── */}
+          {view === "freight" && (
+            <div className="p-4 space-y-3">
+              {freightAutoFilled && (
+                <div className="bg-sky-50 border border-sky-200 rounded-lg px-3 py-2 flex items-start gap-2">
+                  <span className="text-sky-500 mt-0.5 shrink-0">✦</span>
+                  <div>
+                    <p className="text-[11px] font-semibold text-sky-700">Diisi otomatis dari produk pesanan</p>
+                    <p className="text-[10px] text-sky-500 mt-0.5">Berat &amp; dimensi dihitung dari item di keranjang. Lengkapi detail lainnya lalu klik Hitung Estimasi.</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Warning: company fetch failed */}
+              {companyFetchFailed && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 flex items-start gap-2">
+                  <span className="text-amber-500 mt-0.5 shrink-0 text-xs">⚠</span>
+                  <p className="text-[10px] text-amber-700 leading-snug">
+                    Data perusahaan tidak dapat dimuat. Asal menggunakan nilai default. Anda dapat mengedit manual jika diperlukan.
+                  </p>
+                </div>
+              )}
+
+              {/* SEA FREIGHT */}
+              {freightSvc === "sea" && (
+                <div className="space-y-3">
+                  {/* Negara Asal — selalu otomatis dari data perusahaan */}
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div>
+                      <Label className="text-[11px] mb-1 flex items-center gap-1">
+                        <MapPin className="w-3 h-3 text-orange-500" /> Negara Asal
+                        <span className="ml-auto text-[10px] font-semibold bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded-full">Otomatis</span>
+                      </Label>
+                      <div className="h-8 rounded-md border border-orange-200 bg-orange-50 px-3 flex items-center gap-1.5">
+                        <span className="text-xs font-medium text-orange-700">🇮🇩 Indonesia</span>
+                        {companyPickup?.originCity && <span className="text-[10px] text-orange-400 ml-auto">{companyPickup.originCity}</span>}
+                      </div>
+                    </div>
+                    <div>
+                      <Label className="text-[11px] mb-1 font-semibold flex items-center gap-1">
+                        <MapPin className="w-3 h-3 text-blue-500" />
+                        Negara Tujuan <span className="text-destructive">*</span>
+                      </Label>
+                      <Input
+                        className={`h-8 text-xs ${freightDestError && !freightData.destCountry ? "border-destructive focus-visible:ring-destructive" : "border-primary/40 focus:border-primary"}`}
+                        placeholder="Singapore, Malaysia, China..."
+                        value={freightData.destCountry||""}
+                        onChange={e => { setFreightData(p => ({...p, destCountry: e.target.value})); if (e.target.value) setFreightDestError(false); }}
+                        autoFocus
+                      />
+                      {freightDestError && !freightData.destCountry && (
+                        <p className="text-[11px] text-destructive mt-1 flex items-center gap-1">
+                          <MapPin className="w-3 h-3" /> Negara tujuan wajib diisi.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  {/* Berat — read-only jika dari keranjang */}
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div>
+                      <Label className="text-[11px] mb-1 flex items-center gap-1">
+                        Berat (kg)
+                        {freightAutoFilled && freightData.weight && <span className="ml-auto text-[10px] font-semibold bg-sky-100 text-sky-600 px-1.5 py-0.5 rounded-full">Otomatis</span>}
+                      </Label>
+                      {freightAutoFilled && freightData.weight ? (
+                        <div className="h-8 flex items-center px-2.5 bg-sky-50 border border-sky-200 rounded-md">
+                          <span className="text-xs font-semibold text-slate-800">{freightData.weight} kg</span>
+                        </div>
+                      ) : (
+                        <Input type="number" min={0} className="h-8 text-xs" placeholder="100" value={freightData.weight||""} onChange={e => setFreightData(p => ({...p, weight: e.target.value}))} />
+                      )}
+                    </div>
+                    <div>
+                      <Label className="text-[11px] mb-1 block">Jenis Pengiriman</Label>
+                      <Select value={freightData.shipType||"LCL"} onValueChange={v => setFreightData(p => ({...p, shipType: v}))}>
+                        <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="LCL" className="text-xs">LCL — Less Container</SelectItem>
+                          <SelectItem value="FCL 20'" className="text-xs">FCL 20' Container</SelectItem>
+                          <SelectItem value="FCL 40'" className="text-xs">FCL 40' Container</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  {/* Dimensi — read-only jika dari keranjang */}
+                  <div>
+                    <Label className="text-[11px] mb-1 flex items-center gap-1">
+                      Dimensi (cm) — P × L × T
+                      {freightAutoFilled && (freightData.length || freightData.width || freightData.height) && (
+                        <span className="ml-auto text-[10px] font-semibold bg-sky-100 text-sky-600 px-1.5 py-0.5 rounded-full">Otomatis</span>
+                      )}
+                    </Label>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {freightAutoFilled && (freightData.length || freightData.width || freightData.height) ? (
+                        <>
+                          <div className="h-8 rounded-md border border-sky-200 bg-sky-50 px-3 flex items-center justify-between">
+                            <span className="text-xs font-medium text-sky-700">{freightData.length || "—"}</span>
+                            <span className="text-[9px] text-sky-400">P</span>
+                          </div>
+                          <div className="h-8 rounded-md border border-sky-200 bg-sky-50 px-3 flex items-center justify-between">
+                            <span className="text-xs font-medium text-sky-700">{freightData.width || "—"}</span>
+                            <span className="text-[9px] text-sky-400">L</span>
+                          </div>
+                          <div className="h-8 rounded-md border border-sky-200 bg-sky-50 px-3 flex items-center justify-between">
+                            <span className="text-xs font-medium text-sky-700">{freightData.height || "—"}</span>
+                            <span className="text-[9px] text-sky-400">T</span>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <Input type="number" min={0} className="h-8 text-xs" placeholder="Panjang" value={freightData.length||""} onChange={e => setFreightData(p => ({...p, length: e.target.value}))} />
+                          <Input type="number" min={0} className="h-8 text-xs" placeholder="Lebar"   value={freightData.width||""}  onChange={e => setFreightData(p => ({...p, width: e.target.value}))} />
+                          <Input type="number" min={0} className="h-8 text-xs" placeholder="Tinggi"  value={freightData.height||""} onChange={e => setFreightData(p => ({...p, height: e.target.value}))} />
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  {/* Jenis Barang — read-only jika dari keranjang */}
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div>
+                      <Label className="text-[11px] mb-1 flex items-center gap-1">
+                        Jenis Barang
+                        {freightAutoFilled && freightData.goodsType && <span className="ml-auto text-[10px] font-semibold bg-sky-100 text-sky-600 px-1.5 py-0.5 rounded-full">Otomatis</span>}
+                      </Label>
+                      {freightAutoFilled && freightData.goodsType ? (
+                        <div className="h-8 flex items-center px-2.5 bg-sky-50 border border-sky-200 rounded-md">
+                          <span className="text-xs font-semibold text-slate-800">{freightData.goodsType}</span>
+                        </div>
+                      ) : (
+                        <Select value={freightData.goodsType||undefined} onValueChange={v => setFreightData(p => ({...p, goodsType: v}))}>
+                          <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Pilih" /></SelectTrigger>
+                          <SelectContent>{GOODS_TYPES.map(g => <SelectItem key={g} value={g} className="text-xs">{g}</SelectItem>)}</SelectContent>
+                        </Select>
+                      )}
+                    </div>
+                    <div>
+                      <Label className="text-[11px] mb-1 block">Incoterms</Label>
+                      <Select value={freightData.incoterms||"FOB"} onValueChange={v => setFreightData(p => ({...p, incoterms: v}))}>
+                        <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                        <SelectContent>{INCOTERMS.map(t => <SelectItem key={t} value={t} className="text-xs">{t}</SelectItem>)}</SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* AIR FREIGHT */}
+              {freightSvc === "air" && (
+                <div className="space-y-3">
+                  {/* Spesifikasi otomatis dari produk */}
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-2.5 space-y-1.5">
+                    <p className="text-[11px] font-semibold text-emerald-700">✈️ Data dikirim otomatis dari produk pesanan</p>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Bandara Asal</span>
+                        <span className="font-semibold text-slate-800">{freightData.originAirport || companyPickup?.originAirport || "CGK"} — Jakarta</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Negara Asal</span>
+                        <span className="font-semibold text-slate-800">Indonesia 🇮🇩</span>
+                      </div>
+                      {freightData.weight && (
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Total Berat</span>
+                          <span className="font-semibold text-slate-800">{freightData.weight} kg</span>
+                        </div>
+                      )}
+                      {freightData.goodsType && (
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Jenis Barang</span>
+                          <span className="font-semibold text-slate-800">{freightData.goodsType}</span>
+                        </div>
+                      )}
+                      {(freightData.length || freightData.width || freightData.height) && (
+                        <div className="flex justify-between col-span-2">
+                          <span className="text-slate-500">Dimensi (P×L×T)</span>
+                          <span className="font-semibold text-slate-800">{freightData.length||"—"} × {freightData.width||"—"} × {freightData.height||"—"} cm</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  {/* Wajib diisi customer: Bandara Tujuan */}
+                  <div>
+                    <Label className="text-[11px] mb-1 font-semibold flex items-center gap-1">
+                      <MapPin className="w-3 h-3 text-sky-500" />
+                      Bandara Tujuan <span className="text-destructive">*</span>
+                    </Label>
+                    <Input
+                      className={`h-8 text-xs ${freightDestError && !freightData.destAirport ? "border-destructive focus-visible:ring-destructive" : "border-primary/40 focus:border-primary"}`}
+                      placeholder="Contoh: SIN — Singapore, KUL — Malaysia..."
+                      value={freightData.destAirport||""}
+                      onChange={e => { setFreightData(p => ({...p, destAirport: e.target.value})); if (e.target.value) setFreightDestError(false); }}
+                      autoFocus
+                    />
+                    {freightDestError && !freightData.destAirport && (
+                      <p className="text-[11px] text-destructive mt-1 flex items-center gap-1">
+                        <MapPin className="w-3 h-3" /> Bandara tujuan wajib diisi.
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <Label className="text-[11px] mb-1 block">Incoterms</Label>
+                    <Select value={freightData.incoterms||"FOB"} onValueChange={v => setFreightData(p => ({...p, incoterms: v}))}>
+                      <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                      <SelectContent>{INCOTERMS.map(t => <SelectItem key={t} value={t} className="text-xs">{t}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                  {/* Jenis Barang hanya tampil jika tidak ada dari produk */}
+                  {!freightData.goodsType && (
+                    <div>
+                      <Label className="text-[11px] mb-1 block">Jenis Barang</Label>
+                      <Select value={freightData.goodsType||undefined} onValueChange={v => setFreightData(p => ({...p, goodsType: v}))}>
+                        <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Pilih (opsional)" /></SelectTrigger>
+                        <SelectContent>{GOODS_TYPES.map(g => <SelectItem key={g} value={g} className="text-xs">{g}</SelectItem>)}</SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* STORAGE / PERGUDANGAN */}
+              {freightSvc === "storage" && (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div>
+                      <Label className="text-[11px] mb-1 block">Volume (CBM) *</Label>
+                      <Input type="number" min={0} className="h-8 text-xs" placeholder="10" value={freightData.volume||""} onChange={e => setFreightData(p => ({...p, volume: e.target.value}))} />
+                    </div>
+                    <div>
+                      <Label className="text-[11px] mb-1 block">Durasi (bulan) *</Label>
+                      <Input type="number" min={1} className="h-8 text-xs" placeholder="1" value={freightData.duration||""} onChange={e => setFreightData(p => ({...p, duration: e.target.value}))} />
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-[11px] mb-1 block">Jenis Barang</Label>
+                    <Select value={freightData.goodsType||undefined} onValueChange={v => setFreightData(p => ({...p, goodsType: v}))}>
+                      <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Pilih" /></SelectTrigger>
+                      <SelectContent>{GOODS_TYPES.map(g => <SelectItem key={g} value={g} className="text-xs">{g}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-[11px] mb-1 block">Catatan (opsional)</Label>
+                    <Textarea rows={2} placeholder="Kebutuhan khusus penyimpanan..." className="text-xs resize-none" value={freightData.notes||""} onChange={e => setFreightData(p => ({...p, notes: e.target.value}))} />
+                  </div>
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-2.5 text-[11px] text-emerald-700">
+                    💡 Tarif per CBM/bulan. Biaya final dikonfirmasi tim setelah survei lokasi.
+                  </div>
+                </div>
+              )}
+
+              {/* CUSTOMS / KEPABEANAN */}
+              {freightSvc === "customs" && (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div>
+                      <Label className="text-[11px] mb-1 block">Jenis Kepabeanan *</Label>
+                      <Select value={freightData.customsType||"Import"} onValueChange={v => setFreightData(p => ({...p, customsType: v}))}>
+                        <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Import" className="text-xs">Impor</SelectItem>
+                          <SelectItem value="Export" className="text-xs">Ekspor</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="text-[11px] mb-1 block">Jenis Barang</Label>
+                      <Select value={freightData.goodsType||undefined} onValueChange={v => setFreightData(p => ({...p, goodsType: v}))}>
+                        <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Pilih" /></SelectTrigger>
+                        <SelectContent>{GOODS_TYPES.map(g => <SelectItem key={g} value={g} className="text-xs">{g}</SelectItem>)}</SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-[11px] mb-1 block">Nilai Barang (IDR)</Label>
+                    <Input type="number" min={0} className="h-8 text-xs" placeholder="50000000" value={freightData.cargoValue||""} onChange={e => setFreightData(p => ({...p, cargoValue: e.target.value}))} />
+                  </div>
+                  <div>
+                    <Label className="text-[11px] mb-1 block">Keterangan (opsional)</Label>
+                    <Textarea rows={2} placeholder="Detail dokumen, HS code, pelabuhan, dll..." className="text-xs resize-none" value={freightData.notes||""} onChange={e => setFreightData(p => ({...p, notes: e.target.value}))} />
+                  </div>
+                  <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-[11px] text-slate-600">
+                    💡 Estimasi ~2,5% nilai barang. Biaya resmi sesuai regulasi Bea Cukai.
+                  </div>
+                </div>
+              )}
+
+              {/* ASURANSI & LAINNYA */}
+              {freightSvc === "additional" && (
+                <div className="space-y-3">
+                  <div>
+                    <Label className="text-[11px] mb-1 block">Jenis Layanan *</Label>
+                    <Select value={freightData.addlType||undefined} onValueChange={v => setFreightData(p => ({...p, addlType: v}))}>
+                      <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Pilih layanan" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Asuransi Kargo" className="text-xs">Asuransi Kargo</SelectItem>
+                        <SelectItem value="Survei & Inspeksi" className="text-xs">Survei &amp; Inspeksi</SelectItem>
+                        <SelectItem value="Pengurusan Permit" className="text-xs">Pengurusan Permit</SelectItem>
+                        <SelectItem value="Packing & Crating" className="text-xs">Packing &amp; Crating</SelectItem>
+                        <SelectItem value="Lainnya" className="text-xs">Lainnya</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-[11px] mb-1 block">Nilai Barang (IDR, opsional)</Label>
+                    <Input type="number" min={0} className="h-8 text-xs" placeholder="50000000" value={freightData.cargoValue||""} onChange={e => setFreightData(p => ({...p, cargoValue: e.target.value}))} />
+                  </div>
+                  <div>
+                    <Label className="text-[11px] mb-1 block">Keterangan</Label>
+                    <Textarea rows={3} placeholder="Deskripsikan kebutuhan Anda..." className="text-xs resize-none" value={freightData.notes||""} onChange={e => setFreightData(p => ({...p, notes: e.target.value}))} />
+                  </div>
+                  <div className="bg-purple-50 border border-purple-200 rounded-lg p-2.5 text-[11px] text-purple-700">
+                    💡 Harga dikonfirmasi tim setelah pesanan diterima.
+                  </div>
+                </div>
+              )}
+
+              {/* Tombol hitung estimasi (tidak untuk additional) */}
+              {freightSvc !== "additional" && (
+                <Button
+                  variant="outline" size="sm"
+                  className={`w-full gap-2 ${
+                    freightSvc === "sea"     ? "border-blue-400 text-blue-600 hover:bg-blue-50" :
+                    freightSvc === "air"     ? "border-sky-400 text-sky-600 hover:bg-sky-50" :
+                    freightSvc === "storage" ? "border-emerald-400 text-emerald-600 hover:bg-emerald-50" :
+                                               "border-slate-400 text-slate-600 hover:bg-slate-50"
+                  }`}
+                  disabled={freightEstimating || (freightSvc === "storage" ? !freightData.volume : false)}
+                  onClick={computeFreightEstimate}
+                >
+                  {freightEstimating
+                    ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Menghitung...</>
+                    : <><Calculator className="w-3.5 h-3.5" /> Hitung Estimasi Biaya</>}
+                </Button>
+              )}
+
+              {/* Hasil estimasi */}
+              {freightEstimate !== null && freightEstimate > 0 && (
+                <div className="rounded-xl border overflow-hidden">
+                  <div className="bg-slate-50 px-3 py-2 border-b flex items-center justify-between">
+                    <p className="text-[11px] font-semibold text-slate-600 flex items-center gap-1.5">
+                      <Calculator className="w-3 h-3" /> Estimasi Biaya
+                    </p>
+                    <p className="text-[10px] text-slate-400">*Estimasi indikatif</p>
+                  </div>
+                  <div className="px-3 py-3 flex items-center justify-between">
+                    <div>
+                      <p className="text-xs text-slate-500">Estimasi total</p>
+                      <p className="text-lg font-bold text-sky-700">{formatCurrency(freightEstimate)}</p>
+                    </div>
+                    <div className="text-[10px] text-slate-400 text-right leading-relaxed">
+                      *Indikatif<br/>Harga final<br/>dikonfirmasi tim
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* ── Footer ── */}
@@ -877,17 +1486,39 @@ export function CartDrawer() {
                 <p className="text-[11px] text-slate-400 leading-snug">Harga akhir dikonfirmasi vendor setelah pesanan diterima.</p>
               )}
             </div>
+            {/* Shipping estimate row for product-only carts */}
+            {hasProductOnly && selectedShipping && (
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-500">Estimasi Ongkos Kirim</span>
+                <span className="font-medium text-slate-700">
+                  {selectedShipping === "darat" && daratEstimate
+                    ? formatCurrency(daratEstimate)
+                    : <span className="text-slate-400 text-xs italic">Sesuai rute</span>}
+                </span>
+              </div>
+            )}
+            {hasProductOnly && !selectedShipping && (
+              <p className="text-[11px] text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-center">
+                Metode pengiriman belum dipilih — bisa dikonfirmasi nanti
+              </p>
+            )}
             <Button className="w-full gap-2 h-11 text-sm font-semibold" onClick={handleCheckout}>
               Lanjutkan ke Checkout <ArrowRight className="w-4 h-4" />
             </Button>
-            <div className="grid grid-cols-2 gap-2">
-              <Button variant="outline" className="gap-1.5 text-sm h-10" onClick={openServiceCatalog}>
-                <Truck className="w-3.5 h-3.5" /> Pilih Layanan
+            {hasProductOnly ? (
+              <Button variant="outline" className="w-full gap-1.5 text-sm h-10" onClick={() => { close(); setLocation("/products"); }}>
+                <Package className="w-3.5 h-3.5" /> Tambah Produk Lagi
               </Button>
-              <Button variant="outline" className="gap-1.5 text-sm h-10" onClick={() => { close(); setLocation("/products"); }}>
-                <Package className="w-3.5 h-3.5" /> Pilih Produk
-              </Button>
-            </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-2">
+                <Button variant="outline" className="gap-1.5 text-sm h-10" onClick={openServiceCatalog}>
+                  <Truck className="w-3.5 h-3.5" /> Pilih Layanan
+                </Button>
+                <Button variant="outline" className="gap-1.5 text-sm h-10" onClick={() => { close(); setLocation("/products"); }}>
+                  <Package className="w-3.5 h-3.5" /> Pilih Produk
+                </Button>
+              </div>
+            )}
           </div>
         )}
 
@@ -904,6 +1535,31 @@ export function CartDrawer() {
               onClick={handleAddTruckingItem}
             >
               {truckEstimate || truckMode === "detail" ? "Tambahkan ke Pesanan" : "Tambahkan (Harga Menyusul)"}
+              <ArrowRight className="w-4 h-4" />
+            </Button>
+          </div>
+        )}
+
+        {/* Freight footer */}
+        {view === "freight" && (
+          <div className="border-t border-slate-200 px-4 py-3 bg-white shrink-0">
+            <Button
+              className={`w-full gap-2 ${
+                freightSvc === "sea"       ? "bg-blue-600 hover:bg-blue-700" :
+                freightSvc === "air"       ? "bg-sky-600 hover:bg-sky-700" :
+                freightSvc === "storage"   ? "bg-emerald-600 hover:bg-emerald-700" :
+                freightSvc === "customs"   ? "bg-slate-700 hover:bg-slate-800" :
+                                             "bg-purple-600 hover:bg-purple-700"
+              }`}
+              disabled={
+                freightSvc === "storage"   ? !freightData.volume :
+                freightSvc === "customs"   ? false :
+                freightSvc === "additional" ? !freightData.addlType :
+                false
+              }
+              onClick={handleAddFreightItem}
+            >
+              {freightEstimate && freightSvc !== "additional" ? "Tambahkan ke Pesanan" : "Tambahkan (Harga Menyusul)"}
               <ArrowRight className="w-4 h-4" />
             </Button>
           </div>

@@ -1,6 +1,6 @@
 import { pgTable, serial, text, integer, numeric, timestamp, pgEnum, jsonb } from "drizzle-orm/pg-core";
 
-export const paymentRefKindEnum = pgEnum("payment_ref_kind", ["sales", "purchase"]);
+export const paymentRefKindEnum = pgEnum("payment_ref_kind", ["sales", "purchase", "logistic"]);
 export const paymentStatusEnum = pgEnum("payment_status", [
   "pending",
   "paid",

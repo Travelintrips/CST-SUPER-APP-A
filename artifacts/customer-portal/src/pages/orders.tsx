@@ -1,11 +1,10 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useListPortalOrders, useListPortalLogisticOrders, useCancelPortalOrder, useCancelPortalLogisticOrder } from "@workspace/api-client-react";
 import { getAuthToken, getAuthHeaders } from "@/lib/auth";
 import { useLocation, useSearch } from "wouter";
-import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
-import { Search, Calendar, FileText, ExternalLink, X } from "lucide-react";
+import { Search, Calendar, FileText, ExternalLink, X, Package, CreditCard } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/lib/utils";
@@ -26,26 +25,86 @@ function Highlight({ text, query }: { text: string; query: string }) {
   );
 }
 
+// ── Status coloring ────────────────────────────────────────────────────────────
+
 const STATUS_COLOR: Record<string, string> = {
-  pending:    "bg-yellow-100 text-yellow-800",
-  processing: "bg-blue-100 text-blue-800",
-  shipped:    "bg-purple-100 text-purple-800",
-  delivered:  "bg-green-100 text-green-800",
-  cancelled:  "bg-red-100 text-red-800",
+  // normalised colours used by the badge
+  pending:          "bg-yellow-100 text-yellow-800",
+  processing:       "bg-blue-100 text-blue-800",
+  shipped:          "bg-purple-100 text-purple-800",
+  delivered:        "bg-green-100 text-green-800",
+  cancelled:        "bg-red-100 text-red-800",
+  completed:        "bg-emerald-100 text-emerald-800",
+  invoiced:         "bg-indigo-100 text-indigo-800",
+  paid:             "bg-teal-100 text-teal-800",
+  "in-progress":    "bg-sky-100 text-sky-800",
 };
 
-const LOGISTIC_STATUS_MAP: Record<string, string> = {
-  "New Order":   "pending",
-  "In Progress": "processing",
-  "Completed":   "delivered",
+// Map the 15-step logistic statuses to a CSS class directly
+const LOGISTIC_STATUS_COLOR: Record<string, string> = {
+  "Order Received":    "bg-yellow-100 text-yellow-800",
+  "Admin Review":      "bg-orange-100 text-orange-800",
+  "RFQ Sent":          "bg-amber-100 text-amber-800",
+  "Quote Received":    "bg-cyan-100 text-cyan-800",
+  "Customer Approval": "bg-blue-100 text-blue-800",
+  "Vendor Confirmed":  "bg-indigo-100 text-indigo-800",
+  "In Progress":       "bg-sky-100 text-sky-800",
+  "Pickup":            "bg-violet-100 text-violet-800",
+  "In Transit":        "bg-purple-100 text-purple-800",
+  "Arrived":           "bg-teal-100 text-teal-800",
+  "Delivered":         "bg-green-100 text-green-800",
+  "POD Uploaded":      "bg-emerald-100 text-emerald-800",
+  "Invoice Issued":    "bg-indigo-100 text-indigo-800",
+  "Payment Received":  "bg-teal-100 text-teal-800",
+  "Completed":         "bg-emerald-100 text-emerald-800",
+  "Cancelled":         "bg-red-100 text-red-800",
 };
+
+const LOGISTIC_STATUS_ID: Record<string, string> = {
+  "Order Received":    "Order Diterima",
+  "Admin Review":      "Ditinjau Admin",
+  "RFQ Sent":          "RFQ Terkirim",
+  "Quote Received":    "Penawaran Masuk",
+  "Customer Approval": "Menunggu Persetujuan",
+  "Vendor Confirmed":  "Vendor Dikonfirmasi",
+  "In Progress":       "Sedang Diproses",
+  "Pickup":            "Penjemputan",
+  "In Transit":        "Dalam Perjalanan",
+  "Arrived":           "Tiba di Tujuan",
+  "Delivered":         "Terkirim",
+  "POD Uploaded":      "Bukti Terkirim",
+  "Invoice Issued":    "Invoice Diterbitkan",
+  "Payment Received":  "Pembayaran Diterima",
+  "Completed":         "Selesai",
+  "Cancelled":         "Dibatalkan",
+  // product order statuses
+  "New Order":         "Order Baru",
+  "Awaiting Payment":  "Menunggu Pembayaran",
+  "Paid":              "Dibayar",
+};
+
+const PRODUCT_ORDER_STATUS_COLOR: Record<string, string> = {
+  "New Order":         "bg-yellow-100 text-yellow-800",
+  "In Progress":       "bg-sky-100 text-sky-800",
+  "Awaiting Payment":  "bg-orange-100 text-orange-800",
+  "Paid":              "bg-teal-100 text-teal-800",
+  "Completed":         "bg-emerald-100 text-emerald-800",
+  "Cancelled":         "bg-red-100 text-red-800",
+};
+
+interface ProductOrder {
+  id: number;
+  orderNumber: string;
+  status: string;
+  grandTotal: number;
+  createdAt: string;
+  trackingToken: string | null;
+}
 
 export default function Orders() {
   const [, setLocation] = useLocation();
   const searchStr = useSearch();
   const token = getAuthToken();
-  // Both `search` and `statusFilter` are derived from the URL — fully reactive
-  // to Back/Forward and any setLocation call.
   const params = new URLSearchParams(searchStr);
   const search = params.get("q") ?? "";
   const statusFilter = params.get("status") ?? "";
@@ -54,21 +113,39 @@ export default function Orders() {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
 
+  const [productOrders, setProductOrders] = useState<ProductOrder[]>([]);
+  const [loadingProduct, setLoadingProduct] = useState(false);
+
   useEffect(() => {
-    if (!token) setLocation("/login");
+    if (!token) { setLocation("/login"); return; }
+    setLoadingProduct(true);
+    const headers = getAuthHeaders() as Record<string, string>;
+    fetch("/api/portal/product-orders", { headers })
+      .then((r) => r.ok ? r.json() : [])
+      .then((data: ProductOrder[]) => setProductOrders(Array.isArray(data) ? data : []))
+      .catch(() => setProductOrders([]))
+      .finally(() => setLoadingProduct(false));
   }, [token, setLocation]);
 
-  // Auto-refresh saat admin mengubah status logistic order
+  // Real-time updates
   useEffect(() => {
     if (!token) return;
     const es = new EventSource("/api/ecommerce/events");
     es.addEventListener("logistic_order_status_changed", () => {
       queryClient.invalidateQueries({ queryKey: ["listPortalLogisticOrders", token] });
     });
+    es.addEventListener("price_sync", () => {
+      setLoadingProduct(true);
+      const headers = getAuthHeaders() as Record<string, string>;
+      fetch("/api/portal/product-orders", { headers })
+        .then((r) => r.ok ? r.json() : [])
+        .then((data: ProductOrder[]) => setProductOrders(Array.isArray(data) ? data : []))
+        .catch(() => {})
+        .finally(() => setLoadingProduct(false));
+    });
     return () => es.close();
   }, [token, queryClient]);
 
-  /** Build a URL preserving both filters, then navigate. */
   function buildOrdersUrl(q: string, status: string): string {
     const p = new URLSearchParams();
     if (q) p.set("q", q);
@@ -77,7 +154,6 @@ export default function Orders() {
     return qs ? `/orders?${qs}` : "/orders";
   }
 
-  /** Update the text search without adding a new back-stack entry. */
   function setSearch(q: string) {
     setLocation(buildOrdersUrl(q, statusFilter), { replace: true } as Parameters<typeof setLocation>[1]);
   }
@@ -111,7 +187,8 @@ export default function Orders() {
     displayNumber: o.docNumber,
     subtitle: "Sales Order",
     status: o.status,
-    displayStatus: o.status,
+    displayStatus: LOGISTIC_STATUS_ID[o.status] ?? o.status,
+    statusColor: STATUS_COLOR[o.status] ?? "bg-gray-100 text-gray-800",
     grandTotal: o.grandTotal,
     createdAt: o.createdAt,
     trackUrl: null as string | null,
@@ -121,26 +198,45 @@ export default function Orders() {
     _key: `log-${o.id}`,
     _id: o.id,
     _type: "logistic" as const,
-    _cancellable: o.status === "New Order",
+    _cancellable: o.status === "Order Received" || o.status === "New Order",
     displayNumber: o.orderNumber,
-    subtitle: `${o.shipmentType} • ${o.origin} → ${o.destination}`,
-    status: LOGISTIC_STATUS_MAP[o.status] ?? o.status,
-    displayStatus: o.status,
+    subtitle: `${o.shipmentType ?? "Logistik"} • ${o.origin ?? ""} → ${o.destination ?? ""}`,
+    status: o.status,
+    displayStatus: LOGISTIC_STATUS_ID[o.status] ?? o.status,
+    statusColor: LOGISTIC_STATUS_COLOR[o.status] ?? "bg-gray-100 text-gray-800",
     grandTotal: o.grandTotal,
     createdAt: o.createdAt,
     trackUrl: `/track?order=${encodeURIComponent(o.orderNumber)}`,
   }));
 
-  const allOrders = [...logisticOrders, ...crmOrders].sort(
+  const productOrdersMapped = productOrders.map((o) => ({
+    _key: `prod-${o.id}`,
+    _id: o.id,
+    _type: "product" as const,
+    _cancellable: false,
+    displayNumber: o.orderNumber,
+    subtitle: "Pesanan Produk",
+    status: o.status,
+    displayStatus: LOGISTIC_STATUS_ID[o.status] ?? o.status,
+    statusColor: PRODUCT_ORDER_STATUS_COLOR[o.status] ?? "bg-gray-100 text-gray-800",
+    grandTotal: o.grandTotal,
+    createdAt: o.createdAt,
+    trackUrl: o.trackingToken ? `/track-produk/${o.trackingToken}` : null,
+  }));
+
+  const allOrders = [...logisticOrders, ...crmOrders, ...productOrdersMapped].sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
 
-  const isLoading = isLoadingCrm || isLoadingLogistic;
+  const isLoading = isLoadingCrm || isLoadingLogistic || loadingProduct;
 
   const statusFiltered = statusFilter
     ? statusFilter === "active"
-      ? allOrders.filter((o) => o.status === "processing" || o.status === "shipped")
-      : allOrders.filter((o) => o.status === statusFilter)
+      ? allOrders.filter((o) => {
+          const s = o.status;
+          return s !== "Completed" && s !== "Cancelled" && s !== "cancelled" && s !== "delivered";
+        })
+      : allOrders.filter((o) => o.status.toLowerCase() === statusFilter.toLowerCase())
     : allOrders;
 
   const filtered = search.trim()
@@ -158,7 +254,7 @@ export default function Orders() {
       if (order._type === "crm") {
         await cancelCrmOrder.mutateAsync({ id: order._id });
         queryClient.invalidateQueries({ queryKey: ["listPortalOrders", token] });
-      } else {
+      } else if (order._type === "logistic") {
         await cancelLogisticOrder.mutateAsync({ id: order._id });
         queryClient.invalidateQueries({ queryKey: ["listPortalLogisticOrders", token] });
       }
@@ -169,15 +265,29 @@ export default function Orders() {
     }
   };
 
+  const TYPE_BADGE: Record<string, string> = {
+    logistic: "bg-blue-50 text-blue-600",
+    crm: "bg-slate-50 text-slate-600",
+    product: "bg-emerald-50 text-emerald-700",
+  };
+  const TYPE_LABEL: Record<string, string> = {
+    logistic: "Logistik",
+    crm: "Sales Order",
+    product: "Produk",
+  };
+
   return (
     <div className="min-h-[calc(100vh-80px)] bg-gray-50 py-8">
       <div className="container px-4 md:px-6">
 
         <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-4 gap-4">
           <div>
-            <h1 className="text-3xl font-display font-bold mb-2">{t("orders.title")}</h1>
+            <h1 className="text-3xl font-display font-bold mb-2 flex items-center gap-2">
+              <Package className="h-7 w-7 text-primary" />
+              Pesanan Saya
+            </h1>
             <p className="text-muted-foreground">
-              {t("orders.description")}
+              Semua pesanan logistik, produk, dan sales order Anda dalam satu tempat.
             </p>
           </div>
           <div className="relative w-full md:w-72">
@@ -185,7 +295,7 @@ export default function Orders() {
             <Input
               ref={searchInputRef}
               type="text"
-              placeholder={t("orders.search")}
+              placeholder="Cari nomor pesanan..."
               className="pl-9 pr-8 bg-white"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -193,10 +303,7 @@ export default function Orders() {
             {search && (
               <button
                 type="button"
-                onClick={() => {
-                  setSearch("");
-                  searchInputRef.current?.focus();
-                }}
+                onClick={() => { setSearch(""); searchInputRef.current?.focus(); }}
                 className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
                 aria-label="Clear search"
               >
@@ -206,16 +313,27 @@ export default function Orders() {
           </div>
         </div>
 
+        {/* Summary chips */}
+        <div className="flex gap-2 flex-wrap mb-5">
+          {(["logistic", "product", "crm"] as const).map((type) => {
+            const count = allOrders.filter((o) => o._type === type).length;
+            return (
+              <span key={type} className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${TYPE_BADGE[type]}`}>
+                {TYPE_LABEL[type]}: {count}
+              </span>
+            );
+          })}
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+            Total: {allOrders.length}
+          </span>
+        </div>
+
         {statusFilter && (
           <div className="flex items-center gap-2 mb-6">
             <span className="text-sm text-muted-foreground">{t("orders.activeFilterLabel")}</span>
             <span className="inline-flex items-center gap-1.5 bg-primary/10 text-primary text-sm font-medium px-3 py-1 rounded-full">
               {statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1)}
-              <button
-                onClick={clearStatusFilter}
-                className="hover:text-primary/70 transition-colors ml-0.5"
-                aria-label={t("orders.hapusFilter")}
-              >
+              <button onClick={clearStatusFilter} className="hover:text-primary/70 transition-colors ml-0.5" aria-label={t("orders.hapusFilter")}>
                 <X className="h-3.5 w-3.5" />
               </button>
             </span>
@@ -227,10 +345,11 @@ export default function Orders() {
             <table className="w-full text-sm text-left">
               <thead className="text-xs text-muted-foreground uppercase bg-gray-50 border-b border-border/50">
                 <tr>
-                  <th className="px-6 py-4 font-medium">{t("orders.orderDetails")}</th>
-                  <th className="px-6 py-4 font-medium">{t("orders.date")}</th>
-                  <th className="px-6 py-4 font-medium">{t("orders.status")}</th>
-                  <th className="px-6 py-4 font-medium text-right">{t("orders.amount")}</th>
+                  <th className="px-6 py-4 font-medium">Detail Pesanan</th>
+                  <th className="px-6 py-4 font-medium">Tipe</th>
+                  <th className="px-6 py-4 font-medium">Tanggal</th>
+                  <th className="px-6 py-4 font-medium">Status</th>
+                  <th className="px-6 py-4 font-medium text-right">Total</th>
                   <th className="px-6 py-4 font-medium w-16"></th>
                 </tr>
               </thead>
@@ -239,8 +358,9 @@ export default function Orders() {
                   Array(5).fill(0).map((_, i) => (
                     <tr key={i} className="animate-pulse">
                       <td className="px-6 py-4"><div className="h-10 bg-gray-100 rounded w-48" /></td>
+                      <td className="px-6 py-4"><div className="h-5 bg-gray-100 rounded w-16" /></td>
                       <td className="px-6 py-4"><div className="h-4 bg-gray-100 rounded w-24" /></td>
-                      <td className="px-6 py-4"><div className="h-6 bg-gray-100 rounded-full w-20" /></td>
+                      <td className="px-6 py-4"><div className="h-6 bg-gray-100 rounded-full w-28" /></td>
                       <td className="px-6 py-4"><div className="h-4 bg-gray-100 rounded w-24 ml-auto" /></td>
                       <td className="px-6 py-4"></td>
                     </tr>
@@ -254,7 +374,7 @@ export default function Orders() {
                     >
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
-                          <div className="bg-primary/5 p-2 rounded-lg">
+                          <div className="bg-primary/5 p-2 rounded-lg shrink-0">
                             <img src={`${import.meta.env.BASE_URL}images/logo.png`} alt="" className="h-5 w-auto object-contain" />
                           </div>
                           <div>
@@ -269,13 +389,18 @@ export default function Orders() {
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${TYPE_BADGE[order._type]}`}>
+                          {TYPE_LABEL[order._type]}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center gap-2 text-muted-foreground">
                           <Calendar className="h-4 w-4" />
                           {new Date(order.createdAt).toLocaleDateString("id-ID")}
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <Badge variant="secondary" className={`${STATUS_COLOR[order.status] ?? "bg-gray-100 text-gray-800"} font-medium border-0`}>
+                        <Badge variant="secondary" className={`${order.statusColor} font-medium border-0`}>
                           {order.displayStatus}
                         </Badge>
                       </td>
@@ -285,31 +410,48 @@ export default function Orders() {
                         </span>
                       </td>
                       <td className="px-6 py-4 text-center">
-                        {order._cancellable && (
-                          <button
-                            className="inline-flex items-center justify-center w-7 h-7 rounded-full text-muted-foreground hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
-                            title={t("orders.cancelOrder")}
-                            disabled={cancellingKey === order._key}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              void handleCancel(order);
-                            }}
-                            data-testid={`btn-cancel-${order._key}`}
-                          >
-                            <X className="h-4 w-4" />
-                          </button>
-                        )}
+                        <div className="flex items-center justify-center gap-1">
+                          {order._type === "logistic" &&
+                            (order.grandTotal ?? 0) > 0 &&
+                            !["Completed", "Payment Received", "Cancelled"].includes(order.status) &&
+                            order.trackUrl && (
+                              <button
+                                className="inline-flex items-center justify-center w-7 h-7 rounded-full text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 transition-colors"
+                                title="Bayar via Paylabs"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setLocation(order.trackUrl!);
+                                }}
+                              >
+                                <CreditCard className="h-4 w-4" />
+                              </button>
+                            )}
+                          {order._cancellable && (
+                            <button
+                              className="inline-flex items-center justify-center w-7 h-7 rounded-full text-muted-foreground hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
+                              title={t("orders.cancelOrder")}
+                              disabled={cancellingKey === order._key}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void handleCancel(order);
+                              }}
+                              data-testid={`btn-cancel-${order._key}`}
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={5} className="px-6 py-16 text-center text-muted-foreground">
+                    <td colSpan={6} className="px-6 py-16 text-center text-muted-foreground">
                       <FileText className="h-10 w-10 mx-auto text-muted-foreground/30 mb-3" />
                       <p className="text-lg font-medium text-foreground">
-                        {search ? t("orders.noResults") : t("orders.noOrders")}
+                        {search ? t("orders.noResults") : "Belum ada pesanan"}
                       </p>
-                      <p>{search ? t("orders.noResultsDesc") : t("orders.noOrdersDesc")}</p>
+                      <p>{search ? t("orders.noResultsDesc") : "Pesanan Anda akan muncul di sini."}</p>
                     </td>
                   </tr>
                 )}
