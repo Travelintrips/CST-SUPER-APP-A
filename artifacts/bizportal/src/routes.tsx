@@ -360,6 +360,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/reports/inventory-valuation" component={PR(InventoryValuationPage)} />
 
       {/* ── Accounting ─────────────────────────────────────────────────── */}
+      <Route path="/accounting"><Redirect to="/accounting/dashboard" /></Route>
       <Route path="/accounting/dashboard" component={PR(AccountingDashboardPage)} />
       <Route path="/accounting/accounts" component={PR(AccountingAccountsPage)} />
       <Route path="/accounting/journals" component={PR(AccountingJournalsPage)} />
