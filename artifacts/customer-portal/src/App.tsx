@@ -143,6 +143,9 @@ const NO_AUTH_CHECK_PREFIXES = [
   "/product-approve",
   "/shipment-selection",
   "/escrow-confirm",
+  "/ocean-freight-booking",
+  "/ocean-freight/approval",
+  "/ocean-freight/track",
 ];
 
 const BASE_PREFIX = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -297,6 +300,9 @@ function AppShell() {
         <Route path="/air-freight-booking" component={AirFreightBookingPage} />
         <Route path="/air-freight/approval/:token" component={AirFreightApprovalPage} />
         <Route path="/air-freight/track/:orderNumber" component={AirFreightTrackPage} />
+        <Route path="/ocean-freight-booking" component={OceanFreightBookingPage} />
+        <Route path="/ocean-freight/approval/:token" component={OceanFreightApprovalPage} />
+        <Route path="/ocean-freight/track/:orderNumber" component={OceanFreightTrackPage} />
         <Route component={NotFound} />
       </Switch>
     </Suspense>
