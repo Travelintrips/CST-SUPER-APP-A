@@ -86,7 +86,7 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
     const origin = getOrigin();
     const base = getBase();
     const returnTo = encodeURIComponent(base);
-    const loginUrl = `${origin}/api/login?returnTo=${returnTo}`;
+    const loginUrl = `${origin}/api/login/google?returnTo=${returnTo}`;
 
     const isInIframe = window !== window.top;
     if (isInIframe) {
