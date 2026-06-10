@@ -33,6 +33,9 @@ function validateRate(b: Record<string, unknown>): string | null {
   for (const f of numFields) {
     const v = b[f];
     if (v != null && Number(v) < 0) return `${f} tidak boleh negatif`;
+  }
+  return null;
+}
 
 const router = Router();
 

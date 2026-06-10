@@ -216,9 +216,6 @@ import AirFreightRatesPage from "@/pages/air-freight/rates";
 import AirFreightNewOrderDetailPage from "@/pages/air-freight/order-detail";
 import AirFreightApprovalPage from "@/pages/air-freight/approval";
 import AirFreightTrackPage from "@/pages/air-freight/track";
-import OceanFreightOrdersPage from "@/pages/ocean-freight/orders";
-import OceanFreightRatesPage from "@/pages/ocean-freight/rates";
-import OceanFreightOrderDetailPage from "@/pages/ocean-freight/order-detail";
 
 const PR = (C: React.ComponentType) => () => <ProtectedRoute component={C} />;
 

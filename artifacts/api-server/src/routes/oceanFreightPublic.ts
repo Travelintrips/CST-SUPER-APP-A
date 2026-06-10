@@ -68,6 +68,9 @@ oceanFreightPublicRouter.get("/options", async (_req: Request, res: Response) =>
       { value: "unstuffing",         label: "Unstuffing" },
       { value: "surveyor",           label: "Surveyor" },
       { value: "doc_handling",       label: "Document Handling" },
+    ],
+  });
+});
 
 const router = Router();
 
@@ -807,5 +810,8 @@ router.post("/quote/:token/decline", async (req: Request, res: Response) => {
     return res.status(500).json({ error: "Gagal decline quote" });
   }
 });
+
+// Gabungkan legacy oceanFreightPublicRouter ke router utama
+router.use(oceanFreightPublicRouter);
 
 export default router;

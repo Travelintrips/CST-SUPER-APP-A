@@ -563,14 +563,6 @@ oceanFreightRouter.get("/orders/:id/vendors", async (req: Request, res: Response
   }
 });
 
-export default oceanFreightRouter;
-import { eq, desc, sql } from "drizzle-orm";
-import { randomBytes } from "crypto";
-import { db } from "@workspace/db";
-import { requireAdmin } from "../lib/requireAdmin.js";
-import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
-import { getAdminGroupWa } from "../lib/adminWa.js";
-
 const router = Router();
 
 // ── Boot: create supporting tables (sequentially to respect FK deps) ──────────
@@ -1026,5 +1018,8 @@ router.patch("/:id", requireAdmin, async (req: Request, res: Response) => {
     return res.status(500).json({ error: "Gagal update order" });
   }
 });
+
+// Gabungkan legacy oceanFreightRouter ke router utama
+router.use(oceanFreightRouter);
 
 export default router;
