@@ -4,6 +4,10 @@ import NotFound from "@/pages/not-found";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import AuthCallbackPage from "@/pages/auth-callback";
 import DashboardPage from "@/pages/dashboard";
+import MasterDataHubPage from "@/pages/master-data/index";
+import FinanceHubPage from "@/pages/finance/index";
+import AiCenterHubPage from "@/pages/ai-center/index";
+import HrHubPage from "@/pages/hr/index";
 import EcommercePage from "@/pages/ecommerce";
 import TradingPage from "@/pages/trading";
 import WelcomePage from "@/pages/welcome";
@@ -535,6 +539,12 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/tax/reconciliation" component={PR(TaxReconciliationPage)} />
       <Route path="/tax/missing-compliance" component={PR(TaxMissingCompliancePage)} />
       <Route path="/tax" component={PR(TaxDashboardPage)} />
+
+      {/* ── Module Hub Pages ───────────────────────────────────────────── */}
+      <Route path="/master-data" component={PR(MasterDataHubPage)} />
+      <Route path="/finance" component={PR(FinanceHubPage)} />
+      <Route path="/ai-center" component={PR(AiCenterHubPage)} />
+      <Route path="/hr" component={PR(HrHubPage)} />
 
       {/* ── Legacy redirects ───────────────────────────────────────────── */}
       <Route path="/expenses/new" component={() => <Redirect to="/expense/new" />} />
