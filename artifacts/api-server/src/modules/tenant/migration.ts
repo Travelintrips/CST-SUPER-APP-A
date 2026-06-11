@@ -127,7 +127,15 @@ export async function runTenantMigration(): Promise<void> {
       )
     `);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_tenant_invoices_tenant ON tenant_invoices(tenant_id)`);
-    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_tenant_invoices_booking ON tenant_invoices(tenant_booking_id)`);
+    // tenant_invoices may use 'booking_id' or 'tenant_booking_id' depending on migration version
+    try {
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_tenant_invoices_booking ON tenant_invoices(tenant_booking_id)`);
+    } catch {
+      // column doesn't exist in this schema version — try booking_id
+      try {
+        await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_tenant_invoices_booking_v2 ON tenant_invoices(booking_id)`);
+      } catch { /* already exists or column absent */ }
+    }
     await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_tenant_invoices_status ON tenant_invoices(status)`);
 
     logger.info("Tenant migration OK");
