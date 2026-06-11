@@ -271,6 +271,43 @@ export function AppShell({ children, noPadding }: AppShellProps) {
       roles: ["admin", "owner", "trading"],
     },
 
+    // ── 7b. SPORT CENTER ──────────────────────────────────────────────
+    {
+      type: "group",
+      titleKey: "Sport Center",
+      basePath: "/sport-center",
+      icon: CalendarDays,
+      roles: ["admin", "owner"],
+      children: [
+        { titleKey: "Dashboard",     href: "/sport-center/dashboard",       icon: LayoutDashboard },
+        { titleKey: "Bookings",      href: "/sport-center/bookings",        icon: Calendar },
+        { titleKey: "Fasilitas",     href: "/sport-center/facilities",      icon: Layers },
+        { titleKey: "Members",       href: "/sport-center/members",         icon: Users },
+        { titleKey: "Customers",     href: "/sport-center/customers",       icon: UserCircle },
+        { titleKey: "Pricing Rules", href: "/sport-center/pricing-rules",   icon: Tags },
+        { titleKey: "Pembayaran",    href: "/sport-center/payments",        icon: CreditCard },
+        { titleKey: "Laporan",       href: "/sport-center/reports",         icon: BarChart2 },
+        { titleKey: "Settings",      href: "/sport-center/settings",        icon: Settings },
+      ],
+    },
+
+    // ── 7c. TENANT ────────────────────────────────────────────────────
+    {
+      type: "group",
+      titleKey: "Tenant",
+      basePath: "/tenant",
+      icon: Building2,
+      roles: ["admin", "owner"],
+      children: [
+        { titleKey: "Dashboard",     href: "/tenant/dashboard",   icon: LayoutDashboard },
+        { titleKey: "Daftar Tenant", href: "/tenant/tenants",     icon: Users },
+        { titleKey: "Unit",          href: "/tenant/units",        icon: Layers },
+        { titleKey: "Bookings",      href: "/tenant/bookings",     icon: Calendar },
+        { titleKey: "Pembayaran",    href: "/tenant/payments",     icon: CreditCard },
+        { titleKey: "Invoice",       href: "/tenant/invoices",     icon: FileText },
+      ],
+    },
+
     // ── 8. FINANCE ────────────────────────────────────────────────────
     {
       type: "flat",
@@ -317,7 +354,7 @@ export function AppShell({ children, noPadding }: AppShellProps) {
       href: "/settings",
       icon: Settings,
       roles: ["admin", "owner"],
-      activePaths: ["/settings", "/users", "/org", "/correspondences", "/email-inbox", "/media", "/system-health", "/notifications", "/notification-history", "/sport-center", "/tenant"],
+      activePaths: ["/settings", "/users", "/org", "/correspondences", "/email-inbox", "/media", "/system-health", "/notifications", "/notification-history"],
     },
   ];
 
