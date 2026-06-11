@@ -827,188 +827,221 @@ export function Navbar() {
               </button>
             </form>
             {autocompleteSuggestions.length > 0 && (
-              <div className="mt-2 rounded-xl border border-slate-100 overflow-hidden bg-white">
-                {autocompleteSuggestions.map((s) => (
-                  <button
-                    key={s.href}
-                    type="button"
-                    onClick={() => handleSuggestionClick(s.href)}
-                    className="w-full flex items-center gap-2.5 px-4 py-2.5 text-[13px] text-slate-700 hover:bg-sky-50 hover:text-sky-700 transition-colors text-left border-b border-slate-50 last:border-0"
-                  >
-                    <Search className="h-3 w-3 text-slate-400 shrink-0" />
-                    {s.label}
-                  </button>
-                ))}
+              <div className="mt-2 rounded-2xl border border-slate-100 overflow-hidden bg-white shadow-lg">
+                <div className="px-3 py-2 border-b border-slate-50">
+                  <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">
+                    {searchQuery.trim().length >= 2 ? "Saran pencarian" : "Populer"}
+                  </span>
+                </div>
+                {autocompleteSuggestions.map((s) => {
+                  const Icon = s.icon;
+                  const isService = s.kind === "Layanan";
+                  return (
+                    <button
+                      key={s.href}
+                      type="button"
+                      onClick={() => handleSuggestionClick(s.href)}
+                      className="w-full flex items-center gap-3 px-3 py-3 hover:bg-sky-50 transition-colors text-left border-b border-slate-50 last:border-0 active:bg-sky-100"
+                    >
+                      <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${isService ? "bg-sky-50" : "bg-emerald-50"}`}>
+                        <Icon className={`h-4 w-4 ${isService ? "text-sky-600" : "text-emerald-600"}`} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[13px] font-semibold text-slate-800 truncate">{s.label}</span>
+                          <span className={`shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded-full ${isService ? "bg-sky-100 text-sky-600" : "bg-emerald-100 text-emerald-600"}`}>
+                            {s.kind}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 truncate mt-0.5">{s.description}</p>
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>
         )}
       </div>
 
-      {/* ── Mobile Drawer ──────────────────────────────────── */}
-      {isOpen && (
-        <div
-          className="lg:hidden max-h-[85vh] overflow-y-auto"
-          style={{
-            background: "rgba(255,255,255,0.99)",
-            borderTop: "1px solid #F1F5F9",
-          }}
-        >
-          <div className="max-w-[1440px] mx-auto px-5 pb-6 pt-3 space-y-0.5">
+      {/* ── Mobile Slide Drawer (portal) ───────────────────────── */}
+      {/* Backdrop */}
+      <div
+        className={`lg:hidden fixed inset-0 z-40 transition-opacity duration-300 ${isOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}
+        style={{ background: "rgba(15,23,42,0.55)", backdropFilter: "blur(2px)" }}
+        onClick={() => setIsOpen(false)}
+        aria-hidden="true"
+      />
 
-            <Link href="/" onClick={() => setIsOpen(false)}>
-              <div className={`flex items-center px-3 py-2.5 rounded-xl text-[15px] font-medium cursor-pointer ${
-                location === "/" ? "bg-sky-50 text-sky-700" : "text-slate-600 hover:bg-slate-50"
-              }`}>
-                {t("nav.home")}
+      {/* Slide panel — right side */}
+      <div
+        className={`lg:hidden fixed top-0 right-0 h-full z-50 flex flex-col transition-transform duration-300 ease-out ${isOpen ? "translate-x-0" : "translate-x-full"}`}
+        style={{ width: "min(85vw, 340px)", background: "#fff", boxShadow: "-8px 0 40px rgba(15,23,42,0.16)" }}
+      >
+        {/* Panel header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+          <span className="text-[15px] font-bold text-slate-800">Menu</span>
+          <button
+            onClick={() => setIsOpen(false)}
+            className="w-9 h-9 flex items-center justify-center rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-all"
+            aria-label="Tutup menu"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Scrollable content */}
+        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-0.5">
+
+          {/* Quick actions — most used on mobile */}
+          <div className="grid grid-cols-2 gap-2 mb-4">
+            <Link href="/track" onClick={() => setIsOpen(false)}>
+              <div className="flex flex-col items-center justify-center gap-1.5 py-3 px-2 rounded-2xl bg-sky-50 border border-sky-100 text-sky-700 text-center cursor-pointer hover:bg-sky-100 transition-colors active:scale-95">
+                <MapPin className="h-5 w-5" />
+                <span className="text-[12px] font-semibold leading-tight">Lacak Pesanan</span>
               </div>
             </Link>
-
-            <Link href="/marketplace" onClick={() => setIsOpen(false)}>
-              <div className={`flex items-center px-3 py-2.5 rounded-xl text-[15px] font-medium cursor-pointer ${
-                location.startsWith("/marketplace") ? "bg-sky-50 text-sky-700" : "text-slate-600 hover:bg-slate-50"
-              }`}>
-                Marketplace
+            <Link href="/calculator" onClick={() => setIsOpen(false)}>
+              <div className="flex flex-col items-center justify-center gap-1.5 py-3 px-2 rounded-2xl bg-emerald-50 border border-emerald-100 text-emerald-700 text-center cursor-pointer hover:bg-emerald-100 transition-colors active:scale-95">
+                <Calculator className="h-5 w-5" />
+                <span className="text-[12px] font-semibold leading-tight">Hitung Biaya</span>
               </div>
             </Link>
+          </div>
 
-            {/* Services Accordion */}
-            <div>
-              <button
-                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-[15px] font-medium transition-colors ${
-                  isServicesActive ? "bg-sky-50 text-sky-700" : "text-slate-600 hover:bg-slate-50"
-                }`}
-                onClick={() => setMobileServicesOpen((v) => !v)}
-              >
-                {t("nav.services")}
-                <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${mobileServicesOpen ? "rotate-180" : ""}`} />
-              </button>
+          {/* Nav links */}
+          <Link href="/" onClick={() => setIsOpen(false)}>
+            <div className={`flex items-center gap-3 px-3 py-3 rounded-xl text-[15px] font-medium cursor-pointer transition-colors ${
+              location === "/" ? "bg-sky-50 text-sky-700" : "text-slate-700 hover:bg-slate-50"
+            }`}>
+              {t("nav.home")}
+            </div>
+          </Link>
 
-              {mobileServicesOpen && (
-                <div className="mt-1 ml-3 pl-3 border-l-2 border-sky-100 space-y-0.5">
-                  {SERVICES_ITEMS.map(({ icon: Icon, titleKey, href }) => (
-                    <Link key={titleKey} href={href} onClick={() => setIsOpen(false)}>
-                      <div className="flex items-center gap-3 px-3 py-2 rounded-xl text-[14px] text-slate-600 hover:bg-slate-50 cursor-pointer">
-                        <Icon className="h-4 w-4 text-sky-500 shrink-0" />
-                        {t(titleKey)}
-                      </div>
-                    </Link>
-                  ))}
-                  <Link href="/services" onClick={() => setIsOpen(false)}>
-                    <div className="flex items-center gap-2 px-3 py-2 rounded-xl text-[14px] font-semibold text-sky-600 hover:bg-sky-50 cursor-pointer">
-                      <ChevronRight className="h-3.5 w-3.5" />
-                      {t("servicesMenu.viewAll")}
+          <Link href="/marketplace" onClick={() => setIsOpen(false)}>
+            <div className={`flex items-center gap-3 px-3 py-3 rounded-xl text-[15px] font-medium cursor-pointer transition-colors ${
+              location.startsWith("/marketplace") ? "bg-sky-50 text-sky-700" : "text-slate-700 hover:bg-slate-50"
+            }`}>
+              Marketplace
+            </div>
+          </Link>
+
+          {/* Services Accordion */}
+          <div>
+            <button
+              className={`w-full flex items-center justify-between px-3 py-3 rounded-xl text-[15px] font-medium transition-colors ${
+                isServicesActive ? "bg-sky-50 text-sky-700" : "text-slate-700 hover:bg-slate-50"
+              }`}
+              onClick={() => setMobileServicesOpen((v) => !v)}
+            >
+              {t("nav.services")}
+              <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${mobileServicesOpen ? "rotate-180" : ""}`} />
+            </button>
+            {mobileServicesOpen && (
+              <div className="mt-1 ml-3 pl-3 border-l-2 border-sky-100 space-y-0.5">
+                {SERVICES_ITEMS.map(({ icon: Icon, titleKey, href }) => (
+                  <Link key={titleKey} href={href} onClick={() => setIsOpen(false)}>
+                    <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[14px] text-slate-600 hover:bg-slate-50 cursor-pointer transition-colors">
+                      <Icon className="h-4 w-4 text-sky-500 shrink-0" />
+                      {t(titleKey)}
                     </div>
                   </Link>
-                </div>
-              )}
-            </div>
+                ))}
+                <Link href="/services" onClick={() => setIsOpen(false)}>
+                  <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-[14px] font-semibold text-sky-600 hover:bg-sky-50 cursor-pointer">
+                    <ChevronRight className="h-3.5 w-3.5" />
+                    {t("servicesMenu.viewAll")}
+                  </div>
+                </Link>
+              </div>
+            )}
+          </div>
 
-            {/* More Accordion */}
-            <div>
-              <button
-                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-[15px] font-medium transition-colors ${
-                  location === "/track" || location === "/calculator" ? "bg-sky-50 text-sky-700" : "text-slate-600 hover:bg-slate-50"
-                }`}
-                onClick={() => setMobileMoreOpen((v) => !v)}
-              >
-                {t("nav.more")}
-                <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${mobileMoreOpen ? "rotate-180" : ""}`} />
-              </button>
+          {/* More Accordion */}
+          <div>
+            <button
+              className={`w-full flex items-center justify-between px-3 py-3 rounded-xl text-[15px] font-medium transition-colors ${
+                location === "/track" || location === "/calculator" ? "bg-sky-50 text-sky-700" : "text-slate-700 hover:bg-slate-50"
+              }`}
+              onClick={() => setMobileMoreOpen((v) => !v)}
+            >
+              {t("nav.more")}
+              <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${mobileMoreOpen ? "rotate-180" : ""}`} />
+            </button>
+            {mobileMoreOpen && (
+              <div className="mt-1 ml-3 pl-3 border-l-2 border-slate-100 space-y-0.5">
+                <button
+                  onClick={() => scrollToSection("tentang")}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-[14px] text-slate-600 hover:bg-slate-50 cursor-pointer transition-colors"
+                >
+                  <Info className="h-4 w-4 text-slate-400 shrink-0" />
+                  {t("nav.about")}
+                </button>
+                <button
+                  onClick={() => scrollToSection("kontak")}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-[14px] text-slate-600 hover:bg-slate-50 cursor-pointer transition-colors"
+                >
+                  <Phone className="h-4 w-4 text-slate-400 shrink-0" />
+                  {t("nav.contact")}
+                </button>
+              </div>
+            )}
+          </div>
 
-              {mobileMoreOpen && (
-                <div className="mt-1 ml-3 pl-3 border-l-2 border-slate-100 space-y-0.5">
-                  <Link href="/calculator" onClick={() => setIsOpen(false)}>
-                    <div className={`flex items-center gap-3 px-3 py-2 rounded-xl text-[14px] cursor-pointer ${
-                      location === "/calculator" ? "text-sky-700 font-semibold" : "text-slate-600 hover:bg-slate-50"
-                    }`}>
-                      <Calculator className="h-4 w-4 text-slate-400 shrink-0" />
-                      {t("nav.calculator")}
-                    </div>
-                  </Link>
-                  <Link href="/track" onClick={() => setIsOpen(false)}>
-                    <div className={`flex items-center gap-3 px-3 py-2 rounded-xl text-[14px] cursor-pointer ${
-                      location === "/track" ? "text-sky-700 font-semibold" : "text-slate-600 hover:bg-slate-50"
-                    }`}>
-                      <MapPin className="h-4 w-4 text-slate-400 shrink-0" />
-                      {t("nav.trackOrder")}
-                    </div>
-                  </Link>
-                  <button
-                    onClick={() => scrollToSection("tentang")}
-                    className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-[14px] text-slate-600 hover:bg-slate-50 cursor-pointer"
-                  >
-                    <Info className="h-4 w-4 text-slate-400 shrink-0" />
-                    {t("nav.about")}
-                  </button>
-                  <button
-                    onClick={() => scrollToSection("kontak")}
-                    className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-[14px] text-slate-600 hover:bg-slate-50 cursor-pointer"
-                  >
-                    <Phone className="h-4 w-4 text-slate-400 shrink-0" />
-                    {t("nav.contact")}
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Language */}
-            <div className="pt-2 border-t border-slate-100">
-              <LanguageSelector />
-            </div>
-
-            {/* Auth */}
-            <div className="pt-2 border-t border-slate-100">
-              {isAuth ? (
-                <div className="space-y-1.5">
-                  {isAdmin && (
-                    <Link href="/admin" onClick={() => setIsOpen(false)}>
-                      <Button variant="outline" className="w-full justify-start gap-2 text-amber-600 border-amber-200 rounded-xl">
-                        <Shield className="h-4 w-4" />
-                        {t("nav.admin")}
-                      </Button>
-                    </Link>
-                  )}
-                  <Link href="/dashboard" onClick={() => setIsOpen(false)}>
-                    <Button variant="outline" className="w-full justify-start gap-2 rounded-xl">
-                      <LayoutDashboard className="h-4 w-4" />
-                      {t("nav.dashboard")}
-                    </Button>
-                  </Link>
-                  <Link href="/orders" onClick={() => setIsOpen(false)}>
-                    <Button variant="outline" className="w-full justify-start gap-2 rounded-xl">
-                      <ClipboardList className="h-4 w-4" />
-                      Pesanan Saya
-                    </Button>
-                  </Link>
-                  <Button
-                    variant="ghost"
-                    className="w-full justify-start gap-2 rounded-xl"
-                    onClick={() => { handleLogout(); setIsOpen(false); }}
-                  >
-                    <LogOut className="h-4 w-4" />
-                    {t("nav.logout")}
-                  </Button>
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-2">
-                  <Link href="/login" onClick={() => setIsOpen(false)}>
-                    <button className="w-full py-2.5 text-sm font-medium text-slate-600 rounded-xl border border-slate-200 hover:bg-slate-50 transition-all">
-                      {t("nav.login")}
-                    </button>
-                  </Link>
-                  <Link href="/register" onClick={() => setIsOpen(false)}>
-                    <button className="w-full py-2.5 text-sm font-semibold rounded-xl text-white transition-all"
-                      style={{ background: "linear-gradient(135deg,#0ea5e9,#0284c7)" }}>
-                      {t("nav.register")}
-                    </button>
-                  </Link>
-                </div>
-              )}
-            </div>
+          {/* Language */}
+          <div className="pt-3 border-t border-slate-100">
+            <LanguageSelector />
           </div>
         </div>
-      )}
+
+        {/* Auth — pinned at bottom */}
+        <div className="px-4 py-4 border-t border-slate-100 bg-slate-50/80">
+          {isAuth ? (
+            <div className="space-y-2">
+              {isAdmin && (
+                <Link href="/admin" onClick={() => setIsOpen(false)}>
+                  <Button variant="outline" className="w-full justify-start gap-2 h-11 text-amber-600 border-amber-200 rounded-xl">
+                    <Shield className="h-4 w-4" /> {t("nav.admin")}
+                  </Button>
+                </Link>
+              )}
+              <Link href="/dashboard" onClick={() => setIsOpen(false)}>
+                <Button variant="outline" className="w-full justify-start gap-2 h-11 rounded-xl">
+                  <LayoutDashboard className="h-4 w-4" /> {t("nav.dashboard")}
+                </Button>
+              </Link>
+              <Link href="/orders" onClick={() => setIsOpen(false)}>
+                <Button variant="outline" className="w-full justify-start gap-2 h-11 rounded-xl">
+                  <ClipboardList className="h-4 w-4" /> Pesanan Saya
+                </Button>
+              </Link>
+              <Button
+                variant="ghost"
+                className="w-full justify-start gap-2 h-11 rounded-xl text-red-500 hover:text-red-700 hover:bg-red-50"
+                onClick={() => { handleLogout(); setIsOpen(false); }}
+              >
+                <LogOut className="h-4 w-4" /> {t("nav.logout")}
+              </Button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-2.5">
+              <Link href="/login" onClick={() => setIsOpen(false)}>
+                <button className="w-full h-11 text-sm font-semibold text-slate-700 rounded-xl border border-slate-200 hover:bg-slate-100 transition-all active:scale-95">
+                  {t("nav.login")}
+                </button>
+              </Link>
+              <Link href="/register" onClick={() => setIsOpen(false)}>
+                <button
+                  className="w-full h-11 text-sm font-bold rounded-xl text-white transition-all active:scale-95"
+                  style={{ background: "linear-gradient(135deg,#0ea5e9,#0284c7)", boxShadow: "0 2px 12px rgba(14,165,233,0.35)" }}
+                >
+                  {t("nav.register")}
+                </button>
+              </Link>
+            </div>
+          )}
+        </div>
+      </div>
     </nav>
   );
 }
