@@ -19,23 +19,25 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 const STATUS_LABEL: Record<string, string> = {
-  draft: "Draft",
-  estimated: "Estimasi",
-  waiting_rate: "Menunggu Rate",
+  inquiry:        "Inquiry Baru",
+  draft:          "Draft",
+  estimated:      "Estimasi",
+  waiting_rate:   "Menunggu Rate",
   rate_requested: "Rate Diminta",
-  rate_received: "Rate Diterima",
-  quoted: "Quoted",
-  approved: "Disetujui",
-  booked: "Booked",
-  departed: "Berangkat",
-  arrived: "Tiba",
-  delivered: "Terkirim",
-  completed: "Selesai",
-  cancelled: "Dibatalkan",
+  rate_received:  "Rate Diterima",
+  quoted:         "Quoted",
+  approved:       "Disetujui",
+  booked:         "Booked",
+  departed:       "Berangkat",
+  arrived:        "Tiba",
+  delivered:      "Terkirim",
+  completed:      "Selesai",
+  cancelled:      "Dibatalkan",
   quote_declined: "Penawaran Ditolak",
 };
 
 const STATUS_COLOR: Record<string, string> = {
+  inquiry:        "bg-violet-900/40 text-violet-300 border-violet-600",
   draft:          "bg-gray-800/40 text-gray-300 border-gray-600",
   estimated:      "bg-blue-900/40 text-blue-300 border-blue-600",
   waiting_rate:   "bg-yellow-900/40 text-yellow-300 border-yellow-600",

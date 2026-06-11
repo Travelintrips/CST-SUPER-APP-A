@@ -80,6 +80,10 @@ const ROUTES = [
   { prefix: "/vendors",              upstream: null, redirectMapTo: "/bizportal/vendors",               redirectDefaultSuffix: "/" },
   { prefix: "/ecommerce",            upstream: null, redirectMapTo: "/bizportal/ecommerce",             redirectDefaultSuffix: "/" },
   { prefix: "/trading",              upstream: null, redirectMapTo: "/bizportal/trading",               redirectDefaultSuffix: "/" },
+  // NOTE: /air-freight/orders and /air-freight/rates are BizPortal admin pages
+  // /air-freight/approval and /air-freight/track are public pages served by BizPortal (no redirect needed, already pass-through)
+  { prefix: "/air-freight/orders",   upstream: null, redirectMapTo: "/bizportal/air-freight/orders",    redirectDefaultSuffix: "" },
+  { prefix: "/air-freight/rates",    upstream: null, redirectMapTo: "/bizportal/air-freight/rates",     redirectDefaultSuffix: "" },
   { prefix: "/audit",                upstream: null, redirectMapTo: "/bizportal/audit",                 redirectDefaultSuffix: "/" },
   { prefix: "/intelligence-alerts",  upstream: null, redirectMapTo: "/bizportal/intelligence-alerts",   redirectDefaultSuffix: "/" },
   { prefix: "/ai-approvals",         upstream: null, redirectMapTo: "/bizportal/ai-approvals",          redirectDefaultSuffix: "/" },
