@@ -73,7 +73,6 @@ AI_INTEGRATIONS_OPENAI_API_KEY = "_DUMMY_API_KEY_"
 VAPID_PUBLIC_KEY = "BEAKgZOdT9HxFJLxVNxgtY-Dh2XzGptrjQwQibP2obUjPlLkfk0WR1TyzqbJvnhLlWrNGjiexhndtXZj9klZUPE"
 VAPID_EMAIL = "mailto:admin@cstlogistics.co.id"
 SMTP_FROM = " info@cstlogistic.co.id"
-SESSION_SECRET = "MXF8tVM+GYDQyrAOg0o79vPvEg7V7xTWd3C6pPOS/ee7T0gNLD2LO/PRk+97KR2x01VdMHK1Oc3VuoZoOR/naw=="
 WATI_BASE_URL = "https://live-mt-server.wati.io/10176503"
 
 [userenv.development]
