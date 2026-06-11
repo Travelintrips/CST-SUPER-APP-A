@@ -137,6 +137,7 @@ import orderCostsRouter from "./orderCosts.js";
 import vendorTruckingPricingRouter from "./vendorTruckingPricing.js";
 import productMediaRouter from "./productMedia.js";
 import oceanFreightMasterRouter from "./oceanFreightMaster.js";
+import ppjkRouter from "./ppjk.js";
 
 import type { Request, Response } from "express";
 
@@ -303,6 +304,7 @@ router.use("/expense-templates", expenseTemplatesRouter);
 router.use("/expense-config", expenseBudgetsRouter);
 router.use("/air-freight-form", airFreightVendorFormRouter);
 router.use("/ocean-freight-master", oceanFreightMasterRouter);
+router.use("/ppjk", ppjkRouter);
 router.use("/wati", watiRouter);
 router.use("/sales/escrow", escrowPublicRouter);
 router.use("/sales/escrow", escrowAdminRouter);

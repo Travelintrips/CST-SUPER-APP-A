@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { db, freightShipmentsTable, freightRfqsTable, freightQuotesTable, freightAttachmentsTable, shipmentStagesTable, salesDocumentsTable, purchaseDocumentsTable, expensesTable, freightCustomsDocsTable, freightShipmentAuditLogsTable, logisticOrdersTable, SHIPMENT_STAGE_TYPES, type ShipmentStageType } from "@workspace/db";
-import { eq, desc, inArray, sum, and, sql } from "drizzle-orm";
+import { db, freightShipmentsTable, freightRfqsTable, freightQuotesTable, freightAttachmentsTable, shipmentStagesTable, salesDocumentsTable, purchaseDocumentsTable, expensesTable, freightCustomsDocsTable, freightShipmentAuditLogsTable, logisticOrdersTable, SHIPMENT_STAGE_TYPES, type ShipmentStageType, airFreightOrdersTable, oceanFreightOrdersTable, ppjkOrdersTable } from "@workspace/db";
+import { eq, desc, inArray, sum, and, sql, ilike, or, gte, lte } from "drizzle-orm";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { saveAndBroadcast } from "../lib/notificationStore.js";
 import { propagateFreightToLogistic } from "../lib/services/logisticOrderStatusService.js";
@@ -994,6 +994,185 @@ router.delete("/freight-shipments/:shipmentId/customs-docs/:docId", async (req, 
     .returning();
   if (!deleted) return res.status(404).json({ message: "Dokumen tidak ditemukan" });
   return res.json({ message: "Deleted" });
+});
+
+// ─── UNIFIED SHIPMENTS LIST (semua modul) ────────────────────────────────────
+
+router.get("/unified-shipments", async (req, res) => {
+  const { module: modFilter, status, q, dateFrom, dateTo } = req.query;
+
+  const mkDate = (field: any) => {
+    const conds = [];
+    if (dateFrom) conds.push(gte(field, new Date(String(dateFrom))));
+    if (dateTo) conds.push(lte(field, new Date(String(dateTo))));
+    return conds;
+  };
+
+  const [general, air, ocean, trucking, ppjk, customsLatest] = await Promise.all([
+    // General Freight
+    (!modFilter || modFilter === "general") ? db.select({
+      id: freightShipmentsTable.id,
+      orderNumber: freightShipmentsTable.shipmentNumber,
+      customerName: freightShipmentsTable.shipperName,
+      customerCompany: sql<string>`null`,
+      origin: freightShipmentsTable.origin,
+      destination: freightShipmentsTable.destination,
+      mode: freightShipmentsTable.transportMode,
+      status: freightShipmentsTable.status,
+      vendor: freightShipmentsTable.approvedVendorName,
+      revenue: freightShipmentsTable.freightCost,
+      cost: freightShipmentsTable.actualCost,
+      createdAt: freightShipmentsTable.createdAt,
+    }).from(freightShipmentsTable).where(
+      and(
+        status && status !== "all" ? eq(freightShipmentsTable.status, String(status) as any) : undefined,
+        ...(q ? [or(ilike(freightShipmentsTable.shipmentNumber, `%${q}%`), ilike(freightShipmentsTable.shipperName, `%${q}%`), ilike(freightShipmentsTable.consigneeName, `%${q}%`))] : []),
+        ...mkDate(freightShipmentsTable.createdAt),
+      )
+    ).orderBy(desc(freightShipmentsTable.createdAt)).limit(500) : Promise.resolve([]),
+
+    // Air Freight
+    (!modFilter || modFilter === "air_freight") ? db.select({
+      id: airFreightOrdersTable.id,
+      orderNumber: airFreightOrdersTable.orderNumber,
+      customerName: airFreightOrdersTable.customerName,
+      customerCompany: airFreightOrdersTable.customerCompany,
+      origin: airFreightOrdersTable.originAirport,
+      destination: airFreightOrdersTable.destAirport,
+      mode: sql<string>`'AIR'`,
+      status: airFreightOrdersTable.status,
+      vendor: sql<string>`null`,
+      revenue: airFreightOrdersTable.grandTotal,
+      cost: sql<string>`null`,
+      createdAt: airFreightOrdersTable.createdAt,
+    }).from(airFreightOrdersTable).where(
+      and(
+        status && status !== "all" ? eq(airFreightOrdersTable.status, String(status)) : undefined,
+        ...(q ? [or(ilike(airFreightOrdersTable.orderNumber, `%${q}%`), ilike(airFreightOrdersTable.customerName, `%${q}%`))] : []),
+        ...mkDate(airFreightOrdersTable.createdAt),
+      )
+    ).orderBy(desc(airFreightOrdersTable.createdAt)).limit(500) : Promise.resolve([]),
+
+    // Ocean Freight
+    (!modFilter || modFilter === "ocean_freight") ? db.select({
+      id: oceanFreightOrdersTable.id,
+      orderNumber: oceanFreightOrdersTable.orderNumber,
+      customerName: oceanFreightOrdersTable.customerName,
+      customerCompany: oceanFreightOrdersTable.customerCompany,
+      origin: oceanFreightOrdersTable.originPort,
+      destination: oceanFreightOrdersTable.destinationPort,
+      mode: sql<string>`'SEA'`,
+      status: oceanFreightOrdersTable.status,
+      vendor: sql<string>`null`,
+      revenue: oceanFreightOrdersTable.grandTotal,
+      cost: sql<string>`null`,
+      createdAt: oceanFreightOrdersTable.createdAt,
+    }).from(oceanFreightOrdersTable).where(
+      and(
+        status && status !== "all" ? eq(oceanFreightOrdersTable.status, String(status)) : undefined,
+        ...(q ? [or(ilike(oceanFreightOrdersTable.orderNumber, `%${q}%`), ilike(oceanFreightOrdersTable.customerName, `%${q}%`))] : []),
+        ...mkDate(oceanFreightOrdersTable.createdAt),
+      )
+    ).orderBy(desc(oceanFreightOrdersTable.createdAt)).limit(500) : Promise.resolve([]),
+
+    // Trucking (logistic orders)
+    (!modFilter || modFilter === "trucking") ? db.select({
+      id: logisticOrdersTable.id,
+      orderNumber: logisticOrdersTable.orderNumber,
+      customerName: logisticOrdersTable.customerName,
+      customerCompany: logisticOrdersTable.companyName,
+      origin: logisticOrdersTable.origin,
+      destination: logisticOrdersTable.destination,
+      mode: sql<string>`'TRUCK'`,
+      status: logisticOrdersTable.status,
+      vendor: sql<string>`null`,
+      revenue: logisticOrdersTable.grandTotal,
+      cost: sql<string>`null`,
+      createdAt: logisticOrdersTable.createdAt,
+    }).from(logisticOrdersTable).where(
+      and(
+        status && status !== "all" ? eq(logisticOrdersTable.status, String(status)) : undefined,
+        ...(q ? [or(ilike(logisticOrdersTable.orderNumber, `%${q}%`), ilike(logisticOrdersTable.customerName, `%${q}%`))] : []),
+        ...mkDate(logisticOrdersTable.createdAt),
+      )
+    ).orderBy(desc(logisticOrdersTable.createdAt)).limit(500) : Promise.resolve([]),
+
+    // PPJK
+    (!modFilter || modFilter === "ppjk") ? db.select({
+      id: ppjkOrdersTable.id,
+      orderNumber: ppjkOrdersTable.orderNumber,
+      customerName: ppjkOrdersTable.customerName,
+      customerCompany: ppjkOrdersTable.customerCompany,
+      origin: ppjkOrdersTable.origin,
+      destination: ppjkOrdersTable.destination,
+      mode: sql<string>`'PPJK'`,
+      status: ppjkOrdersTable.status,
+      vendor: ppjkOrdersTable.vendorName,
+      revenue: ppjkOrdersTable.totalServiceFee,
+      cost: sql<string>`null`,
+      createdAt: ppjkOrdersTable.createdAt,
+      _customsStatus: ppjkOrdersTable.customsStatus,
+    }).from(ppjkOrdersTable).where(
+      and(
+        status && status !== "all" ? eq(ppjkOrdersTable.status, String(status)) : undefined,
+        ...(q ? [or(ilike(ppjkOrdersTable.orderNumber, `%${q}%`), ilike(ppjkOrdersTable.customerName, `%${q}%`))] : []),
+        ...mkDate(ppjkOrdersTable.createdAt),
+      )
+    ).orderBy(desc(ppjkOrdersTable.createdAt)).limit(500) : Promise.resolve([]),
+
+    // Latest customs status per order (from freight_customs_docs)
+    db.select({
+      sourceModule: freightCustomsDocsTable.sourceModule,
+      sourceOrderId: freightCustomsDocsTable.sourceOrderId,
+      shipmentId: freightCustomsDocsTable.shipmentId,
+      customsStatus: freightCustomsDocsTable.customsStatus,
+    }).from(freightCustomsDocsTable)
+      .where(sql`${freightCustomsDocsTable.customsStatus} is not null`)
+      .orderBy(desc(freightCustomsDocsTable.updatedAt))
+      .limit(1000),
+  ]);
+
+  type Row = {
+    id: number; orderNumber: string; customerName: string; customerCompany: string | null;
+    origin: string | null; destination: string | null; mode: string | null;
+    status: string; vendor: string | null;
+    revenue: string | null; cost: string | null;
+    createdAt: Date | string;
+    customsStatus?: string | null;
+    module: string; detailPath: string;
+    serviceCategory: string;
+  };
+
+  const buildCustomsMap = () => {
+    const m = new Map<string, string>();
+    for (const c of customsLatest) {
+      const key = c.sourceModule && c.sourceOrderId
+        ? `${c.sourceModule}:${c.sourceOrderId}`
+        : c.shipmentId ? `general:${c.shipmentId}` : null;
+      if (key && c.customsStatus && !m.has(key)) m.set(key, c.customsStatus);
+    }
+    return m;
+  };
+  const cm = buildCustomsMap();
+
+  const toRow = (r: any, mod: string, cat: string, pathFn: (id: number) => string): Row => ({
+    ...r,
+    module: mod,
+    serviceCategory: cat,
+    detailPath: pathFn(r.id),
+    customsStatus: (r as any)._customsStatus ?? cm.get(`${mod}:${r.id}`) ?? null,
+    createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : r.createdAt,
+  });
+
+  const all: Row[] = [
+    ...general.map((r) => toRow(r, "general", "GENERAL_FORWARDING", (id) => `/logistics/freight/${id}`)),
+    ...air.map((r) => toRow(r, "air_freight", "FF_UDARA", (id) => `/air-freight/orders/${id}`)),
+    ...ocean.map((r) => toRow(r, "ocean_freight", "FF_LAUT", (id) => `/logistics/ocean-freight/${id}`)),
+    ...trucking.map((r) => toRow(r, "trucking", "TRUCKING", (id) => `/logistic/orders/${id}`)),
+    ...ppjk.map((r) => toRow(r, "ppjk", "PPJK", (id) => `/logistics/ppjk/${id}`)),
+  ].sort((a, b) => new Date(b.createdAt as string).getTime() - new Date(a.createdAt as string).getTime());
+
+  return res.json({ shipments: all, total: all.length });
 });
 
 // ─── UNIFIED CUSTOMS DOCS (multi-source: general / air_freight / ocean_freight) ─
