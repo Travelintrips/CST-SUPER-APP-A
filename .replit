@@ -18,59 +18,19 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "Gateway"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "artifacts/wa-gateway: WA Gateway"
+args = "Start All Services"
 
 [[workflows.workflow]]
-name = "Gateway"
+name = "Start All Services"
 author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "bash start-dev-all.sh"
+waitForPort = 5000
 
 [workflows.workflow.metadata]
 outputType = "webview"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "fuser -k 5000/tcp 2>/dev/null; sleep 0.3; BIZPORTAL_PORT=6800 PORT=5000 node gateway.mjs"
-waitForPort = 5000
-
-[[workflows.workflow]]
-name = "BizPortal"
-author = "agent"
-
-[workflows.workflow.metadata]
-outputType = "console"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "BIZPORTAL_PORT=6800 bash artifacts/bizportal/start-dev.sh"
-waitForPort = 3000
-
-[[workflows.workflow]]
-name = "Customer Portal"
-author = "agent"
-
-[workflows.workflow.metadata]
-outputType = "console"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "cd artifacts/customer-portal && PORT=3001 pnpm run dev"
-waitForPort = 3001
-
-[[workflows.workflow]]
-name = "artifacts/wa-gateway: WA Gateway"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "pnpm --filter @workspace/wa-gateway run dev"
-waitForPort = 8000
-
-[workflows.workflow.metadata]
-outputType = "console"
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
