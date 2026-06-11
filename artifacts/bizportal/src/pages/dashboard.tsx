@@ -4,7 +4,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { getLastResponseTime, useListLogisticOrders } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ShoppingCart, DollarSign, Truck, Package, Activity, AlertTriangle, ChevronRight, Ship, ArrowRight, Clock, RefreshCw, TrendingUp, TrendingDown, Minus, PackageOpen, ChevronDown, ChevronUp, FilePlus, X, Users, CheckCircle2, CircleDot, FileText, BarChart2, ExternalLink, Globe, LayoutGrid, Receipt } from "lucide-react";
+import { ShoppingCart, DollarSign, Truck, Package, Activity, AlertTriangle, ChevronRight, Ship, ArrowRight, Clock, RefreshCw, TrendingUp, TrendingDown, Minus, PackageOpen, ChevronDown, ChevronUp, FilePlus, X, Users, CheckCircle2, CircleDot, FileText, BarChart2, ExternalLink, Globe, LayoutGrid, Receipt, GripVertical, Settings2 } from "lucide-react";
 import { useCompany } from "@/contexts/CompanyContext";
 import { useQueryClient } from "@tanstack/react-query";
 import { useUpdateLogisticOrderStatus, useCreateSalesDocument, getListLogisticOrdersQueryKey } from "@workspace/api-client-react";
@@ -1564,49 +1564,178 @@ const DASH_NAV_CARDS: DashNavCard[] = [
   },
 ];
 
+const QUICKNAV_ORDER_KEY = "dashboard_quicknav_order_v1";
+
+function loadCardOrder(): string[] {
+  try {
+    const saved = localStorage.getItem(QUICKNAV_ORDER_KEY);
+    if (saved) {
+      const parsed: string[] = JSON.parse(saved);
+      const validLabels = DASH_NAV_CARDS.map((c) => c.label);
+      const filtered = parsed.filter((l) => validLabels.includes(l));
+      const missing = validLabels.filter((l) => !filtered.includes(l));
+      return [...filtered, ...missing];
+    }
+  } catch {}
+  return DASH_NAV_CARDS.map((c) => c.label);
+}
+
 function DashboardQuickNav() {
   const [open, setOpen] = useState(() => {
     try { return localStorage.getItem("dashboard_quicknav_open") !== "false"; } catch { return true; }
   });
+  const [editMode, setEditMode] = useState(false);
+  const [cardOrder, setCardOrder] = useState<string[]>(loadCardOrder);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+
   const toggle = () => setOpen((v) => {
     const next = !v;
     try { localStorage.setItem("dashboard_quicknav_open", String(next)); } catch {}
+    if (!next) setEditMode(false);
     return next;
   });
+
+  const orderedCards = cardOrder
+    .map((label) => DASH_NAV_CARDS.find((c) => c.label === label))
+    .filter(Boolean) as typeof DASH_NAV_CARDS;
+
+  const handleDragStart = (e: React.DragEvent, index: number) => {
+    setDragIndex(index);
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setDragOverIndex(index);
+  };
+
+  const handleDrop = (e: React.DragEvent, dropIndex: number) => {
+    e.preventDefault();
+    if (dragIndex === null || dragIndex === dropIndex) {
+      setDragIndex(null);
+      setDragOverIndex(null);
+      return;
+    }
+    const newOrder = [...cardOrder];
+    const [moved] = newOrder.splice(dragIndex, 1);
+    newOrder.splice(dropIndex, 0, moved);
+    setCardOrder(newOrder);
+    try { localStorage.setItem(QUICKNAV_ORDER_KEY, JSON.stringify(newOrder)); } catch {}
+    setDragIndex(null);
+    setDragOverIndex(null);
+  };
+
+  const handleDragEnd = () => {
+    setDragIndex(null);
+    setDragOverIndex(null);
+  };
+
+  const resetOrder = () => {
+    const defaultOrder = DASH_NAV_CARDS.map((c) => c.label);
+    setCardOrder(defaultOrder);
+    try { localStorage.removeItem(QUICKNAV_ORDER_KEY); } catch {}
+  };
+
   return (
     <div className="rounded-xl border bg-card">
-      <button
-        onClick={toggle}
-        className="w-full flex items-center justify-between px-4 py-3 hover:bg-muted/40 transition-colors rounded-xl"
-      >
-        <span className="text-sm font-semibold text-foreground">Navigasi Cepat</span>
-        <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
-      </button>
+      <div className="flex items-center justify-between px-4 py-3">
+        <button
+          onClick={toggle}
+          className="flex items-center gap-2 hover:text-foreground text-foreground transition-colors"
+        >
+          <span className="text-sm font-semibold">Navigasi Cepat</span>
+          <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
+        </button>
+        {open && (
+          <div className="flex items-center gap-2">
+            {editMode && (
+              <button
+                onClick={resetOrder}
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded-md hover:bg-muted/60"
+              >
+                Reset
+              </button>
+            )}
+            <button
+              onClick={() => setEditMode((v) => !v)}
+              className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border transition-colors ${
+                editMode
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "text-muted-foreground hover:text-foreground border-transparent hover:bg-muted/60"
+              }`}
+            >
+              <Settings2 className="h-3 w-3" />
+              {editMode ? "Selesai" : "Atur Urutan"}
+            </button>
+          </div>
+        )}
+      </div>
       {open && (
         <div className="px-4 pb-4">
+          {editMode && (
+            <p className="text-xs text-muted-foreground mb-3 flex items-center gap-1.5">
+              <GripVertical className="h-3 w-3" />
+              Drag kartu untuk mengubah urutan
+            </p>
+          )}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-            {DASH_NAV_CARDS.map(({ label, icon: Icon, color, bg, items }) => (
-              <div key={label} className="rounded-xl border bg-background p-4 flex flex-col gap-3">
-                <div className="flex items-center gap-2">
-                  <div className={`rounded-lg p-2 ${bg} shrink-0`}>
-                    <Icon className={`h-4 w-4 ${color}`} />
+            {orderedCards.map(({ label, icon: Icon, color, bg, items }, index) => {
+              const isDragging = dragIndex === index;
+              const isDragOver = dragOverIndex === index && dragIndex !== index;
+              return (
+                <div
+                  key={label}
+                  draggable={editMode}
+                  onDragStart={editMode ? (e) => handleDragStart(e, index) : undefined}
+                  onDragOver={editMode ? (e) => handleDragOver(e, index) : undefined}
+                  onDrop={editMode ? (e) => handleDrop(e, index) : undefined}
+                  onDragEnd={editMode ? handleDragEnd : undefined}
+                  className={`rounded-xl border bg-background p-4 flex flex-col gap-3 transition-all duration-150 ${
+                    editMode ? "cursor-grab active:cursor-grabbing" : ""
+                  } ${isDragging ? "opacity-40 scale-95" : "opacity-100"} ${
+                    isDragOver ? "border-primary ring-2 ring-primary/30 bg-primary/5" : ""
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    {editMode && (
+                      <GripVertical className="h-4 w-4 text-muted-foreground/50 shrink-0 -ml-1" />
+                    )}
+                    <div className={`rounded-lg p-2 ${bg} shrink-0`}>
+                      <Icon className={`h-4 w-4 ${color}`} />
+                    </div>
+                    <p className="text-sm font-semibold text-foreground leading-tight">{label}</p>
                   </div>
-                  <p className="text-sm font-semibold text-foreground leading-tight">{label}</p>
+                  {!editMode && (
+                    <div className="flex flex-col gap-0.5">
+                      {items.map((item) => (
+                        <Link
+                          key={item.href}
+                          href={item.href}
+                          className="group flex items-center justify-between rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+                        >
+                          <span>{item.label}</span>
+                          <ArrowRight className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                  {editMode && (
+                    <div className="flex flex-col gap-0.5">
+                      {items.slice(0, 2).map((item) => (
+                        <span key={item.href} className="px-2 py-1 text-xs text-muted-foreground/60 truncate">
+                          {item.label}
+                        </span>
+                      ))}
+                      {items.length > 2 && (
+                        <span className="px-2 text-xs text-muted-foreground/40">+{items.length - 2} lainnya</span>
+                      )}
+                    </div>
+                  )}
                 </div>
-                <div className="flex flex-col gap-0.5">
-                  {items.map((item) => (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      className="group flex items-center justify-between rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
-                    >
-                      <span>{item.label}</span>
-                      <ArrowRight className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
-                    </Link>
-                  ))}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
