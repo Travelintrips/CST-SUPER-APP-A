@@ -4,7 +4,8 @@ import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Download, RefreshCw, CheckCircle2, Clock, FileText } from "lucide-react";
+import { Download, RefreshCw, CheckCircle2, Clock, FileText, FileSpreadsheet } from "lucide-react";
+import { Link } from "wouter";
 import { useCompany } from "@/contexts/CompanyContext";
 
 function formatRp(n: number) { return "Rp " + Math.abs(Math.round(n)).toLocaleString("id-ID"); }
@@ -91,6 +92,11 @@ export default function TaxSptPage() {
               <SelectTrigger className="w-28 h-9"><SelectValue /></SelectTrigger>
               <SelectContent>{generateYears().map((y) => <SelectItem key={y} value={y}>{y}</SelectItem>)}</SelectContent>
             </Select>
+            <Link href="/tax/export-djp">
+              <Button variant="default" size="sm" className="gap-1.5 bg-indigo-600 hover:bg-indigo-700">
+                <FileSpreadsheet className="h-4 w-4" />Export DJP
+              </Button>
+            </Link>
             <Button variant="outline" size="sm" onClick={() => window.open(`/api/tax/export?period_from=${year}-01&period_to=${year}-12${selectedCompanyId ? `&companyId=${selectedCompanyId}` : ""}`, "_blank")}>
               <Download className="h-4 w-4 mr-1.5" />Export Tahun
             </Button>

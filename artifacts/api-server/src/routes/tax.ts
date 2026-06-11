@@ -882,4 +882,350 @@ router.patch("/transactions/:id", async (req, res) => {
   }
 });
 
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DJP EXPORT — e-Faktur / e-Bupot
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── GET /api/tax/export/validate ─────────────────────────────────────────────
+// Pre-flight: hitung baris siap export, bermasalah NPWP, bermasalah faktur
+router.get("/export/validate", async (req, res) => {
+  const companyId = resolveCompanyId(req);
+  const { period } = req.query as Record<string, string>;
+  if (!period) return res.status(400).json({ message: "period (YYYY-MM) wajib diisi" });
+
+  const [ppnOut, ppnIn, pph, npwpBad, fakturBad, bukpotBad] = await Promise.all([
+    // PPN Keluaran
+    db.execute(sql.raw(`
+      SELECT
+        COUNT(*)::int AS total,
+        SUM(CASE WHEN npwp IS NULL OR npwp = '' THEN 1 ELSE 0 END)::int AS npwp_missing,
+        SUM(CASE WHEN (tax_invoice_number IS NULL OR tax_invoice_number = '')
+                    AND (faktur_pajak_number IS NULL OR faktur_pajak_number = '') THEN 1 ELSE 0 END)::int AS faktur_missing
+      FROM transaction_taxes
+      WHERE company_id = ${companyId} AND period = '${period}'
+        AND (tax_name ILIKE '%ppn%' OR tax_name ILIKE '%vat%')
+        AND (direction = 'output' OR direction IS NULL)
+    `)),
+    // PPN Masukan
+    db.execute(sql.raw(`
+      SELECT
+        COUNT(*)::int AS total,
+        SUM(CASE WHEN npwp IS NULL OR npwp = '' THEN 1 ELSE 0 END)::int AS npwp_missing,
+        SUM(CASE WHEN (tax_invoice_number IS NULL OR tax_invoice_number = '')
+                    AND (faktur_pajak_number IS NULL OR faktur_pajak_number = '') THEN 1 ELSE 0 END)::int AS faktur_missing
+      FROM transaction_taxes
+      WHERE company_id = ${companyId} AND period = '${period}'
+        AND (tax_name ILIKE '%masukan%' OR tax_name ILIKE '%vat%input%')
+        AND direction = 'input'
+    `)),
+    // PPh withholding
+    db.execute(sql.raw(`
+      SELECT
+        COUNT(*)::int AS total,
+        SUM(CASE WHEN npwp IS NULL OR npwp = '' THEN 1 ELSE 0 END)::int AS npwp_missing,
+        SUM(CASE WHEN (bukti_potong_number IS NULL OR bukti_potong_number = '') THEN 1 ELSE 0 END)::int AS bukpot_missing,
+        tax_name
+      FROM transaction_taxes
+      WHERE company_id = ${companyId} AND period = '${period}'
+        AND direction = 'withholding'
+      GROUP BY tax_name
+    `)),
+    // NPWP format invalid (ada tapi 15 digit salah)
+    db.execute(sql.raw(`
+      SELECT COUNT(*)::int AS cnt
+      FROM transaction_taxes
+      WHERE company_id = ${companyId} AND period = '${period}'
+        AND npwp IS NOT NULL AND npwp != ''
+        AND LENGTH(REGEXP_REPLACE(npwp, '[^0-9]', '', 'g')) != 15
+    `)),
+    // Faktur format invalid (ada tapi bukan 16 digit)
+    db.execute(sql.raw(`
+      SELECT COUNT(*)::int AS cnt
+      FROM transaction_taxes
+      WHERE company_id = ${companyId} AND period = '${period}'
+        AND (tax_invoice_number IS NOT NULL AND tax_invoice_number != ''
+             OR faktur_pajak_number IS NOT NULL AND faktur_pajak_number != '')
+        AND LENGTH(REGEXP_REPLACE(
+              COALESCE(NULLIF(tax_invoice_number,''), faktur_pajak_number, ''),
+              '[^0-9]', '', 'g')) != 16
+    `)),
+    // Bukti potong format invalid (ada tapi format tidak sesuai)
+    db.execute(sql.raw(`
+      SELECT COUNT(*)::int AS cnt
+      FROM transaction_taxes
+      WHERE company_id = ${companyId} AND period = '${period}'
+        AND direction = 'withholding'
+        AND bukti_potong_number IS NOT NULL AND bukti_potong_number != ''
+        AND LENGTH(bukti_potong_number) < 8
+    `)),
+  ]);
+
+  const ppnOutRow  = ppnOut.rows[0]  as any;
+  const ppnInRow   = ppnIn.rows[0]   as any;
+  const pphRows    = pph.rows        as any[];
+  const totalPph   = pphRows.reduce((s, r) => s + Number(r.total), 0);
+  const npwpBadN   = Number((npwpBad.rows[0] as any).cnt);
+  const fakturBadN = Number((fakturBad.rows[0] as any).cnt);
+  const bukpotBadN = Number((bukpotBad.rows[0] as any).cnt);
+
+  const ppnIssues =
+    Number(ppnOutRow.npwp_missing) + Number(ppnInRow.npwp_missing) +
+    Number(ppnOutRow.faktur_missing) + Number(ppnInRow.faktur_missing) +
+    npwpBadN + fakturBadN;
+
+  const pphNpwpMissing  = pphRows.reduce((s, r) => s + Number(r.npwp_missing), 0);
+  const pphBukpotMissing = pphRows.reduce((s, r) => s + Number(r.bukpot_missing ?? 0), 0);
+  const pphIssues = pphNpwpMissing + pphBukpotMissing + bukpotBadN;
+
+  return res.json({
+    period,
+    efaktur: {
+      keluaran: {
+        total:       Number(ppnOutRow.total),
+        npwpMissing: Number(ppnOutRow.npwp_missing),
+        fakturMissing: Number(ppnOutRow.faktur_missing),
+      },
+      masukan: {
+        total:       Number(ppnInRow.total),
+        npwpMissing: Number(ppnInRow.npwp_missing),
+        fakturMissing: Number(ppnInRow.faktur_missing),
+      },
+      npwpFormatInvalid:   npwpBadN,
+      fakturFormatInvalid: fakturBadN,
+      readyToExport: ppnIssues === 0,
+      issues: ppnIssues,
+    },
+    ebupot: {
+      total: totalPph,
+      byType: pphRows.map((r) => ({
+        taxName:       r.tax_name,
+        total:         Number(r.total),
+        npwpMissing:   Number(r.npwp_missing),
+        bukpotMissing: Number(r.bukpot_missing ?? 0),
+      })),
+      npwpMissing:        pphNpwpMissing,
+      bukpotMissing:      pphBukpotMissing,
+      bukpotFormatInvalid: bukpotBadN,
+      readyToExport: pphIssues === 0,
+      issues: pphIssues,
+    },
+  });
+});
+
+// ── GET /api/tax/export/efaktur ───────────────────────────────────────────────
+// Export SPT Masa PPN dalam format e-Faktur DJP (pipe-delimited, siap upload)
+// Format: FK|KD_JENIS|FG_PENGGANTI|NOMOR_FAKTUR|MASA_PAJAK|TAHUN_PAJAK|TGL_FAKTUR|NPWP|NAMA|ALAMAT|DPP|PPN|PPNBM|DAPAT_DIKREDITKAN
+router.get("/export/efaktur", async (req, res) => {
+  const companyId = resolveCompanyId(req);
+  const { period, direction = "all" } = req.query as Record<string, string>;
+  if (!period) return res.status(400).json({ message: "period (YYYY-MM) wajib diisi" });
+
+  const [yr, mo] = period.split("-");
+  const masaPajak = parseInt(mo ?? "1", 10);
+  const tahunPajak = yr ?? "2024";
+
+  const dirCond =
+    direction === "keluaran"
+      ? `AND (direction = 'output' OR direction IS NULL)`
+      : direction === "masukan"
+      ? `AND direction = 'input'`
+      : `AND (direction = 'output' OR direction = 'input' OR direction IS NULL)`;
+
+  const rows = await db.execute(sql.raw(`
+    SELECT
+      direction,
+      COALESCE(NULLIF(tax_invoice_number,''), NULLIF(faktur_pajak_number,'')) AS nomor_faktur_raw,
+      REGEXP_REPLACE(
+        COALESCE(NULLIF(npwp,''), '000000000000000'),
+        '[^0-9]', '', 'g'
+      ) AS npwp_digits,
+      COALESCE(partner_name, '') AS nama_lawan,
+      COALESCE(base_amount::numeric, 0) AS dpp,
+      COALESCE(tax_amount::numeric, 0) AS ppn,
+      transaction_ref,
+      created_at,
+      period,
+      status
+    FROM transaction_taxes
+    WHERE company_id = ${companyId}
+      AND period = '${period}'
+      AND (tax_name ILIKE '%ppn%' OR tax_name ILIKE '%vat%')
+      ${dirCond}
+    ORDER BY direction DESC, created_at
+    LIMIT 5000
+  `));
+
+  const lines: string[] = [];
+  let no = 0;
+  for (const r of rows.rows as any[]) {
+    no++;
+    const isKeluaran = r.direction !== "input";
+    const rowType = isKeluaran ? "FK" : "FAPR";
+
+    // Normalisasi nomor faktur ke 16 digit
+    const fakturDigits = String(r.nomor_faktur_raw ?? "").replace(/\D/g, "");
+    const nomorFaktur = fakturDigits.length === 16
+      ? fakturDigits
+      : "0000000000000000"; // placeholder jika kosong
+
+    // Format tanggal dari created_at → DD/MM/YYYY
+    const tgl = new Date(r.created_at);
+    const tanggal = `${String(tgl.getDate()).padStart(2, "0")}/${String(tgl.getMonth() + 1).padStart(2, "0")}/${tgl.getFullYear()}`;
+
+    const npwpDigits = String(r.npwp_digits ?? "000000000000000").padEnd(15, "0").slice(0, 15);
+    const dpp = Math.round(Number(r.dpp));
+    const ppn = Math.round(Number(r.ppn));
+
+    // KD_JENIS_TRANSAKSI: 01 = penyerahan ke non-pemungut (default)
+    // FG_PENGGANTI: 0 = normal, 1 = pengganti
+    const kdJenis = "01";
+    const fgPengganti = "0";
+    const dapatDikreditkan = "1";
+
+    // FK row (header faktur)
+    lines.push([
+      rowType, kdJenis, fgPengganti, nomorFaktur,
+      masaPajak, tahunPajak, tanggal,
+      npwpDigits, r.nama_lawan || "-", "-",
+      dpp, ppn, 0, dapatDikreditkan,
+    ].join("|"));
+
+    // OF row (detail barang/jasa — wajib ada minimal 1)
+    lines.push([
+      "OF", kdJenis, fgPengganti, nomorFaktur,
+      masaPajak, tahunPajak, tanggal,
+      npwpDigits, r.nama_lawan || "-", "-",
+      dpp, ppn, 0, dapatDikreditkan,
+    ].join("|"));
+  }
+
+  const filename = `efaktur-${direction}-${period}.txt`;
+  res.setHeader("Content-Type", "text/plain; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  return res.send(lines.join("\r\n") + "\r\n");
+});
+
+// ── GET /api/tax/export/ebupot ─────────────────────────────────────────────
+// Export SPT Masa PPh (e-Bupot) dalam format CSV siap upload ke DJP
+// Mendukung PPh 23 dan PPh 4(2)
+router.get("/export/ebupot", async (req, res) => {
+  const companyId = resolveCompanyId(req);
+  const { period, jenisPph = "pph23" } = req.query as Record<string, string>;
+  if (!period) return res.status(400).json({ message: "period (YYYY-MM) wajib diisi" });
+
+  const [yr, mo] = period.split("-");
+  const masaPajak = parseInt(mo ?? "1", 10);
+  const tahunPajak = yr ?? new Date().getFullYear().toString();
+
+  // Mapping jenis PPh ke pola pencarian tax_name
+  const taxNameFilter =
+    jenisPph === "pph4a2"
+      ? `tax_name ILIKE '%pph 4%' OR tax_name ILIKE '%pasal 4%' OR tax_name ILIKE '%final%'`
+      : jenisPph === "pph21"
+      ? `tax_name ILIKE '%pph 21%' OR tax_name ILIKE '%pasal 21%'`
+      : `tax_name ILIKE '%pph 23%' OR tax_name ILIKE '%pasal 23%' OR tax_name ILIKE '%pph23%'`;
+
+  const rows = await db.execute(sql.raw(`
+    SELECT
+      tax_name,
+      REGEXP_REPLACE(COALESCE(NULLIF(npwp,''), '000000000000000'), '[^0-9]', '', 'g') AS npwp_digits,
+      COALESCE(partner_name, '') AS nama_wp,
+      COALESCE(base_amount::numeric, 0) AS bruto,
+      COALESCE(tax_rate::numeric, 0) AS tarif,
+      COALESCE(tax_amount::numeric, 0) AS pph_dipotong,
+      COALESCE(NULLIF(bukti_potong_number,''), '') AS nomor_bukpot,
+      transaction_ref,
+      created_at,
+      status,
+      direction
+    FROM transaction_taxes
+    WHERE company_id = ${companyId}
+      AND period = '${period}'
+      AND direction = 'withholding'
+      AND (${taxNameFilter})
+    ORDER BY created_at
+    LIMIT 5000
+  `));
+
+  // Header CSV untuk e-Bupot 23/26 (format DJP)
+  const isPph4a2 = jenisPph === "pph4a2";
+  const isPph21  = jenisPph === "pph21";
+
+  const header = isPph21
+    ? "NO,NPWP_WP,NAMA_WP,MASA_PAJAK,TAHUN_PAJAK,JUMLAH_PENGHASILAN_BRUTO,TARIF,PPH_DIPOTONG,NOMOR_BUKTI_PEMOTONGAN,TANGGAL_BUKTI_PEMOTONGAN,STATUS"
+    : isPph4a2
+    ? "NO,NPWP_WP,NAMA_WP,KODE_JENIS_PENGHASILAN,MASA_PAJAK,TAHUN_PAJAK,JUMLAH_PENGHASILAN_BRUTO,TARIF,PPH_DIPOTONG,NOMOR_BUKTI_PEMOTONGAN,TANGGAL_BUKTI_PEMOTONGAN,STATUS"
+    : "NO,NPWP_WP,NAMA_WP,KODE_OBJEK_PAJAK,MASA_PAJAK,TAHUN_PAJAK,JUMLAH_PENGHASILAN_BRUTO,TARIF_PERSEN,PPH_DIPOTONG,NOMOR_BUKTI_PEMOTONGAN,TANGGAL_BUKTI_PEMOTONGAN,STATUS";
+
+  function csvEscape(v: string | number) {
+    const s = String(v);
+    if (s.includes(",") || s.includes('"') || s.includes("\n")) {
+      return `"${s.replace(/"/g, '""')}"`;
+    }
+    return s;
+  }
+
+  // Kode objek pajak default per jenis PPh
+  function deriveKodeObjek(taxName: string): string {
+    const n = taxName.toLowerCase();
+    if (n.includes("jasa teknik") || n.includes("konsultasi")) return "23-100-01";
+    if (n.includes("sewa") && n.includes("tanah")) return "4(2)-02-01";
+    if (n.includes("sewa")) return "23-100-05";
+    if (n.includes("royalti")) return "23-100-03";
+    if (n.includes("bunga")) return "23-100-02";
+    if (n.includes("dividen")) return "23-100-06";
+    return isPph4a2 ? "4(2)-01-01" : "23-100-99";
+  }
+
+  const dataLines: string[] = [];
+  let no = 0;
+  for (const r of rows.rows as any[]) {
+    no++;
+    const npwpDigits = String(r.npwp_digits ?? "000000000000000").padEnd(15, "0").slice(0, 15);
+    const bruto = Math.round(Number(r.bruto));
+    const pphDipotong = Math.round(Number(r.pph_dipotong));
+    const tarifPct = Number(r.tarif);
+    const tgl = new Date(r.created_at);
+    const tanggal = `${String(tgl.getDate()).padStart(2, "0")}/${String(tgl.getMonth() + 1).padStart(2, "0")}/${tgl.getFullYear()}`;
+    const nomorBukpot = r.nomor_bukpot || `BP/${tahunPajak}/${String(masaPajak).padStart(2, "0")}/${String(no).padStart(6, "0")}`;
+
+    if (isPph21) {
+      dataLines.push([
+        no, csvEscape(npwpDigits), csvEscape(r.nama_wp),
+        masaPajak, tahunPajak,
+        bruto, tarifPct.toFixed(2), pphDipotong,
+        csvEscape(nomorBukpot), tanggal,
+        r.status ?? "pending",
+      ].join(","));
+    } else if (isPph4a2) {
+      dataLines.push([
+        no, csvEscape(npwpDigits), csvEscape(r.nama_wp),
+        csvEscape(deriveKodeObjek(r.tax_name)),
+        masaPajak, tahunPajak,
+        bruto, tarifPct.toFixed(2), pphDipotong,
+        csvEscape(nomorBukpot), tanggal,
+        r.status ?? "pending",
+      ].join(","));
+    } else {
+      // PPh 23
+      dataLines.push([
+        no, csvEscape(npwpDigits), csvEscape(r.nama_wp),
+        csvEscape(deriveKodeObjek(r.tax_name)),
+        masaPajak, tahunPajak,
+        bruto, tarifPct.toFixed(2), pphDipotong,
+        csvEscape(nomorBukpot), tanggal,
+        r.status ?? "pending",
+      ].join(","));
+    }
+  }
+
+  const csv = [header, ...dataLines].join("\n");
+  const filename = `ebupot-${jenisPph}-${period}.csv`;
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  return res.send("\uFEFF" + csv);
+});
+
 export default router;
+

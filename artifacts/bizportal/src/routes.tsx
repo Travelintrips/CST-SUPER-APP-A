@@ -57,6 +57,7 @@ import TaxTransactionsPage from "@/pages/tax/transactions";
 import TaxPpnPage from "@/pages/tax/ppn";
 import TaxPphPage from "@/pages/tax/pph";
 import TaxSptPage from "@/pages/tax/spt";
+import TaxExportDjpPage from "@/pages/tax/export-djp";
 import ProductTemplatesPage from "@/pages/product-templates/index";
 import ProductTemplateDetailPage from "@/pages/product-templates/detail";
 import { VendorInvoicesListPage, VendorInvoiceEditorPage } from "@/pages/purchase/vendor-invoices";
@@ -530,6 +531,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/tax/ppn" component={PR(TaxPpnPage)} />
       <Route path="/tax/pph" component={PR(TaxPphPage)} />
       <Route path="/tax/spt" component={PR(TaxSptPage)} />
+      <Route path="/tax/export-djp" component={PR(TaxExportDjpPage)} />
       <Route path="/tax/reconciliation" component={PR(TaxReconciliationPage)} />
       <Route path="/tax/missing-compliance" component={PR(TaxMissingCompliancePage)} />
       <Route path="/tax" component={PR(TaxDashboardPage)} />

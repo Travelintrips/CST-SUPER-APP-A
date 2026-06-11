@@ -425,6 +425,7 @@ export function AppShell({ children, noPadding }: AppShellProps) {
         { titleKey: "PPN Masukan / Keluaran", href: "/tax/ppn", icon: Receipt },
         { titleKey: "PPh Witholding", href: "/tax/pph", icon: FileText },
         { titleKey: "SPT Masa", href: "/tax/spt", icon: FileSpreadsheet },
+        { titleKey: "Export DJP (e-Faktur / e-Bupot)", href: "/tax/export-djp", icon: FileSpreadsheet },
         { titleKey: "Semua Transaksi Pajak", href: "/tax/transactions", icon: ClipboardList },
         { titleKey: "Rekonsiliasi Pajak", href: "/tax/reconciliation", icon: GitMerge },
         { titleKey: "Master Aturan Pajak", href: "/tax/rules", icon: Shield },
