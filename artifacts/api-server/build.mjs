@@ -58,6 +58,7 @@ async function buildAll() {
       "protobufjs",
       "onnxruntime-node",
       "jose",
+      "fluent-ffmpeg",
       "@tensorflow/*",
       "@prisma/client",
       "@mikro-orm/*",

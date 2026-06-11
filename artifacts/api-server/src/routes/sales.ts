@@ -16,7 +16,7 @@ import { requireAdmin } from "../lib/requireAdmin.js";
 import { auditFromReq } from "../lib/auditLog.js";
 import { streamInvoicePdf, buildInvoicePdfBuffer } from "../lib/pdfInvoice.js";
 import { loadDocTemplate } from "../lib/docTemplateLoader.js";
-import { postSalesInvoice, postSalesCogs, postSalesCogsReturn, postSalesInvoiceReversal } from "../lib/accounting.js";
+import { postSalesInvoice, postSalesCogs, postSalesCogsReturn, postSalesInvoiceReversal, postSalesReturn } from "../lib/accounting.js";
 import { sendMail, isSmtpConfigured } from "../lib/mailer.js";
 import { ensureAccountingSettings } from "../lib/accountingSeed.js";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
@@ -1153,6 +1153,42 @@ router.post("/documents/:id/return", async (req, res) => {
       lines: returnedLines,
       companyId: doc.companyId ?? null,
     }).catch((e) => console.error("[accounting] postSalesCogsReturn error:", e));
+  }
+
+  // ── Credit Note: DR Pendapatan (+ DR PPN Keluaran) / CR Piutang ───────────
+  // Hanya jika SO sudah diinvoice
+  if (doc.invoiceStatus === "invoiced" && returnedLines.length > 0) {
+    // Hitung nilai retur berdasarkan harga jual dari baris yang diretur
+    let returnNetAmount = 0;
+    for (const l of productLines) {
+      const rQty = returnQtyMap.get(l.productId!) ?? 0;
+      if (rQty > 0) {
+        // Fallback: jika unitPrice null/0, hitung dari subtotal/qty
+        const qty = Math.max(Number(l.quantity ?? 1), 1);
+        const unitPriceN =
+          Number(l.unitPrice ?? 0) ||
+          (Number((l as any).subtotal ?? 0) / qty);
+        returnNetAmount += rQty * unitPriceN;
+      }
+    }
+    // Hitung PPN proporsional
+    const docNet = Number(doc.totalAmount ?? 0);
+    const docTax = Number(doc.taxAmount ?? 0);
+    const returnTaxAmount =
+      docNet > 0 && docTax > 0 && returnNetAmount > 0
+        ? Math.round((returnNetAmount * docTax / docNet) * 100) / 100
+        : 0;
+
+    if (returnNetAmount > 0) {
+      void postSalesReturn({
+        returnId: id,
+        returnNumber: returnNo,
+        customerName: String(doc.customerName ?? ""),
+        netAmount: returnNetAmount,
+        taxAmount: returnTaxAmount,
+        companyId: doc.companyId ?? null,
+      }).catch((e) => console.error("[accounting] postSalesReturn error:", e));
+    }
   }
 
   return res.json({

@@ -6,6 +6,7 @@ import { SendEmailDialog } from "@/components/SendEmailDialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { GooglePlacesAutocomplete } from "@/components/ui/google-places-autocomplete";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -795,13 +796,11 @@ export default function PurchaseDocumentEditorPage() {
                   </Badge>
                 )}
               </div>
-              <Textarea
+              <GooglePlacesAutocomplete
                 value={supplierAddress}
-                onChange={(e) => { setSupplierAddress(e.target.value); setSupplierAddressAutoFilled(false); }}
-                disabled={!isEditable}
+                onChange={(v) => { setSupplierAddress(v); setSupplierAddressAutoFilled(false); }}
                 placeholder="Alamat lengkap supplier"
-                rows={2}
-                data-testid="textarea-supplier-address"
+                disabled={!isEditable}
               />
             </div>
             <div className="grid gap-1.5">

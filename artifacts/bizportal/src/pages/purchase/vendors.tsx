@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { GooglePlacesAutocomplete } from "@/components/ui/google-places-autocomplete";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -507,7 +508,11 @@ export default function VendorsPage() {
                   </div>
                   <div className="grid gap-1.5">
                     <Label htmlFor="address">Alamat</Label>
-                    <Textarea id="address" value={form.address} onChange={(e) => set("address", e.target.value)} rows={2} />
+                    <GooglePlacesAutocomplete
+                      value={form.address}
+                      onChange={(v) => set("address", v)}
+                      placeholder="Ketik alamat vendor..."
+                    />
                   </div>
                   <div className="grid gap-1.5">
                     <Label>Tarif Pajak Default (PPN Pembelian)</Label>

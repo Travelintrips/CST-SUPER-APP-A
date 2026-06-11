@@ -24,6 +24,26 @@ export interface SessionData {
   expires_at?: number;
 }
 
+// In-memory session store — dev fallback when DB is unavailable
+const _memSessions = new Map<string, { data: SessionData; expire: Date }>();
+
+const IS_DEV = !process.env.REPLIT_DEPLOYMENT;
+
+function _memGet(sid: string): SessionData | null {
+  const entry = _memSessions.get(sid);
+  if (!entry) return null;
+  if (entry.expire < new Date()) { _memSessions.delete(sid); return null; }
+  return entry.data;
+}
+
+function _memSet(sid: string, data: SessionData): void {
+  _memSessions.set(sid, { data, expire: new Date(Date.now() + SESSION_TTL) });
+}
+
+function _memDelete(sid: string): void {
+  _memSessions.delete(sid);
+}
+
 let oidcConfig: client.Configuration | null = null;
 
 export async function getOidcConfig(): Promise<client.Configuration> {
@@ -38,6 +58,20 @@ export async function getOidcConfig(): Promise<client.Configuration> {
 
 export async function createSession(data: SessionData): Promise<string> {
   const sid = crypto.randomBytes(32).toString("hex");
+  if (IS_DEV) {
+    try {
+      await db.insert(sessionsTable).values({
+        sid,
+        sess: data as unknown as Record<string, unknown>,
+        expire: new Date(Date.now() + SESSION_TTL),
+      });
+      return sid;
+    } catch {
+      // DB unavailable — store in memory
+      _memSet(sid, data);
+      return sid;
+    }
+  }
   await db.insert(sessionsTable).values({
     sid,
     sess: data as unknown as Record<string, unknown>,
@@ -47,6 +81,10 @@ export async function createSession(data: SessionData): Promise<string> {
 }
 
 export async function getSession(sid: string): Promise<SessionData | null> {
+  // Check in-memory store first (populated by dev fallback)
+  const memData = _memGet(sid);
+  if (memData) return memData;
+
   const [row] = await db
     .select()
     .from(sessionsTable)
@@ -64,17 +102,31 @@ export async function updateSession(
   sid: string,
   data: SessionData,
 ): Promise<void> {
-  await db
-    .update(sessionsTable)
-    .set({
-      sess: data as unknown as Record<string, unknown>,
-      expire: new Date(Date.now() + SESSION_TTL),
-    })
-    .where(eq(sessionsTable.sid, sid));
+  if (_memSessions.has(sid)) {
+    _memSet(sid, data);
+    return;
+  }
+  try {
+    await db
+      .update(sessionsTable)
+      .set({
+        sess: data as unknown as Record<string, unknown>,
+        expire: new Date(Date.now() + SESSION_TTL),
+      })
+      .where(eq(sessionsTable.sid, sid));
+  } catch (err) {
+    if (IS_DEV) _memSet(sid, data);
+    else throw err;
+  }
 }
 
 export async function deleteSession(sid: string): Promise<void> {
-  await db.delete(sessionsTable).where(eq(sessionsTable.sid, sid));
+  _memDelete(sid);
+  try {
+    await db.delete(sessionsTable).where(eq(sessionsTable.sid, sid));
+  } catch {
+    // ignore — memory already cleared
+  }
 }
 
 export async function clearSession(

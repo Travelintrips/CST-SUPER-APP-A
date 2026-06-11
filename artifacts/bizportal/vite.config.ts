@@ -15,6 +15,7 @@ export default defineConfig({
     "import.meta.env.VITE_SUPABASE_URL": JSON.stringify(process.env.VITE_SUPABASE_URL ?? process.env.SUPABASE_URL ?? ""),
     "import.meta.env.VITE_SUPABASE_ANON_KEY": JSON.stringify(process.env.VITE_SUPABASE_ANON_KEY ?? process.env.SUPABASE_ANON_KEY ?? ""),
     "import.meta.env.VITE_REPLIT_DEV_DOMAIN": JSON.stringify(process.env.REPLIT_DEV_DOMAIN ?? ""),
+    "import.meta.env.VITE_GOOGLE_MAPS_API_KEY": JSON.stringify(process.env.GOOGLE_MAPS_API_KEY ?? ""),
   },
   plugins: [
     {
@@ -156,6 +157,11 @@ if (h.indexOf('access_token') !== -1 || h.indexOf('error=') !== -1 ||
     proxy: {
       "/api": {
         target: "http://localhost:8080",
+        changeOrigin: true,
+        ws: true,
+      },
+      "/wa-gateway": {
+        target: "http://localhost:8000",
         changeOrigin: true,
         ws: true,
       },

@@ -4,7 +4,7 @@ import { requireAdmin } from "../lib/requireAdmin.js";
 import { resolveCompanyId } from "../lib/resolveCompany.js";
 import { streamInvoicePdf, buildInvoicePdfBuffer } from "../lib/pdfInvoice.js";
 import { loadDocTemplate } from "../lib/docTemplateLoader.js";
-import { postPurchaseBill, postPurchaseBillReversal } from "../lib/accounting.js";
+import { postPurchaseBill, postPurchaseBillReversal, postLogisticVendorCostJournal } from "../lib/accounting.js";
 import { sendMail, isSmtpConfigured } from "../lib/mailer.js";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getAdminGroupWa } from "../lib/adminWa.js";
@@ -174,7 +174,7 @@ function serializeLine(l: typeof purchaseDocumentLinesTable.$inferSelect) {
   };
 }
 
-async function nextDocNumber(kind: PurchaseKind): Promise<string> {
+async function nextDocNumber(kind: PurchaseKind, offset = 0): Promise<string> {
   const prefix = kind === "rfq" ? "RFQ" : "PO";
   const year = new Date().getFullYear();
   const pattern = `${prefix}/${year}/%`;
@@ -184,7 +184,7 @@ async function nextDocNumber(kind: PurchaseKind): Promise<string> {
     })
     .from(purchaseDocumentsTable)
     .where(sql`doc_number LIKE ${pattern}`);
-  const seq = (Number(row?.maxSeq ?? 0) + 1).toString().padStart(5, "0");
+  const seq = (Number(row?.maxSeq ?? 0) + 1 + offset).toString().padStart(5, "0");
   return `${prefix}/${year}/${seq}`;
 }
 
@@ -353,42 +353,55 @@ router.post("/documents", async (req, res) => {
     if (!s) return res.status(400).json({ message: "Supplier not found" });
   }
 
-  const docNumber = await nextDocNumber(docKind);
   const total = (lines as LineInput[]).reduce(
     (s, l) => s + Number(l.quantity) * Number(l.unitCost),
     0,
   );
   const { taxAmount, grandTotal } = await computeTax(total, taxRateId);
 
-  const [doc] = await db
-    .insert(purchaseDocumentsTable)
-    .values({
-      companyId,
-      docNumber,
-      kind: docKind,
-      status: "draft",
-      warehouseId: warehouseId ? Number(warehouseId) : null,
-      supplierId: supplierId ?? null,
-      supplierName,
-      supplierAddress: supplierAddress ?? null,
-      totalAmount: String(total),
-      taxRateId: taxRateId ?? null,
-      taxAmount: String(taxAmount),
-      grandTotal: String(grandTotal),
-      expectedDate: expectedDate ? new Date(expectedDate) : null,
-      notes: notes ?? null,
-      productCategory: productCategory ? String(productCategory) : null,
-      incoterm: incoterm ? String(incoterm) : null,
-      deliveryTerm: deliveryTerm ? String(deliveryTerm) : null,
-      targetPrice: targetPrice ? String(targetPrice) : null,
-      commoditySpecs: commoditySpecs ?? null,
-      requiredDocuments: requiredDocuments ?? null,
-      categoryKey: categoryKey ? String(categoryKey) : null,
-      templateId: templateId ? String(templateId) : null,
-      templateVersion: templateVersion ? String(templateVersion) : null,
-      templateSnapshot: templateSnapshot ?? null,
-    })
-    .returning();
+  // Retry loop — prevents duplicate doc numbers under concurrent inserts
+  let doc: typeof purchaseDocumentsTable.$inferSelect | undefined;
+  let docNumber = "";
+  for (let attempt = 0; attempt < 5; attempt++) {
+    docNumber = await nextDocNumber(docKind, attempt);
+    try {
+      [doc] = await db
+        .insert(purchaseDocumentsTable)
+        .values({
+          companyId,
+          docNumber,
+          kind: docKind,
+          status: "draft",
+          warehouseId: warehouseId ? Number(warehouseId) : null,
+          supplierId: supplierId ?? null,
+          supplierName,
+          supplierAddress: supplierAddress ?? null,
+          totalAmount: String(total),
+          taxRateId: taxRateId ?? null,
+          taxAmount: String(taxAmount),
+          grandTotal: String(grandTotal),
+          expectedDate: expectedDate ? new Date(expectedDate) : null,
+          notes: notes ?? null,
+          productCategory: productCategory ? String(productCategory) : null,
+          incoterm: incoterm ? String(incoterm) : null,
+          deliveryTerm: deliveryTerm ? String(deliveryTerm) : null,
+          targetPrice: targetPrice ? String(targetPrice) : null,
+          commoditySpecs: commoditySpecs ?? null,
+          requiredDocuments: requiredDocuments ?? null,
+          categoryKey: categoryKey ? String(categoryKey) : null,
+          templateId: templateId ? String(templateId) : null,
+          templateVersion: templateVersion ? String(templateVersion) : null,
+          templateSnapshot: templateSnapshot ?? null,
+        })
+        .returning();
+      break;
+    } catch (e: any) {
+      const isUnique = e?.code === "23505" || String(e?.message ?? e).includes("unique");
+      if (isUnique && attempt < 4) continue;
+      throw e;
+    }
+  }
+  if (!doc) throw new Error("Gagal membuat dokumen pembelian setelah 5 percobaan");
 
   await db.insert(purchaseDocumentLinesTable).values(
     (lines as LineInput[]).map((l) => ({
@@ -644,27 +657,58 @@ router.post("/documents/:id/action", async (req, res) => {
     const taxAmount = Number(doc.taxAmount ?? 0);
     void (async () => {
       try {
-        const billLines = await db
-          .select({
-            productId: purchaseDocumentLinesTable.productId,
-            unitCost: purchaseDocumentLinesTable.unitCost,
-            quantity: purchaseDocumentLinesTable.quantity,
-          })
-          .from(purchaseDocumentLinesTable)
-          .where(eq(purchaseDocumentLinesTable.documentId, id));
-        await postPurchaseBill({
-          purchaseDocId: doc.id,
-          docNumber: doc.docNumber,
-          supplierName: doc.supplierName,
-          docLines: billLines.map((l) => ({
-            productId: l.productId,
-            unitCost: Number(l.unitCost),
-            quantity: Number(l.quantity),
-          })),
-          taxAmount,
-          taxAccountId: null,
-          companyId: doc.companyId ?? null,
-        });
+        // Cek apakah Vendor PO dari logistic marketplace service
+        const poSnap = doc.templateSnapshot as Record<string, unknown> | null;
+        const vendorCostSnap = poSnap?.vendorCostSnapshot as Record<string, unknown> | null;
+        const isLogisticMarketplacePO = !!vendorCostSnap && poSnap?.createdFrom === "vendor_fulfillment";
+
+        if (isLogisticMarketplacePO) {
+          // Logistic marketplace PO: post COGS per serviceType (dari vendorCostSnapshot, BUKAN priceSell)
+          // Idempotent: jika sudah diposting saat confirm, source+sourceId dedup akan skip
+          await postLogisticVendorCostJournal({
+            vendorPoId:   doc.id,
+            docNumber:    doc.docNumber,
+            supplierName: doc.supplierName,
+            vendorId:     doc.supplierId ?? null,
+            serviceType:  (poSnap?.serviceType as string | null) ?? null,
+            vendorCostSnapshot: {
+              vendorCost: Number(vendorCostSnap.vendorCost ?? 0),
+              currency:   vendorCostSnap.currency as string | undefined,
+              unit:       vendorCostSnap.unit as string | undefined,
+              source:     vendorCostSnap.source as string | undefined,
+            },
+            refs: {
+              vendorFulfillmentId: (poSnap?.fulfillmentId as number | null) ?? null,
+              orderId:             (poSnap?.orderId as number | null) ?? null,
+              orderItemId:         (poSnap?.orderItemId as number | null) ?? null,
+              vendorCatalogItemId: (poSnap?.vendorCatalogItemId as number | null) ?? null,
+            },
+            companyId: doc.companyId ?? null,
+          });
+        } else {
+          // Regular PO: generic purchase bill journal (DR expense / CR AP)
+          const billLines = await db
+            .select({
+              productId: purchaseDocumentLinesTable.productId,
+              unitCost: purchaseDocumentLinesTable.unitCost,
+              quantity: purchaseDocumentLinesTable.quantity,
+            })
+            .from(purchaseDocumentLinesTable)
+            .where(eq(purchaseDocumentLinesTable.documentId, id));
+          await postPurchaseBill({
+            purchaseDocId: doc.id,
+            docNumber: doc.docNumber,
+            supplierName: doc.supplierName,
+            docLines: billLines.map((l) => ({
+              productId: l.productId,
+              unitCost: Number(l.unitCost),
+              quantity: Number(l.quantity),
+            })),
+            taxAmount,
+            taxAccountId: null,
+            companyId: doc.companyId ?? null,
+          });
+        }
         if (taxAmount > 0) {
           const { recordTransactionTax } = await import("../lib/taxAutoService.js");
           const grandTotalPO = Number(doc.grandTotal ?? doc.totalAmount ?? 0);
@@ -818,6 +862,37 @@ router.post("/documents/:id/action", async (req, res) => {
         console.error("[accounting] postPurchaseBillReversal error:", e);
       }
     })();
+  }
+
+  // ── Trigger COGS journal saat Vendor PO di-confirm (approved) ────────────────
+  // Hanya untuk logistic marketplace PO yang punya vendorCostSnapshot.
+  // Idempotent: source="logistic_vendor_cost" + sourceId=poId — jika sudah dipost saat
+  // mark_billed, postEntry akan skip duplikat.
+  if (action === "confirm" && doc.status !== "confirmed") {
+    const poSnap = doc.templateSnapshot as Record<string, unknown> | null;
+    const vendorCostSnap = poSnap?.vendorCostSnapshot as Record<string, unknown> | null;
+    if (vendorCostSnap && poSnap?.createdFrom === "vendor_fulfillment") {
+      void postLogisticVendorCostJournal({
+        vendorPoId:   doc.id,
+        docNumber:    doc.docNumber,
+        supplierName: doc.supplierName,
+        vendorId:     doc.supplierId ?? null,
+        serviceType:  (poSnap?.serviceType as string | null) ?? null,
+        vendorCostSnapshot: {
+          vendorCost: Number(vendorCostSnap.vendorCost ?? 0),
+          currency:   vendorCostSnap.currency as string | undefined,
+          unit:       vendorCostSnap.unit as string | undefined,
+          source:     vendorCostSnap.source as string | undefined,
+        },
+        refs: {
+          vendorFulfillmentId: (poSnap?.fulfillmentId as number | null) ?? null,
+          orderId:             (poSnap?.orderId as number | null) ?? null,
+          orderItemId:         (poSnap?.orderItemId as number | null) ?? null,
+          vendorCatalogItemId: (poSnap?.vendorCatalogItemId as number | null) ?? null,
+        },
+        companyId: doc.companyId ?? null,
+      }).catch((e) => console.error("[accounting] postLogisticVendorCostJournal confirm error:", e));
+    }
   }
 
   const detail = await loadDocWithLines(id);

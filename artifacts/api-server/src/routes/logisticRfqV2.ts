@@ -23,6 +23,8 @@ import { getAdminGroupWa } from "../lib/adminWa.js";
 import { getPreferredDomain } from "../lib/domain.js";
 import { logger } from "../lib/logger.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
+import { createRateLimiter } from "../lib/userRateLimiter.js";
+import { validateUploadFile } from "../lib/uploadValidation.js";
 import {
   sendVendorRequestNotification,
   sendVendorRevisionNotification,
@@ -101,6 +103,24 @@ async function buildOrderDataWithItems(order: typeof logisticOrdersTable.$inferS
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 const objectStorage = new ObjectStorageService();
+
+// ── RFQ attachment upload — MIME whitelist & rate limiters ────────────────────
+const RFQ_UPLOAD_ALLOWED_MIME = new Set([
+  "image/jpeg", "image/jpg", "image/png", "image/webp",
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+]);
+const RFQ_UPLOAD_ALLOWED_EXT = new Set([
+  "jpg", "jpeg", "png", "webp",
+  "pdf", "doc", "docx", "xls", "xlsx",
+]);
+// Per-IP: max 10 uploads/hour to prevent mass abuse from a single address
+const _rfqUploadIpLimiter = createRateLimiter({ windowMs: 60 * 60_000, limit: 10 });
+// Per-token: max 10 uploads/hour to prevent a single vendor link being used as relay
+const _rfqUploadTokenLimiter = createRateLimiter({ windowMs: 60 * 60_000, limit: 10 });
 
 // ─── Migrations ────────────────────────────────────────────────────────────────
 db.execute(sql`
@@ -794,17 +814,51 @@ logisticRfqV2Router.get("/vendor-form/:token", async (req: Request, res: Respons
   });
 });
 
-// ─── PUBLIC: POST /vendor-form/:token ────────────────────────────────────────
-logisticRfqV2Router.post("/vendor-form/:token/upload", upload.single("file") as any, async (req: Request, res: Response) => {
+// ─── PUBLIC: POST /vendor-form/:token/upload ─────────────────────────────────
+const _rfqUploadMiddleware = (req: Request, res: Response, next: import("express").NextFunction) =>
+  (upload.single("file") as any)(req, res, (err: any) => {
+    if (err?.code === "LIMIT_FILE_SIZE") {
+      return res.status(413).json({ message: "Ukuran file melebihi batas 10MB." });
+    }
+    next(err);
+  });
+
+logisticRfqV2Router.post("/vendor-form/:token/upload", _rfqUploadMiddleware, async (req: Request, res: Response) => {
   const token = (req.params.token as string | undefined)?.trim();
   if (!token) return res.status(400).json({ message: "Token tidak valid" });
+
+  // Rate limit: per-IP + per-token (10 uploads/jam masing-masing)
+  const ip = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()
+    ?? req.socket.remoteAddress
+    ?? "unknown";
+  if (!_rfqUploadIpLimiter.check(ip)) {
+    return res.status(429).json({ message: "Terlalu banyak upload dari jaringan ini. Coba lagi dalam 1 jam." });
+  }
+  if (!_rfqUploadTokenLimiter.check(token)) {
+    return res.status(429).json({ message: "Batas upload untuk link ini telah tercapai. Coba lagi dalam 1 jam." });
+  }
+
+  if (!req.file) return res.status(400).json({ message: "Tidak ada file" });
+
+  // MIME + extension + size whitelist — dilakukan sebelum DB query agar
+  // file berbahaya ditolak sesegera mungkin tanpa menyentuh database.
+  const validation = validateUploadFile(req.file, {
+    allowedMime: RFQ_UPLOAD_ALLOWED_MIME,
+    allowedExt: RFQ_UPLOAD_ALLOWED_EXT,
+    maxSizeBytes: 10 * 1024 * 1024,
+  });
+  if (!validation.ok) {
+    return res.status(415).json({ message: validation.errorMessage });
+  }
+
   const [link] = await db.select({ id: rfqVendorLinksTable.id, status: rfqVendorLinksTable.status })
     .from(rfqVendorLinksTable).where(eq(rfqVendorLinksTable.token, token));
   if (!link) return res.status(404).json({ message: "Token tidak valid" });
-  if (!req.file) return res.status(400).json({ message: "Tidak ada file" });
+
   try {
     const objectId = randomUUID();
-    const subPath = `rfq-attachments/${objectId}`;
+    const ext = req.file.originalname?.split(".").pop()?.toLowerCase() ?? "bin";
+    const subPath = `rfq-attachments/${objectId}.${ext}`;
     const url = await objectStorage.uploadPublicRaw(subPath, req.file.buffer, req.file.mimetype);
     return res.json({ url });
   } catch (e) {

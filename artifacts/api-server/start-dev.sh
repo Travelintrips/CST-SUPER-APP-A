@@ -8,25 +8,14 @@ FORWARDER_PORT=${FORWARDER_PORT:-18444}
 node kill-port.mjs "$FORWARDER_PORT" "$API_PORT"
 sleep 0.5
 
+# Start port-forwarder IMMEDIATELY so Replit's waitForPort check passes
+# The forwarder will buffer/retry connections until API is ready
+FORWARDER_PORT=$FORWARDER_PORT node port-forwarder.mjs &
+FORWARDER_PID=$!
+
 # Start watch-mode dev server (esbuild watch + auto-restart on rebuild)
 PORT=$API_PORT node dev.mjs &
 DEV_PID=$!
-
-# Wait for API_PORT to be open before starting port-forwarder
-node -e "
-const net = require('net');
-const port = $API_PORT;
-function waitForPort(cb, retries) {
-  retries = retries || 0;
-  if (retries > 100) { cb(); return; }
-  const s = net.connect(port, '127.0.0.1');
-  s.on('connect', () => { s.destroy(); cb(); });
-  s.on('error', () => setTimeout(() => waitForPort(cb, retries + 1), 200));
-}
-waitForPort(() => process.exit(0));
-"
-FORWARDER_PORT=$FORWARDER_PORT node port-forwarder.mjs &
-FORWARDER_PID=$!
 
 # Trap signals to clean up child processes
 trap "kill $DEV_PID $FORWARDER_PID 2>/dev/null; exit" TERM INT

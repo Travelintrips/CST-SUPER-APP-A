@@ -15,8 +15,8 @@ function resolveConnectionString(): string {
       ]
     : [
         process.env.SUPABASE_DATABASE_URL_DEV,
-        process.env.SUPABASE_PG_URL,
         process.env.SUPABASE_DATABASE_URL,
+        process.env.SUPABASE_PG_URL,
         process.env.DATABASE_URL,
       ];
 
@@ -40,11 +40,13 @@ const isLocalConn = /localhost|127\.0\.0\.1|helium/.test(connectionString);
 export const pool = new Pool({
   connectionString,
   ssl: isLocalConn ? false : { rejectUnauthorized: false },
-  max: 10,
+  max: 3,
+  min: 0,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 10000,
+  connectionTimeoutMillis: 20000,
   keepAlive: true,
   keepAliveInitialDelayMillis: 10000,
+  allowExitOnIdle: false,
 });
 
 pool.on("error", (err) => {

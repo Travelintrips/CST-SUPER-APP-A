@@ -5,6 +5,8 @@ import { requireAdmin } from "../lib/requireAdmin.js";
 import { postEntry } from "../lib/accounting.js";
 import { ensureAccountingSettings } from "../lib/accountingSeed.js";
 import { resolveCompanyId } from "../lib/resolveCompany.js";
+import { audit } from "../lib/unifiedAudit.js";
+import { recalculateVendorDocPaymentStatus } from "../lib/vendorPaymentRecalc.js";
 
 const router = Router();
 router.use(async (req, res, next) => {
@@ -36,6 +38,8 @@ function runMigration(): Promise<void> {
         created_at TIMESTAMPTZ DEFAULT NOW(),
         updated_at TIMESTAMPTZ DEFAULT NOW()
       );
+      ALTER TABLE vendor_payments ADD COLUMN IF NOT EXISTS wht_amount NUMERIC(14,2) NOT NULL DEFAULT 0;
+      ALTER TABLE vendor_payments ADD COLUMN IF NOT EXISTS wht_account_id INTEGER;
       CREATE INDEX IF NOT EXISTS vendor_payments_company_idx ON vendor_payments(company_id);
       CREATE INDEX IF NOT EXISTS vendor_payments_supplier_idx ON vendor_payments(supplier_id);
     `)).then(() => undefined);
@@ -43,19 +47,17 @@ function runMigration(): Promise<void> {
   return migrationPromise;
 }
 
-async function nextPaymentNumber(companyId: number | null): Promise<string> {
+async function nextPaymentNumber(companyId: number | null, offset = 0): Promise<string> {
   const prefix = "VPY";
   const year = new Date().getFullYear();
   const co = companyId ? String(companyId).padStart(2, "0") : "00";
+  const pattern = `${prefix}/${year}/${co}/%`;
   const rows = await db.execute(sql.raw(
-    `SELECT payment_number FROM vendor_payments WHERE payment_number LIKE '${prefix}/${year}/${co}/%' ORDER BY id DESC LIMIT 1`
+    `SELECT COALESCE(MAX(CAST(SPLIT_PART(payment_number, '/', 4) AS INTEGER)), 0) AS max_seq
+     FROM vendor_payments WHERE payment_number LIKE '${pattern}'`
   ));
-  const last = (rows.rows[0] as any)?.payment_number as string | undefined;
-  let seq = 1;
-  if (last) {
-    const parts = last.split("/");
-    seq = (parseInt(parts[3] ?? "0", 10) || 0) + 1;
-  }
+  const maxSeq = Number((rows.rows[0] as any)?.max_seq ?? 0);
+  const seq = maxSeq + 1 + offset;
   return `${prefix}/${year}/${co}/${String(seq).padStart(5, "0")}`;
 }
 
@@ -120,6 +122,7 @@ router.post("/", async (req: Request, res) => {
   const {
     vendorName, supplierId, paymentDate, amount, paymentMethod = "bank",
     reference, purchaseDocumentId, notes,
+    whtAmount: whtAmountRaw,
   } = req.body;
 
   if (!vendorName?.trim()) return res.status(400).json({ message: "Nama vendor wajib diisi." });
@@ -127,12 +130,50 @@ router.post("/", async (req: Request, res) => {
   if (!amt || amt <= 0) return res.status(400).json({ message: "Nominal harus lebih dari 0." });
   if (!paymentDate) return res.status(400).json({ message: "Tanggal pembayaran wajib diisi." });
 
-  const paymentNumber = await nextPaymentNumber(companyId);
+  const whtAmt = Math.round(parseFloat(whtAmountRaw ?? "0") * 100) / 100 || 0;
+  const netBankAmt = Math.round((amt - whtAmt) * 100) / 100;
 
-  // ── Jurnal: DR Hutang Usaha (AP) / CR Bank atau Kas ───────────────────────
+  const escName = vendorName.replace(/'/g, "''");
+  const escRef  = reference ? `'${String(reference).replace(/'/g, "''")}'` : "NULL";
+  const escNotes = notes ? `'${String(notes).replace(/'/g, "''")}'` : "NULL";
+
+  // ── Phase 1: INSERT dengan retry untuk nomor unik ─────────────────────────
+  let inserted: Awaited<ReturnType<typeof db.execute>> | null = null;
+  let paymentNumber = "";
+  for (let attempt = 0; attempt < 5; attempt++) {
+    paymentNumber = await nextPaymentNumber(companyId, attempt);
+    try {
+      inserted = await db.execute(sql.raw(`
+        INSERT INTO vendor_payments
+          (company_id, payment_number, supplier_id, vendor_name, payment_date, amount,
+           payment_method, reference, purchase_document_id, status, notes,
+           wht_amount, created_by_id)
+        VALUES
+          (${companyId ?? "NULL"}, '${paymentNumber}',
+           ${supplierId ? parseInt(supplierId) : "NULL"},
+           '${escName}', '${paymentDate}', ${amt},
+           '${paymentMethod}', ${escRef},
+           ${purchaseDocumentId ? parseInt(purchaseDocumentId) : "NULL"},
+           'paid', ${escNotes},
+           ${whtAmt},
+           ${userId ? `'${userId}'` : "NULL"})
+        RETURNING *
+      `));
+      break;
+    } catch (e: any) {
+      const isUnique = e?.code === "23505" || String(e?.message ?? e).includes("unique");
+      if (isUnique && attempt < 4) continue;
+      throw e;
+    }
+  }
+  if (!inserted) throw new Error("Gagal menyimpan pembayaran vendor setelah 5 percobaan");
+  const payId = (inserted.rows[0] as any).id as number;
+
+  // ── Phase 2: Post jurnal dengan paymentNumber yang sudah pasti ────────────
+  // DR Hutang Usaha (AP) / CR Bank (net) [/ CR WHT Payable jika ada WHT]
   let journalEntryId: number | null = null;
+  let whtAccountId: number | null = null;
   try {
-    const settings = await ensureAccountingSettings(companyId ?? undefined);
     // AP account (2-1010)
     const apCoa = await db.select().from(chartOfAccountsTable)
       .where(sql`code LIKE '2-1010%' AND (company_id = ${companyId} OR company_id IS NULL)`).limit(1);
@@ -142,6 +183,12 @@ router.post("/", async (req: Request, res) => {
           .where(sql`code LIKE '1-1010%' AND (company_id = ${companyId} OR company_id IS NULL)`).limit(1)
       : await db.select().from(chartOfAccountsTable)
           .where(sql`code LIKE '1-1020%' AND (company_id = ${companyId} OR company_id IS NULL)`).limit(1);
+    // WHT Payable account (2-1030 — Hutang Pajak Lainnya)
+    const whtCoa = whtAmt > 0
+      ? await db.select().from(chartOfAccountsTable)
+          .where(sql`code LIKE '2-1030%' AND (company_id = ${companyId} OR company_id IS NULL)`).limit(1)
+      : [];
+    whtAccountId = whtCoa[0]?.id ?? null;
 
     if (apCoa[0] && paymentCoa[0]) {
       const bankJournal = paymentMethod === "cash"
@@ -150,54 +197,80 @@ router.post("/", async (req: Request, res) => {
       const journalId = (bankJournal.rows[0] as any)?.id;
 
       if (journalId) {
+        const lines: Array<{ accountId: number; debit: number; credit: number; description: string }> = [
+          { accountId: apCoa[0].id,      debit: amt,        credit: 0,          description: `Hutang ${vendorName}` },
+          { accountId: paymentCoa[0].id, debit: 0,          credit: netBankAmt, description: paymentMethod === "cash" ? "Kas" : "Bank" },
+        ];
+        // WHT split: CR WHT Payable untuk PPh yang dipotong di sumber
+        if (whtAmt > 0 && whtAccountId) {
+          lines.push({ accountId: whtAccountId, debit: 0, credit: whtAmt, description: `WHT Payable — ${vendorName}` });
+        }
         const entry = await postEntry(
           {
             journalId,
             date: new Date(paymentDate),
             ref: paymentNumber,
-            description: `Pembayaran Vendor ${vendorName} — ${paymentNumber}`,
+            description: `Pembayaran Vendor ${vendorName} — ${paymentNumber}${whtAmt > 0 ? ` (WHT: ${whtAmt.toLocaleString("id-ID")})` : ""}`,
             source: "purchase_payment",
             companyId: companyId ?? 1,
-            lines: [
-              { accountId: apCoa[0].id,      debit: amt, credit: 0,   description: `Hutang ${vendorName}` },
-              { accountId: paymentCoa[0].id,  debit: 0,   credit: amt, description: paymentMethod === "cash" ? "Kas" : "Bank" },
-            ],
+            lines,
           },
           paymentMethod === "cash" ? "KAS" : "BNK",
         );
         journalEntryId = entry.id;
       }
     }
+    // Patch journal_entry_id + wht_account_id ke record yang sudah di-INSERT
+    if (journalEntryId || whtAccountId) {
+      await db.execute(sql.raw(`
+        UPDATE vendor_payments
+        SET journal_entry_id = ${journalEntryId ?? "NULL"},
+            wht_account_id   = ${whtAccountId ?? "NULL"}
+        WHERE id = ${payId}
+      `));
+    }
   } catch {}
 
-  const escName = vendorName.replace(/'/g, "''");
-  const escRef  = reference ? `'${String(reference).replace(/'/g, "''")}'` : "NULL";
-  const escNotes = notes ? `'${String(notes).replace(/'/g, "''")}'` : "NULL";
+  // Ambil row final setelah patch
+  const finalRow = await db.execute(sql.raw(`SELECT * FROM vendor_payments WHERE id = ${payId}`));
+  const row = (finalRow.rows[0] ?? inserted.rows[0]) as Record<string, unknown>;
+  audit(req as Request, {
+    action: "payment",
+    module: "payment",
+    resourceId: paymentNumber,
+    after: row,
+    companyId: companyId ?? null,
+  });
 
-  const inserted = await db.execute(sql.raw(`
-    INSERT INTO vendor_payments
-      (company_id, payment_number, supplier_id, vendor_name, payment_date, amount,
-       payment_method, reference, purchase_document_id, status, journal_entry_id, notes, created_by_id)
-    VALUES
-      (${companyId ?? "NULL"}, '${paymentNumber}',
-       ${supplierId ? parseInt(supplierId) : "NULL"},
-       '${escName}', '${paymentDate}', ${amt},
-       '${paymentMethod}', ${escRef},
-       ${purchaseDocumentId ? parseInt(purchaseDocumentId) : "NULL"},
-       'paid', ${journalEntryId ?? "NULL"}, ${escNotes},
-       ${userId ? `'${userId}'` : "NULL"})
-    RETURNING *
-  `));
-  return res.status(201).json(inserted.rows[0]);
+  // Auto-update purchase_documents.payment_status jika terhubung ke PO
+  if (purchaseDocumentId) {
+    void recalculateVendorDocPaymentStatus(parseInt(purchaseDocumentId)).catch(() => {});
+  }
+
+  return res.status(201).json(row);
 });
 
 // ─── DELETE /api/vendor-payments/:id ─────────────────────────────────────────
 router.delete("/:id", async (req: Request, res) => {
   await runMigration();
   const id = parseInt(req.params.id);
-  const result = await db.execute(sql.raw(`SELECT id FROM vendor_payments WHERE id = ${id}`));
+  const result = await db.execute(sql.raw(`SELECT * FROM vendor_payments WHERE id = ${id}`));
   if (!result.rows[0]) return res.status(404).json({ message: "Pembayaran tidak ditemukan." });
+  const before = result.rows[0] as Record<string, unknown>;
   await db.execute(sql.raw(`DELETE FROM vendor_payments WHERE id = ${id}`));
+  audit(req as Request, {
+    action: "delete",
+    module: "payment",
+    resourceId: String((before.payment_number as string | undefined) ?? id),
+    before,
+  });
+
+  // Re-recalculate setelah hapus — status mungkin kembali ke partial/unpaid
+  const purchaseDocId = before.purchase_document_id as number | null | undefined;
+  if (purchaseDocId) {
+    void recalculateVendorDocPaymentStatus(purchaseDocId).catch(() => {});
+  }
+
   return res.json({ ok: true });
 });
 

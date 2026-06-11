@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useRoute, useLocation } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueries } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -17,8 +17,54 @@ import {
   ShoppingCart, MessageSquare, Loader2, Calendar, Images, Play, Link2,
   Share2, Copy, Check, Layers, Globe, Navigation, Weight,
   Anchor, Wind, ClipboardList, Star, Mountain, Leaf,
+  Award, TrendingUp, ChevronRight, Users, Timer, Eye,
 } from "lucide-react";
 import type { ProductMediaItem, MarketplaceItem } from "@/lib/catalogFilters";
+
+// ── Extended types for new sections ──────────────────────────────────────────
+interface CatalogItemSummary {
+  id: number;
+  vendorId: number;
+  vendorName: string | null;
+  templateKind: string | null;
+  categoryKey: string | null;
+  serviceType: string | null;
+  name: string;
+  description: string | null;
+  priceSell: number | null;
+  currency: string;
+  unit: string | null;
+  stockStatus: string | null;
+  leadTime: string | null;
+  location: string | null;
+  origin: string | null;
+  primaryImageUrl: string | null;
+}
+
+interface VendorPublicProfile {
+  vendor: {
+    id: number;
+    name: string;
+    logo: string | null;
+    location: string | null;
+    serviceType: string | null;
+    country: string | null;
+    createdAt: string | null;
+  };
+  performance: {
+    totalOrders: number;
+    completedOrders: number;
+    ontimePercentage: number | null;
+    avgResponseHours: number | null;
+    averageResponseMinutes: number | null;
+    customerRating: number | null;
+    vendorGrade: string | null;
+    score: number | null;
+    lastCalculatedAt: string | null;
+  } | null;
+  productCount: number;
+  serviceCount: number;
+}
 
 // ── Formatters ────────────────────────────────────────────────────────────────
 const idr = (n: number) =>
@@ -772,6 +818,374 @@ function SubmitDialog({ mode, item, calc, onClose }: SubmitDialogProps) {
   );
 }
 
+// ── Grade Badge ───────────────────────────────────────────────────────────────
+function GradeBadge({ grade }: { grade: string | null | undefined }) {
+  if (!grade) return null;
+  const cfg: Record<string, string> = {
+    A: "bg-emerald-100 text-emerald-800 border-emerald-300",
+    B: "bg-sky-100 text-sky-800 border-sky-300",
+    C: "bg-amber-100 text-amber-800 border-amber-300",
+    D: "bg-red-100 text-red-800 border-red-300",
+  };
+  return (
+    <span className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full border ${cfg[grade] ?? "bg-slate-100 text-slate-600 border-slate-200"}`}>
+      <Award className="h-3 w-3" /> Grade {grade}
+    </span>
+  );
+}
+
+function StarRating({ rating }: { rating: number | null | undefined }) {
+  if (rating == null) return null;
+  const r = Math.min(5, Math.max(0, rating));
+  return (
+    <div className="flex items-center gap-0.5">
+      {[1,2,3,4,5].map((i) => (
+        <Star
+          key={i}
+          className={`h-3.5 w-3.5 ${i <= Math.round(r) ? "text-amber-400 fill-amber-400" : "text-slate-200 fill-slate-200"}`}
+        />
+      ))}
+      <span className="ml-1 text-[12px] font-semibold text-slate-700">{r.toFixed(1)}</span>
+    </div>
+  );
+}
+
+// ── Vendor Profile Card ───────────────────────────────────────────────────────
+function VendorProfileCard({ vendorId, itemLocation }: { vendorId: number; itemLocation?: string | null }) {
+  const { data, isLoading } = useQuery<VendorPublicProfile>({
+    queryKey: ["vendor-public-profile", vendorId],
+    queryFn: () => fetch(`/api/portal/vendors/${vendorId}/public-profile`).then((r) => r.json()),
+    staleTime: 5 * 60_000,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="border border-slate-200 rounded-2xl p-4 bg-white space-y-3 animate-pulse">
+        <div className="h-3 w-24 bg-slate-200 rounded" />
+        <div className="h-5 w-36 bg-slate-200 rounded" />
+        <div className="grid grid-cols-2 gap-2">
+          {[1,2,3,4].map(i => <div key={i} className="h-10 bg-slate-100 rounded-lg" />)}
+        </div>
+      </div>
+    );
+  }
+
+  if (!data) {
+    return (
+      <div className="border border-slate-200 rounded-2xl p-4 bg-white space-y-2">
+        <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Tentang Vendor</p>
+        <div className="flex items-center gap-2">
+          <Building2 className="h-4 w-4 text-slate-400 shrink-0" />
+          <span className="text-[14px] font-semibold text-slate-800">Vendor</span>
+        </div>
+      </div>
+    );
+  }
+
+  const { vendor, performance: perf, productCount, serviceCount } = data;
+  const memberYear = vendor.createdAt ? new Date(vendor.createdAt).getFullYear() : null;
+
+  const responseText = (() => {
+    if (!perf) return null;
+    const mins = perf.averageResponseMinutes;
+    const hrs = perf.avgResponseHours;
+    if (mins != null && mins > 0 && mins < 60) return `${Math.round(mins)} menit`;
+    if (hrs != null && hrs > 0) return `${hrs.toFixed(1)} jam`;
+    return null;
+  })();
+
+  return (
+    <div className="border border-slate-200 rounded-2xl bg-white overflow-hidden">
+      {/* Header */}
+      <div className="bg-gradient-to-br from-slate-50 to-slate-100 px-4 py-3 border-b border-slate-200">
+        <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-2">Tentang Vendor</p>
+        <div className="flex items-start gap-2">
+          {/* Logo */}
+          <div className="w-9 h-9 rounded-xl bg-white border border-slate-200 flex items-center justify-center shrink-0 text-lg overflow-hidden">
+            {vendor.logo && vendor.logo.startsWith("http") ? (
+              <img src={vendor.logo} alt="" className="w-full h-full object-contain" />
+            ) : (
+              <span>{vendor.logo ?? "📦"}</span>
+            )}
+          </div>
+          <div className="min-w-0">
+            <p className="text-[14px] font-bold text-slate-900 leading-tight truncate">{vendor.name}</p>
+            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+              {perf?.vendorGrade && <GradeBadge grade={perf.vendorGrade} />}
+              {perf?.customerRating != null && perf.customerRating > 0 && (
+                <StarRating rating={perf.customerRating} />
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Stats grid */}
+      <div className="p-3 grid grid-cols-2 gap-2">
+        {/* Total Orders */}
+        {perf && (
+          <div className="bg-slate-50 rounded-xl p-2.5 text-center">
+            <p className="text-[18px] font-extrabold text-slate-800">{perf.completedOrders}</p>
+            <p className="text-[10px] text-slate-500 font-medium">Order Selesai</p>
+          </div>
+        )}
+        {/* On-Time */}
+        {perf?.ontimePercentage != null && (
+          <div className="bg-emerald-50 rounded-xl p-2.5 text-center">
+            <p className="text-[18px] font-extrabold text-emerald-700">{Math.round(perf.ontimePercentage)}%</p>
+            <p className="text-[10px] text-emerald-600 font-medium flex items-center justify-center gap-0.5">
+              <TrendingUp className="h-2.5 w-2.5" /> On-Time
+            </p>
+          </div>
+        )}
+        {/* Response Time */}
+        {responseText && (
+          <div className="bg-sky-50 rounded-xl p-2.5 text-center">
+            <p className="text-[15px] font-extrabold text-sky-700">{responseText}</p>
+            <p className="text-[10px] text-sky-600 font-medium flex items-center justify-center gap-0.5">
+              <Timer className="h-2.5 w-2.5" /> Resp. Time
+            </p>
+          </div>
+        )}
+        {/* Products + Services */}
+        <div className="bg-slate-50 rounded-xl p-2.5 text-center">
+          <p className="text-[15px] font-extrabold text-slate-700">{productCount + serviceCount}</p>
+          <p className="text-[10px] text-slate-500 font-medium flex items-center justify-center gap-0.5">
+            <Users className="h-2.5 w-2.5" /> Item Publik
+          </p>
+        </div>
+      </div>
+
+      {/* Footer info */}
+      <div className="px-4 pb-3 space-y-1.5 text-[12px] text-slate-500">
+        {(itemLocation ?? vendor.location) && (
+          <div className="flex items-center gap-1.5">
+            <MapPin className="h-3.5 w-3.5 shrink-0" />
+            {itemLocation ?? vendor.location}
+          </div>
+        )}
+        {(productCount > 0 || serviceCount > 0) && (
+          <div className="flex items-center gap-1.5">
+            <Package className="h-3 w-3 shrink-0 text-emerald-400" />
+            {productCount > 0 && <span>{productCount} Produk</span>}
+            {productCount > 0 && serviceCount > 0 && <span className="text-slate-300">·</span>}
+            {serviceCount > 0 && <span>{serviceCount} Layanan</span>}
+          </div>
+        )}
+        {memberYear && (
+          <div className="flex items-center gap-1.5">
+            <Calendar className="h-3 w-3 shrink-0" />
+            Member sejak {memberYear}
+          </div>
+        )}
+        <p className="text-[11px] text-slate-400 pt-1 leading-relaxed border-t border-slate-100 mt-1">
+          Vendor terverifikasi. Hubungi via tombol di atas untuk penawaran resmi.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ── Item Mini Card ────────────────────────────────────────────────────────────
+function ItemMiniCard({ item, onNavigate }: { item: CatalogItemSummary; onNavigate: (id: number) => void }) {
+  const isProduct = item.templateKind === "product";
+  return (
+    <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden hover:shadow-md hover:border-sky-300 transition-all duration-200 flex flex-col w-[200px] shrink-0 cursor-pointer"
+      onClick={() => onNavigate(item.id)}
+    >
+      <div className={`h-1 w-full ${isProduct ? "bg-gradient-to-r from-emerald-400 to-teal-400" : "bg-gradient-to-r from-sky-400 to-blue-500"}`} />
+      {/* Photo */}
+      <div className="relative w-full h-[110px] overflow-hidden bg-slate-100">
+        {item.primaryImageUrl ? (
+          <img
+            src={item.primaryImageUrl}
+            alt={item.name}
+            className="w-full h-full object-cover"
+            loading="lazy"
+            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+          />
+        ) : (
+          <div className={`w-full h-full flex items-center justify-center ${isProduct ? "bg-gradient-to-br from-emerald-50 to-teal-50" : "bg-gradient-to-br from-sky-50 to-blue-50"}`}>
+            {isProduct ? <Package className="h-8 w-8 text-emerald-200" /> : <Truck className="h-8 w-8 text-sky-200" />}
+          </div>
+        )}
+        <div className="absolute top-1.5 left-1.5">
+          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${isProduct ? "bg-emerald-100 text-emerald-700" : "bg-sky-100 text-sky-700"}`}>
+            {isProduct ? "Produk" : "Jasa"}
+          </span>
+        </div>
+      </div>
+
+      {/* Info */}
+      <div className="p-3 flex flex-col flex-1 gap-1.5">
+        <p className="text-[12px] font-bold text-slate-800 leading-snug line-clamp-2">{item.name}</p>
+        {item.vendorName && (
+          <p className="text-[10px] text-slate-500 flex items-center gap-1">
+            <Building2 className="h-2.5 w-2.5 shrink-0" />
+            <span className="truncate">{item.vendorName}</span>
+          </p>
+        )}
+        <div className="mt-auto pt-1.5 border-t border-slate-100">
+          {item.priceSell != null
+            ? <p className="text-[13px] font-extrabold text-sky-700">{idr(item.priceSell)}{item.unit && <span className="text-[10px] text-slate-400 font-normal ml-0.5">/{item.unit}</span>}</p>
+            : <p className="text-[11px] text-slate-400 italic">Harga nego</p>
+          }
+        </div>
+      </div>
+
+      <button
+        className="w-full py-2 text-[11px] font-semibold text-sky-600 hover:bg-sky-50 transition-colors border-t border-slate-100 flex items-center justify-center gap-1"
+        onClick={(e) => { e.stopPropagation(); onNavigate(item.id); }}
+      >
+        <Eye className="h-3 w-3" /> Lihat Detail <ChevronRight className="h-3 w-3" />
+      </button>
+    </div>
+  );
+}
+
+// ── Related Items Section ─────────────────────────────────────────────────────
+function RelatedItemsSection({ itemId, onNavigate }: { itemId: number; onNavigate: (id: number) => void }) {
+  const { data: items = [], isLoading } = useQuery<CatalogItemSummary[]>({
+    queryKey: ["marketplace-related", itemId],
+    queryFn: () => fetch(`/api/portal/marketplace/${itemId}/related`).then((r) => r.json()).then((d) => Array.isArray(d) ? d : []),
+    staleTime: 120_000,
+    enabled: !!itemId,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="bg-white rounded-2xl border border-slate-200 p-5">
+        <div className="h-4 w-40 bg-slate-200 rounded animate-pulse mb-4" />
+        <div className="flex gap-3 overflow-hidden">
+          {[1,2,3,4].map(i => <div key={i} className="w-[200px] h-52 bg-slate-100 rounded-2xl shrink-0 animate-pulse" />)}
+        </div>
+      </div>
+    );
+  }
+  if (items.length === 0) return null;
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+      <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between">
+        <div>
+          <p className="text-[15px] font-extrabold text-slate-800 flex items-center gap-2">
+            <Building2 className="h-4 w-4 text-sky-500" />
+            Item Lain dari Vendor Ini
+          </p>
+          <p className="text-[12px] text-slate-400 mt-0.5">{items.length} item dari vendor yang sama</p>
+        </div>
+      </div>
+      <div className="px-5 py-4 overflow-x-auto">
+        <div className="flex gap-3 min-w-max">
+          {items.map((item) => (
+            <ItemMiniCard key={item.id} item={item} onNavigate={onNavigate} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Similar Items Section ("Customers Also Viewed") ───────────────────────────
+function SimilarItemsSection({ itemId, onNavigate }: { itemId: number; onNavigate: (id: number) => void }) {
+  const { data: items = [], isLoading } = useQuery<CatalogItemSummary[]>({
+    queryKey: ["marketplace-similar", itemId],
+    queryFn: () => fetch(`/api/portal/marketplace/${itemId}/similar`).then((r) => r.json()).then((d) => Array.isArray(d) ? d : []),
+    staleTime: 120_000,
+    enabled: !!itemId,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="bg-white rounded-2xl border border-slate-200 p-5">
+        <div className="h-4 w-48 bg-slate-200 rounded animate-pulse mb-4" />
+        <div className="flex gap-3 overflow-hidden">
+          {[1,2,3,4].map(i => <div key={i} className="w-[200px] h-52 bg-slate-100 rounded-2xl shrink-0 animate-pulse" />)}
+        </div>
+      </div>
+    );
+  }
+  if (items.length === 0) return null;
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+      <div className="px-5 py-3.5 border-b border-slate-100">
+        <p className="text-[15px] font-extrabold text-slate-800 flex items-center gap-2">
+          <Eye className="h-4 w-4 text-purple-500" />
+          Customers Also Viewed
+        </p>
+        <p className="text-[12px] text-slate-400 mt-0.5">Item serupa dari kategori yang sama</p>
+      </div>
+      <div className="px-5 py-4 overflow-x-auto">
+        <div className="flex gap-3 min-w-max">
+          {items.map((item) => (
+            <ItemMiniCard key={item.id} item={item} onNavigate={onNavigate} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Same Province Section ─────────────────────────────────────────────────────
+function SameProvinceSection({
+  itemId,
+  province,
+  onNavigate,
+}: {
+  itemId: number;
+  province: string | null;
+  onNavigate: (id: number) => void;
+}) {
+  const { data: items = [], isLoading } = useQuery<CatalogItemSummary[]>({
+    queryKey: ["marketplace-same-province", itemId],
+    queryFn: () =>
+      fetch(`/api/portal/marketplace/${itemId}/same-province`)
+        .then((r) => r.json())
+        .then((d) => (Array.isArray(d) ? d : [])),
+    staleTime: 120_000,
+    enabled: !!itemId && !!province,
+  });
+
+  if (!province) return null;
+  if (isLoading) {
+    return (
+      <div className="bg-white rounded-2xl border border-slate-200 p-5">
+        <div className="h-4 w-56 bg-slate-200 rounded animate-pulse mb-4" />
+        <div className="flex gap-3 overflow-hidden">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="w-[200px] h-52 bg-slate-100 rounded-2xl shrink-0 animate-pulse" />
+          ))}
+        </div>
+      </div>
+    );
+  }
+  if (items.length === 0) return null;
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+      <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between">
+        <div>
+          <p className="text-[15px] font-extrabold text-slate-800 flex items-center gap-2">
+            <MapPin className="h-4 w-4 text-emerald-500" />
+            Produk dari {province}
+          </p>
+          <p className="text-[12px] text-slate-400 mt-0.5">
+            {items.length} produk dari vendor lain di provinsi yang sama
+          </p>
+        </div>
+      </div>
+      <div className="px-5 py-4 overflow-x-auto">
+        <div className="flex gap-3 min-w-max">
+          {items.map((item) => (
+            <ItemMiniCard key={item.id} item={item} onNavigate={onNavigate} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Detail Page ──────────────────────────────────────────────────────────
 export default function MarketplaceDetailPage() {
   const [, params] = useRoute<{ id: string }>("/marketplace/:id");
@@ -964,21 +1378,32 @@ export default function MarketplaceDetailPage() {
 
             {/* CTA Buttons */}
             <div className="space-y-2">
-              <Button
-                className="w-full h-11 rounded-xl font-semibold text-[14px] gap-2 bg-sky-600 hover:bg-sky-700"
-                onClick={() => setDialog("quote")}
-              >
-                <MessageSquare className="h-4 w-4" />
-                Inquiry / Request Quote
-              </Button>
-              <Button
-                variant="outline"
-                className="w-full h-11 rounded-xl font-semibold text-[14px] gap-2 border-slate-300 text-slate-700 hover:bg-slate-50"
-                onClick={() => setDialog("order")}
-              >
-                <ShoppingCart className="h-4 w-4" />
-                Order Sekarang
-              </Button>
+              {!item.id ? (
+                <Button
+                  className="w-full h-11 rounded-xl font-semibold text-[14px]"
+                  disabled
+                >
+                  Item belum siap dipesan
+                </Button>
+              ) : (
+                <>
+                  <Button
+                    className="w-full h-11 rounded-xl font-semibold text-[14px] gap-2 bg-sky-600 hover:bg-sky-700"
+                    onClick={() => setDialog("quote")}
+                  >
+                    <MessageSquare className="h-4 w-4" />
+                    {isProduct ? "Inquiry / Request Quote" : "Minta Penawaran"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="w-full h-11 rounded-xl font-semibold text-[14px] gap-2 border-slate-300 text-slate-700 hover:bg-slate-50"
+                    onClick={() => setDialog("order")}
+                  >
+                    <ShoppingCart className="h-4 w-4" />
+                    Order Sekarang
+                  </Button>
+                </>
+              )}
             </div>
 
             {/* Estimasi total */}
@@ -989,31 +1414,56 @@ export default function MarketplaceDetailPage() {
               </div>
             )}
 
-            {/* Vendor card */}
-            <div className="border border-slate-200 rounded-2xl p-4 bg-white space-y-2">
-              <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Tentang Vendor</p>
-              <div className="flex items-center gap-2">
-                <Building2 className="h-4 w-4 text-slate-400 shrink-0" />
-                <span className="text-[14px] font-semibold text-slate-800">{item.vendorName}</span>
-              </div>
-              {item.location && (
-                <div className="flex items-center gap-2 text-[12px] text-slate-500">
-                  <MapPin className="h-3.5 w-3.5 shrink-0" />
-                  {item.location}
-                </div>
-              )}
-              <p className="text-[11px] text-slate-400 pt-1 leading-relaxed">
-                Vendor terverifikasi dalam sistem kami. Hubungi via tombol di atas untuk mendapatkan penawaran resmi.
-              </p>
-            </div>
+            {/* Vendor Profile Card */}
+            <VendorProfileCard vendorId={item.vendorId} itemLocation={item.location} />
 
             {/* Item ID for reference */}
             <p className="text-center text-[10px] text-slate-300 font-mono">ID: {item.id}</p>
 
           </div>
         </div>
+
+        {/* ── Related & Similar sections (full-width below) ─────────────────── */}
+        <div className="mt-6 space-y-5">
+          <RelatedItemsSection
+            itemId={item.id}
+            onNavigate={(id) => {
+              setLocation(`/marketplace/${id}`);
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }}
+          />
+          <SimilarItemsSection
+            itemId={item.id}
+            onNavigate={(id) => {
+              setLocation(`/marketplace/${id}`);
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }}
+          />
+          <SameProvinceSection
+            itemId={item.id}
+            province={
+              item.location?.includes(",")
+                ? item.location.split(",").pop()!.trim()
+                : item.location ?? null
+            }
+            onNavigate={(id) => {
+              setLocation(`/marketplace/${id}`);
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }}
+          />
+        </div>
       </div>
 
+      {/* Related Items */}
+      <RelatedItems
+        currentId={item.id}
+        onNavigate={(id) => {
+          window.scrollTo({ top: 0, behavior: "smooth" });
+          setLocation(`/marketplace/${id}`);
+        }}
+      />
+
+      {/* Submit dialogs */}
       {/* Dialogs */}
       {dialog && (
         <SubmitDialog
@@ -1023,6 +1473,93 @@ export default function MarketplaceDetailPage() {
           onClose={() => setDialog(null)}
         />
       )}
+    </div>
+  );
+}
+
+// ── Related Items ─────────────────────────────────────────────────────────────
+type RelatedItemData = {
+  id: number;
+  name: string;
+  vendorName?: string | null;
+  templateKind?: string | null;
+  priceSell?: number | null;
+  unit?: string | null;
+  stockStatus?: string | null;
+  location?: string | null;
+  leadTime?: string | null;
+};
+
+function RelatedItemCard({ item, onNavigate }: { item: RelatedItemData; onNavigate: (id: number) => void }) {
+  const isProduct = item.templateKind === "product";
+  return (
+    <button
+      onClick={() => onNavigate(item.id)}
+      className="group text-left w-full bg-white border border-slate-200 rounded-xl p-4 hover:border-sky-300 hover:shadow-md transition-all duration-200 flex flex-col gap-2"
+    >
+      <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isProduct ? "bg-emerald-50" : "bg-sky-50"}`}>
+        {isProduct
+          ? <Package className={`h-4 w-4 ${isProduct ? "text-emerald-600" : "text-sky-600"}`} />
+          : <Truck className="h-4 w-4 text-sky-600" />}
+      </div>
+      <p className="text-[13px] font-semibold text-slate-800 leading-snug line-clamp-2 group-hover:text-sky-700 transition-colors">
+        {item.name}
+      </p>
+      {item.vendorName && (
+        <p className="text-[11px] text-slate-400 truncate">{item.vendorName}</p>
+      )}
+      {item.priceSell != null && (
+        <p className="text-[13px] font-bold text-sky-600">
+          {new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(item.priceSell)}
+          {item.unit ? <span className="text-[11px] font-normal text-slate-400"> /{item.unit}</span> : null}
+        </p>
+      )}
+      {item.leadTime && (
+        <div className="flex items-center gap-1 text-[11px] text-slate-400">
+          <Clock className="h-3 w-3 shrink-0" />
+          {item.leadTime}
+        </div>
+      )}
+    </button>
+  );
+}
+
+function RelatedItems({ currentId, onNavigate }: { currentId: number; onNavigate: (id: number) => void }) {
+  const { data, isLoading } = useQuery<RelatedItemData[]>({
+    queryKey: ["marketplace-related", currentId],
+    queryFn: async () => {
+      const res = await fetch(`/api/marketplace/products/${currentId}/related`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    staleTime: 120_000,
+  });
+
+  if (!isLoading && (!data || data.length === 0)) return null;
+
+  return (
+    <div className="bg-slate-50 border-t border-slate-200 mt-4 py-8">
+      <div className="max-w-6xl mx-auto px-4">
+        <h2 className="text-[16px] font-bold text-slate-800 mb-4">Item Terkait</h2>
+        {isLoading ? (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="bg-white rounded-xl p-4 border border-slate-200 animate-pulse space-y-3">
+                <div className="w-8 h-8 bg-slate-100 rounded-lg" />
+                <div className="h-3 bg-slate-100 rounded w-3/4" />
+                <div className="h-3 bg-slate-100 rounded w-1/2" />
+                <div className="h-4 bg-slate-100 rounded w-2/3" />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            {data!.map((r) => (
+              <RelatedItemCard key={r.id} item={r} onNavigate={onNavigate} />
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -1,16 +1,23 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { vendorCatalogItemsTable, suppliersTable } from "@workspace/db";
-import { eq, and, ilike, or, sql, asc } from "drizzle-orm";
+import { eq, and, ilike, or, sql, asc, ne } from "drizzle-orm";
+import { eq, and, ilike, or, sql, asc, isNull, gte } from "drizzle-orm";
+import { isCatalogItemPublic, catalogPublicConditions } from "../lib/catalogVisibility.js";
+
+export { isCatalogItemPublic };
 
 export const marketplaceRouter = Router();
 
-// GET /api/marketplace/products — list active vendor catalog items (public)
+// GET /api/marketplace/products — list published+active vendor catalog items (public)
 // SECURITY: hanya ekspos priceSell, BUKAN priceBase
 marketplaceRouter.get("/products", async (req, res) => {
   const { vendor, category, location, search } = req.query as Record<string, string>;
 
-  const conditions = [eq(vendorCatalogItemsTable.isActive, true)];
+  const conditions = [
+    ...catalogPublicConditions(),
+    or(isNull(vendorCatalogItemsTable.validityDate), gte(vendorCatalogItemsTable.validityDate, sql`CURRENT_DATE`))!,
+  ];
 
   if (vendor && !isNaN(Number(vendor))) {
     conditions.push(eq(vendorCatalogItemsTable.vendorId, Number(vendor)));
@@ -56,6 +63,7 @@ marketplaceRouter.get("/products", async (req, res) => {
       vendorId:       vendorCatalogItemsTable.vendorId,
       vendorName:     vendorCatalogItemsTable.vendorName,
       supplierName:   suppliersTable.name,
+      mediaAssets:    vendorCatalogItemsTable.mediaAssets,
     })
     .from(vendorCatalogItemsTable)
     .leftJoin(suppliersTable, eq(vendorCatalogItemsTable.vendorId, suppliersTable.id))
@@ -63,15 +71,23 @@ marketplaceRouter.get("/products", async (req, res) => {
     .orderBy(asc(vendorCatalogItemsTable.sortOrder), asc(vendorCatalogItemsTable.id));
 
   return res.json(
-    rows.map((r) => ({
-      ...r,
-      priceSell:        r.priceSell != null ? Number(r.priceSell) : null,
-      vendorDisplayName: r.vendorName || r.supplierName || "Vendor",
-    })),
+    rows.map((r) => {
+      const media = Array.isArray(r.mediaAssets) ? r.mediaAssets as { type: string; url: string; isPrimary?: boolean }[] : [];
+      const primaryImage = media.find((m) => m.type === "image" && m.isPrimary)?.url
+        ?? media.find((m) => m.type === "image")?.url
+        ?? null;
+      return {
+        ...r,
+        priceSell:         r.priceSell != null ? Number(r.priceSell) : null,
+        vendorDisplayName: r.vendorName || r.supplierName || "Vendor",
+        imageUrl:          primaryImage,
+        mediaItems:        media,
+      };
+    }),
   );
 });
 
-// GET /api/marketplace/vendors — vendor list for filter dropdown
+// GET /api/marketplace/vendors — vendor list for filter dropdown (published+active only)
 marketplaceRouter.get("/vendors", async (_req, res) => {
   const rows = await db.execute(sql`
     SELECT DISTINCT
@@ -79,18 +95,20 @@ marketplaceRouter.get("/vendors", async (_req, res) => {
       COALESCE(vci.vendor_name, s.name) AS name
     FROM vendor_catalog_items vci
     LEFT JOIN suppliers s ON vci.vendor_id = s.id
-    WHERE vci.is_active = true
+    WHERE vci.is_published = true
+      AND vci.is_active != false
     ORDER BY 2
   `);
   return res.json(rows.rows as { id: number; name: string }[]);
 });
 
-// GET /api/marketplace/categories — unique categories for filter chips
+// GET /api/marketplace/categories — unique categories for filter chips (published+active only)
 marketplaceRouter.get("/categories", async (_req, res) => {
   const rows = await db.execute(sql`
     SELECT DISTINCT COALESCE(category_key, kategori) AS key
     FROM vendor_catalog_items
-    WHERE is_active = true
+    WHERE is_published = true
+      AND is_active != false
       AND COALESCE(category_key, kategori) IS NOT NULL
       AND COALESCE(category_key, kategori) != ''
     ORDER BY 1
@@ -98,4 +116,86 @@ marketplaceRouter.get("/categories", async (_req, res) => {
   return res.json(
     (rows.rows as { key: string }[]).map((r) => r.key).filter(Boolean),
   );
+});
+
+// GET /api/marketplace/products/:id/related — up to 4 published related items
+marketplaceRouter.get("/products/:id/related", async (req, res) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: "id tidak valid" });
+
+  const [current] = await db
+    .select({
+      vendorId:    vendorCatalogItemsTable.vendorId,
+      kategori:    vendorCatalogItemsTable.kategori,
+      categoryKey: vendorCatalogItemsTable.categoryKey,
+    })
+    .from(vendorCatalogItemsTable)
+    .where(eq(vendorCatalogItemsTable.id, id))
+    .limit(1);
+
+  if (!current) return res.json([]);
+
+  const cols = {
+    id:           vendorCatalogItemsTable.id,
+    name:         vendorCatalogItemsTable.name,
+    vendorName:   vendorCatalogItemsTable.vendorName,
+    templateKind: vendorCatalogItemsTable.templateKind,
+    priceSell:    vendorCatalogItemsTable.priceSell,
+    unit:         vendorCatalogItemsTable.unit,
+    stockStatus:  vendorCatalogItemsTable.stockStatus,
+    leadTime:     vendorCatalogItemsTable.leadTime,
+    location:     vendorCatalogItemsTable.location,
+    sortOrder:    vendorCatalogItemsTable.sortOrder,
+    vendorId:     vendorCatalogItemsTable.vendorId,
+  };
+
+  const seen = new Set<number>([id]);
+  const result: unknown[] = [];
+
+  // 1. same vendor (published only)
+  if (current.vendorId) {
+    const sameVendor = await db
+      .select(cols)
+      .from(vendorCatalogItemsTable)
+      .where(and(
+        eq(vendorCatalogItemsTable.isPublished, true),
+        eq(vendorCatalogItemsTable.vendorId, current.vendorId),
+        ne(vendorCatalogItemsTable.id, id),
+      ))
+      .orderBy(asc(vendorCatalogItemsTable.sortOrder), asc(vendorCatalogItemsTable.id))
+      .limit(4);
+    for (const r of sameVendor) {
+      if (result.length >= 4) break;
+      seen.add(r.id);
+      result.push({ ...r, priceSell: r.priceSell != null ? Number(r.priceSell) : null });
+    }
+  }
+
+  // 2. same category (fill up to 4, published only)
+  if (result.length < 4) {
+    const cat = current.categoryKey ?? current.kategori;
+    if (cat) {
+      const sameCat = await db
+        .select(cols)
+        .from(vendorCatalogItemsTable)
+        .where(and(
+          eq(vendorCatalogItemsTable.isPublished, true),
+          or(
+            eq(vendorCatalogItemsTable.categoryKey, cat),
+            eq(vendorCatalogItemsTable.kategori, cat),
+          ),
+          ne(vendorCatalogItemsTable.id, id),
+        ))
+        .orderBy(asc(vendorCatalogItemsTable.sortOrder), asc(vendorCatalogItemsTable.id))
+        .limit(4);
+      for (const r of sameCat) {
+        if (result.length >= 4) break;
+        if (seen.has(r.id)) continue;
+        seen.add(r.id);
+        result.push({ ...r, priceSell: r.priceSell != null ? Number(r.priceSell) : null });
+      }
+    }
+  }
+
+  return res.json(result);
 });

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, useRef } from "react";
 import { useLocation, useRoute, Link } from "wouter";
 import { AppShell } from "@/components/layout/AppShell";
+import { GooglePlacesAutocomplete } from "@/components/ui/google-places-autocomplete";
 import { ScanDocumentDialog, type ScannedDocumentData } from "@/components/ScanDocumentDialog";
 import { SendEmailDialog } from "@/components/SendEmailDialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -1509,7 +1510,11 @@ export default function SalesDocumentEditorPage({ kind: propKind }: EditorProps 
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="ac-address">Alamat</Label>
-              <Textarea id="ac-address" value={addCustomerForm.address} onChange={(e) => setAddCustomerForm((f) => ({ ...f, address: e.target.value }))} />
+              <GooglePlacesAutocomplete
+                value={addCustomerForm.address}
+                onChange={(v) => setAddCustomerForm((f) => ({ ...f, address: v }))}
+                placeholder="Ketik alamat customer..."
+              />
             </div>
             <div className="grid gap-1.5">
               <Label>Pajak Penjualan Default</Label>

@@ -8,11 +8,17 @@ function normalizePhone(raw: string): string {
 }
 
 export function WhatsAppButton() {
-  const { data: company } = useGetPortalCompany({
-    query: { queryKey: ["getPortalCompany"] },
+  const { data: company, isSuccess, isPending } = useGetPortalCompany({
+    query: { queryKey: ["getPortalCompany"], staleTime: 5 * 60 * 1000 },
   });
 
   const raw = company?.phone ?? "";
+
+  // Sembunyikan hanya jika: (1) masih loading awal (belum ada data cached),
+  // atau (2) API berhasil tapi phone memang tidak dikonfigurasi.
+  // Saat API error, tetap tampilkan jika ada data cached (stale).
+  if (isPending && !raw) return null;
+  if (isSuccess && !raw) return null;
   if (!raw) return null;
 
   const phone = normalizePhone(raw);

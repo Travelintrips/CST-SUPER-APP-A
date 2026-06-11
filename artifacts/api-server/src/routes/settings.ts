@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from "express";
+import multer from "multer";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { invalidateAppConfig } from "../lib/appConfig.js";
 import { getAdminWa, setAdminWa, getAdminGroupWa, setAdminGroupWa, getAdminPhones, setAdminPhones } from "../lib/adminWa.js";
@@ -14,10 +15,14 @@ import { resolveCompanyId } from "../lib/resolveCompany.js";
 import { getAiIntakeSettings, saveAiIntakeSettings, type VendorFilterMode } from "../lib/aiOrderIntake.js";
 import { LOGISTICS_SUBCATEGORIES } from "@workspace/logistics-constants";
 import { SECRETS_CATALOG, getSetting, setSetting, maskSecret, invalidateSettingCache } from "../lib/appSecrets.js";
+import { uploadToSupabase } from "../lib/supabaseStorage.js";
 
 const router = Router();
+const _upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 const CALC_RATES_KEY = "calculator_rates";
+const VEHICLE_IMAGES_KEY = "vehicle_images";
+const VEHICLE_ORDER_KEY  = "vehicle_order";
 const CARGO_TYPES_KEY = "cargo_types";
 const DEFAULT_CARGO_TYPES = ["Electronics", "Textiles", "Furniture", "Food & Beverage", "Chemicals", "Machinery", "Automotive Parts", "Medical Supplies", "Paper & Printing", "Raw Materials"];
 const LOGISTICS_SUBCATEGORIES_KEY = "logistics_subcategories";
@@ -1271,6 +1276,147 @@ router.get("/quick-stats", async (req: Request, res: Response) => {
     });
   } catch (err) {
     return res.status(500).json({ message: String(err) });
+  }
+});
+
+// ── Vehicle Order ─────────────────────────────────────────────────────────────
+
+// GET /api/settings/vehicle-order — public, returns string[] of vehicleIds
+router.get("/vehicle-order", async (_req: Request, res: Response) => {
+  const [row] = await db.select().from(portalContentTable).where(eq(portalContentTable.key, VEHICLE_ORDER_KEY));
+  return res.json(row ? JSON.parse(row.value) : []);
+});
+
+// PUT /api/settings/vehicle-order — admin only, save ordered array
+router.put("/vehicle-order", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const order = Array.isArray(req.body) ? req.body : [];
+  await db.insert(portalContentTable)
+    .values({ key: VEHICLE_ORDER_KEY, value: JSON.stringify(order) })
+    .onConflictDoUpdate({ target: portalContentTable.key, set: { value: JSON.stringify(order), updatedAt: new Date() } });
+  return res.json({ ok: true });
+});
+
+// ── Vehicle Images ────────────────────────────────────────────────────────────
+
+// GET /api/settings/vehicle-images — public, returns { vehicleId: imageUrl }
+router.get("/vehicle-images", async (_req: Request, res: Response) => {
+  const [row] = await db.select().from(portalContentTable).where(eq(portalContentTable.key, VEHICLE_IMAGES_KEY));
+  return res.json(row ? JSON.parse(row.value) : {});
+});
+
+// PUT /api/settings/vehicle-images — admin only, save full map
+router.put("/vehicle-images", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const images = req.body ?? {};
+  await db.insert(portalContentTable)
+    .values({ key: VEHICLE_IMAGES_KEY, value: JSON.stringify(images) })
+    .onConflictDoUpdate({ target: portalContentTable.key, set: { value: JSON.stringify(images), updatedAt: new Date() } });
+  return res.json({ ok: true });
+});
+
+// POST /api/settings/vehicle-images/upload — admin only, upload single image
+router.post("/vehicle-images/upload", _upload.single("file"), async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  if (!req.file) return res.status(400).json({ error: "Tidak ada file" });
+  const mime = req.file.mimetype;
+  if (!mime.startsWith("image/")) return res.status(400).json({ error: "Hanya file gambar yang diizinkan" });
+  try {
+    const { publicUrl } = await uploadToSupabase(req.file.buffer, mime, "vehicle-images");
+    return res.json({ url: publicUrl });
+  } catch (err) {
+    return res.status(500).json({ error: String(err) });
+  }
+});
+
+// GET /api/settings/secrets/:key — single secret (untuk halaman WA Gateway settings)
+router.get("/secrets/:key", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const { key } = req.params as { key: string };
+  const def = SECRETS_CATALOG.find((d) => d.key === key);
+  if (!def) return res.status(404).json({ message: `Key '${key}' tidak dikenal` });
+  try {
+    const envValue = (
+      process.env[def.envFallback]?.trim() ||
+      def.envFallbackAlt?.map(k => process.env[k]?.trim()).find(v => !!v) ||
+      ""
+    );
+    const [row] = await db
+      .select()
+      .from(portalContentTable)
+      .where(eq(portalContentTable.key, key));
+    const dbValue = row?.value?.trim() ?? "";
+    const effectiveValue = dbValue || envValue;
+    return res.json({
+      key,
+      hasValue: !!effectiveValue,
+      maskedValue: def.sensitive ? maskSecret(effectiveValue) : effectiveValue,
+      source: dbValue ? "db" : envValue ? "env" : "",
+    });
+  } catch (err) {
+    return res.status(500).json({ message: String(err) });
+  }
+});
+
+// GET /api/settings/wa-gateway/status — status WA Gateway (apakah terkonfigurasi + device status)
+router.get("/wa-gateway/status", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const { getWaGatewayConfig } = await import("../lib/appSecrets.js");
+  const config = await getWaGatewayConfig();
+  if (!config) {
+    return res.json({ configured: false, provider: "fonnte" });
+  }
+  // Ping WA Gateway untuk status device
+  try {
+    const statusUrl = `${config.url.replace(/\/$/, "")}/wa-gateway/api/devices/${config.deviceId}`;
+    const r = await fetch(statusUrl, {
+      headers: { Authorization: `Bearer ${config.apiKey}` },
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (!r.ok) {
+      return res.json({
+        configured: true, provider: "wa-gateway",
+        gatewayUrl: config.url, deviceId: config.deviceId,
+        deviceStatus: "disconnected",
+        error: `Device not found (HTTP ${r.status})`,
+      });
+    }
+    const device = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+    const rawStatus = (device.status ?? device.connectionStatus ?? "disconnected") as string;
+    const deviceStatus = rawStatus === "connected" || rawStatus === "open" ? "connected" : "disconnected";
+    return res.json({
+      configured: true, provider: "wa-gateway",
+      gatewayUrl: config.url, deviceId: config.deviceId,
+      deviceStatus,
+      deviceName: (device.name ?? device.deviceName ?? null) as string | null,
+    });
+  } catch (err: any) {
+    return res.json({
+      configured: true, provider: "wa-gateway",
+      gatewayUrl: config.url, deviceId: config.deviceId,
+      deviceStatus: null,
+      error: `Tidak dapat menjangkau WA Gateway: ${err.message ?? err}`,
+    });
+  }
+});
+
+// POST /api/settings/wa-gateway/test — kirim pesan test via WA Gateway
+router.post("/wa-gateway/test", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const { phone } = req.body as { phone?: string };
+  if (!phone?.trim()) return res.status(400).json({ error: "phone diperlukan" });
+  try {
+    const { getWaGatewayConfig } = await import("../lib/appSecrets.js");
+    const config = await getWaGatewayConfig();
+    if (!config) return res.status(400).json({ error: "WA Gateway belum dikonfigurasi (URL, API Key, dan Device ID harus diisi)" });
+    const { sendTextViaGateway } = await import("../lib/waGatewayProvider.js");
+    await sendTextViaGateway(config, phone.trim(),
+      "✅ Test pesan dari BizPortal — WA Gateway berhasil dikonfigurasi!",
+      { context: "test-wa-gateway", refId: `test-${Date.now()}` },
+    );
+    return res.json({ ok: true });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message ?? String(err) });
   }
 });
 

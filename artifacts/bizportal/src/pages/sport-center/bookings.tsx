@@ -104,7 +104,8 @@ export default function SportCenterBookings() {
     queryFn: async () => {
       const qs = activeCompanyId ? `?companyId=${activeCompanyId}` : "";
       const r = await fetch(`/api/sport-center/facilities${qs}`, { credentials: "include" });
-      return r.json();
+      const json = await r.json();
+      return Array.isArray(json) ? json : (Array.isArray(json?.data) ? json.data : []);
     },
   });
 

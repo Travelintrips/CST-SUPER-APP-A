@@ -372,6 +372,66 @@ uri = "file://artifacts/customer-portal/public/images/products/biaya-storage.png
 type = "image"
 title = "warehouse storage cost"
 
+[[generated]]
+id = "Vy4b3X7CMTfHtV8E1Tcu2"
+uri = "file://attached_assets/products/kopi_arabika_gayo.png"
+type = "image"
+title = "kopi arabika gayo specialty green beans"
+
+[[generated]]
+id = "T69EpzCVgE--ugOvNMmBq"
+uri = "file://attached_assets/products/kopi_arabika_toraja.png"
+type = "image"
+title = "kopi arabika toraja grade 1"
+
+[[generated]]
+id = "IIN5ecnwIJYOduavW2t_-"
+uri = "file://attached_assets/products/kopi_robusta_lampung.png"
+type = "image"
+title = "kopi robusta lampung grade B"
+
+[[generated]]
+id = "JEL2UNiiQTgF8MaNM48Og"
+uri = "file://attached_assets/products/batubara_gar4200.png"
+type = "image"
+title = "batubara thermal GAR 4200 Kalimantan"
+
+[[generated]]
+id = "ykn8Ks3RmfCSNMlz_TEDh"
+uri = "file://attached_assets/products/batubara_gar5000.png"
+type = "image"
+title = "batubara thermal GAR 5000 Kaltim"
+
+[[generated]]
+id = "tStFBrAbm8lkNuCZbTsKg"
+uri = "file://attached_assets/products/cpo_belawan.png"
+type = "image"
+title = "crude palm oil CPO Belawan"
+
+[[generated]]
+id = "DLfVKfMJe0iuApC_RrDUv"
+uri = "file://attached_assets/products/rbd_palm_olein.png"
+type = "image"
+title = "RBD palm olein grade A drum"
+
+[[generated]]
+id = "xse1bvSNEkvMS7D5ryZW0"
+uri = "file://attached_assets/products/samsung_galaxy_a54.png"
+type = "image"
+title = "Samsung Galaxy A54 smartphone product"
+
+[[generated]]
+id = "dmYPyin_bTG6Ka_6paoPr"
+uri = "file://attached_assets/products/meja_standing_desk.png"
+type = "image"
+title = "standing desk office furniture Indonesia"
+
+[[generated]]
+id = "PACAvj7pEn5UmYPENaAsA"
+uri = "file://attached_assets/products/truck_cdd_7ton.png"
+type = "image"
+title = "CDD truck 7 ton Indonesia logistics"
+
 [[outputs]]
 id = "jbw844mUijSYeJ7x1ujqa"
 uri = "file://attached_assets/logo_composited.png"
@@ -497,3 +557,69 @@ id = "v-OQE6kUe4COZqMcY5G7s"
 uri = "file://SUBMISSION TO CATALOG REPORT.md"
 type = "text"
 title = "SUBMISSION TO CATALOG REPORT"
+
+[[outputs]]
+id = "OPhcvp1lzIeVNIo9c1Ke7"
+uri = "file://attached_assets/products/kopi_arabika_gayo.png"
+type = "image"
+title = "Kopi Arabica Gayo — Grade Specialty"
+
+[[outputs]]
+id = "PwTGYavzIsgIQWEMKUZYW"
+uri = "file://attached_assets/products/kopi_arabika_toraja.png"
+type = "image"
+title = "Kopi Arabica Toraja — Grade 1"
+
+[[outputs]]
+id = "o5Ctr1j5ksdHbCJjWano2"
+uri = "file://attached_assets/products/kopi_robusta_lampung.png"
+type = "image"
+title = "Kopi Robusta Lampung — Grade B"
+
+[[outputs]]
+id = "BXYxXF_KlHkDEffL65nMM"
+uri = "file://attached_assets/products/batubara_gar4200.png"
+type = "image"
+title = "Batubara Thermal — GAR 4200"
+
+[[outputs]]
+id = "h6rsBjcmUs-LQ6-G8rJjf"
+uri = "file://attached_assets/products/batubara_gar5000.png"
+type = "image"
+title = "Batubara Thermal — GAR 5000"
+
+[[outputs]]
+id = "xTSArY9ZfOnFU1jaQqJwb"
+uri = "file://attached_assets/products/cpo_belawan.png"
+type = "image"
+title = "Crude Palm Oil (CPO) — Belawan"
+
+[[outputs]]
+id = "ZE89QTEaz5Ah9i78HF_jM"
+uri = "file://attached_assets/products/rbd_palm_olein.png"
+type = "image"
+title = "RBD Palm Olein — Grade A"
+
+[[outputs]]
+id = "M_axISiiq6Rd7ybq2EdWd"
+uri = "file://attached_assets/products/samsung_galaxy_a54.png"
+type = "image"
+title = "Samsung Galaxy A54"
+
+[[outputs]]
+id = "zXurSqfYVdsuORJzlSAeI"
+uri = "file://attached_assets/products/meja_standing_desk.png"
+type = "image"
+title = "Meja Kerja Standing Desk"
+
+[[outputs]]
+id = "mo1jBbtYCd5wI0y-sJBQG"
+uri = "file://attached_assets/products/truck_cdd_7ton.png"
+type = "image"
+title = "Angkut CDD 7 Ton"
+
+[[outputs]]
+id = "DjQ7klu46Spgwx1VsanKN"
+uri = "file://AUDIT_ACCOUNTING_TAX_REPORT.md"
+type = "text"
+title = "Audit Report: Accounting, Tax & Financial Modules"

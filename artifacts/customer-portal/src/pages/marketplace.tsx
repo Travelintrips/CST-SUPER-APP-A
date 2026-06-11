@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation, useSearch } from "wouter";
+import { supabase } from "@/lib/supabase";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,10 +14,40 @@ import {
 } from "@/components/ui/dialog";
 import {
   Store, Search, SlidersHorizontal, X, Building2, Package, Truck,
-  Tag, MapPin, Clock, ChevronRight, Filter, RefreshCw,
+  Tag, MapPin, Clock, ChevronRight, Filter, RefreshCw, GitCompareArrows,
 } from "lucide-react";
 import type { MarketplaceItem, FilterFieldDef, ActiveFilters } from "@/lib/catalogFilters";
 import { buildCatalogFilters, matchVendorCatalog } from "@/lib/catalogFilters";
+import { CompareTray, CompareModal } from "@/components/VendorComparison";
+
+// ── Category placeholder config (emoji + gradient) ───────────────────────────
+const CATEGORY_PLACEHOLDER: Record<string, { emoji: string; from: string; to: string; label: string }> = {
+  // Products
+  coffee:      { emoji: "☕", from: "#6F4E37", to: "#A0785A", label: "Kopi" },
+  coal:        { emoji: "⛏️", from: "#2d3748", to: "#4a5568", label: "Batubara" },
+  iron_steel:  { emoji: "🏗️", from: "#2b4162", to: "#546a8c", label: "Besi & Baja" },
+  palm_oil:    { emoji: "🌴", from: "#276221", to: "#4a9e41", label: "Sawit" },
+  nickel:      { emoji: "🔩", from: "#4a5568", to: "#718096", label: "Nikel" },
+  copper:      { emoji: "🔶", from: "#b05c1a", to: "#d4813a", label: "Tembaga" },
+  rice:        { emoji: "🌾", from: "#7c6d2a", to: "#b8a24a", label: "Beras" },
+  sugar:       { emoji: "🍬", from: "#c05080", to: "#e07095", label: "Gula" },
+  seafood:     { emoji: "🐟", from: "#1a6080", to: "#2a8aad", label: "Seafood" },
+  rubber:      { emoji: "🌿", from: "#2d5a1b", to: "#4a8c30", label: "Karet" },
+  live_fish:   { emoji: "🐠", from: "#0d4f6e", to: "#1a7ba8", label: "Ikan Hidup" },
+  bird_nest:   { emoji: "🪺", from: "#7c5a1a", to: "#b8873a", label: "Sarang Walet" },
+  frozen_food: { emoji: "❄️", from: "#1e4a7a", to: "#2e6aaa", label: "Frozen Food" },
+  furniture:   { emoji: "🪑", from: "#7c4a1a", to: "#a8693a", label: "Furniture" },
+  chemical:    { emoji: "⚗️", from: "#3a1a7c", to: "#5a3aaa", label: "Kimia" },
+  textile:     { emoji: "🧵", from: "#7c1a4a", to: "#aa3a6a", label: "Tekstil" },
+  // Services
+  trucking:    { emoji: "🚛", from: "#1a3a6c", to: "#2a5aaa", label: "Trucking" },
+  sea_freight: { emoji: "🚢", from: "#0c3057", to: "#1a5080", label: "Sea Freight" },
+  air_freight: { emoji: "✈️", from: "#1a4060", to: "#2a6090", label: "Air Freight" },
+  ppjk:        { emoji: "📋", from: "#3a3060", to: "#5a4a90", label: "PPJK" },
+  handling:    { emoji: "🏭", from: "#2a4a2a", to: "#4a7a4a", label: "Handling" },
+  document:    { emoji: "📄", from: "#3a4a5a", to: "#5a6a7a", label: "Document" },
+  exim_service:{ emoji: "🌍", from: "#1a4a4a", to: "#2a7070", label: "Exim Service" },
+};
 
 // ── Category definitions ─────────────────────────────────────────────────────
 const PRODUCT_CATS = [
@@ -30,22 +61,15 @@ const PRODUCT_CATS = [
   { key: "rice",       label: "Beras",          emoji: "🌾" },
   { key: "sugar",      label: "Gula",           emoji: "🍬" },
   { key: "seafood",    label: "Seafood",        emoji: "🐟" },
+  { key: "rubber",     label: "Karet",          emoji: "🌿" },
+  { key: "live_fish",  label: "Ikan Hidup",     emoji: "🐠" },
+  { key: "bird_nest",  label: "Sarang Walet",   emoji: "🪺" },
   { key: "frozen_food",label: "Frozen Food",   emoji: "❄️" },
   { key: "furniture",  label: "Furniture",      emoji: "🪑" },
   { key: "chemical",   label: "Kimia",          emoji: "⚗️" },
   { key: "textile",    label: "Tekstil",        emoji: "🧵" },
 ];
 
-const SERVICE_CATS = [
-  { key: "all",          label: "Semua Jasa",  emoji: "🌐" },
-  { key: "trucking",     label: "Trucking",    emoji: "🚛" },
-  { key: "sea_freight",  label: "Sea Freight", emoji: "🚢" },
-  { key: "air_freight",  label: "Air Freight", emoji: "✈️" },
-  { key: "ppjk",         label: "PPJK",        emoji: "📋" },
-  { key: "handling",     label: "Handling",    emoji: "🏭" },
-  { key: "document",     label: "Document",    emoji: "📄" },
-  { key: "exim_service", label: "Exim Service",emoji: "🌍" },
-];
 
 // ── Currency formatter ────────────────────────────────────────────────────────
 function formatPrice(price: number, currency: string): string {
@@ -56,16 +80,26 @@ function formatPrice(price: number, currency: string): string {
 }
 
 // ── Stock badge ───────────────────────────────────────────────────────────────
-function StockBadge({ status }: { status: string | null }) {
-  const MAP: Record<string, { label: string; cls: string }> = {
-    available:    { label: "Tersedia",      cls: "bg-emerald-100 text-emerald-700 border-emerald-200" },
-    limited:      { label: "Terbatas",      cls: "bg-amber-100 text-amber-700 border-amber-200" },
-    out_of_stock: { label: "Habis",         cls: "bg-red-100 text-red-700 border-red-200" },
-    "Ready Stock":{ label: "Ready Stock",  cls: "bg-emerald-100 text-emerald-700 border-emerald-200" },
-    "Indent":     { label: "Indent",       cls: "bg-amber-100 text-amber-700 border-amber-200" },
-    "Pre-order":  { label: "Pre-order",    cls: "bg-sky-100 text-sky-700 border-sky-200" },
+function normalizeStock(raw: string | null): string | null {
+  if (!raw) return null;
+  const N: Record<string, string> = {
+    "ready stock": "available", "ready": "available", "in_stock": "available",
+    "indent": "limited",
+    "pre-order": "pre_order", "preorder": "pre_order", "pre order": "pre_order",
+    "out of stock": "out_of_stock", "kosong": "out_of_stock",
   };
-  const info = (status ? MAP[status] : null) ?? { label: status ?? "—", cls: "bg-slate-100 text-slate-600 border-slate-200" };
+  return N[raw.toLowerCase().trim()] ?? raw;
+}
+
+function StockBadge({ status }: { status: string | null }) {
+  const key = normalizeStock(status);
+  const MAP: Record<string, { label: string; cls: string }> = {
+    available:    { label: "Tersedia",   cls: "bg-emerald-100 text-emerald-700 border-emerald-200" },
+    limited:      { label: "Terbatas",   cls: "bg-amber-100 text-amber-700 border-amber-200" },
+    out_of_stock: { label: "Habis",      cls: "bg-red-100 text-red-700 border-red-200" },
+    pre_order:    { label: "Pre-Order",  cls: "bg-sky-100 text-sky-700 border-sky-200" },
+  };
+  const info = (key ? MAP[key] : null) ?? { label: status ?? "—", cls: "bg-slate-100 text-slate-600 border-slate-200" };
   return <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${info.cls}`}>{info.label}</span>;
 }
 
@@ -109,18 +143,40 @@ function SpecChips({ specValues, templateSnapshot, limit = 3 }: {
 }
 
 // ── Item Card ─────────────────────────────────────────────────────────────────
-function ItemCard({ item, onClick }: { item: MarketplaceItem; onClick: () => void }) {
+function ItemCard({
+  item,
+  onClick,
+  isCompared,
+  compareDisabled,
+  onToggleCompare,
+}: {
+  item: MarketplaceItem;
+  onClick: () => void;
+  isCompared: boolean;
+  compareDisabled: boolean;
+  onToggleCompare: (id: number) => void;
+}) {
   const isProduct = item.templateKind === "product";
   const hasImage = !!item.primaryImageUrl;
+  const daysUntilExpiry = useMemo(() => {
+    if (!item.validityDate) return null;
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const expiry = new Date(item.validityDate); expiry.setHours(0, 0, 0, 0);
+    return Math.round((expiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  }, [item.validityDate]);
   return (
     <div
-      className="bg-white rounded-2xl border border-slate-200 hover:border-sky-300 hover:shadow-md transition-all duration-200 cursor-pointer flex flex-col overflow-hidden"
-      onClick={onClick}
+      className={`bg-white rounded-2xl border transition-all duration-200 flex flex-col overflow-hidden ${
+        isCompared
+          ? "border-sky-400 shadow-md ring-2 ring-sky-300/50"
+          : "border-slate-200 hover:border-sky-300 hover:shadow-md cursor-pointer"
+      }`}
+      onClick={isCompared ? undefined : onClick}
     >
       {/* Header band */}
       <div className={`h-1.5 w-full ${isProduct ? "bg-gradient-to-r from-emerald-400 to-teal-400" : "bg-gradient-to-r from-sky-400 to-blue-500"}`} />
 
-      {/* Primary image — always shown, placeholder if no photo */}
+      {/* Primary image — real photo if available, else category emoji placeholder */}
       <div className="relative w-full h-[140px] overflow-hidden bg-slate-100">
         {hasImage ? (
           <img
@@ -129,31 +185,50 @@ function ItemCard({ item, onClick }: { item: MarketplaceItem; onClick: () => voi
             className="w-full h-full object-cover"
             loading="lazy"
             onError={(e) => {
-              const el = e.currentTarget;
+              const el = e.currentTarget as HTMLImageElement;
               el.style.display = "none";
-              const parent = el.parentElement;
-              if (parent) {
-                parent.classList.add("flex", "items-center", "justify-center");
-                const ph = document.createElement("div");
-                ph.className = "flex flex-col items-center gap-1.5";
-                ph.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="20" height="20" rx="2"/><path d="M2 14l5-5 4 4 4-5 7 7"/><circle cx="8.5" cy="8.5" r="1.5"/></svg>`;
-                parent.appendChild(ph);
-              }
             }}
           />
-        ) : (
-          <div className={`w-full h-full flex flex-col items-center justify-center gap-2 ${isProduct ? "bg-gradient-to-br from-emerald-50 to-teal-50" : "bg-gradient-to-br from-sky-50 to-blue-50"}`}>
-            {isProduct
-              ? <Package className="h-10 w-10 text-emerald-200" />
-              : <Truck className="h-10 w-10 text-sky-200" />
-            }
-            <span className="text-[10px] text-slate-300 font-medium">Belum ada foto</span>
-          </div>
-        )}
+        ) : (() => {
+          const catKey = item.categoryKey ?? item.serviceType ?? "";
+          const cat = catKey ? CATEGORY_PLACEHOLDER[catKey] : undefined;
+          if (cat) {
+            return (
+              <div
+                className="w-full h-full flex flex-col items-center justify-center gap-2 select-none"
+                style={{ background: `linear-gradient(135deg, ${cat.from}, ${cat.to})` }}
+              >
+                <span className="text-5xl drop-shadow-sm" role="img" aria-label={cat.label}>{cat.emoji}</span>
+                <span className="text-[11px] font-semibold text-white/80 tracking-wide uppercase">{cat.label}</span>
+              </div>
+            );
+          }
+          return (
+            <div className={`w-full h-full flex flex-col items-center justify-center gap-2 ${isProduct ? "bg-gradient-to-br from-emerald-50 to-teal-50" : "bg-gradient-to-br from-sky-50 to-blue-50"}`}>
+              {isProduct
+                ? <Package className="h-10 w-10 text-emerald-200" />
+                : <Truck className="h-10 w-10 text-sky-200" />
+              }
+              <span className="text-[10px] text-slate-300 font-medium">Belum ada foto</span>
+            </div>
+          );
+        })()}
         {item.hasVideo && (
           <div className="absolute top-2 right-2 bg-black/60 rounded-full px-2 py-0.5 flex items-center gap-1">
             <svg className="h-3 w-3 text-white fill-white" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
             <span className="text-[10px] text-white font-medium">Video</span>
+          </div>
+        )}
+        {(item.isFeatured || (daysUntilExpiry !== null && daysUntilExpiry <= 7)) && (
+          <div className="absolute top-2 left-2 flex flex-col gap-1 z-10">
+            {item.isFeatured && (
+              <span className="bg-amber-400 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-md leading-tight">⭐ Unggulan</span>
+            )}
+            {daysUntilExpiry !== null && daysUntilExpiry <= 7 && (
+              <span className="bg-orange-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-md leading-tight">
+                {daysUntilExpiry <= 0 ? "Berakhir hari ini" : `Berakhir ${daysUntilExpiry}h`}
+              </span>
+            )}
           </div>
         )}
       </div>
@@ -197,16 +272,33 @@ function ItemCard({ item, onClick }: { item: MarketplaceItem; onClick: () => voi
           )}
         </div>
 
-        {/* Price */}
+        {/* Price + compare */}
         <div className="mt-auto pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
-          <div>
+          <div
+            className="flex-1 cursor-pointer"
+            onClick={(e) => { e.stopPropagation(); onClick(); }}
+          >
             {item.priceSell != null
               ? <span className="text-[16px] font-extrabold text-sky-700">{formatPrice(item.priceSell, item.currency)}</span>
               : <span className="text-[12px] text-slate-400 italic">Harga nego</span>
             }
             {item.unit && <span className="text-[11px] text-slate-400 ml-1">/ {item.unit}</span>}
           </div>
-          <ChevronRight className="h-4 w-4 text-slate-400 shrink-0" />
+          <button
+            onClick={(e) => { e.stopPropagation(); onToggleCompare(item.id); }}
+            disabled={!isCompared && compareDisabled}
+            title={isCompared ? "Hapus dari perbandingan" : compareDisabled ? "Maks. 4 item" : "Tambah ke perbandingan"}
+            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-[11px] font-bold transition-all duration-150 shrink-0 border ${
+              isCompared
+                ? "bg-sky-600 text-white border-sky-600 shadow-sm"
+                : compareDisabled
+                  ? "bg-slate-100 text-slate-300 border-slate-200 cursor-not-allowed"
+                  : "bg-white text-sky-600 border-sky-200 hover:bg-sky-50 hover:border-sky-400"
+            }`}
+          >
+            <GitCompareArrows className="h-3.5 w-3.5" />
+            {isCompared ? "✓" : "Banding"}
+          </button>
         </div>
       </div>
     </div>
@@ -234,7 +326,7 @@ function ItemDetailModal({ item, onClose }: { item: MarketplaceItem; onClose: ()
   function handleRequestQuote() {
     onClose();
     if (item.templateKind === "service") {
-      setLocation("/jasa");
+      setLocation(`/jasa/vendor/${item.vendorId}`);
     } else {
       setLocation("/order-produk");
     }
@@ -349,6 +441,10 @@ function FilterSidebar({
   onReset,
   searchQuery,
   onSearchChange,
+  isService,
+  serviceCategories,
+  activeCategory,
+  onCategoryChange,
 }: {
   filters: FilterFieldDef[];
   active: ActiveFilters;
@@ -356,6 +452,10 @@ function FilterSidebar({
   onReset: () => void;
   searchQuery: string;
   onSearchChange: (v: string) => void;
+  isService?: boolean;
+  serviceCategories?: ServiceCategoryOption[];
+  activeCategory?: string;
+  onCategoryChange?: (key: string) => void;
 }) {
   const hasActive = Object.values(active).some((v) => v !== null) || searchQuery.trim() !== "";
 
@@ -391,7 +491,42 @@ function FilterSidebar({
         </button>
       )}
 
-      {/* Filter cards */}
+      {/* ── Kategori Layanan (service only, driven from actual item data) ── */}
+      {isService && serviceCategories && serviceCategories.length > 0 && (
+        <div className="bg-white rounded-xl border border-slate-200 p-3">
+          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-2">
+            Kategori Layanan
+          </div>
+          <div className="space-y-0.5">
+            {/* "Semua" option */}
+            <button
+              onClick={() => onCategoryChange?.("all")}
+              className={`w-full text-left px-3 py-2 rounded-lg text-[12px] font-semibold transition-all duration-150 ${
+                !activeCategory || activeCategory === "all"
+                  ? "bg-sky-600 text-white"
+                  : "text-slate-600 hover:bg-slate-50 hover:text-slate-800"
+              }`}
+            >
+              Semua Jasa
+            </button>
+            {serviceCategories.map((cat) => (
+              <button
+                key={cat.key}
+                onClick={() => onCategoryChange?.(cat.key)}
+                className={`w-full text-left px-3 py-2 rounded-lg text-[12px] font-semibold transition-all duration-150 ${
+                  activeCategory === cat.key
+                    ? "bg-sky-600 text-white"
+                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-800"
+                }`}
+              >
+                {cat.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Filter cards (template-derived + standard) */}
       {filters.map((f) => (
         <div key={f.key} className="bg-white rounded-xl border border-slate-200 p-3 space-y-2">
           <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">{f.label}</div>
@@ -431,7 +566,13 @@ function FilterSidebar({
         </div>
       ))}
 
-      {filters.length === 0 && (
+      {isService && (!serviceCategories || serviceCategories.length === 0) && filters.length === 0 && (
+        <div className="bg-slate-50 rounded-xl border border-slate-200 p-4 text-center text-[12px] text-slate-400">
+          <Filter className="h-4 w-4 mx-auto mb-1 opacity-40" />
+          Filter tersedia setelah ada item
+        </div>
+      )}
+      {!isService && filters.length === 0 && (
         <div className="bg-slate-50 rounded-xl border border-slate-200 p-4 text-center text-[12px] text-slate-400">
           <Filter className="h-4 w-4 mx-auto mb-1 opacity-40" />
           Filter tersedia setelah ada item
@@ -475,10 +616,84 @@ function detectTypeFromQ(q: string): { tab: "product" | "service"; category: str
   return null;
 }
 
+// ── Realtime: vendor_catalog_items (INSERT/UPDATE/DELETE) ────────────────────
+// Deteksi service item: templateKind=service, kind=service, serviceType ada, atau category jasa
+function isServiceCatalogItem(row: Record<string, unknown>): boolean {
+  return row["template_kind"] === "service"
+    || row["templateKind"] === "service"
+    || row["kind"] === "service"
+    || !!row["service_type"]
+    || !!row["serviceType"];
+}
+
+function useMarketplaceCatalogRealtime() {
+  const qc = useQueryClient();
+
+  const handleCatalogChange = useCallback((payload: { eventType: string; new: Record<string, unknown>; old: Record<string, unknown> }) => {
+    const row = (payload.new ?? payload.old ?? {}) as Record<string, unknown>;
+    const isService = isServiceCatalogItem(row);
+
+    if (import.meta.env.DEV) {
+      console.log("[Realtime] vendor_catalog_items changed", payload.eventType, row["id"], isService ? "service" : "product");
+    }
+
+    if (isService) {
+      // Refetch semua query marketplace tab service
+      qc.invalidateQueries({
+        predicate: (q) => {
+          const k = q.queryKey as unknown[];
+          return k[0] === "marketplace" && k[1] === "service";
+        },
+      });
+    } else {
+      // Refetch semua query marketplace tab product
+      qc.invalidateQueries({
+        predicate: (q) => {
+          const k = q.queryKey as unknown[];
+          return k[0] === "marketplace" && k[1] === "product";
+        },
+      });
+    }
+  }, [qc]);
+
+  useEffect(() => {
+    if (!supabase) return;
+    const channel = supabase
+      .channel("marketplace-catalog-realtime")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "vendor_catalog_items" },
+        handleCatalogChange,
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "vendor_catalog_items" },
+        handleCatalogChange,
+      )
+      .on(
+        "postgres_changes",
+        { event: "DELETE", schema: "public", table: "vendor_catalog_items" },
+        handleCatalogChange,
+      )
+      .subscribe();
+    return () => {
+      supabase!.removeChannel(channel);
+    };
+  }, [handleCatalogChange]);
+}
+
 // ── Main Page ──────────────────────────────────────────────────────────────────
 export default function MarketplacePage() {
   const [, setLocation] = useLocation();
   const search = useSearch(); // e.g. "type=service&category=trucking&q=foo"
+
+  // Redirect trucking category to dedicated /trucking page
+  useEffect(() => {
+    const sp = new URLSearchParams(search);
+    if (sp.get("category") === "trucking") {
+      setLocation("/trucking");
+    }
+  }, [search, setLocation]);
 
   // Derive tab/category/q from URL search string — reactive to navigation
   // If `type` is explicit in URL → honour it.
@@ -489,27 +704,28 @@ export default function MarketplacePage() {
     const rawQ        = sp.get("q") ?? "";
     const rawCat      = sp.get("category") ?? "all";
 
-    if (explicitType === "service" || explicitType === "product") {
+    // Always product tab — service tab removed
+    if (explicitType === "product") {
       return {
-        urlTab:      explicitType as "product" | "service",
+        urlTab:      "product" as const,
         urlCategory: rawCat,
         urlQ:        rawQ,
       };
     }
 
-    // No explicit type — try to detect from keyword
+    // No explicit type — try to detect from keyword (product only)
     if (rawQ) {
       const detected = detectTypeFromQ(rawQ);
-      if (detected) {
+      if (detected && detected.tab === "product") {
         return {
-          urlTab:      detected.tab,
+          urlTab:      "product" as const,
           urlCategory: rawCat !== "all" ? rawCat : detected.category,
           urlQ:        rawQ,
         };
       }
     }
 
-    // Fallback: product tab (or keep current default)
+    // Fallback: product tab
     return {
       urlTab:      "product" as const,
       urlCategory: rawCat,
@@ -522,6 +738,28 @@ export default function MarketplacePage() {
   const [activeFilters, setActiveFilters] = useState<ActiveFilters>({});
   const [searchQuery, setSearchQuery] = useState(urlQ);
   const [showMobileFilter, setShowMobileFilter] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const PAGE_SIZE = 24;
+
+  // ── Compare state ────────────────────────────────────────────────────────
+  const [compareIds, setCompareIds] = useState<number[]>([]);
+  const [showCompareModal, setShowCompareModal] = useState(false);
+  const MAX_COMPARE = 4;
+
+  const handleToggleCompare = useCallback((id: number) => {
+    setCompareIds((prev) => {
+      if (prev.includes(id)) return prev.filter((x) => x !== id);
+      if (prev.length >= MAX_COMPARE) return prev;
+      return [...prev, id];
+    });
+  }, []);
+
+  const handleClearCompare = useCallback(() => {
+    setCompareIds([]);
+    setShowCompareModal(false);
+  }, []);
+  // Realtime: vendor_catalog_items untuk item service dari etalase vendor
+  useMarketplaceCatalogRealtime();
 
   // Sync state whenever URL search params change (navbar links, back/forward)
   useEffect(() => {
@@ -529,18 +767,10 @@ export default function MarketplacePage() {
     setActiveCategory(urlCategory);
     setSearchQuery(urlQ);
     setActiveFilters({});
+    setCurrentPage(1);
   }, [urlTab, urlCategory, urlQ]);
 
-  const categories = activeTab === "product" ? PRODUCT_CATS : SERVICE_CATS;
-
-  // Reset category when tab changes — also update URL
-  function handleTabChange(tab: "product" | "service") {
-    const sp = new URLSearchParams(search);
-    sp.set("type", tab);
-    sp.delete("category");
-    sp.delete("q");
-    setLocation(`/marketplace?${sp.toString()}`);
-  }
+  const categories = PRODUCT_CATS;
 
   function handleCategoryChange(cat: string) {
     const sp = new URLSearchParams(search);
@@ -566,16 +796,26 @@ export default function MarketplacePage() {
   // ── Build filters from fetched items ──────────────────────────────────────
   const filters = useMemo(() => buildCatalogFilters(items), [items]);
 
+  // Service tab removed — marketplace is product-only
+
   // ── Apply active filters + search ─────────────────────────────────────────
   const visibleItems = useMemo(() => {
     const merged: ActiveFilters = { ...activeFilters };
     if (searchQuery.trim()) merged["__search"] = searchQuery.trim();
-    return items.filter((item) => matchVendorCatalog(item, merged));
+    return items
+      .filter((item) => matchVendorCatalog(item, merged));
   }, [items, activeFilters, searchQuery]);
+
+  // ── Compare items (resolved from IDs → actual items) ─────────────────────
+  const compareItems = useMemo(
+    () => compareIds.map((id) => items.find((i) => i.id === id)).filter(Boolean) as MarketplaceItem[],
+    [compareIds, items],
+  );
 
   const handleFilterChange = useCallback(
     (key: string, value: string | [number | null, number | null] | null) => {
       setActiveFilters((prev) => ({ ...prev, [key]: value }));
+      setCurrentPage(1);
     },
     [],
   );
@@ -583,9 +823,12 @@ export default function MarketplacePage() {
   const handleReset = useCallback(() => {
     setActiveFilters({});
     setSearchQuery("");
+    setCurrentPage(1);
   }, []);
 
   const activeFilterCount = Object.values(activeFilters).filter((v) => v !== null).length + (searchQuery.trim() ? 1 : 0);
+  const totalPages = Math.max(1, Math.ceil(visibleItems.length / PAGE_SIZE));
+  const pagedItems = visibleItems.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
   return (
     <div className="min-h-screen bg-[#F8FAFC]">
@@ -604,34 +847,8 @@ export default function MarketplacePage() {
             </div>
           </div>
           <p className="text-[14px] text-sky-100 max-w-2xl leading-relaxed">
-            Jelajahi produk dan layanan dari vendor kami yang telah terverifikasi. Temukan penawaran terbaik, bandingkan spesifikasi, dan ajukan permintaan penawaran langsung.
+            Jelajahi produk dari vendor kami yang telah terverifikasi. Temukan penawaran terbaik, bandingkan spesifikasi, dan ajukan permintaan penawaran langsung.
           </p>
-
-          {/* ── Tab switcher ────────────────────────────────────────────── */}
-          <div className="flex gap-2 mt-6">
-            <button
-              onClick={() => handleTabChange("product")}
-              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] font-semibold transition-all duration-200 ${
-                activeTab === "product"
-                  ? "bg-white text-sky-700 shadow-md"
-                  : "bg-white/10 text-white hover:bg-white/20"
-              }`}
-            >
-              <Package className="h-4 w-4" />
-              Produk
-            </button>
-            <button
-              onClick={() => handleTabChange("service")}
-              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] font-semibold transition-all duration-200 ${
-                activeTab === "service"
-                  ? "bg-white text-sky-700 shadow-md"
-                  : "bg-white/10 text-white hover:bg-white/20"
-              }`}
-            >
-              <Truck className="h-4 w-4" />
-              Layanan / Jasa
-            </button>
-          </div>
         </div>
       </div>
 
@@ -687,6 +904,10 @@ export default function MarketplacePage() {
               onReset={handleReset}
               searchQuery={searchQuery}
               onSearchChange={setSearchQuery}
+              isService={false}
+              serviceCategories={[]}
+              activeCategory={activeCategory}
+              onCategoryChange={handleCategoryChange}
             />
           </div>
 
@@ -720,7 +941,7 @@ export default function MarketplacePage() {
                 <Store className="h-12 w-12 text-slate-300 mb-3" />
                 <p className="text-[16px] font-semibold text-slate-500">
                   {activeFilterCount > 0 || searchQuery.trim()
-                    ? "Tidak ada produk atau layanan yang cocok."
+                    ? "Tidak ada produk yang cocok."
                     : "Belum ada item tersedia"}
                 </p>
                 <p className="text-[13px] text-slate-400 mt-1 max-w-xs">
@@ -738,15 +959,74 @@ export default function MarketplacePage() {
 
             {/* Grid */}
             {!isLoading && visibleItems.length > 0 && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-                {visibleItems.map((item) => (
-                  <ItemCard key={item.id} item={item} onClick={() => setLocation(`/marketplace/${item.id}`)} />
-                ))}
-              </div>
+              <>
+                <div className={`grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 ${compareIds.length > 0 ? "pb-28" : ""}`}>
+                  {pagedItems.map((item) => (
+                    <ItemCard
+                      key={item.id}
+                      item={item}
+                      isCompared={compareIds.includes(item.id)}
+                      compareDisabled={compareIds.length >= MAX_COMPARE && !compareIds.includes(item.id)}
+                      onToggleCompare={handleToggleCompare}
+                      onClick={() => {
+                        setLocation(`/marketplace/${item.id}`);
+                      }}
+                    />
+                  ))}
+                </div>
+                {/* Pagination */}
+                {totalPages > 1 && (
+                  <div className="flex items-center justify-center gap-3 mt-8">
+                    <button
+                      onClick={() => { setCurrentPage((p) => Math.max(1, p - 1)); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+                      disabled={currentPage === 1}
+                      className="px-4 py-2 rounded-xl text-[13px] font-semibold border border-slate-200 bg-white text-slate-700 hover:border-sky-300 hover:text-sky-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                    >
+                      ← Sebelumnya
+                    </button>
+                    <span className="text-[13px] text-slate-600 font-medium px-3">
+                      Halaman <span className="text-sky-700 font-bold">{currentPage}</span> dari {totalPages}
+                    </span>
+                    <button
+                      onClick={() => { setCurrentPage((p) => Math.min(totalPages, p + 1)); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+                      disabled={currentPage === totalPages}
+                      className="px-4 py-2 rounded-xl text-[13px] font-semibold border border-slate-200 bg-white text-slate-700 hover:border-sky-300 hover:text-sky-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                    >
+                      Berikutnya →
+                    </button>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
       </div>
+
+      {/* ── Compare Tray (sticky bottom) ──────────────────────────────────── */}
+      <CompareTray
+        compareIds={compareIds}
+        allItems={items}
+        onRemove={handleToggleCompare}
+        onClear={handleClearCompare}
+        onOpen={() => setShowCompareModal(true)}
+      />
+
+      {/* ── Compare Modal ─────────────────────────────────────────────────── */}
+      {showCompareModal && compareItems.length >= 2 && (
+        <CompareModal
+          items={compareItems}
+          onClose={() => setShowCompareModal(false)}
+          onRemove={(id) => {
+            handleToggleCompare(id);
+            if (compareIds.length <= 2) setShowCompareModal(false);
+          }}
+          onRequestQuote={(item) => {
+            setShowCompareModal(false);
+            handleClearCompare();
+            setLocation(`/marketplace/${item.id}`);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -98,5 +98,11 @@ export async function runCustomerQuoteFlowMigration(): Promise<void> {
       ADD COLUMN IF NOT EXISTS selected_vendor_link_id INTEGER;
   `);
 
+  // ── Media Foundation: idempotent ADD COLUMN IF NOT EXISTS ──────────────────
+  await db.execute(sql`
+    ALTER TABLE customer_quote_links
+      ADD COLUMN IF NOT EXISTS media_assets JSONB NOT NULL DEFAULT '[]'
+  `);
+
   logger.info("Customer quote flow migration: ok");
 }

@@ -103,6 +103,8 @@ const COA_LEAF_TEMPLATES: SeedAccount[] = [
   { code: "4-1015", name: "Pendapatan Penjualan Barang",      type: "revenue", parentCode: "4-1000" },
   { code: "4-1016", name: "Pendapatan Membership Sport Center", type: "revenue", parentCode: "4-1000" },
   { code: "4-1017", name: "Pendapatan Booking Sport Center",    type: "revenue", parentCode: "4-1000" },
+  { code: "4-1018", name: "Pendapatan Handling Service",        type: "revenue", parentCode: "4-1000" },
+  { code: "4-1019", name: "Pendapatan Document Service",        type: "revenue", parentCode: "4-1000" },
   // ── Pendapatan Lain-lain ──────────────────────────────────
   { code: "4-1020", name: "Pendapatan Lain-lain",             type: "revenue", parentCode: "4-2000" },
   { code: "4-2010", name: "Pendapatan Bunga",                 type: "revenue", parentCode: "4-2000" },
@@ -112,6 +114,14 @@ const COA_LEAF_TEMPLATES: SeedAccount[] = [
   { code: "5-1011", name: "Biaya Pengiriman Langsung",        type: "expense", parentCode: "5-1000" },
   { code: "5-1012", name: "Biaya Kepabeanan",                 type: "expense", parentCode: "5-1000" },
   { code: "5-1013", name: "Biaya Penanganan & Handling",      type: "expense", parentCode: "5-1000" },
+  // ── HPP Logistics Marketplace ─────────────────────────────
+  { code: "5-1020", name: "HPP Jasa Logistik",                type: "expense", parentCode: "5-1000" },
+  { code: "5-1021", name: "HPP Sea Freight",                  type: "expense", parentCode: "5-1000" },
+  { code: "5-1022", name: "HPP Air Freight",                  type: "expense", parentCode: "5-1000" },
+  { code: "5-1023", name: "HPP Trucking / Land Freight",      type: "expense", parentCode: "5-1000" },
+  { code: "5-1024", name: "HPP PPJK / Kepabeanan",            type: "expense", parentCode: "5-1000" },
+  { code: "5-1025", name: "HPP Handling Service",             type: "expense", parentCode: "5-1000" },
+  { code: "5-1026", name: "HPP Document Service",             type: "expense", parentCode: "5-1000" },
   // ── Beban Operasional ─────────────────────────────────────
   { code: "5-2010", name: "Beban Gaji & Tunjangan",           type: "expense", parentCode: "5-2000" },
   { code: "5-2020", name: "Beban Sewa",                       type: "expense", parentCode: "5-2000" },
@@ -193,6 +203,7 @@ async function applyRuntimeMigrations(): Promise<void> {
   } catch { /* ignore */ }
   // Add new enum values to accounting_entry_source (safe: ignored if already exists)
   try { await db.execute(sql.raw(`ALTER TYPE accounting_entry_source ADD VALUE IF NOT EXISTS 'cogs_delivery'`)); } catch { /* already exists */ }
+  try { await db.execute(sql.raw(`ALTER TYPE accounting_entry_source ADD VALUE IF NOT EXISTS 'logistic_vendor_cost'`)); } catch { /* already exists */ }
   // Deduplicate chart_of_accounts keeping lowest id per (company_id, code) before creating unique index
   await db.execute(sql.raw(`
     DELETE FROM chart_of_accounts

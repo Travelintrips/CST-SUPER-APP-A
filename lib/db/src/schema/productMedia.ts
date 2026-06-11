@@ -17,6 +17,11 @@ export const productMediaTable = pgTable("product_media", {
   uploadedBy: text("uploaded_by"),
   uploadedByRole: text("uploaded_by_role"),
   storagePath: text("storage_path"),
+  imageSource: text("image_source").default("admin"),
+  aiImageStatus: text("ai_image_status"),
+  generationPrompt: text("generation_prompt"),
+  duration: integer("duration"),
+  fileSizeBytes: integer("file_size_bytes"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

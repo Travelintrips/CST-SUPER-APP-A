@@ -126,6 +126,50 @@ export default function LogisticsPortalOrderDetailPage() {
   const [convertForm, setConvertForm] = useState({ transportMode: "", cargoType: "" });
   const [converting, setConverting] = useState(false);
 
+  // ── Vendor Fulfillment Modal ───────────────────────────────────────────────
+  interface VendorFulfillItem {
+    id: number;
+    serviceName: string;
+    serviceType: string | null;
+    category: string | null;
+    subtotal: number;
+    priceSnapshot: Record<string, unknown> | null;
+    calculationInput: Record<string, unknown> | null;
+    templateSnapshot: Record<string, unknown> | null;
+    vendorCatalogItemId: number | null;
+    vendorFulfillmentId: number | null;
+  }
+  const [vfModal, setVfModal] = useState<{ open: boolean; item: VendorFulfillItem | null; notes: string }>({ open: false, item: null, notes: "" });
+  const [vfSubmitting, setVfSubmitting] = useState(false);
+
+  async function submitVendorFulfillment(notes?: string) {
+    if (!vfModal.item) return;
+    setVfSubmitting(true);
+    try {
+      const res = await fetch(`/api/logistic/orders/${orderId}/items/${vfModal.item.id}/vendor-fulfillment`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ notes: notes ?? "" }),
+      });
+      const data = await res.json() as { success?: boolean; message?: string; fulfillment?: { id: number; status: string } };
+      if (!res.ok && !data.success) {
+        throw new Error(data.message ?? "Gagal membuat vendor fulfillment");
+      }
+      const isNew = data.message !== "already_exists";
+      toast({
+        title: isNew ? "Vendor Fulfillment berhasil dibuat" : "Vendor Fulfillment sudah ada",
+        description: `Item: ${vfModal.item.serviceName}${!isNew ? " — data fulfillment sudah tersedia" : ""}`,
+      });
+      setVfModal({ open: false, item: null });
+      qc.invalidateQueries({ queryKey: getGetLogisticOrderQueryKey(orderId) });
+    } catch (e) {
+      toast({ title: "Gagal", description: (e as Error).message, variant: "destructive" });
+    } finally {
+      setVfSubmitting(false);
+    }
+  }
+
   function openEditDetail() {
     if (!order) return;
     setEditDetailForm({
@@ -880,7 +924,127 @@ export default function LogisticsPortalOrderDetailPage() {
                           const marginPct = sellingPrice > 0 ? (margin / sellingPrice) * 100 : 0;
                           return (
                             <TableRow key={item.id}>
-                              <TableCell className="font-medium text-sm">{item.serviceName}</TableCell>
+                              <TableCell className="font-medium text-sm">
+                                <div>{item.serviceName}</div>
+                                <div className="flex flex-wrap gap-1 mt-0.5">
+                                  {(item as any).itemSource === "vendor_catalog_item" && (
+                                    <span className="inline-flex items-center text-[10px] font-medium bg-blue-100 text-blue-700 border border-blue-200 rounded px-1.5 py-0.5">Vendor Marketplace</span>
+                                  )}
+                                  {(item as any).serviceType && (
+                                    <span className="inline-flex items-center text-[10px] font-medium bg-muted text-muted-foreground border rounded px-1.5 py-0.5">{(item as any).serviceType}</span>
+                                  )}
+                                </div>
+                                {(item as any).itemSource === "vendor_catalog_item" && (item as any).priceSnapshot && (
+                                  <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] bg-blue-50 border border-blue-100 rounded px-2 py-1.5">
+                                    {(item as any).priceSnapshot.vendorName && (
+                                      <span><span className="text-slate-400">Vendor: </span><span className="font-semibold text-slate-700">{(item as any).priceSnapshot.vendorName}</span></span>
+                                    )}
+                                    {(item as any).priceSnapshot.priceSell != null && (
+                                      <span><span className="text-slate-400">Harga Jual: </span><span className="font-semibold text-sky-700">{Number((item as any).priceSnapshot.priceSell).toLocaleString("id-ID", { style: "currency", currency: (item as any).priceSnapshot.currency ?? "IDR", maximumFractionDigits: 0 })}</span></span>
+                                    )}
+                                    {(item as any).priceSnapshot.unit && (
+                                      <span><span className="text-slate-400">Unit: </span><span className="font-medium text-slate-700">/ {(item as any).priceSnapshot.unit}</span></span>
+                                    )}
+                                  </div>
+                                )}
+                                {(item as any).itemSource === "vendor_catalog_item" && (item as any).calculationInput && typeof (item as any).calculationInput === "object" && Object.keys((item as any).calculationInput).length > 0 && (
+                                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] bg-slate-50 border border-slate-100 rounded px-2 py-1.5">
+                                    <span className="text-slate-400 font-semibold w-full">Input Kalkulator:</span>
+                                    {Object.entries((item as any).calculationInput as Record<string, unknown>)
+                                      .filter(([, v]) => v !== undefined && v !== null && v !== "")
+                                      .map(([k, v]) => (
+                                        <span key={k}><span className="text-slate-400">{k}: </span><span className="font-medium text-slate-700">{String(v)}</span></span>
+                                      ))}
+                                  </div>
+                                )}
+                                {(item as any).itemSource === "vendor_catalog_item" && (() => {
+                                  const snap = (item as any).templateSnapshot ?? (item as any).inputData?.templateSnapshot;
+                                  if (!snap || typeof snap !== "object") return null;
+                                  const fields = (snap as Record<string, unknown>).fields;
+                                  const serviceType = (snap as Record<string, unknown>).serviceType as string | undefined;
+                                  const category = (snap as Record<string, unknown>).category as string | undefined;
+                                  const version = (snap as Record<string, unknown>).version as string | undefined;
+                                  const hasFields = Array.isArray(fields) && fields.length > 0;
+                                  return (
+                                    <details className="mt-1">
+                                      <summary className="text-[10px] text-slate-400 font-semibold cursor-pointer select-none hover:text-slate-600">
+                                        Template Snapshot {version ? `v${version}` : ""}
+                                      </summary>
+                                      <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] bg-violet-50 border border-violet-100 rounded px-2 py-1.5">
+                                        {serviceType && <span><span className="text-slate-400">serviceType: </span><span className="font-medium text-slate-700">{serviceType}</span></span>}
+                                        {category && <span><span className="text-slate-400">category: </span><span className="font-medium text-slate-700">{category}</span></span>}
+                                        {hasFields && (
+                                          <span className="w-full">
+                                            <span className="text-slate-400">fields: </span>
+                                            <span className="font-medium text-slate-700">
+                                              {(fields as Array<{ key?: string; label?: string; required?: boolean }>)
+                                                .map((f) => f.label ?? f.key ?? "?")
+                                                .join(" · ")}
+                                            </span>
+                                          </span>
+                                        )}
+                                      </div>
+                                    </details>
+                                  );
+                                })()}
+                                {(item as any).itemSource === "vendor_catalog_item" && (item as any).vendorCatalogItemId && (
+                                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                                    {(item as any).vendorFulfillmentId ? (
+                                      <>
+                                        {(() => {
+                                          const st: string = (item as any).vendorFulfillmentStatus ?? "pending";
+                                          const label = st === "completed" ? "Completed" : st === "in_progress" ? "In Progress" : st === "cancelled" ? "Cancelled" : "Pending";
+                                          const cls = st === "completed"
+                                            ? "bg-emerald-100 text-emerald-700 border-emerald-200"
+                                            : st === "in_progress"
+                                            ? "bg-amber-100 text-amber-700 border-amber-200"
+                                            : st === "cancelled"
+                                            ? "bg-red-100 text-red-700 border-red-200"
+                                            : "bg-blue-100 text-blue-700 border-blue-200";
+                                          return (
+                                            <span className={`inline-flex items-center gap-1 text-[10px] font-semibold rounded px-2 py-0.5 border ${cls}`}>
+                                              <CheckCircle className="h-3 w-3" /> Vendor Fulfillment: {label}
+                                            </span>
+                                          );
+                                        })()}
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          className="h-6 text-[11px] px-2 gap-1 border-slate-200 text-slate-500"
+                                          disabled
+                                          title="Halaman detail fulfillment belum tersedia"
+                                        >
+                                          <ExternalLink className="h-3 w-3" /> Lihat Fulfillment
+                                        </Button>
+                                      </>
+                                    ) : (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-6 text-[11px] px-2 gap-1 border-blue-300 text-blue-700 hover:bg-blue-50"
+                                        onClick={() => setVfModal({
+                                          open: true,
+                                          notes: "",
+                                          item: {
+                                            id: item.id,
+                                            serviceName: item.serviceName,
+                                            serviceType: (item as any).serviceType ?? null,
+                                            category: item.category ?? null,
+                                            subtotal: item.subtotal ?? 0,
+                                            priceSnapshot: (item as any).priceSnapshot ?? null,
+                                            calculationInput: (item as any).calculationInput ?? null,
+                                            templateSnapshot: (item as any).templateSnapshot ?? null,
+                                            vendorCatalogItemId: (item as any).vendorCatalogItemId ?? null,
+                                            vendorFulfillmentId: (item as any).vendorFulfillmentId ?? null,
+                                          },
+                                        })}
+                                      >
+                                        <Truck className="h-3 w-3" /> Proses Vendor
+                                      </Button>
+                                    )}
+                                  </div>
+                                )}
+                              </TableCell>
                               <TableCell className="text-sm text-muted-foreground">{item.category}</TableCell>
                               <TableCell className="text-right text-sm font-mono">{idr(sellingPrice)}</TableCell>
                               {showMargin && (
@@ -2346,6 +2510,109 @@ export default function LogisticsPortalOrderDetailPage() {
               disabled={converting}
             >
               {converting ? <><Loader2 className="h-4 w-4 animate-spin" /> Memproses...</> : <><Truck className="h-4 w-4" /> Konversi</>}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Modal: Buat Vendor Fulfillment ── */}
+      <Dialog open={vfModal.open} onOpenChange={(o) => { if (!vfSubmitting) setVfModal(s => ({ ...s, open: o, notes: o ? s.notes : "" })); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Truck className="h-5 w-5 text-blue-600" /> Buat Vendor Fulfillment
+            </DialogTitle>
+          </DialogHeader>
+          {vfModal.item && (
+            <div className="space-y-3 py-1 text-sm">
+              <div className="rounded-lg border bg-blue-50 border-blue-100 p-3 space-y-1.5">
+                <div className="flex justify-between gap-4">
+                  <span className="text-muted-foreground shrink-0">Layanan</span>
+                  <span className="text-right font-semibold">{vfModal.item.serviceName}</span>
+                </div>
+                {vfModal.item.priceSnapshot && (vfModal.item.priceSnapshot as Record<string,unknown>).vendorName && (
+                  <div className="flex justify-between gap-4">
+                    <span className="text-muted-foreground shrink-0">Vendor</span>
+                    <span className="text-right font-semibold text-slate-700">{String((vfModal.item.priceSnapshot as Record<string,unknown>).vendorName)}</span>
+                  </div>
+                )}
+                {vfModal.item.serviceType && (
+                  <div className="flex justify-between gap-4">
+                    <span className="text-muted-foreground shrink-0">Service Type</span>
+                    <span className="text-right">{vfModal.item.serviceType}</span>
+                  </div>
+                )}
+                {vfModal.item.category && (
+                  <div className="flex justify-between gap-4">
+                    <span className="text-muted-foreground shrink-0">Kategori</span>
+                    <span className="text-right">{vfModal.item.category}</span>
+                  </div>
+                )}
+                <div className="flex justify-between gap-4">
+                  <span className="text-muted-foreground shrink-0">Total Harga Customer</span>
+                  <span className="text-right font-semibold text-sky-700">{idr(vfModal.item.subtotal)}</span>
+                </div>
+                {vfModal.item.priceSnapshot && (vfModal.item.priceSnapshot as Record<string,unknown>).unit && (
+                  <div className="flex justify-between gap-4">
+                    <span className="text-muted-foreground shrink-0">Unit</span>
+                    <span className="text-right">/ {String((vfModal.item.priceSnapshot as Record<string,unknown>).unit)}</span>
+                  </div>
+                )}
+              </div>
+              {vfModal.item.calculationInput && Object.keys(vfModal.item.calculationInput).length > 0 && (
+                <div className="rounded-lg border bg-slate-50 p-3 space-y-1">
+                  <p className="text-[11px] font-semibold text-slate-500 mb-1">Input Kalkulator</p>
+                  {Object.entries(vfModal.item.calculationInput)
+                    .filter(([, v]) => v !== undefined && v !== null && v !== "")
+                    .map(([k, v]) => (
+                      <div key={k} className="flex justify-between gap-4 text-xs">
+                        <span className="text-muted-foreground shrink-0">{k}</span>
+                        <span className="text-right font-medium">{String(v)}</span>
+                      </div>
+                    ))}
+                </div>
+              )}
+              {vfModal.item.templateSnapshot && (() => {
+                const snap = vfModal.item!.templateSnapshot as Record<string,unknown>;
+                const st = snap.serviceType as string | undefined;
+                const cat = snap.category as string | undefined;
+                const ver = snap.version as string | undefined;
+                if (!st && !cat && !ver) return null;
+                return (
+                  <div className="rounded-lg border bg-violet-50 border-violet-100 p-3 space-y-1">
+                    <p className="text-[11px] font-semibold text-slate-500 mb-1">Template Snapshot</p>
+                    {st && <div className="flex justify-between gap-4 text-xs"><span className="text-muted-foreground">serviceType</span><span className="font-medium">{st}</span></div>}
+                    {cat && <div className="flex justify-between gap-4 text-xs"><span className="text-muted-foreground">category</span><span className="font-medium">{cat}</span></div>}
+                    {ver && <div className="flex justify-between gap-4 text-xs"><span className="text-muted-foreground">version</span><span className="font-medium">{ver}</span></div>}
+                  </div>
+                );
+              })()}
+              <div className="space-y-1.5">
+                <Label className="text-xs text-slate-500">Catatan Admin (opsional)</Label>
+                <textarea
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
+                  rows={2}
+                  placeholder="Instruksi atau catatan untuk vendor..."
+                  value={vfModal.notes}
+                  onChange={(e) => setVfModal(s => ({ ...s, notes: e.target.value }))}
+                  disabled={vfSubmitting}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground bg-amber-50 border border-amber-100 rounded px-3 py-2">
+                Vendor fulfillment akan dibuat dengan status <strong>pending</strong>. Data snapshot order item akan tersimpan untuk referensi vendor.
+              </p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setVfModal({ open: false, item: null, notes: "" })} disabled={vfSubmitting}>Batal</Button>
+            <Button
+              className="gap-2 bg-blue-600 hover:bg-blue-700 text-white"
+              onClick={() => submitVendorFulfillment(vfModal.notes)}
+              disabled={vfSubmitting}
+            >
+              {vfSubmitting
+                ? <><Loader2 className="h-4 w-4 animate-spin" /> Memproses...</>
+                : <><Truck className="h-4 w-4" /> Buat Vendor Fulfillment</>}
             </Button>
           </DialogFooter>
         </DialogContent>

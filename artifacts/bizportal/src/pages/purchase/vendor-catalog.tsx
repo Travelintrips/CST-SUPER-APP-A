@@ -1,6 +1,6 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { AppShell } from "@/components/layout/AppShell";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -33,31 +33,52 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Archive,
   CheckCircle,
   ChevronDown,
+  ChevronUp,
   Eye,
-  Filter,
+  EyeOff,
   Globe,
   Loader2,
-  Pencil,
   RefreshCw,
   Search,
-  XCircle,
   GitCompare,
   X,
   ExternalLink,
   Package,
-  Wrench,
   FileText,
   ClipboardList,
+  Image,
+  Video,
+  Star,
+  StarOff,
+  Play,
+  TrendingUp,
+  DollarSign,
+  Lock,
+  RotateCcw,
+  Send,
 } from "lucide-react";
 import { Link } from "wouter";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+export type MediaAsset = {
+  url: string;
+  name?: string;
+  type?: "image" | "video" | string;
+  mimeType?: string;
+  isCover?: boolean;
+  sortOrder?: number;
+  size?: number;
+  width?: number;
+  height?: number;
+};
 
 type CatalogRow = {
   id: number;
@@ -86,6 +107,7 @@ type CatalogRow = {
   isActive: boolean;
   publishedAt: string | null;
   sourceSubmissionId: number | null;
+  mediaAssets: MediaAsset[];
   createdAt: string;
   updatedAt: string;
 };
@@ -102,11 +124,11 @@ type CatalogDetail = CatalogRow & {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const STATUS_META: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline"; color: string }> = {
-  draft:          { label: "Draft",           variant: "outline",     color: "text-muted-foreground" },
-  pending_review: { label: "Pending Review",  variant: "secondary",   color: "text-yellow-600" },
-  published:      { label: "Published",       variant: "default",     color: "text-green-600" },
-  archived:       { label: "Archived",        variant: "destructive", color: "text-red-500" },
+const STATUS_META: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline"; color: string; bg: string }> = {
+  draft:          { label: "Draft",           variant: "outline",     color: "text-muted-foreground", bg: "bg-gray-100" },
+  pending_review: { label: "Pending Review",  variant: "secondary",   color: "text-yellow-700",       bg: "bg-yellow-100" },
+  published:      { label: "Published",       variant: "default",     color: "text-green-700",        bg: "bg-green-100" },
+  archived:       { label: "Archived",        variant: "destructive", color: "text-red-600",          bg: "bg-red-100" },
 };
 
 const STOCK_META: Record<string, { label: string; color: string }> = {
@@ -120,8 +142,12 @@ function fmtIDR(n: number | null | undefined) {
   return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
 }
 
+function fmtDate(iso: string) {
+  return new Date(iso).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
+}
+
 function StatusBadge({ status }: { status: string }) {
-  const m = STATUS_META[status] ?? { label: status, variant: "outline" as const, color: "" };
+  const m = STATUS_META[status] ?? { label: status, variant: "outline" as const, color: "", bg: "" };
   return <Badge variant={m.variant}>{m.label}</Badge>;
 }
 
@@ -129,6 +155,31 @@ function StockBadge({ status }: { status: string | null }) {
   if (!status) return <span className="text-muted-foreground text-xs">—</span>;
   const m = STOCK_META[status] ?? { label: status, color: "" };
   return <span className={`text-xs font-medium ${m.color}`}>{m.label}</span>;
+}
+
+function isImage(a: MediaAsset) {
+  if (a.type === "image") return true;
+  if (a.mimeType?.startsWith("image/")) return true;
+  if (!a.type && a.url) {
+    const ext = a.url.split("?")[0].split(".").pop()?.toLowerCase() ?? "";
+    return ["jpg", "jpeg", "png", "webp", "gif", "svg", "avif"].includes(ext);
+  }
+  return false;
+}
+
+function isVideo(a: MediaAsset) {
+  if (a.type === "video") return true;
+  if (a.mimeType?.startsWith("video/")) return true;
+  if (!a.type && a.url) {
+    const ext = a.url.split("?")[0].split(".").pop()?.toLowerCase() ?? "";
+    return ["mp4", "webm", "mov", "avi", "mkv"].includes(ext);
+  }
+  return false;
+}
+
+function getCoverAsset(assets: MediaAsset[]): MediaAsset | null {
+  if (!assets || assets.length === 0) return null;
+  return assets.find(a => a.isCover) ?? assets[0];
 }
 
 // ─── API calls ────────────────────────────────────────────────────────────────
@@ -152,17 +203,30 @@ async function patchStatus(id: number, status: string) {
   const res = await fetch(`/api/trading/suppliers/catalog/${id}/status`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
+    credentials: "include",
     body: JSON.stringify({ status }),
   });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
-async function patchFields(id: number, fields: Record<string, unknown>) {
-  const res = await fetch(`/api/trading/suppliers/catalog/${id}/fields`, {
+async function patchPricing(id: number, priceSell: number | null) {
+  const res = await fetch(`/api/trading/suppliers/catalog/${id}/pricing`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(fields),
+    credentials: "include",
+    body: JSON.stringify({ priceSell }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+async function patchMedia(id: number, mediaAssets: MediaAsset[]) {
+  const res = await fetch(`/api/trading/suppliers/catalog/${id}/media`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ mediaAssets }),
   });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
@@ -207,26 +271,338 @@ function SpecValuesView({ values }: { values: Record<string, unknown> | null }) 
   );
 }
 
-function DocumentsView({ documents }: { documents: CatalogDetail["documents"] }) {
-  if (!documents || documents.length === 0)
-    return <p className="text-muted-foreground text-sm">Tidak ada dokumen.</p>;
+// ─── Pricing Dialog ───────────────────────────────────────────────────────────
+
+function PricingDialog({
+  item,
+  open,
+  onClose,
+  onSaved,
+}: {
+  item: CatalogRow | null;
+  open: boolean;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { toast } = useToast();
+  const [priceSell, setPriceSell] = useState("");
+
+  useMemo(() => {
+    if (item) setPriceSell(item.priceSell != null ? String(item.priceSell) : "");
+  }, [item]);
+
+  const priceSellNum  = parseFloat(priceSell) || 0;
+  const priceBaseNum  = item?.priceBase ?? 0;
+  const marginAmount  = priceSellNum - priceBaseNum;
+  const marginPct     = priceSellNum > 0 ? (marginAmount / priceSellNum) * 100 : 0;
+
+  const mutation = useMutation({
+    mutationFn: () => patchPricing(item!.id, priceSell !== "" ? parseFloat(priceSell) : null),
+    onSuccess: () => {
+      toast({ title: "✅ Harga jual diperbarui" });
+      onSaved();
+      onClose();
+    },
+    onError: (e: Error) => toast({ title: "Gagal", description: e.message, variant: "destructive" }),
+  });
+
   return (
-    <div className="space-y-2">
-      {documents.map((doc) => (
-        <div key={doc.key} className="flex items-center justify-between gap-2 p-2 border rounded">
-          <div className="flex items-center gap-2">
-            <FileText className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm">{doc.label}</span>
-            {doc.required && <Badge variant="destructive" className="text-xs">Required</Badge>}
+    <Dialog open={open} onOpenChange={v => !v && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <DollarSign className="w-4 h-4" /> Pricing — {item?.name}
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          {/* priceBase — read-only, admin-only */}
+          <div className="rounded-md border border-orange-200 bg-orange-50 p-3 space-y-1">
+            <div className="flex items-center gap-2">
+              <Lock className="w-3.5 h-3.5 text-orange-500" />
+              <span className="text-xs font-semibold text-orange-600 uppercase">Admin Only — Tidak ditampilkan ke customer</span>
+            </div>
+            <div className="flex items-center justify-between mt-1">
+              <span className="text-sm text-muted-foreground">Harga Dasar (dari vendor)</span>
+              <span className="text-lg font-bold text-orange-600">{fmtIDR(priceBaseNum)}</span>
+            </div>
           </div>
-          {doc.url && (
-            <a href={doc.url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">
-              <ExternalLink className="h-4 w-4" />
-            </a>
+
+          {/* priceSell — editable */}
+          <div className="space-y-1">
+            <Label className="flex items-center gap-1 text-green-700">
+              <Globe className="w-3.5 h-3.5" /> Harga Jual (ditampilkan ke customer)
+            </Label>
+            <Input
+              type="number"
+              step="1000"
+              placeholder="0"
+              value={priceSell}
+              onChange={e => setPriceSell(e.target.value)}
+              className="text-lg font-semibold"
+            />
+          </div>
+
+          {/* Margin — computed */}
+          {priceSell !== "" && priceSellNum > 0 && (
+            <div className="rounded-md bg-muted p-3 flex items-center justify-between">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <TrendingUp className="w-4 h-4" /> Margin
+              </div>
+              <div className="text-right">
+                <p className={`font-semibold ${marginAmount >= 0 ? "text-green-600" : "text-red-600"}`}>
+                  {fmtIDR(marginAmount)}
+                </p>
+                <p className={`text-xs ${marginPct >= 0 ? "text-green-500" : "text-red-500"}`}>
+                  {marginPct.toFixed(1)}% margin
+                </p>
+              </div>
+            </div>
           )}
         </div>
-      ))}
-    </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Batal</Button>
+          <Button
+            onClick={() => mutation.mutate()}
+            disabled={mutation.isPending}
+            className="bg-green-600 hover:bg-green-700"
+          >
+            {mutation.isPending && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
+            Simpan Harga Jual
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── Media Dialog ─────────────────────────────────────────────────────────────
+
+function MediaDialog({
+  item,
+  open,
+  onClose,
+  onSaved,
+}: {
+  item: CatalogRow | null;
+  open: boolean;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { toast } = useToast();
+  const [assets, setAssets] = useState<MediaAsset[]>([]);
+  const [previewAsset, setPreviewAsset] = useState<MediaAsset | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useMemo(() => {
+    if (item) setAssets([...(item.mediaAssets ?? [])].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)));
+  }, [item]);
+
+  const setCover = useCallback((idx: number) => {
+    setAssets(prev => prev.map((a, i) => ({ ...a, isCover: i === idx })));
+  }, []);
+
+  const moveUp = useCallback((idx: number) => {
+    if (idx === 0) return;
+    setAssets(prev => {
+      const next = [...prev];
+      [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+      return next.map((a, i) => ({ ...a, sortOrder: i }));
+    });
+  }, []);
+
+  const moveDown = useCallback((idx: number) => {
+    setAssets(prev => {
+      if (idx >= prev.length - 1) return prev;
+      const next = [...prev];
+      [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
+      return next.map((a, i) => ({ ...a, sortOrder: i }));
+    });
+  }, []);
+
+  const removeAsset = useCallback((idx: number) => {
+    setAssets(prev => {
+      const next = prev.filter((_, i) => i !== idx).map((a, i) => ({ ...a, sortOrder: i }));
+      if (next.length > 0 && !next.some(a => a.isCover)) next[0].isCover = true;
+      return next;
+    });
+  }, []);
+
+  async function handleSave() {
+    if (!item) return;
+    setSaving(true);
+    try {
+      await patchMedia(item.id, assets);
+      toast({ title: "✅ Media assets diperbarui" });
+      onSaved();
+      onClose();
+    } catch (e: any) {
+      toast({ title: "Gagal", description: e.message, variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <>
+      <Dialog open={open} onOpenChange={v => !v && onClose()}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Image className="w-4 h-4" /> Media — {item?.name}
+            </DialogTitle>
+          </DialogHeader>
+
+          {assets.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <Image className="w-10 h-10 mx-auto mb-2 opacity-30" />
+              <p className="text-sm">Tidak ada media assets</p>
+              <p className="text-xs mt-1">Media ditambahkan saat vendor submit catalog item</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {assets.map((a, idx) => (
+                <div
+                  key={idx}
+                  className={`flex items-center gap-3 rounded-lg border p-3 transition-colors ${a.isCover ? "border-blue-400 bg-blue-50" : "bg-card"}`}
+                >
+                  {/* Thumbnail */}
+                  <div
+                    className="w-16 h-16 rounded overflow-hidden bg-muted flex-shrink-0 cursor-pointer relative"
+                    onClick={() => setPreviewAsset(a)}
+                  >
+                    {isImage(a) ? (
+                      <img src={a.url} alt={a.name ?? "media"} className="w-full h-full object-cover" />
+                    ) : isVideo(a) ? (
+                      <div className="w-full h-full flex items-center justify-center bg-gray-900">
+                        <Play className="w-6 h-6 text-white" />
+                      </div>
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <FileText className="w-6 h-6 text-muted-foreground" />
+                      </div>
+                    )}
+                    {a.isCover && (
+                      <div className="absolute top-0.5 right-0.5 bg-blue-500 rounded-full p-0.5">
+                        <Star className="w-2.5 h-2.5 text-white" />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Info */}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{a.name ?? `Asset ${idx + 1}`}</p>
+                    <p className="text-xs text-muted-foreground capitalize">
+                      {isImage(a) ? "Image" : isVideo(a) ? "Video" : (a.type ?? "File")}
+                      {a.isCover && <span className="ml-2 text-blue-600 font-semibold">• Cover</span>}
+                    </p>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button size="sm" variant="ghost" onClick={() => setPreviewAsset(a)}>
+                            <Eye className="w-3.5 h-3.5" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Preview</TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            size="sm"
+                            variant={a.isCover ? "default" : "outline"}
+                            onClick={() => setCover(idx)}
+                            className={a.isCover ? "bg-blue-500 hover:bg-blue-600" : ""}
+                          >
+                            {a.isCover ? <Star className="w-3.5 h-3.5" /> : <StarOff className="w-3.5 h-3.5" />}
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>{a.isCover ? "Cover aktif" : "Set sebagai cover"}</TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button size="sm" variant="ghost" onClick={() => moveUp(idx)} disabled={idx === 0}>
+                            <ChevronUp className="w-3.5 h-3.5" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Pindah ke atas</TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button size="sm" variant="ghost" onClick={() => moveDown(idx)} disabled={idx === assets.length - 1}>
+                            <ChevronDown className="w-3.5 h-3.5" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Pindah ke bawah</TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700" onClick={() => removeAsset(idx)}>
+                            <X className="w-3.5 h-3.5" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Hapus dari list</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={onClose}>Batal</Button>
+            <Button onClick={handleSave} disabled={saving}>
+              {saving && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
+              Simpan Urutan & Cover
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Preview Lightbox */}
+      {previewAsset && (
+        <Dialog open={!!previewAsset} onOpenChange={v => !v && setPreviewAsset(null)}>
+          <DialogContent className="max-w-4xl p-2">
+            <DialogHeader className="px-4 pt-2">
+              <DialogTitle className="text-sm">{previewAsset.name ?? "Preview"}</DialogTitle>
+            </DialogHeader>
+            <div className="flex justify-center items-center min-h-64 bg-black rounded-lg overflow-hidden">
+              {isImage(previewAsset) ? (
+                <img
+                  src={previewAsset.url}
+                  alt={previewAsset.name ?? "preview"}
+                  className="max-w-full max-h-[70vh] object-contain"
+                />
+              ) : isVideo(previewAsset) ? (
+                <video
+                  src={previewAsset.url}
+                  controls
+                  autoPlay
+                  className="max-w-full max-h-[70vh]"
+                />
+              ) : (
+                <div className="text-center text-white p-12">
+                  <FileText className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                  <p className="text-sm">Preview tidak tersedia untuk tipe file ini</p>
+                  <a href={previewAsset.url} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline text-sm mt-2 block">
+                    Buka di tab baru <ExternalLink className="w-3 h-3 inline ml-1" />
+                  </a>
+                </div>
+              )}
+            </div>
+            <div className="flex justify-between items-center px-4 pb-2">
+              <a href={previewAsset.url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-500 hover:underline flex items-center gap-1">
+                <ExternalLink className="w-3 h-3" /> Buka URL asli
+              </a>
+              <Button size="sm" variant="outline" onClick={() => setPreviewAsset(null)}>Tutup</Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+    </>
   );
 }
 
@@ -236,16 +612,38 @@ function DetailDialog({
   itemId,
   open,
   onClose,
+  onStatusChange,
 }: {
   itemId: number | null;
   open: boolean;
   onClose: () => void;
+  onStatusChange: () => void;
 }) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [statusLoading, setStatusLoading] = useState<string | null>(null);
+
   const { data, isLoading } = useQuery({
     queryKey: ["catalog-detail", itemId],
     queryFn: () => fetchDetail(itemId!),
     enabled: open && itemId != null,
   });
+
+  async function changeStatus(newStatus: string) {
+    if (!data) return;
+    setStatusLoading(newStatus);
+    try {
+      await patchStatus(data.id, newStatus);
+      const m = STATUS_META[newStatus];
+      toast({ title: `Status diubah ke ${m?.label ?? newStatus}` });
+      qc.invalidateQueries({ queryKey: ["catalog-detail", itemId] });
+      onStatusChange();
+    } catch (e: any) {
+      toast({ title: "Gagal", description: e.message, variant: "destructive" });
+    } finally {
+      setStatusLoading(null);
+    }
+  }
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
@@ -259,33 +657,89 @@ function DetailDialog({
             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
           </div>
         ) : data ? (
-          <div className="space-y-6">
+          <div className="space-y-5">
+            {/* Status + quick actions */}
+            <div className="rounded-lg border p-3 bg-muted/30">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium">Status:</span>
+                  <StatusBadge status={data.status} />
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  <StatusActions
+                    status={data.status}
+                    loading={statusLoading}
+                    onAction={changeStatus}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Cover image */}
+            {data.mediaAssets && data.mediaAssets.length > 0 && (() => {
+              const cover = getCoverAsset(data.mediaAssets);
+              return cover && isImage(cover) ? (
+                <div className="rounded-lg overflow-hidden border bg-muted" style={{ maxHeight: 240 }}>
+                  <img src={cover.url} alt={cover.name ?? "cover"} className="w-full h-full object-cover" style={{ maxHeight: 240 }} />
+                </div>
+              ) : null;
+            })()}
+
             {/* Header info */}
             <div className="grid grid-cols-2 gap-3 text-sm">
               <div><span className="text-muted-foreground">Vendor</span><p className="font-medium">{data.vendorName}</p></div>
-              <div><span className="text-muted-foreground">Status</span><p><StatusBadge status={data.status} /></p></div>
               <div><span className="text-muted-foreground">Template Kind</span><p className="font-medium capitalize">{data.templateKind ?? "—"}</p></div>
               <div><span className="text-muted-foreground">Category / Service</span><p className="font-medium">{data.categoryKey ?? data.serviceType ?? data.kategori ?? "—"}</p></div>
-              <div><span className="text-muted-foreground">Harga Dasar (Admin)</span><p className="font-semibold text-orange-600">{fmtIDR(data.priceBase)}</p></div>
-              <div><span className="text-muted-foreground">Harga Jual</span><p className="font-semibold text-green-600">{fmtIDR(data.priceSell)}</p></div>
               <div><span className="text-muted-foreground">Unit</span><p className="font-medium">{data.unit ?? "—"}</p></div>
-              <div><span className="text-muted-foreground">MOQ</span><p className="font-medium">{data.moq ?? "—"}</p></div>
+
+              {/* Pricing section — admin only visibility */}
+              <div className="col-span-2">
+                <Separator className="my-1" />
+                <div className="grid grid-cols-3 gap-3 mt-2">
+                  <div className="bg-orange-50 rounded p-2 border border-orange-200">
+                    <div className="flex items-center gap-1 mb-0.5">
+                      <Lock className="w-3 h-3 text-orange-500" />
+                      <span className="text-xs text-orange-600 font-semibold">Admin Only</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Harga Dasar</p>
+                    <p className="font-bold text-orange-600">{fmtIDR(data.priceBase)}</p>
+                  </div>
+                  <div className="bg-green-50 rounded p-2 border border-green-200">
+                    <div className="flex items-center gap-1 mb-0.5">
+                      <Globe className="w-3 h-3 text-green-600" />
+                      <span className="text-xs text-green-600 font-semibold">Customer</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Harga Jual</p>
+                    <p className="font-bold text-green-600">{fmtIDR(data.priceSell)}</p>
+                  </div>
+                  <div className="bg-blue-50 rounded p-2 border border-blue-200">
+                    <div className="flex items-center gap-1 mb-0.5">
+                      <TrendingUp className="w-3 h-3 text-blue-600" />
+                      <span className="text-xs text-blue-600 font-semibold">Admin Only</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Margin</p>
+                    <p className="font-bold text-blue-600">
+                      {data.priceSell != null
+                        ? fmtIDR(data.priceSell - data.priceBase)
+                        : "—"}
+                    </p>
+                  </div>
+                </div>
+                <Separator className="mt-2" />
+              </div>
+
               <div><span className="text-muted-foreground">Stock</span><p className="font-medium"><StockBadge status={data.stockStatus} /> {data.stockQty != null ? `(${data.stockQty})` : ""}</p></div>
               <div><span className="text-muted-foreground">Lead Time</span><p className="font-medium">{data.leadTime ?? "—"}</p></div>
               <div><span className="text-muted-foreground">Lokasi</span><p className="font-medium">{data.location ?? "—"}</p></div>
               <div><span className="text-muted-foreground">Origin</span><p className="font-medium">{data.origin ?? "—"}</p></div>
-              {data.publishedAt && (
-                <div><span className="text-muted-foreground">Published At</span><p className="font-medium">{new Date(data.publishedAt).toLocaleDateString("id-ID")}</p></div>
-              )}
-              {data.sourceSubmissionId && (
+              {data.mediaAssets && data.mediaAssets.length > 0 && (
                 <div>
-                  <span className="text-muted-foreground">Source Submission</span>
-                  <p>
-                    <Link href={`/purchase/vendor-forms?submission=${data.sourceSubmissionId}`} className="text-blue-500 hover:underline flex items-center gap-1">
-                      #{data.sourceSubmissionId} <ExternalLink className="h-3 w-3" />
-                    </Link>
-                  </p>
+                  <span className="text-muted-foreground">Media</span>
+                  <p className="font-medium">{data.mediaAssets.length} asset(s) — {data.mediaAssets.filter(isImage).length} gambar, {data.mediaAssets.filter(isVideo).length} video</p>
                 </div>
+              )}
+              {data.publishedAt && (
+                <div><span className="text-muted-foreground">Published At</span><p className="font-medium">{fmtDate(data.publishedAt)}</p></div>
               )}
             </div>
 
@@ -296,183 +750,104 @@ function DetailDialog({
               </div>
             )}
 
-            {/* Template Snapshot */}
-            <div>
-              <h4 className="font-semibold mb-2 flex items-center gap-2">
-                <ClipboardList className="h-4 w-4" /> Template Snapshot
-              </h4>
-              <TemplateSnapshotView snapshot={data.templateSnapshot as Record<string, unknown> | null} />
-            </div>
-
             {/* Spec Values */}
-            <div>
-              <h4 className="font-semibold mb-2 flex items-center gap-2">
-                <Package className="h-4 w-4" /> Spec Values
-              </h4>
-              <SpecValuesView values={data.specValues as Record<string, unknown> | null} />
-            </div>
+            {data.specValues && Object.keys(data.specValues as object).length > 0 && (
+              <div>
+                <h4 className="font-semibold mb-2 flex items-center gap-2">
+                  <Package className="h-4 w-4" /> Spec Values
+                </h4>
+                <SpecValuesView values={data.specValues as Record<string, unknown> | null} />
+              </div>
+            )}
 
-            {/* Documents / Required Docs */}
-            <div>
-              <h4 className="font-semibold mb-2 flex items-center gap-2">
-                <FileText className="h-4 w-4" /> Required Documents
-              </h4>
-              <DocumentsView documents={data.documents} />
-            </div>
-
-            {/* Checklist from templateSnapshot */}
-            {(() => {
-              const checklist = (data.templateSnapshot as { checklist?: Array<{ key: string; label: string }> } | null)?.checklist ?? [];
-              if (checklist.length === 0) return null;
-              return (
-                <div>
-                  <h4 className="font-semibold mb-2 flex items-center gap-2">
-                    <CheckCircle className="h-4 w-4" /> Checklist
-                  </h4>
-                  <div className="space-y-1">
-                    {checklist.map((c) => (
-                      <div key={c.key} className="flex items-center gap-2 text-sm">
-                        <CheckCircle className="h-4 w-4 text-green-500 shrink-0" />
-                        <span>{c.label}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })()}
+            {/* Template Snapshot */}
+            {data.templateSnapshot && (
+              <div>
+                <h4 className="font-semibold mb-2 flex items-center gap-2">
+                  <ClipboardList className="h-4 w-4" /> Template Snapshot
+                </h4>
+                <TemplateSnapshotView snapshot={data.templateSnapshot as Record<string, unknown> | null} />
+              </div>
+            )}
           </div>
         ) : null}
 
-        <DialogFooter>
+        <DialogFooter className="flex-wrap gap-2">
           <Button variant="outline" onClick={onClose}>Tutup</Button>
-          <Button asChild variant="outline">
-            <Link href={`/purchase/vendors/${data?.vendorId}`}>
-              Buka Vendor Detail <ExternalLink className="h-3 w-3 ml-1" />
-            </Link>
-          </Button>
+          {data && (
+            <Button asChild variant="outline">
+              <Link href={`/purchase/vendors/${data.vendorId}`}>
+                Buka Vendor <ExternalLink className="h-3 w-3 ml-1" />
+              </Link>
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
 
-// ─── Edit Fields Dialog ───────────────────────────────────────────────────────
+// ─── Status Actions Component ─────────────────────────────────────────────────
 
-function EditFieldsDialog({
-  item,
-  open,
-  onClose,
-  onSaved,
+function StatusActions({
+  status,
+  loading,
+  onAction,
+  size = "sm",
 }: {
-  item: CatalogRow | null;
-  open: boolean;
-  onClose: () => void;
-  onSaved: () => void;
+  status: string;
+  loading: string | null;
+  onAction: (status: string) => void;
+  size?: "sm" | "xs";
 }) {
-  const { toast } = useToast();
-  const [priceSell, setPriceSell] = useState("");
-  const [priceBase, setPriceBase] = useState("");
-  const [stockStatus, setStockStatus] = useState("");
-  const [stockQty, setStockQty] = useState("");
-  const [leadTime, setLeadTime] = useState("");
-
-  // Reset when item changes
-  useMemo(() => {
-    if (item) {
-      setPriceSell(item.priceSell != null ? String(item.priceSell) : "");
-      setPriceBase(String(item.priceBase));
-      setStockStatus(item.stockStatus ?? "available");
-      setStockQty(item.stockQty != null ? String(item.stockQty) : "");
-      setLeadTime(item.leadTime ?? "");
-    }
-  }, [item]);
-
-  const mutation = useMutation({
-    mutationFn: () =>
-      patchFields(item!.id, {
-        priceSell: priceSell !== "" ? Number(priceSell) : null,
-        priceBase: priceBase !== "" ? Number(priceBase) : 0,
-        stockStatus,
-        stockQty: stockQty !== "" ? Number(stockQty) : null,
-        leadTime: leadTime || null,
-      }),
-    onSuccess: () => {
-      toast({ title: "Tersimpan", description: "Fields berhasil diupdate." });
-      onSaved();
-      onClose();
-    },
-    onError: (e: Error) => toast({ title: "Gagal", description: e.message, variant: "destructive" }),
-  });
+  const btnClass = size === "xs" ? "h-6 text-xs px-2" : "";
+  const isLoading = (s: string) => loading === s;
+  const LoadIcon = ({ s }: { s: string }) => isLoading(s) ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null;
 
   return (
-    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>Edit Fields — {item?.name}</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <Label>Harga Dasar (Admin Only)</Label>
-              <Input
-                type="number"
-                placeholder="0"
-                value={priceBase}
-                onChange={(e) => setPriceBase(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>Harga Jual</Label>
-              <Input
-                type="number"
-                placeholder="0"
-                value={priceSell}
-                onChange={(e) => setPriceSell(e.target.value)}
-              />
-            </div>
-          </div>
-          <div className="space-y-1">
-            <Label>Stock Status</Label>
-            <Select value={stockStatus} onValueChange={setStockStatus}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="available">Available</SelectItem>
-                <SelectItem value="limited">Limited</SelectItem>
-                <SelectItem value="out_of_stock">Out of Stock</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <Label>Stock Qty</Label>
-              <Input
-                type="number"
-                placeholder="—"
-                value={stockQty}
-                onChange={(e) => setStockQty(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>Lead Time</Label>
-              <Input
-                placeholder="e.g. 3-5 hari"
-                value={leadTime}
-                onChange={(e) => setLeadTime(e.target.value)}
-              />
-            </div>
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Batal</Button>
-          <Button onClick={() => mutation.mutate()} disabled={mutation.isPending}>
-            {mutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-            Simpan
+    <>
+      {status === "draft" && (
+        <>
+          <Button size={size} variant="outline" className={`${btnClass} border-yellow-400 text-yellow-700 hover:bg-yellow-50`} onClick={() => onAction("pending_review")} disabled={!!loading}>
+            <LoadIcon s="pending_review" /><Send className="w-3 h-3 mr-1" />Review
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          <Button size={size} className={`${btnClass} bg-green-600 hover:bg-green-700`} onClick={() => onAction("published")} disabled={!!loading}>
+            <LoadIcon s="published" /><Globe className="w-3 h-3 mr-1" />Publish
+          </Button>
+          <Button size={size} variant="outline" className={`${btnClass} text-red-500 border-red-300 hover:bg-red-50`} onClick={() => onAction("archived")} disabled={!!loading}>
+            <LoadIcon s="archived" /><Archive className="w-3 h-3 mr-1" />Archive
+          </Button>
+        </>
+      )}
+      {status === "pending_review" && (
+        <>
+          <Button size={size} className={`${btnClass} bg-green-600 hover:bg-green-700`} onClick={() => onAction("published")} disabled={!!loading}>
+            <LoadIcon s="published" /><CheckCircle className="w-3 h-3 mr-1" />Approve & Publish
+          </Button>
+          <Button size={size} variant="outline" onClick={() => onAction("draft")} disabled={!!loading}>
+            <LoadIcon s="draft" /><RotateCcw className="w-3 h-3 mr-1" />Kembalikan ke Draft
+          </Button>
+          <Button size={size} variant="outline" className={`${btnClass} text-red-500 border-red-300 hover:bg-red-50`} onClick={() => onAction("archived")} disabled={!!loading}>
+            <LoadIcon s="archived" /><Archive className="w-3 h-3 mr-1" />Archive
+          </Button>
+        </>
+      )}
+      {status === "published" && (
+        <>
+          <Button size={size} variant="outline" className={`${btnClass} text-yellow-700 border-yellow-400 hover:bg-yellow-50`} onClick={() => onAction("draft")} disabled={!!loading}>
+            <LoadIcon s="draft" /><EyeOff className="w-3 h-3 mr-1" />Unpublish
+          </Button>
+          <Button size={size} variant="outline" className={`${btnClass} text-red-500 border-red-300 hover:bg-red-50`} onClick={() => onAction("archived")} disabled={!!loading}>
+            <LoadIcon s="archived" /><Archive className="w-3 h-3 mr-1" />Archive
+          </Button>
+        </>
+      )}
+      {status === "archived" && (
+        <Button size={size} variant="outline" onClick={() => onAction("draft")} disabled={!!loading}>
+          <LoadIcon s="draft" /><RotateCcw className="w-3 h-3 mr-1" />Restore ke Draft
+        </Button>
+      )}
+    </>
   );
 }
 
@@ -489,11 +864,11 @@ function CompareDialog({
 }) {
   if (items.length === 0) return null;
 
-  const fields: Array<{ key: keyof CatalogRow; label: string }> = [
+  const fields: Array<{ key: keyof CatalogRow; label: string; adminOnly?: boolean }> = [
     { key: "vendorName", label: "Vendor" },
     { key: "templateKind", label: "Tipe" },
     { key: "categoryKey", label: "Category" },
-    { key: "priceBase", label: "Harga Dasar" },
+    { key: "priceBase", label: "Harga Dasar 🔒", adminOnly: true },
     { key: "priceSell", label: "Harga Jual" },
     { key: "unit", label: "Unit" },
     { key: "moq", label: "MOQ" },
@@ -534,7 +909,7 @@ function CompareDialog({
             </TableHeader>
             <TableBody>
               {fields.map((f) => (
-                <TableRow key={f.key}>
+                <TableRow key={f.key} className={f.adminOnly ? "bg-orange-50/50" : ""}>
                   <TableCell className="text-muted-foreground text-xs font-medium">{f.label}</TableCell>
                   {items.map((item) => (
                     <TableCell key={item.id} className="text-sm">
@@ -546,6 +921,7 @@ function CompareDialog({
             </TableBody>
           </Table>
         </div>
+        <p className="text-xs text-muted-foreground px-1">🔒 = Admin only, tidak ditampilkan ke customer</p>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Tutup</Button>
         </DialogFooter>
@@ -568,466 +944,368 @@ export default function VendorCatalogPage() {
 
   // Dialogs
   const [detailId, setDetailId] = useState<number | null>(null);
-  const [editItem, setEditItem] = useState<CatalogRow | null>(null);
+  const [pricingItem, setPricingItem] = useState<CatalogRow | null>(null);
+  const [mediaItem, setMediaItem] = useState<CatalogRow | null>(null);
   const [compareItems, setCompareItems] = useState<CatalogRow[]>([]);
   const [compareOpen, setCompareOpen] = useState(false);
 
   // Selection for compare
   const [selected, setSelected] = useState<Set<number>>(new Set());
 
+  // Inline status change
+  const [statusLoading, setStatusLoading] = useState<Record<number, string>>({});
+
   const QK = ["vendor-catalog-all", filterVendor, filterStatus, filterKind, search];
 
   const { data = [], isLoading, refetch } = useQuery({
     queryKey: QK,
     queryFn: () =>
-      fetchCatalogAll({
-        vendor: filterVendor,
-        status: filterStatus,
-        templateKind: filterKind,
-        search,
-      }),
+      fetchCatalogAll({ vendor: filterVendor, status: filterStatus, templateKind: filterKind, search }),
   });
 
   // Unique vendors for filter dropdown
   const vendors = useMemo(() => {
-    const map = new Map<number, string>();
-    data.forEach((r) => map.set(r.vendorId, r.vendorName));
-    return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1]));
+    const seen = new Set<string>();
+    return data
+      .map(r => ({ id: r.vendorId, name: r.vendorName }))
+      .filter(v => { if (seen.has(String(v.id))) return false; seen.add(String(v.id)); return true; });
   }, [data]);
 
   // Stats
   const stats = useMemo(() => ({
     total: data.length,
-    published: data.filter((r) => r.status === "published").length,
-    pending: data.filter((r) => r.status === "pending_review").length,
-    draft: data.filter((r) => r.status === "draft").length,
-    archived: data.filter((r) => r.status === "archived").length,
+    published: data.filter(r => r.status === "published").length,
+    pending: data.filter(r => r.status === "pending_review").length,
+    draft: data.filter(r => r.status === "draft").length,
+    archived: data.filter(r => r.status === "archived").length,
   }), [data]);
 
-  const statusMutation = useMutation({
-    mutationFn: ({ id, status }: { id: number; status: string }) => patchStatus(id, status),
-    onSuccess: (_, vars) => {
-      toast({ title: "Status diupdate", description: `Item berhasil di-${vars.status}.` });
+  async function handleInlineStatus(item: CatalogRow, newStatus: string) {
+    setStatusLoading(prev => ({ ...prev, [item.id]: newStatus }));
+    try {
+      await patchStatus(item.id, newStatus);
+      const m = STATUS_META[newStatus];
+      toast({ title: `"${item.name}" → ${m?.label ?? newStatus}` });
       queryClient.invalidateQueries({ queryKey: ["vendor-catalog-all"] });
-    },
-    onError: (e: Error) => toast({ title: "Gagal", description: e.message, variant: "destructive" }),
-  });
+    } catch (e: any) {
+      toast({ title: "Gagal", description: e.message, variant: "destructive" });
+    } finally {
+      setStatusLoading(prev => { const n = { ...prev }; delete n[item.id]; return n; });
+    }
+  }
 
   function toggleSelect(id: number) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
+    setSelected(prev => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id); else n.add(id);
+      return n;
     });
   }
 
   function openCompare() {
-    const items = data.filter((r) => selected.has(r.id));
+    const items = data.filter(r => selected.has(r.id));
+    if (items.length < 2) {
+      toast({ title: "Pilih minimal 2 item untuk dibandingkan", variant: "destructive" });
+      return;
+    }
     setCompareItems(items);
     setCompareOpen(true);
   }
 
+  const invalidateAll = () => queryClient.invalidateQueries({ queryKey: ["vendor-catalog-all"] });
+
   return (
     <AppShell>
-      <div className="p-6 space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold">Vendor Catalog</h1>
-            <p className="text-muted-foreground text-sm">Review, approve, dan kelola catalog item dari semua vendor.</p>
-          </div>
-          <div className="flex items-center gap-2">
-            {selected.size >= 2 && (
-              <Button variant="outline" size="sm" onClick={openCompare}>
-                <GitCompare className="h-4 w-4 mr-1" />
-                Compare ({selected.size})
-              </Button>
-            )}
-            {selected.size > 0 && (
-              <Button variant="ghost" size="sm" onClick={() => setSelected(new Set())}>
-                <X className="h-4 w-4 mr-1" />
-                Clear
-              </Button>
-            )}
-            <Button variant="outline" size="sm" onClick={() => refetch()}>
-              <RefreshCw className="h-4 w-4 mr-1" />
-              Refresh
-            </Button>
-          </div>
-        </div>
-
-        {/* Stats */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-          {[
-            { label: "Total", value: stats.total, color: "text-foreground" },
-            { label: "Published", value: stats.published, color: "text-green-600" },
-            { label: "Pending Review", value: stats.pending, color: "text-yellow-600" },
-            { label: "Draft", value: stats.draft, color: "text-muted-foreground" },
-            { label: "Archived", value: stats.archived, color: "text-red-500" },
-          ].map((s) => (
-            <Card key={s.label} className="cursor-pointer hover:shadow" onClick={() => setFilterStatus(s.label === "Total" ? "all" : s.label.toLowerCase().replace(" ", "_"))}>
-              <CardContent className="p-4 text-center">
-                <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
-                <p className="text-xs text-muted-foreground">{s.label}</p>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-
-        {/* Filters */}
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex flex-wrap gap-3 items-end">
-              <div className="flex-1 min-w-48">
-                <Label className="text-xs mb-1 block">Cari item</Label>
-                <div className="relative">
-                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    className="pl-8"
-                    placeholder="Nama item, vendor, kategori..."
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                  />
-                </div>
-              </div>
-              <div className="min-w-40">
-                <Label className="text-xs mb-1 block">Vendor</Label>
-                <Select value={filterVendor} onValueChange={setFilterVendor}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Semua vendor" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Semua Vendor</SelectItem>
-                    {vendors.map(([id, name]) => (
-                      <SelectItem key={id} value={String(id)}>{name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="min-w-36">
-                <Label className="text-xs mb-1 block">Status</Label>
-                <Select value={filterStatus} onValueChange={setFilterStatus}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Semua status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Semua Status</SelectItem>
-                    <SelectItem value="draft">Draft</SelectItem>
-                    <SelectItem value="pending_review">Pending Review</SelectItem>
-                    <SelectItem value="published">Published</SelectItem>
-                    <SelectItem value="archived">Archived</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="min-w-36">
-                <Label className="text-xs mb-1 block">Tipe Template</Label>
-                <Select value={filterKind} onValueChange={setFilterKind}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Semua tipe" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Semua Tipe</SelectItem>
-                    <SelectItem value="product">Product</SelectItem>
-                    <SelectItem value="service">Service</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              {(filterVendor !== "all" || filterStatus !== "all" || filterKind !== "all" || search) && (
-                <Button variant="ghost" size="sm" onClick={() => { setFilterVendor("all"); setFilterStatus("all"); setFilterKind("all"); setSearch(""); }}>
-                  <X className="h-4 w-4 mr-1" />Reset
+      <TooltipProvider>
+        <div className="p-6 space-y-5">
+          {/* ── Header ────────────────────────────────────────────────────── */}
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div>
+              <h1 className="text-2xl font-bold">Vendor Catalog</h1>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                Kelola item katalog: review, pricing, media, dan status publikasi
+              </p>
+            </div>
+            <div className="flex gap-2">
+              {selected.size >= 2 && (
+                <Button variant="outline" size="sm" onClick={openCompare}>
+                  <GitCompare className="w-4 h-4 mr-1" /> Compare ({selected.size})
                 </Button>
               )}
+              <Button variant="outline" size="sm" onClick={() => refetch()}>
+                <RefreshCw className="w-4 h-4 mr-1" /> Refresh
+              </Button>
+              <Button size="sm" asChild>
+                <Link href="/purchase/vendor-catalog-engine">
+                  Review Queue
+                  {stats.pending > 0 && (
+                    <span className="ml-1.5 inline-flex items-center justify-center rounded-full bg-orange-500 text-white text-xs w-4 h-4">
+                      {stats.pending}
+                    </span>
+                  )}
+                </Link>
+              </Button>
             </div>
-          </CardContent>
-        </Card>
+          </div>
 
-        {/* Table */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Filter className="h-4 w-4" />
-              {data.length} item ditemukan
-              {selected.size > 0 && (
-                <span className="ml-2 text-sm text-muted-foreground font-normal">{selected.size} dipilih</span>
-              )}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-            {isLoading ? (
-              <div className="flex justify-center py-16">
-                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-              </div>
-            ) : data.length === 0 ? (
-              <div className="text-center py-16 text-muted-foreground">
-                <Globe className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                <p>Tidak ada catalog item ditemukan.</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-8"></TableHead>
-                      <TableHead>Vendor</TableHead>
-                      <TableHead>Item</TableHead>
-                      <TableHead>Tipe</TableHead>
-                      <TableHead>Kategori</TableHead>
-                      <TableHead>Spec</TableHead>
-                      <TableHead className="text-right">Hrg Dasar</TableHead>
-                      <TableHead className="text-right">Hrg Jual</TableHead>
-                      <TableHead>Stock</TableHead>
-                      <TableHead>Qty</TableHead>
-                      <TableHead>Unit</TableHead>
-                      <TableHead>Lead Time</TableHead>
-                      <TableHead>Asal/Lok.</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Aksi</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {data.map((row) => (
-                      <TableRow
-                        key={row.id}
-                        className={selected.has(row.id) ? "bg-blue-50 dark:bg-blue-950/20" : undefined}
-                      >
-                        {/* Checkbox for compare */}
-                        <TableCell>
-                          <input
-                            type="checkbox"
-                            className="rounded"
-                            checked={selected.has(row.id)}
-                            onChange={() => toggleSelect(row.id)}
-                          />
-                        </TableCell>
+          {/* ── Stats ─────────────────────────────────────────────────────── */}
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            {[
+              { label: "Total", val: stats.total, cls: "" },
+              { label: "Published", val: stats.published, cls: "text-green-600" },
+              { label: "Pending Review", val: stats.pending, cls: "text-yellow-600" },
+              { label: "Draft", val: stats.draft, cls: "text-muted-foreground" },
+              { label: "Archived", val: stats.archived, cls: "text-red-500" },
+            ].map(s => (
+              <Card key={s.label} className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setFilterStatus(s.label === "Total" ? "all" : s.label.toLowerCase().replace(" ", "_"))}>
+                <CardContent className="pt-4 pb-3">
+                  <p className="text-xs text-muted-foreground">{s.label}</p>
+                  <p className={`text-3xl font-bold mt-1 ${s.cls}`}>{s.val}</p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
 
-                        {/* Vendor */}
-                        <TableCell>
-                          <Link
-                            href={`/purchase/vendors/${row.vendorId}`}
-                            className="text-blue-600 hover:underline text-sm font-medium"
-                          >
-                            {row.vendorName}
-                          </Link>
-                        </TableCell>
-
-                        {/* Item name */}
-                        <TableCell>
-                          <p className="font-medium text-sm">{row.name}</p>
-                          {row.subcategory && (
-                            <p className="text-xs text-muted-foreground">{row.subcategory}</p>
-                          )}
-                        </TableCell>
-
-                        {/* Template Kind */}
-                        <TableCell>
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger>
-                                {row.templateKind === "product" ? (
-                                  <Package className="h-4 w-4 text-blue-500" />
-                                ) : (
-                                  <Wrench className="h-4 w-4 text-purple-500" />
-                                )}
-                              </TooltipTrigger>
-                              <TooltipContent>{row.templateKind ?? "—"}</TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        </TableCell>
-
-                        {/* Kategori */}
-                        <TableCell>
-                          <span className="text-xs">
-                            {row.categoryKey ?? row.serviceType ?? row.kategori ?? "—"}
-                          </span>
-                        </TableCell>
-
-                        {/* Spec summary */}
-                        <TableCell>
-                          <span className="text-xs text-muted-foreground max-w-32 truncate block" title={row.specSummary ?? ""}>
-                            {row.specSummary ?? "—"}
-                          </span>
-                        </TableCell>
-
-                        {/* Harga Dasar (admin only) */}
-                        <TableCell className="text-right font-mono text-sm text-orange-600">
-                          {fmtIDR(row.priceBase)}
-                        </TableCell>
-
-                        {/* Harga Jual */}
-                        <TableCell className="text-right font-mono text-sm text-green-600">
-                          {fmtIDR(row.priceSell)}
-                        </TableCell>
-
-                        {/* Stock Status */}
-                        <TableCell>
-                          <StockBadge status={row.stockStatus} />
-                        </TableCell>
-
-                        {/* Stock Qty */}
-                        <TableCell className="text-sm">
-                          {row.stockQty != null ? row.stockQty : "—"}
-                        </TableCell>
-
-                        {/* Unit */}
-                        <TableCell className="text-xs text-muted-foreground">
-                          {row.unit ?? "—"}
-                        </TableCell>
-
-                        {/* Lead Time */}
-                        <TableCell className="text-xs">
-                          {row.leadTime ?? "—"}
-                        </TableCell>
-
-                        {/* Origin / Location */}
-                        <TableCell className="text-xs text-muted-foreground">
-                          {row.origin ?? row.location ?? "—"}
-                        </TableCell>
-
-                        {/* Status */}
-                        <TableCell>
-                          <StatusBadge status={row.status} />
-                        </TableCell>
-
-                        {/* Actions */}
-                        <TableCell>
-                          <div className="flex items-center justify-end gap-1">
-                            <TooltipProvider>
-                              {/* View Detail */}
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-7 w-7"
-                                    onClick={() => setDetailId(row.id)}
-                                  >
-                                    <Eye className="h-3.5 w-3.5" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>Lihat Detail</TooltipContent>
-                              </Tooltip>
-
-                              {/* Edit Fields */}
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-7 w-7"
-                                    onClick={() => setEditItem(row)}
-                                  >
-                                    <Pencil className="h-3.5 w-3.5" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>Edit Harga & Stock</TooltipContent>
-                              </Tooltip>
-
-                              {/* Publish / Unpublish / Archive */}
-                              {row.status !== "published" && row.status !== "archived" && (
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      className="h-7 w-7 text-green-600"
-                                      disabled={statusMutation.isPending}
-                                      onClick={() => statusMutation.mutate({ id: row.id, status: "published" })}
-                                    >
-                                      <CheckCircle className="h-3.5 w-3.5" />
-                                    </Button>
-                                  </TooltipTrigger>
-                                  <TooltipContent>Publish</TooltipContent>
-                                </Tooltip>
-                              )}
-
-                              {row.status === "published" && (
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      className="h-7 w-7 text-yellow-600"
-                                      disabled={statusMutation.isPending}
-                                      onClick={() => statusMutation.mutate({ id: row.id, status: "draft" })}
-                                    >
-                                      <XCircle className="h-3.5 w-3.5" />
-                                    </Button>
-                                  </TooltipTrigger>
-                                  <TooltipContent>Unpublish</TooltipContent>
-                                </Tooltip>
-                              )}
-
-                              {row.status !== "archived" && (
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      className="h-7 w-7 text-red-500"
-                                      disabled={statusMutation.isPending}
-                                      onClick={() => statusMutation.mutate({ id: row.id, status: "archived" })}
-                                    >
-                                      <Archive className="h-3.5 w-3.5" />
-                                    </Button>
-                                  </TooltipTrigger>
-                                  <TooltipContent>Archive</TooltipContent>
-                                </Tooltip>
-                              )}
-
-                              {row.status === "archived" && (
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      className="h-7 w-7 text-blue-500"
-                                      disabled={statusMutation.isPending}
-                                      onClick={() => statusMutation.mutate({ id: row.id, status: "draft" })}
-                                    >
-                                      <RefreshCw className="h-3.5 w-3.5" />
-                                    </Button>
-                                  </TooltipTrigger>
-                                  <TooltipContent>Restore ke Draft</TooltipContent>
-                                </Tooltip>
-                              )}
-                            </TooltipProvider>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+          {/* ── Filters ───────────────────────────────────────────────────── */}
+          <div className="flex flex-wrap gap-2 items-center">
+            <div className="relative">
+              <Search className="absolute left-3 top-2.5 w-4 h-4 text-muted-foreground" />
+              <Input className="pl-9 w-52" placeholder="Cari nama / vendor..." value={search} onChange={e => setSearch(e.target.value)} />
+            </div>
+            <Select value={filterVendor} onValueChange={setFilterVendor}>
+              <SelectTrigger className="w-44"><SelectValue placeholder="Semua Vendor" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua Vendor</SelectItem>
+                {vendors.map(v => <SelectItem key={v.id} value={String(v.id)}>{v.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={filterStatus} onValueChange={setFilterStatus}>
+              <SelectTrigger className="w-40"><SelectValue placeholder="Semua Status" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua Status</SelectItem>
+                <SelectItem value="draft">Draft</SelectItem>
+                <SelectItem value="pending_review">Pending Review</SelectItem>
+                <SelectItem value="published">Published</SelectItem>
+                <SelectItem value="archived">Archived</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={filterKind} onValueChange={setFilterKind}>
+              <SelectTrigger className="w-36"><SelectValue placeholder="Semua Tipe" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua Tipe</SelectItem>
+                <SelectItem value="service">Service</SelectItem>
+                <SelectItem value="product">Product</SelectItem>
+              </SelectContent>
+            </Select>
+            {(filterVendor !== "all" || filterStatus !== "all" || filterKind !== "all" || search) && (
+              <Button size="sm" variant="ghost" onClick={() => { setFilterVendor("all"); setFilterStatus("all"); setFilterKind("all"); setSearch(""); }}>
+                <X className="w-3.5 h-3.5 mr-1" /> Reset
+              </Button>
             )}
-          </CardContent>
-        </Card>
+          </div>
 
-        {/* VENDOR CATALOG ADMIN UI REPORT */}
-        <Card className="border-dashed">
-          <CardHeader>
-            <CardTitle className="text-sm text-muted-foreground">VENDOR CATALOG ADMIN UI REPORT</CardTitle>
-          </CardHeader>
-          <CardContent className="text-xs text-muted-foreground space-y-1">
-            <p>Total items: <strong>{stats.total}</strong> | Published: <strong className="text-green-600">{stats.published}</strong> | Pending: <strong className="text-yellow-600">{stats.pending}</strong> | Draft: <strong>{stats.draft}</strong> | Archived: <strong className="text-red-500">{stats.archived}</strong></p>
-            <p>Vendors: <strong>{vendors.length}</strong> | Filters aktif: {[filterVendor !== "all" && "vendor", filterStatus !== "all" && "status", filterKind !== "all" && "kind", search && "search"].filter(Boolean).join(", ") || "tidak ada"}</p>
-            <p>Dipilih untuk compare: <strong>{selected.size}</strong> item | Min. 2 item untuk compare</p>
-          </CardContent>
-        </Card>
-      </div>
+          {/* ── Table ─────────────────────────────────────────────────────── */}
+          <Card>
+            <CardContent className="p-0">
+              {isLoading ? (
+                <div className="flex justify-center py-16">
+                  <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+                </div>
+              ) : data.length === 0 ? (
+                <div className="text-center py-16 text-muted-foreground">
+                  <Package className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                  <p>Tidak ada catalog item{filterStatus !== "all" || search ? " yang cocok dengan filter" : ""}</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-8"></TableHead>
+                        <TableHead className="w-12">Cover</TableHead>
+                        <TableHead>Item</TableHead>
+                        <TableHead>Vendor</TableHead>
+                        <TableHead>
+                          <div className="flex items-center gap-1">
+                            <Lock className="w-3 h-3 text-orange-400" /> Harga Dasar
+                          </div>
+                        </TableHead>
+                        <TableHead>
+                          <div className="flex items-center gap-1">
+                            <Globe className="w-3 h-3 text-green-500" /> Harga Jual
+                          </div>
+                        </TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Media</TableHead>
+                        <TableHead className="text-right">Aksi</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {data.map(item => {
+                        const cover = getCoverAsset(item.mediaAssets ?? []);
+                        const loadingStatus = statusLoading[item.id];
+                        const margin = item.priceSell != null ? item.priceSell - item.priceBase : null;
 
-      {/* Dialogs */}
+                        return (
+                          <TableRow key={item.id} className={selected.has(item.id) ? "bg-blue-50" : ""}>
+                            {/* Checkbox */}
+                            <TableCell className="p-1">
+                              <input
+                                type="checkbox"
+                                checked={selected.has(item.id)}
+                                onChange={() => toggleSelect(item.id)}
+                                className="w-4 h-4 rounded"
+                              />
+                            </TableCell>
+
+                            {/* Cover thumbnail */}
+                            <TableCell className="p-1">
+                              <div className="w-10 h-10 rounded overflow-hidden bg-muted flex items-center justify-center">
+                                {cover && isImage(cover) ? (
+                                  <img src={cover.url} alt="cover" className="w-full h-full object-cover" />
+                                ) : cover && isVideo(cover) ? (
+                                  <Play className="w-4 h-4 text-muted-foreground" />
+                                ) : (
+                                  <Package className="w-4 h-4 text-muted-foreground opacity-30" />
+                                )}
+                              </div>
+                            </TableCell>
+
+                            {/* Name */}
+                            <TableCell>
+                              <p className="font-medium text-sm">{item.name}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {item.templateKind ?? "—"} • {item.categoryKey ?? item.serviceType ?? "—"}
+                              </p>
+                            </TableCell>
+
+                            {/* Vendor */}
+                            <TableCell className="text-sm">{item.vendorName}</TableCell>
+
+                            {/* priceBase — admin only */}
+                            <TableCell>
+                              <span className="text-sm font-medium text-orange-600">{fmtIDR(item.priceBase)}</span>
+                            </TableCell>
+
+                            {/* priceSell */}
+                            <TableCell>
+                              <div>
+                                <span className="text-sm font-semibold text-green-600">{fmtIDR(item.priceSell)}</span>
+                                {margin != null && (
+                                  <p className={`text-xs ${margin >= 0 ? "text-blue-500" : "text-red-400"}`}>
+                                    margin {fmtIDR(margin)}
+                                  </p>
+                                )}
+                              </div>
+                            </TableCell>
+
+                            {/* Status */}
+                            <TableCell>
+                              <StatusBadge status={item.status} />
+                            </TableCell>
+
+                            {/* Media count */}
+                            <TableCell>
+                              {item.mediaAssets && item.mediaAssets.length > 0 ? (
+                                <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                                  <Image className="w-3 h-3" />
+                                  {item.mediaAssets.filter(isImage).length}
+                                  {item.mediaAssets.filter(isVideo).length > 0 && (
+                                    <>
+                                      <Video className="w-3 h-3 ml-1" />
+                                      {item.mediaAssets.filter(isVideo).length}
+                                    </>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">—</span>
+                              )}
+                            </TableCell>
+
+                            {/* Actions */}
+                            <TableCell className="text-right">
+                              <div className="flex items-center justify-end gap-1">
+                                {/* Detail */}
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button size="sm" variant="ghost" onClick={() => setDetailId(item.id)}>
+                                      <Eye className="w-3.5 h-3.5" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Detail</TooltipContent>
+                                </Tooltip>
+
+                                {/* Pricing */}
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button size="sm" variant="ghost" onClick={() => setPricingItem(item)}>
+                                      <DollarSign className="w-3.5 h-3.5" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Edit Harga Jual</TooltipContent>
+                                </Tooltip>
+
+                                {/* Media */}
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button size="sm" variant="ghost" onClick={() => setMediaItem(item)}>
+                                      <Image className="w-3.5 h-3.5" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Kelola Media</TooltipContent>
+                                </Tooltip>
+
+                                {/* Quick status actions */}
+                                <StatusActions
+                                  status={item.status}
+                                  loading={loadingStatus ?? null}
+                                  onAction={(s) => handleInlineStatus(item, s)}
+                                  size="xs"
+                                />
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Legend */}
+          <div className="flex items-center gap-4 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1">
+              <Lock className="w-3 h-3 text-orange-400" /> Harga Dasar = Admin Only, tidak pernah dikirim ke customer API
+            </span>
+            <span className="flex items-center gap-1">
+              <Globe className="w-3 h-3 text-green-500" /> Harga Jual = yang ditampilkan ke customer
+            </span>
+          </div>
+        </div>
+      </TooltipProvider>
+
+      {/* ── Dialogs ───────────────────────────────────────────────────────── */}
       <DetailDialog
         itemId={detailId}
         open={detailId != null}
         onClose={() => setDetailId(null)}
+        onStatusChange={invalidateAll}
       />
 
-      <EditFieldsDialog
-        item={editItem}
-        open={editItem != null}
-        onClose={() => setEditItem(null)}
-        onSaved={() => queryClient.invalidateQueries({ queryKey: ["vendor-catalog-all"] })}
+      <PricingDialog
+        item={pricingItem}
+        open={pricingItem != null}
+        onClose={() => setPricingItem(null)}
+        onSaved={invalidateAll}
+      />
+
+      <MediaDialog
+        item={mediaItem}
+        open={mediaItem != null}
+        onClose={() => setMediaItem(null)}
+        onSaved={invalidateAll}
       />
 
       <CompareDialog
