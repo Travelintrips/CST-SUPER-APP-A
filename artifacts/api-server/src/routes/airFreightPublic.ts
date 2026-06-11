@@ -1,6 +1,9 @@
 import { Router, type Request, type Response } from "express";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
+import { sendWhatsApp } from "../lib/fonnte.js";
+import { getAdminGroupWa, getAdminWa } from "../lib/adminWa.js";
+import { getPreferredDomain } from "../lib/domain.js";
 
 const router = Router();
 
@@ -191,6 +194,43 @@ router.post("/public/orders", async (req: Request, res: Response) => {
     const order = r.rows[0] as any;
 
     res.status(201).json({ ok: true, order_number: order.order_number, id: order.id });
+
+    // ── Notifikasi WA ke admin (fire-and-forget) ──────────────────────────────
+    Promise.all([getAdminGroupWa(), getAdminWa(), getPreferredDomain()]).then(([groupWa, personalWa, domain]) => {
+      const idr = (v: number | null | undefined) =>
+        v == null ? "-" : new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(Number(v));
+
+      const adminUrl = `https://${domain}/bizportal/air-freight/orders/${order.id}`;
+      const msg = [
+        `✈️ *Inquiry Air Freight Baru*`,
+        ``,
+        `📋 No. Order : *${order.order_number}*`,
+        `👤 Customer  : ${order.customer_name}`,
+        `📱 Phone     : ${order.customer_phone || "-"}`,
+        `📍 Rute      : ${order.origin_airport} → ${order.destination_airport}`,
+        `📦 Komoditi  : ${order.commodity || "-"}`,
+        `⚖️ Berat     : ${order.chargeable_weight ?? 0} kg · ${order.koli ?? 0} koli`,
+        order.estimated_price_idr
+          ? `💰 Est. Harga: ${idr(order.estimated_price_idr)}`
+          : `💰 Est. Harga: Belum ada`,
+        ``,
+        `🔗 ${adminUrl}`,
+      ].join("\n");
+
+      const opts = { context: "air_freight_new_order", refType: "air_freight_order", refId: String(order.id) };
+
+      if (groupWa) {
+        sendWhatsApp(groupWa, msg, opts).catch((e: unknown) =>
+          console.error("[air-freight-public] WA group notif failed:", e)
+        );
+      }
+      if (personalWa && personalWa !== groupWa) {
+        sendWhatsApp(personalWa, msg, opts).catch((e: unknown) =>
+          console.error("[air-freight-public] WA personal notif failed:", e)
+        );
+      }
+    }).catch((e: unknown) => console.error("[air-freight-public] Admin WA fetch failed:", e));
+
   } catch (err) {
     console.error("[air-freight-public] POST /public/orders error:", err);
     res.status(500).json({ error: "Gagal membuat order" });
