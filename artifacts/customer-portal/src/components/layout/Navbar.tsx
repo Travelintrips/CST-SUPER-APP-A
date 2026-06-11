@@ -8,7 +8,7 @@ import {
   Search, Calculator, ChevronRight, MapPin, Phone, Info,
   ImagePlus, Loader2, ClipboardList,
   Package, Wind, Globe, FileText, Factory, Coffee, Flame,
-  Droplets, Fish, Feather,
+  Droplets, Fish, Feather, Plane,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { isAuthenticated, removeAuthToken, isPortalAdmin } from "@/lib/auth";
@@ -19,11 +19,12 @@ import { useLanguage } from "@/i18n/LanguageContext";
 import { useEditMode } from "@/contexts/EditModeContext";
 
 const SERVICES_ITEMS = [
-  { icon: Ship,      titleKey: "servicesMenu.freight.title",   descKey: "servicesMenu.freight.desc",   href: "/freight-forwarding" },
-  { icon: Anchor,    titleKey: "servicesMenu.ocean.title",     descKey: "servicesMenu.ocean.desc",     href: "/ocean-freight" },
-  { icon: FileCheck, titleKey: "servicesMenu.customs.title",   descKey: "servicesMenu.customs.desc",   href: "/pabean" },
-  { icon: Truck,     titleKey: "servicesMenu.trucking.title",  descKey: "servicesMenu.trucking.desc",  href: "/trucking" },
-  { icon: Search,    titleKey: "servicesMenu.tracking.title",  descKey: "servicesMenu.tracking.desc",  href: "/track" },
+  { icon: Ship,      titleKey: "servicesMenu.freight.title",      descKey: "servicesMenu.freight.desc",      href: "/freight-forwarding" },
+  { icon: Plane,     titleKey: "servicesMenu.airFreight.title",   descKey: "servicesMenu.airFreight.desc",   href: "/air-freight-booking" },
+  { icon: Anchor,    titleKey: "servicesMenu.ocean.title",        descKey: "servicesMenu.ocean.desc",        href: "/ocean-freight" },
+  { icon: FileCheck, titleKey: "servicesMenu.customs.title",      descKey: "servicesMenu.customs.desc",      href: "/pabean" },
+  { icon: Truck,     titleKey: "servicesMenu.trucking.title",     descKey: "servicesMenu.trucking.desc",     href: "/trucking" },
+  { icon: Search,    titleKey: "servicesMenu.tracking.title",     descKey: "servicesMenu.tracking.desc",     href: "/track" },
 ];
 
 type AutocompleteEntry = {
@@ -65,10 +66,10 @@ const AUTOCOMPLETE_MAP: AutocompleteEntry[] = [
     href: "/ocean-freight",
   },
   {
-    icon: Wind, label: "Air Freight",
-    description: "Pengiriman udara cepat domestik & internasional",
-    kind: "Layanan", terms: ["air", "udara", "pesawat", "fly", "airfreight"],
-    href: "/marketplace?type=service&category=air_freight&q=air+freight",
+    icon: Plane, label: "Air Freight Booking",
+    description: "Booking pengiriman udara langsung — kalkulasi & pilih rate",
+    kind: "Layanan", terms: ["air", "udara", "pesawat", "fly", "airfreight", "air freight", "booking udara"],
+    href: "/air-freight-booking",
   },
   {
     icon: FileCheck, label: "PPJK / Customs Clearance",

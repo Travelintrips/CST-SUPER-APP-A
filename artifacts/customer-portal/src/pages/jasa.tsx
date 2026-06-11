@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Search, ArrowRight, ChevronRight, Calculator, ArrowLeft,
-  Store, Building2, Truck, Tag, MapPin, Clock,
+  Store, Building2, Truck, Tag, MapPin, Clock, Plane,
 } from "lucide-react";
 import { useListPortalServices } from "@workspace/api-client-react";
 import { resolveImageUrl } from "@/lib/utils";
@@ -844,6 +844,39 @@ export default function Jasa() {
             </div>
             <Button onClick={() => setLocation("/freight-forwarding")} className="gap-2 shrink-0 bg-blue-700 hover:bg-blue-800 text-white shadow-md shadow-blue-200 px-5">
               {t("jasa.createOrder")} <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+
+          {/* Air Freight Booking */}
+          <div
+            className="rounded-2xl p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center gap-5"
+            style={{
+              background: [
+                "radial-gradient(ellipse at 90% 50%, rgba(14,165,233,0.10) 0%, transparent 55%)",
+                "linear-gradient(130deg, #F0F9FF 0%, #E0F2FE 50%, #BAE6FD 82%, #E0F7FA 100%)",
+              ].join(", "),
+              border: "1.5px solid rgba(14,165,233,0.25)",
+              boxShadow: "0 6px 28px rgba(14,165,233,0.10), 0 1px 4px rgba(14,165,233,0.05), inset 0 1px 0 rgba(255,255,255,0.92)",
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = "0 10px 38px rgba(14,165,233,0.18), 0 2px 8px rgba(14,165,233,0.08), inset 0 1px 0 rgba(255,255,255,0.92)"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = "0 6px 28px rgba(14,165,233,0.10), 0 1px 4px rgba(14,165,233,0.05), inset 0 1px 0 rgba(255,255,255,0.92)"; }}
+          >
+            <div className="flex items-start gap-4 flex-1 min-w-0">
+              <div className="w-11 h-11 rounded-xl bg-sky-600 flex items-center justify-center shrink-0 shadow-md shadow-sky-200">
+                <Plane className="w-6 h-6 text-white" />
+              </div>
+              <div className="min-w-0">
+                <p className="font-bold text-slate-800 text-[15px] leading-tight">Air Freight Booking</p>
+                <p className="text-xs text-slate-500 mt-0.5">Hitung chargeable weight, lihat rate real-time, dan ajukan booking langsung</p>
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {(["Export", "Import", "Domestic", "Airport to Airport", "Door to Door"] as string[]).map((label) => (
+                    <Badge key={label} className="text-[10px] px-1.5 py-0 bg-sky-100 text-sky-700 border-sky-200 hover:bg-sky-100" style={{ cursor: "pointer" }}>{label}</Badge>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <Button onClick={() => setLocation("/air-freight-booking")} className="gap-2 shrink-0 bg-sky-600 hover:bg-sky-700 text-white shadow-md shadow-sky-200 px-5">
+              Booking Sekarang <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
 

@@ -354,6 +354,10 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
         title: "Freight Forwarding",
         desc: "Pengiriman udara & laut internasional ke seluruh dunia",
       },
+      airFreight: {
+        title: "Air Freight Booking",
+        desc: "Booking udara langsung — kalkulasi chargeable weight & pilih rate",
+      },
       ocean: {
         title: "Ocean Freight",
         desc: "Pengiriman laut FCL/LCL internasional",
@@ -842,6 +846,10 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       freight: {
         title: "Freight Forwarding",
         desc: "International air & sea freight to and from anywhere in the world",
+      },
+      airFreight: {
+        title: "Air Freight Booking",
+        desc: "Direct air booking — calculate chargeable weight & choose rate",
       },
       ocean: {
         title: "Ocean Freight",
