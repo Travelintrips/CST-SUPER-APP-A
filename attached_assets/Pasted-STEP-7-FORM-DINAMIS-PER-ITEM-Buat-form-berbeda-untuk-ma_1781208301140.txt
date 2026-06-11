@@ -1,0 +1,131 @@
+STEP 7 — FORM DINAMIS PER ITEM
+Buat form berbeda untuk masing-masing item.
+
+Air Freight:
+- origin airport
+- destination airport
+- commodity
+- HS Code
+- foto barang
+- gross weight
+- dimension panjang/lebar/tinggi
+- chargeable weight auto calculation
+- ready date
+
+Ocean Freight:
+- FCL / LCL
+- POL
+- POD
+- container type
+- commodity
+- HS Code
+- foto barang
+- CBM
+- weight
+- ready date
+
+Forwarding:
+- export/import
+- negara asal
+- negara tujuan
+- commodity
+- HS Code wajib
+- foto barang wajib
+- invoice
+- packing list
+- MSDS jika ada
+- checklist lartas/DG
+
+PPJK:
+- export/import
+- HS Code
+- NPWP/NIB jika belum ada
+- invoice
+- packing list
+- dokumen izin/lartas jika diperlukan
+- customs note
+
+Trucking:
+- pickup address
+- delivery address
+- pickup PIC
+- delivery PIC
+- vehicle type
+- cargo photo
+- pickup date
+
+Warehousing:
+- warehouse location
+- storage duration
+- SKU
+- quantity
+- storage requirement
+- inbound date
+
+Insurance:
+- cargo value
+- currency
+- coverage type
+- commodity
+- invoice value
+
+STEP 8 — BUAT PAKET BORONGAN
+Tambahkan mode Paket Borongan.
+
+Tambahkan tabel:
+
+service_packages:
+- id
+- package_code
+- package_name
+- package_type
+- trade_type
+- description
+- is_active
+
+service_package_items:
+- id
+- package_id
+- item_type
+- service_category
+- is_required
+- sequence_no
+- default_form_schema
+- required_documents
+
+Contoh paket:
+1. Export Air Door to Door
+   - Trucking Pickup
+   - Air Freight
+   - PPJK Export
+   - Handling
+
+2. Import Sea Door to Door
+   - Ocean Freight
+   - PPJK Import
+   - THC / DO
+   - Trucking Delivery
+
+3. Customs Clearance Only
+   - PPJK
+   - HS Code / Lartas Review
+   - Dokumen Customs
+
+4. Domestic Trucking
+   - Pickup
+   - Delivery
+   - POD
+
+5. Multimodal
+   - Trucking
+   - Air/Sea Freight
+   - PPJK
+   - Delivery
+
+Aturan:
+- paket otomatis membuat beberapa service item
+- item wajib tidak bisa dihapus customer
+- item optional bisa dihapus customer
+- customer bisa tambah item tambahan di luar paket
+- admin tetap bisa edit item paket
+- pricing bisa total borongan, per item, atau hybrid

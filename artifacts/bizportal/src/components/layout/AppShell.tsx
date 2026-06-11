@@ -355,6 +355,54 @@ export function AppShell({ children, noPadding }: AppShellProps) {
       icon: Settings,
       roles: ["admin", "owner"],
       activePaths: ["/settings", "/users", "/org", "/correspondences", "/email-inbox", "/media", "/system-health", "/notifications", "/notification-history"],
+      children: [
+        { titleKey: "Inbox", href: "/notifications", icon: Bell },
+        { titleKey: "History", href: "/notification-history", icon: MessageCircle },
+      ],
+    },
+
+    // ── 10. ADMINISTRATION / SETTINGS ────────────────────────────────
+    {
+      type: "group",
+      titleKey: "Administration / Settings",
+      basePath: "/admin",
+      icon: Shield,
+      roles: ["admin", "owner"],
+      children: [
+        // User Management
+        { titleKey: "Pengguna", href: "/users", icon: UserCircle },
+        { titleKey: "Manajemen Role", href: "/settings/roles", icon: ShieldCheck },
+        { titleKey: "Aturan Approval", href: "/settings/approval-rules", icon: ClipboardCheck },
+        { titleKey: "Struktur Organisasi", href: "/org", icon: Network },
+        // Document Templates
+        { titleKey: "Product Templates", href: "/settings/product-templates", icon: Layers },
+        { titleKey: "Service Templates", href: "/settings/service-templates", icon: Layers },
+        // COA / Taxes / Payment Methods
+        { titleKey: "chartOfAccounts", href: "/accounting/accounts", icon: Landmark },
+        { titleKey: "taxes", href: "/accounting/taxes", icon: Receipt },
+        { titleKey: "payments", href: "/accounting/payments", icon: Wallet },
+        // Communications & Config
+        { titleKey: "correspondences", href: "/correspondences", icon: Mail },
+        { titleKey: "emailInbox", href: "/email-inbox", icon: MessageCircle },
+        { titleKey: "WA Templates Logistik", href: "/settings/wa-templates", icon: MessageCircle },
+        { titleKey: "Enterprise WA Templates", href: "/settings/enterprise-wa-templates", icon: MessageSquare },
+        { titleKey: "Monitor WA Driver", href: "/settings/wa-notification-logs", icon: Activity },
+        // Logistics ops (dipindah dari menu Logistics)
+        { titleKey: "Portal Orders", href: "/logistics/portal-orders", icon: ClipboardList, companyCodes: ["CST"] },
+        { titleKey: "Service Requests (CSR)", href: "/logistics/service-requests", icon: ClipboardCheck },
+        { titleKey: "Pelanggan Portal", href: "/portal/customers", icon: Users },
+        { titleKey: "Persetujuan Onboarding", href: "/portal/onboarding-approvals", icon: Users },
+        { titleKey: "Balasan Quotation WA", href: "/logistics/quotation-reply", icon: MessageCircle },
+        { titleKey: "AI Import Advisor", href: "/logistics/import-assistant", icon: Bot },
+        { titleKey: "Internal Tasks", href: "/logistics/internal-tasks", icon: ClipboardCheck },
+        { titleKey: "Image Manager", href: "/media", icon: ImageIcon },
+        { titleKey: "Short Links", href: "/settings/short-links", icon: Link2 },
+        { titleKey: "Konfigurasi Menu", href: "/settings/nav-company-config", icon: LayoutGrid },
+        { titleKey: "settings", href: "/settings", icon: Settings },
+        { titleKey: "Secrets & Env Vars", href: "/settings/secrets", icon: KeyRound, roles: ["admin", "owner"] },
+        { titleKey: "Status Sistem", href: "/system-health", icon: Activity, roles: ["admin", "owner"] },
+      ],
+      activePaths: ["/settings", "/users", "/org", "/correspondences", "/email-inbox", "/media", "/system-health", "/notifications", "/notification-history", "/sport-center", "/tenant"],
     },
   ];
 

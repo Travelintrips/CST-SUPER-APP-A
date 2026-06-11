@@ -600,7 +600,7 @@ export default function Jasa() {
 
               <p className="text-xs text-slate-400 mb-5">Tim kami akan menghubungi Anda dalam 1 hari kerja untuk diskusi kebutuhan</p>
               <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                <Link href="/book">
+                <Link href="/service-cart">
                   <Button className="gap-2 bg-sky-600 hover:bg-sky-700 shadow-sm">
                     <Plus className="h-4 w-4" /> Ajukan Permintaan
                   </Button>
