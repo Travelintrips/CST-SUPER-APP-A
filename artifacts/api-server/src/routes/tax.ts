@@ -887,6 +887,78 @@ router.patch("/transactions/:id", async (req, res) => {
 // DJP EXPORT — e-Faktur / e-Bupot
 // ═══════════════════════════════════════════════════════════════════════════
 
+// ── GET /api/tax/export/issues ────────────────────────────────────────────────
+// Ambil baris transaction_taxes yang bermasalah (NPWP/faktur/bukpot kosong atau format salah)
+// Query: period, companyId, type (npwp|faktur|bukpot|all), limit
+router.get("/export/issues", async (req, res) => {
+  const companyId = resolveCompanyId(req);
+  const { period, type = "all", limit: limitQ } = req.query as Record<string, string>;
+  if (!period) return res.status(400).json({ message: "period (YYYY-MM) wajib diisi" });
+  const limit = Math.min(parseInt(limitQ ?? "200", 10), 500);
+
+  const conditions: string[] = [`company_id = ${companyId}`, `period = '${period}'`];
+
+  if (type === "npwp") {
+    conditions.push(`(npwp IS NULL OR npwp = '' OR LENGTH(REGEXP_REPLACE(npwp,'[^0-9]','','g')) != 15)`);
+  } else if (type === "faktur") {
+    conditions.push(`direction != 'withholding'`);
+    conditions.push(`((tax_invoice_number IS NULL OR tax_invoice_number = '') AND (faktur_pajak_number IS NULL OR faktur_pajak_number = '') OR (LENGTH(REGEXP_REPLACE(COALESCE(NULLIF(tax_invoice_number,''),faktur_pajak_number,''),'[^0-9]','','g')) != 16 AND COALESCE(NULLIF(tax_invoice_number,''),faktur_pajak_number,'') != ''))`);
+  } else if (type === "bukpot") {
+    conditions.push(`direction = 'withholding'`);
+    conditions.push(`(bukti_potong_number IS NULL OR bukti_potong_number = '' OR LENGTH(bukti_potong_number) < 8)`);
+  } else {
+    // all issues
+    conditions.push(`(
+      (npwp IS NULL OR npwp = '' OR LENGTH(REGEXP_REPLACE(npwp,'[^0-9]','','g')) != 15)
+      OR (direction != 'withholding' AND ((tax_invoice_number IS NULL OR tax_invoice_number = '') AND (faktur_pajak_number IS NULL OR faktur_pajak_number = '')))
+      OR (direction = 'withholding' AND (bukti_potong_number IS NULL OR bukti_potong_number = ''))
+    )`);
+  }
+
+  try {
+    const rows = await db.execute(sql.raw(`
+      SELECT
+        id,
+        period,
+        direction,
+        tax_name,
+        transaction_ref,
+        partner_name,
+        COALESCE(NULLIF(npwp,''), '') AS npwp,
+        COALESCE(NULLIF(tax_invoice_number,''), NULLIF(faktur_pajak_number,''), '') AS faktur_number,
+        COALESCE(NULLIF(bukti_potong_number,''), '') AS bukpot_number,
+        base_amount::float,
+        tax_amount::float,
+        tax_rate::float,
+        status,
+        created_at,
+        CASE
+          WHEN npwp IS NULL OR npwp = '' THEN true
+          WHEN LENGTH(REGEXP_REPLACE(npwp,'[^0-9]','','g')) != 15 THEN true
+          ELSE false
+        END AS npwp_issue,
+        CASE
+          WHEN direction != 'withholding' AND ((tax_invoice_number IS NULL OR tax_invoice_number = '') AND (faktur_pajak_number IS NULL OR faktur_pajak_number = '')) THEN true
+          WHEN direction != 'withholding' AND COALESCE(NULLIF(tax_invoice_number,''),faktur_pajak_number,'') != '' AND LENGTH(REGEXP_REPLACE(COALESCE(NULLIF(tax_invoice_number,''),faktur_pajak_number,''),'[^0-9]','','g')) != 16 THEN true
+          ELSE false
+        END AS faktur_issue,
+        CASE
+          WHEN direction = 'withholding' AND (bukti_potong_number IS NULL OR bukti_potong_number = '') THEN true
+          WHEN direction = 'withholding' AND bukti_potong_number IS NOT NULL AND LENGTH(bukti_potong_number) < 8 THEN true
+          ELSE false
+        END AS bukpot_issue
+      FROM transaction_taxes
+      WHERE ${conditions.join(" AND ")}
+      ORDER BY direction DESC, created_at
+      LIMIT ${limit}
+    `));
+    return res.json({ period, total: rows.rows.length, items: rows.rows });
+  } catch (err) {
+    logger.error({ err }, "tax/export/issues: query failed");
+    return res.status(500).json({ message: "Gagal memuat baris bermasalah" });
+  }
+});
+
 // ── GET /api/tax/export/validate ─────────────────────────────────────────────
 // Pre-flight: hitung baris siap export, bermasalah NPWP, bermasalah faktur
 router.get("/export/validate", async (req, res) => {
