@@ -892,11 +892,14 @@ router.patch("/transactions/:id", async (req, res) => {
 // Query: period, companyId, type (npwp|faktur|bukpot|all), limit
 router.get("/export/issues", async (req, res) => {
   const companyId = resolveCompanyId(req);
-  const { period, type = "all", limit: limitQ } = req.query as Record<string, string>;
+  const { period, type = "all", txType, limit: limitQ } = req.query as Record<string, string>;
   if (!period) return res.status(400).json({ message: "period (YYYY-MM) wajib diisi" });
   const limit = Math.min(parseInt(limitQ ?? "200", 10), 500);
 
   const conditions: string[] = [`company_id = ${companyId}`, `period = '${period}'`];
+  if (txType && txType !== "all") {
+    conditions.push(`transaction_type = '${String(txType).replace(/'/g, "''")}'`);
+  }
 
   if (type === "npwp") {
     conditions.push(`(npwp IS NULL OR npwp = '' OR LENGTH(REGEXP_REPLACE(npwp,'[^0-9]','','g')) != 15)`);
@@ -921,6 +924,7 @@ router.get("/export/issues", async (req, res) => {
         id,
         period,
         direction,
+        transaction_type,
         tax_name,
         transaction_ref,
         partner_name,

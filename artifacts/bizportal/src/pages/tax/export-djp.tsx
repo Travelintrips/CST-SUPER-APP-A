@@ -93,6 +93,7 @@ interface IssueRow {
   id: number;
   period: string;
   direction: string;
+  transaction_type: string;
   tax_name: string;
   transaction_ref: string | null;
   partner_name: string | null;
@@ -291,12 +292,24 @@ function InlineEditRow({
     ? <Badge variant="outline" className="text-[10px] shrink-0 border-blue-300 text-blue-700">Masukan</Badge>
     : <Badge variant="outline" className="text-[10px] shrink-0 border-orange-300 text-orange-700">Keluaran</Badge>;
 
+  const txTypeLabelMap: Record<string, string> = {
+    sales_order: "Jual",
+    purchase_order: "Beli",
+    expense: "Biaya",
+    logistic_order: "Logistik",
+  };
+  const txTypeBadge = row.transaction_type ? (
+    <Badge variant="outline" className="text-[10px] shrink-0 border-slate-300 text-slate-600">
+      {txTypeLabelMap[row.transaction_type] ?? row.transaction_type}
+    </Badge>
+  ) : null;
+
   return (
     <TableRow className={saved ? "bg-emerald-50/40" : ""}>
       <TableCell className="py-2 max-w-[140px]">
         <div className="text-xs font-medium truncate">{row.partner_name || "-"}</div>
         <div className="text-[10px] text-muted-foreground truncate">{row.tax_name}</div>
-        <div className="flex items-center gap-1 mt-0.5">{dirBadge}</div>
+        <div className="flex items-center gap-1 mt-0.5">{dirBadge}{txTypeBadge}</div>
       </TableCell>
 
       <TableCell className="py-2">
@@ -387,6 +400,7 @@ function IssuesPanel({
 }) {
   const [open, setOpen]               = useState(false);
   const [filter, setFilter]           = useState<"all" | "npwp" | "faktur" | "bukpot">("all");
+  const [txTypeFilter, setTxTypeFilter] = useState<string>("all");
   const [savedCount, setSavedCount]   = useState(0);
   const [autofilling, setAutofilling] = useState(false);
   const [autofillResult, setAutofillResult] = useState<{ updated: number } | null>(null);
@@ -401,9 +415,10 @@ function IssuesPanel({
 
   const params = new URLSearchParams({ period, type: filter });
   if (companyId) params.set("companyId", String(companyId));
+  if (txTypeFilter !== "all") params.set("txType", txTypeFilter);
 
   const { data, isLoading, refetch } = useQuery<{ total: number; items: IssueRow[] }>({
-    queryKey: ["tax-export-issues", companyId, period, filter],
+    queryKey: ["tax-export-issues", companyId, period, filter, txTypeFilter],
     queryFn: () => fetch(`/api/tax/export/issues?${params}`, { credentials: "include" }).then((r) => r.json()),
     enabled: open,
   });
@@ -601,7 +616,7 @@ function IssuesPanel({
         <div className="border-t border-orange-200">
           {/* Filter bar */}
           <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 bg-white/60 border-b border-orange-100">
-            <span className="text-xs text-muted-foreground">Filter:</span>
+            <span className="text-xs text-muted-foreground">Masalah:</span>
             {(["all", "npwp", "faktur", "bukpot"] as const).map((f) => (
               <Button
                 key={f}
@@ -611,6 +626,24 @@ function IssuesPanel({
                 onClick={() => setFilter(f)}
               >
                 {f === "all" ? "Semua" : f === "npwp" ? "NPWP" : f === "faktur" ? "No. Faktur" : "No. Bukpot"}
+              </Button>
+            ))}
+            <span className="text-xs text-muted-foreground ml-2">Tipe:</span>
+            {([
+              { value: "all", label: "Semua" },
+              { value: "sales_order", label: "Penjualan" },
+              { value: "purchase_order", label: "Pembelian" },
+              { value: "expense", label: "Biaya" },
+              { value: "logistic_order", label: "Logistik" },
+            ]).map(({ value, label }) => (
+              <Button
+                key={value}
+                size="sm"
+                variant={txTypeFilter === value ? "secondary" : "outline"}
+                className="h-6 px-2.5 text-[11px]"
+                onClick={() => setTxTypeFilter(value)}
+              >
+                {label}
               </Button>
             ))}
             <div className="ml-auto flex items-center gap-1.5">
