@@ -6,9 +6,9 @@ import { logger } from "../lib/logger.js";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getAdminGroupWa } from "../lib/adminWa.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
-import multer from "multer";
+import { documentUpload } from "../lib/uploadMiddleware.js";
 
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+const upload = documentUpload(10);
 const storage = new ObjectStorageService();
 
 const submitLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false });

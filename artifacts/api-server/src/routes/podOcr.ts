@@ -1,5 +1,4 @@
 import { Router } from "express";
-import multer from "multer";
 import { getOpenAI } from "../lib/openaiClient.js";
 import { db, podOcrResultsTable, logisticOrdersTable, driverJobsTable } from "@workspace/db";
 import { eq, or } from "drizzle-orm";
@@ -7,9 +6,10 @@ import { requireClerkUser } from "../lib/requireAdmin.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { logger } from "../lib/logger.js";
 import { createTwoTierRateLimiter, extractRateLimitKey } from "../lib/userRateLimiter.js";
+import { imagePdfUpload } from "../lib/uploadMiddleware.js";
 
 const router = Router();
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
+const upload = imagePdfUpload(20);
 const objectStorage = new ObjectStorageService();
 
 // Per-user OCR rate limit: burst 5/minute + 20/hour.

@@ -8,7 +8,6 @@
 import { Router, type Request, type Response } from "express";
 import { randomBytes, randomUUID } from "crypto";
 import { eq, desc, sql } from "drizzle-orm";
-import multer from "multer";
 import {
   db,
   logisticOrdersTable,
@@ -31,9 +30,10 @@ import { updateOrderProgress } from "../lib/orderProgress.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { compressImageBuffer } from "../lib/imageCompress.js";
 import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStatusService.js";
+import { imageUpload } from "../lib/uploadMiddleware.js";
 
 const objectStorageService = new ObjectStorageService();
-const podUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
+const podUpload = imageUpload(15);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Migration (idempotent)

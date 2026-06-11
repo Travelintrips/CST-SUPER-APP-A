@@ -1,0 +1,105 @@
+Saya approve perbaikan P0 dulu. Jangan kerjakan P1/P2/P3 dulu.
+
+SPRINT P0 — SECURITY HOTFIX CUSTOMER PORTAL & LOGISTICS
+
+Target:
+1. Hapus PORTAL_ADMIN_KEY hardcoded "admin123".
+2. Pindahkan semua secret ke Replit Secrets.
+3. Tambahkan upload MIME whitelist di Multer fileFilter.
+4. Pastikan tidak ada secret plaintext di userenv.shared.
+5. Jalankan regression test untuk WA token, vendor mini form, customer approval, dan upload dokumen.
+
+TASK 1 — FIX PORTAL_ADMIN_KEY
+- Cari semua penggunaan PORTAL_ADMIN_KEY.
+- Hapus fallback "admin123".
+- Ambil value hanya dari process.env.PORTAL_ADMIN_KEY.
+- Jika env tidak ada, aplikasi harus fail fast saat startup atau disable fitur token generation dengan error jelas.
+- Jangan pernah generate token dengan default secret.
+
+TASK 2 — MOVE SECRETS
+Pindahkan semua secret berikut ke Replit Secrets:
+- PORTAL_ADMIN_KEY
+- CASHIER_TOKEN_SECRET
+- SESSION_SECRET
+- JWT_SECRET jika ada
+- WAHA_API_KEY / FONNTE_TOKEN jika ada
+- PAYMENT_SECRET / PAYLABS_SECRET jika ada
+
+Pastikan:
+- tidak ada secret plaintext di userenv.shared
+- tidak ada secret hardcoded di source code
+- tidak ada secret muncul di log
+- update .env.example hanya dengan placeholder, bukan value asli
+
+TASK 3 — SECURE VENDOR / CUSTOMER TOKEN
+Audit token untuk:
+- vendor RFQ mini form
+- customer approval link
+- customer data mini form
+- vendor progress mini form
+- POD upload link
+
+Pastikan:
+- pakai HMAC dengan secret dari env
+- punya expiry
+- validasi signature
+- validasi payload id
+- validasi status order masih boleh diakses
+- error 401/403 jika invalid/expired
+
+TASK 4 — MULTER MIME WHITELIST
+Tambahkan fileFilter pada semua upload route terkait:
+- customer document upload
+- vendor quotation attachment
+- POD upload
+- OCR document upload
+- company legal document upload
+
+Allowed MIME:
+- application/pdf
+- image/jpeg
+- image/png
+- image/webp
+- application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+- application/vnd.ms-excel
+- application/msword
+- application/vnd.openxmlformats-officedocument.wordprocessingml.document
+
+Block:
+- text/html
+- image/svg+xml
+- application/javascript
+- text/javascript
+- application/x-msdownload
+- application/x-sh
+- application/octet-stream jika extension tidak valid
+
+Validasi juga:
+- extension file
+- max file size
+- sanitized filename
+- storage path aman
+- return 400/415 jika file tidak valid
+
+TASK 5 — TESTING WAJIB
+Test:
+1. Token valid vendor RFQ bisa dibuka.
+2. Token expired ditolak.
+3. Token palsu ditolak.
+4. Customer approval link valid bisa dibuka.
+5. Customer approval link palsu ditolak.
+6. Upload PDF berhasil.
+7. Upload JPG/PNG berhasil.
+8. Upload SVG/HTML/JS/EXE ditolak.
+9. Aplikasi tidak start jika secret wajib kosong.
+10. Tidak ada secret plaintext tersisa.
+
+OUTPUT AKHIR:
+- file yang diubah
+- daftar secret yang harus saya isi di Replit Secrets
+- hasil test security
+- hasil grep tidak ada "admin123"
+- hasil grep tidak ada secret plaintext
+- bug tersisa jika ada
+
+Jangan klaim selesai sebelum semua test P0 lulus.
