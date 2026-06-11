@@ -71,6 +71,12 @@ export const freightShipmentsTable = pgTable("freight_shipments", {
   sourceModule: text("source_module"),       // 'air_freight'|'ocean_freight'|'logistic_order'|'freight'|'manual'
   sourceOrderId: integer("source_order_id"), // ID dari tabel sumber (nullable, tanpa FK constraint agar lintas tabel)
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  // ── FASE 10: Accounting Linkage (ditambahkan 2026-06-11) ────────────────────
+  estimatedRevenue: numeric("estimated_revenue", { precision: 14, scale: 2 }),
+  estimatedCost:    numeric("estimated_cost",    { precision: 14, scale: 2 }),
+  actualRevenue:    numeric("actual_revenue",    { precision: 14, scale: 2 }),
+  invoiceStatus:    text("invoice_status").notNull().default("none"),     // 'none'|'to_invoice'|'invoiced'
+  vendorBillStatus: text("vendor_bill_status").notNull().default("none"), // 'none'|'to_bill'|'billed'
 });
 
 export const freightRfqsTable = pgTable("freight_rfqs", {

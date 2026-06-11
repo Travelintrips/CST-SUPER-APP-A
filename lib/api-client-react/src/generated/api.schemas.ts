@@ -1566,6 +1566,11 @@ export interface FreightShipment {
   totalExpenses?: string | null;
   createdById?: string | null;
   createdAt: string;
+  estimatedRevenue?: string | null;
+  estimatedCost?: string | null;
+  actualRevenue?: string | null;
+  invoiceStatus?: string | null;
+  vendorBillStatus?: string | null;
 }
 
 export interface FreightShipmentProfitability {
@@ -1574,6 +1579,10 @@ export interface FreightShipmentProfitability {
   profit: number;
   margin?: number | null;
   invoiceStatus: string;
+  vendorBillStatus?: string | null;
+  estimatedRevenue?: number | null;
+  estimatedCost?: number | null;
+  actualRevenue?: number | null;
 }
 
 export type FreightAttachmentFileType =

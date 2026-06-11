@@ -115,7 +115,7 @@ export function Footer() {
 
   const serviceLinks: NavItem[] = [
     { label: t("footer.seaFreight"),          href: "/freight-forwarding" },
-    { label: t("footer.airFreight"),          href: "/freight-forwarding" },
+    { label: t("footer.airFreight"),          href: "/air-freight-booking" },
     { label: t("footer.customsBrokerage"),    href: "/pabean" },
     { label: t("footer.domesticDistribution"), href: "/jasa" },
   ];

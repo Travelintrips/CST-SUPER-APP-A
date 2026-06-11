@@ -23,7 +23,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import {
   ArrowLeft, Pencil, Printer, Plus, CheckCircle, Loader2, Ship, FileText, FileDown, Paperclip,
   TrendingDown, TrendingUp, Receipt, ExternalLink, MessageSquare, ShoppingCart, Package, Truck,
-  History, User, ArrowRight,
+  History, User, ArrowRight, DollarSign, Calculator, BookOpen,
 } from "lucide-react";
 import { CorrespondenceTab } from "@/components/CorrespondenceTab";
 import {
@@ -193,6 +193,15 @@ export default function LogisticsFreightDetailPage() {
   });
   const [stagesInitialized, setStagesInitialized] = useState(false);
   const [expenseFilter, setExpenseFilter] = useState<"all" | "approved">("all");
+
+  // FASE 10: Accounting Linkage
+  const [showFinancialDialog, setShowFinancialDialog] = useState(false);
+  const [financialForm, setFinancialForm] = useState({ estimatedRevenue: "", estimatedCost: "", actualRevenue: "", actualCost: "" });
+  const [showGenerateInvoiceDialog, setShowGenerateInvoiceDialog] = useState(false);
+  const [invoiceForm, setInvoiceForm] = useState({ customerName: "", actualRevenue: "", taxAmount: "", notes: "" });
+  const [showGenerateVendorBillDialog, setShowGenerateVendorBillDialog] = useState(false);
+  const [vendorBillForm, setVendorBillForm] = useState({ vendorName: "", actualCost: "", notes: "" });
+  const [accountingLoading, setAccountingLoading] = useState({ invoice: false, bill: false, post: false, financial: false });
 
   useEffect(() => {
     if (typedShipment?.stages && !stagesInitialized) {
@@ -410,6 +419,104 @@ export default function LogisticsFreightDetailPage() {
         onError: () => toast({ title: t.common.error, variant: "destructive" }),
       }
     );
+  };
+
+  // FASE 10: Accounting Linkage handlers
+  const handleUpdateFinancial = async () => {
+    setAccountingLoading((p) => ({ ...p, financial: true }));
+    try {
+      const res = await fetch(`/api/logistics/freight-shipments/${id}/financial`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          estimatedRevenue: financialForm.estimatedRevenue || undefined,
+          estimatedCost:    financialForm.estimatedCost    || undefined,
+          actualRevenue:    financialForm.actualRevenue    || undefined,
+          actualCost:       financialForm.actualCost       || undefined,
+        }),
+      });
+      if (!res.ok) throw new Error((await res.json() as { message: string }).message);
+      invalidate();
+      setShowFinancialDialog(false);
+      toast({ title: "Data keuangan berhasil disimpan" });
+    } catch (e: unknown) {
+      toast({ title: (e instanceof Error ? e.message : "Gagal menyimpan"), variant: "destructive" });
+    } finally {
+      setAccountingLoading((p) => ({ ...p, financial: false }));
+    }
+  };
+
+  const handleGenerateInvoice = async () => {
+    setAccountingLoading((p) => ({ ...p, invoice: true }));
+    try {
+      const res = await fetch(`/api/logistics/freight-shipments/${id}/generate-invoice`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          customerName:  invoiceForm.customerName  || undefined,
+          actualRevenue: invoiceForm.actualRevenue ? Number(invoiceForm.actualRevenue) : undefined,
+          taxAmount:     invoiceForm.taxAmount     ? Number(invoiceForm.taxAmount)     : undefined,
+          notes:         invoiceForm.notes         || undefined,
+        }),
+      });
+      if (!res.ok) throw new Error((await res.json() as { message: string }).message);
+      invalidate();
+      setShowGenerateInvoiceDialog(false);
+      toast({ title: "Sales Invoice berhasil dibuat" });
+    } catch (e: unknown) {
+      toast({ title: (e instanceof Error ? e.message : "Gagal membuat invoice"), variant: "destructive" });
+    } finally {
+      setAccountingLoading((p) => ({ ...p, invoice: false }));
+    }
+  };
+
+  const handleGenerateVendorBill = async () => {
+    setAccountingLoading((p) => ({ ...p, bill: true }));
+    try {
+      const res = await fetch(`/api/logistics/freight-shipments/${id}/generate-vendor-bill`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          vendorName: vendorBillForm.vendorName || undefined,
+          actualCost: vendorBillForm.actualCost ? Number(vendorBillForm.actualCost) : undefined,
+          notes:      vendorBillForm.notes      || undefined,
+        }),
+      });
+      if (!res.ok) throw new Error((await res.json() as { message: string }).message);
+      invalidate();
+      setShowGenerateVendorBillDialog(false);
+      toast({ title: "Vendor Bill berhasil dibuat" });
+    } catch (e: unknown) {
+      toast({ title: (e instanceof Error ? e.message : "Gagal membuat vendor bill"), variant: "destructive" });
+    } finally {
+      setAccountingLoading((p) => ({ ...p, bill: false }));
+    }
+  };
+
+  const handlePostAccounting = async () => {
+    setAccountingLoading((p) => ({ ...p, post: true }));
+    try {
+      const res = await fetch(`/api/logistics/freight-shipments/${id}/post-accounting`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({}),
+      });
+      const data = await res.json() as { message: string; revenuePosted: boolean; costPosted: boolean; errors: string[] };
+      if (!res.ok) throw new Error(data.message);
+      invalidate();
+      const parts = [];
+      if (data.revenuePosted) parts.push("Jurnal revenue ✓");
+      if (data.costPosted)    parts.push("Jurnal biaya ✓");
+      toast({ title: parts.join(" · ") || "Posting selesai", description: data.errors?.length ? data.errors.join("; ") : undefined });
+    } catch (e: unknown) {
+      toast({ title: (e instanceof Error ? e.message : "Gagal posting"), variant: "destructive" });
+    } finally {
+      setAccountingLoading((p) => ({ ...p, post: false }));
+    }
   };
 
   if (isLoading) {
@@ -1026,6 +1133,148 @@ export default function LogisticsFreightDetailPage() {
           </CardContent>
         </Card>
 
+        {/* Akuntansi & Keuangan Card — FASE 10 */}
+        <Card className="print:hidden">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <BookOpen className="h-4 w-4 text-blue-500" />
+                Akuntansi &amp; Keuangan
+              </CardTitle>
+              <Button variant="outline" size="sm" onClick={() => {
+                setFinancialForm({
+                  estimatedRevenue: typedShipment?.estimatedRevenue ? String(typedShipment.estimatedRevenue) : "",
+                  estimatedCost:    typedShipment?.estimatedCost    ? String(typedShipment.estimatedCost)    : "",
+                  actualRevenue:    typedShipment?.actualRevenue    ? String(typedShipment.actualRevenue)    : "",
+                  actualCost:       typedShipment?.actualCost       ? String(typedShipment.actualCost)       : "",
+                });
+                setShowFinancialDialog(true);
+              }}>
+                <Pencil className="h-3.5 w-3.5 mr-1.5" />
+                Edit Keuangan
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Financial grid */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {[
+                { label: "Est. Revenue", value: typedShipment?.estimatedRevenue, color: "bg-blue-500/5 border-blue-500/15" },
+                { label: "Est. Biaya",   value: typedShipment?.estimatedCost,    color: "bg-amber-500/5 border-amber-500/15" },
+                { label: "Aktual Revenue", value: typedShipment?.actualRevenue ?? (profitability?.revenue ?? null), color: "bg-emerald-500/5 border-emerald-500/15" },
+                { label: "Aktual Biaya",   value: typedShipment?.actualCost,     color: "bg-rose-500/5 border-rose-500/15" },
+              ].map(({ label, value, color }) => (
+                <div key={label} className={`rounded-lg border p-3 space-y-1 ${color}`}>
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide">{label}</p>
+                  <p className="text-sm font-semibold">{value != null && value !== "" ? fmt(String(value)) : "—"}</p>
+                </div>
+              ))}
+            </div>
+            <Separator />
+            {/* Invoice & Bill status + actions */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Sales Invoice */}
+              <div className="rounded-lg border p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Receipt className="h-4 w-4 text-blue-500" />
+                    <span className="text-sm font-medium">Sales Invoice</span>
+                  </div>
+                  <Badge variant="outline" className={
+                    typedShipment?.invoiceStatus === "invoiced"   ? "bg-emerald-500/10 text-emerald-700 border-emerald-500/20" :
+                    typedShipment?.invoiceStatus === "to_invoice" ? "bg-amber-500/10 text-amber-700 border-amber-500/20" :
+                    "bg-muted text-muted-foreground"
+                  }>
+                    {typedShipment?.invoiceStatus === "invoiced"   ? "Diinvoice" :
+                     typedShipment?.invoiceStatus === "to_invoice" ? "Perlu Invoice" : "Belum Ada"}
+                  </Badge>
+                </div>
+                {typedShipment?.salesDocId ? (
+                  <p className="text-xs text-muted-foreground">
+                    Terhubung ke Sales Doc #{typedShipment.salesDocId}
+                    {linkedSalesDoc ? ` · ${linkedSalesDoc.docNumber}` : ""}
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">Belum ada Sales Invoice.</p>
+                )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="w-full"
+                  disabled={typedShipment?.invoiceStatus === "invoiced" || accountingLoading.invoice}
+                  onClick={() => {
+                    setInvoiceForm({
+                      customerName:  typedShipment?.shipperName || "",
+                      actualRevenue: typedShipment?.actualRevenue ? String(typedShipment.actualRevenue) : "",
+                      taxAmount: "",
+                      notes: "",
+                    });
+                    setShowGenerateInvoiceDialog(true);
+                  }}
+                >
+                  {accountingLoading.invoice ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <DollarSign className="h-3.5 w-3.5 mr-1.5" />}
+                  {typedShipment?.salesDocId ? "Perbarui Invoice" : "Generate Invoice"}
+                </Button>
+              </div>
+              {/* Vendor Bill */}
+              <div className="rounded-lg border p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Package className="h-4 w-4 text-amber-500" />
+                    <span className="text-sm font-medium">Vendor Bill</span>
+                  </div>
+                  <Badge variant="outline" className={
+                    typedShipment?.vendorBillStatus === "billed"   ? "bg-emerald-500/10 text-emerald-700 border-emerald-500/20" :
+                    typedShipment?.vendorBillStatus === "to_bill"  ? "bg-amber-500/10 text-amber-700 border-amber-500/20" :
+                    "bg-muted text-muted-foreground"
+                  }>
+                    {typedShipment?.vendorBillStatus === "billed"  ? "Dibilled" :
+                     typedShipment?.vendorBillStatus === "to_bill" ? "Perlu Bill" : "Belum Ada"}
+                  </Badge>
+                </div>
+                {typedShipment?.purchaseDocId ? (
+                  <p className="text-xs text-muted-foreground">
+                    Terhubung ke Purchase Doc #{typedShipment.purchaseDocId}
+                    {linkedPurchaseDoc ? ` · ${linkedPurchaseDoc.docNumber}` : ""}
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">Belum ada Vendor Bill.</p>
+                )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="w-full"
+                  disabled={typedShipment?.vendorBillStatus === "billed" || accountingLoading.bill}
+                  onClick={() => {
+                    setVendorBillForm({
+                      vendorName: typedShipment?.approvedVendorName || "",
+                      actualCost: typedShipment?.actualCost ? String(typedShipment.actualCost) : "",
+                      notes: "",
+                    });
+                    setShowGenerateVendorBillDialog(true);
+                  }}
+                >
+                  {accountingLoading.bill ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Calculator className="h-3.5 w-3.5 mr-1.5" />}
+                  {typedShipment?.purchaseDocId ? "Perbarui Vendor Bill" : "Generate Vendor Bill"}
+                </Button>
+              </div>
+            </div>
+            {/* Post to Accounting */}
+            <Button
+              className="w-full"
+              variant="default"
+              disabled={accountingLoading.post || (!typedShipment?.salesDocId && !typedShipment?.purchaseDocId)}
+              onClick={handlePostAccounting}
+            >
+              {accountingLoading.post ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <BookOpen className="h-4 w-4 mr-2" />}
+              Posting ke Jurnal Akuntansi
+            </Button>
+            {!typedShipment?.salesDocId && !typedShipment?.purchaseDocId && (
+              <p className="text-xs text-center text-muted-foreground">Generate invoice atau vendor bill terlebih dahulu sebelum posting.</p>
+            )}
+          </CardContent>
+        </Card>
+
         {/* RFQ Section — screen only */}
         <div className="print:hidden space-y-4">
           <div className="flex items-center justify-between">
@@ -1387,6 +1636,98 @@ export default function LogisticsFreightDetailPage() {
           </Card>
         )}
       </div>
+
+      {/* Edit Financial Dialog — FASE 10 */}
+      <Dialog open={showFinancialDialog} onOpenChange={setShowFinancialDialog}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Edit Data Keuangan</DialogTitle></DialogHeader>
+          <div className="space-y-3 py-2">
+            {[
+              { key: "estimatedRevenue", label: "Est. Revenue (IDR)" },
+              { key: "estimatedCost",    label: "Est. Biaya (IDR)" },
+              { key: "actualRevenue",    label: "Aktual Revenue (IDR)" },
+              { key: "actualCost",       label: "Aktual Biaya (IDR)" },
+            ].map(({ key, label }) => (
+              <div key={key} className="space-y-1">
+                <Label className="text-sm">{label}</Label>
+                <Input
+                  type="number"
+                  placeholder="0"
+                  value={financialForm[key as keyof typeof financialForm]}
+                  onChange={(e) => setFinancialForm((p) => ({ ...p, [key]: e.target.value }))}
+                />
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowFinancialDialog(false)}>Batal</Button>
+            <Button onClick={handleUpdateFinancial} disabled={accountingLoading.financial}>
+              {accountingLoading.financial ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+              Simpan
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Generate Invoice Dialog — FASE 10 */}
+      <Dialog open={showGenerateInvoiceDialog} onOpenChange={setShowGenerateInvoiceDialog}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Generate Sales Invoice</DialogTitle></DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1">
+              <Label className="text-sm">Nama Customer</Label>
+              <Input placeholder={typedShipment?.shipperName || "Customer"} value={invoiceForm.customerName} onChange={(e) => setInvoiceForm((p) => ({ ...p, customerName: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-sm">Aktual Revenue (IDR)</Label>
+              <Input type="number" placeholder="0" value={invoiceForm.actualRevenue} onChange={(e) => setInvoiceForm((p) => ({ ...p, actualRevenue: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-sm">PPN / Tax (IDR, opsional)</Label>
+              <Input type="number" placeholder="0" value={invoiceForm.taxAmount} onChange={(e) => setInvoiceForm((p) => ({ ...p, taxAmount: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-sm">Catatan</Label>
+              <Textarea placeholder="Catatan invoice..." value={invoiceForm.notes} onChange={(e) => setInvoiceForm((p) => ({ ...p, notes: e.target.value }))} rows={2} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowGenerateInvoiceDialog(false)}>Batal</Button>
+            <Button onClick={handleGenerateInvoice} disabled={accountingLoading.invoice}>
+              {accountingLoading.invoice ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+              Generate Invoice
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Generate Vendor Bill Dialog — FASE 10 */}
+      <Dialog open={showGenerateVendorBillDialog} onOpenChange={setShowGenerateVendorBillDialog}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Generate Vendor Bill</DialogTitle></DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1">
+              <Label className="text-sm">Nama Vendor</Label>
+              <Input placeholder={typedShipment?.approvedVendorName || "Vendor"} value={vendorBillForm.vendorName} onChange={(e) => setVendorBillForm((p) => ({ ...p, vendorName: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-sm">Aktual Biaya Vendor (IDR)</Label>
+              <Input type="number" placeholder="0" value={vendorBillForm.actualCost} onChange={(e) => setVendorBillForm((p) => ({ ...p, actualCost: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-sm">Catatan</Label>
+              <Textarea placeholder="Catatan vendor bill..." value={vendorBillForm.notes} onChange={(e) => setVendorBillForm((p) => ({ ...p, notes: e.target.value }))} rows={2} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowGenerateVendorBillDialog(false)}>Batal</Button>
+            <Button onClick={handleGenerateVendorBill} disabled={accountingLoading.bill}>
+              {accountingLoading.bill ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+              Generate Vendor Bill
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* RFQ Dialog */}
       <Dialog open={showRfqDialog} onOpenChange={setShowRfqDialog}>

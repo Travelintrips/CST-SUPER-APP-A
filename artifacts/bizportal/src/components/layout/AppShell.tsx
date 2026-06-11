@@ -248,6 +248,18 @@ export function AppShell({ children, noPadding }: AppShellProps) {
       icon: Truck,
       roles: ["admin", "owner", "logistics", "trading"],
       activePaths: ["/logistics", "/air-freight", "/operational-dashboard", "/ocean-freight-master-data", "/logistics/vendor-fulfillments"],
+      children: [
+        { titleKey: "Dashboard Logistik",   href: "/logistics/dashboard",          icon: LayoutDashboard },
+        { titleKey: "Semua Shipment",        href: "/logistics/shipments",           icon: Truck },
+        { titleKey: "RFQ & Quote",           href: "/logistics/rfq",                icon: Send },
+        { titleKey: "Trucking",              href: "/logistics/trucking",           icon: Truck },
+        { titleKey: "Air Freight",           href: "/logistics/air-freight",        icon: Plane },
+        { titleKey: "Ocean Freight",         href: "/logistics/ocean-freight",      icon: Anchor },
+        { titleKey: "PPJK / Customs",        href: "/logistics/ppjk",              icon: ClipboardList },
+        { titleKey: "Vendor Fulfillment",    href: "/logistics/vendor-fulfillment", icon: PackageCheck },
+        { titleKey: "Profitability",         href: "/logistics/profitability",      icon: TrendingUp,  roles: ["admin", "owner"] },
+        { titleKey: "Settings Logistik",     href: "/logistics/settings",          icon: Settings },
+      ],
     },
 
     // ── 7. TRADING ────────────────────────────────────────────────────
