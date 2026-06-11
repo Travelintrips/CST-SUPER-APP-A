@@ -74,7 +74,26 @@ interface PackageItem {
   requiredDocuments: string[];
 }
 
-type Step = "trade_type" | "mode_select" | "package_select" | "add_items" | "review" | "success";
+type Step = "trade_type" | "company_profile" | "mode_select" | "package_select" | "add_items" | "review" | "success";
+
+interface CompanyProfile {
+  companyName: string;
+  npwp: string;
+  nib: string;
+  companyAddress: string;
+  picName: string;
+  picWhatsapp: string;
+  picEmail: string;
+  legalDocUrl: string;
+  ktpPicUrl: string;
+  suratKuasaUrl: string;
+  apiNikIzinUrl: string;
+  additionalNotes: string;
+  profileStatus?: string;
+  filledFields?: number;
+  totalRequired?: number;
+  isVerified?: boolean;
+}
 
 // ─── Service catalog metadata ──────────────────────────────────────────────────
 
@@ -617,7 +636,8 @@ function ServiceForm({
 
 function StepBar({ current }: { current: Step }) {
   const STEPS: { id: Step; label: string }[] = [
-    { id: "trade_type", label: "Jenis & Data Diri" },
+    { id: "trade_type", label: "Data Diri" },
+    { id: "company_profile", label: "Profil Perusahaan" },
     { id: "mode_select", label: "Mode Pemesanan" },
     { id: "add_items", label: "Detail Layanan" },
     { id: "review", label: "Review & Kirim" },
@@ -663,6 +683,14 @@ export default function ServiceCartPage() {
   const [loadingPackages, setLoadingPackages] = useState(false);
   const [applyingPackage, setApplyingPackage] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [companyProfile, setCompanyProfile] = useState<CompanyProfile>({
+    companyName: "", npwp: "", nib: "", companyAddress: "",
+    picName: "", picWhatsapp: "", picEmail: "",
+    legalDocUrl: "", ktpPicUrl: "", suratKuasaUrl: "", apiNikIzinUrl: "", additionalNotes: "",
+  });
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileFetched, setProfileFetched] = useState(false);
 
   // Item editor state
   const [showItemEditor, setShowItemEditor] = useState(false);
@@ -696,6 +724,41 @@ export default function ServiceCartPage() {
         setStep("add_items");
       }).catch(() => {});
   }, [params?.requestId]);
+
+  // Fetch profile when entering company_profile step
+  useEffect(() => {
+    if (step !== "company_profile" || profileFetched || !customerInfo.customerEmail) return;
+    setProfileLoading(true);
+    fetch(`/api/portal/customer-profile/by-email?email=${encodeURIComponent(customerInfo.customerEmail)}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data && (data.companyName || data.picName || data.npwp)) {
+          setCompanyProfile({
+            companyName: data.companyName ?? "",
+            npwp: data.npwp ?? "",
+            nib: data.nib ?? "",
+            companyAddress: data.companyAddress ?? "",
+            picName: data.picName ?? "",
+            picWhatsapp: data.picWhatsapp ?? "",
+            picEmail: data.picEmail ?? customerInfo.customerEmail,
+            legalDocUrl: data.legalDocUrl ?? "",
+            ktpPicUrl: data.ktpPicUrl ?? "",
+            suratKuasaUrl: data.suratKuasaUrl ?? "",
+            apiNikIzinUrl: data.apiNikIzinUrl ?? "",
+            additionalNotes: data.additionalNotes ?? "",
+            profileStatus: data.profileStatus,
+            filledFields: data.filledFields,
+            totalRequired: data.totalRequired,
+            isVerified: data.isVerified,
+          });
+        } else {
+          setCompanyProfile((p) => ({ ...p, picEmail: customerInfo.customerEmail }));
+        }
+        setProfileFetched(true);
+      })
+      .catch(() => setProfileFetched(true))
+      .finally(() => setProfileLoading(false));
+  }, [step, customerInfo.customerEmail]);
 
   // Load packages when trade type changes
   useEffect(() => {
@@ -948,12 +1011,161 @@ export default function ServiceCartPage() {
 
         <Button className="w-full h-12 text-base bg-blue-600 hover:bg-blue-700"
           disabled={!tradeType || !customerInfo.customerName || !customerInfo.customerEmail}
-          onClick={() => setStep("mode_select")}>
+          onClick={() => { setProfileFetched(false); setStep("company_profile"); }}>
           Lanjut <ArrowRight className="w-4 h-4 ml-2" />
         </Button>
       </div>
     </div>
   );
+
+  // ── Step: Company Profile ─────────────────────────────────────────────────
+  if (step === "company_profile") {
+    const profileRequiredDone = companyProfile.companyName && companyProfile.npwp && companyProfile.nib
+      && companyProfile.companyAddress && companyProfile.picName && companyProfile.picWhatsapp;
+
+    const saveProfileAndContinue = async () => {
+      setProfileSaving(true);
+      try {
+        await fetch("/api/portal/customer-profile", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+          body: JSON.stringify({ ...companyProfile, email: customerInfo.customerEmail }),
+        });
+      } catch { /* ignore — profile save is best-effort */ }
+      setProfileSaving(false);
+      setStep("mode_select");
+    };
+
+    return (
+      <div className="min-h-screen bg-slate-50 py-10 px-4">
+        <div className="max-w-2xl mx-auto space-y-6">
+          <div>
+            <button onClick={() => setStep("trade_type")} className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800 mb-4">
+              <ArrowLeft className="w-4 h-4" /> Kembali
+            </button>
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-xl bg-violet-600 flex items-center justify-center">
+                <ShieldCheck className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h1 className="text-xl font-bold text-slate-900">Profil Perusahaan</h1>
+                <p className="text-sm text-slate-500">Data legal & informasi PIC untuk memproses permintaan layanan</p>
+              </div>
+            </div>
+            <StepBar current="company_profile" />
+          </div>
+
+          {profileLoading ? (
+            <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center text-slate-500">
+              <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
+              Memeriksa profil perusahaan...
+            </div>
+          ) : companyProfile.isVerified ? (
+            <div className="bg-white rounded-2xl border border-green-300 p-6">
+              <div className="flex items-center gap-2 mb-3">
+                <ShieldCheck className="w-5 h-5 text-green-600" />
+                <span className="font-semibold text-green-700">Profil Terverifikasi</span>
+              </div>
+              <div className="grid grid-cols-2 gap-y-2 text-sm">
+                <div className="text-slate-500">Perusahaan</div><div className="font-medium">{companyProfile.companyName}</div>
+                <div className="text-slate-500">NPWP</div><div className="font-mono">{companyProfile.npwp}</div>
+                <div className="text-slate-500">NIB</div><div className="font-mono">{companyProfile.nib}</div>
+                <div className="text-slate-500">PIC</div><div>{companyProfile.picName}</div>
+                <div className="text-slate-500">WA PIC</div><div>{companyProfile.picWhatsapp}</div>
+              </div>
+              <Button className="w-full mt-4 bg-blue-600 hover:bg-blue-700" onClick={() => setStep("mode_select")}>
+                Lanjut <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
+            </div>
+          ) : (
+            <>
+              <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
+                <h2 className="font-semibold text-slate-800">Data Legal Perusahaan</h2>
+                <div className="space-y-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-sm">Nama Perusahaan (PT/CV/UD) <span className="text-red-500">*</span></Label>
+                    <Input placeholder="PT Contoh Jaya" value={companyProfile.companyName} onChange={(e) => setCompanyProfile((p) => ({ ...p, companyName: e.target.value }))} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-sm">NPWP <span className="text-red-500">*</span></Label>
+                      <Input placeholder="00.000.000.0-000.000" value={companyProfile.npwp} onChange={(e) => setCompanyProfile((p) => ({ ...p, npwp: e.target.value }))} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-sm">NIB <span className="text-red-500">*</span></Label>
+                      <Input placeholder="Nomor Induk Berusaha" value={companyProfile.nib} onChange={(e) => setCompanyProfile((p) => ({ ...p, nib: e.target.value }))} />
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-sm">Alamat Perusahaan <span className="text-red-500">*</span></Label>
+                    <Textarea placeholder="Alamat lengkap perusahaan" value={companyProfile.companyAddress} onChange={(e) => setCompanyProfile((p) => ({ ...p, companyAddress: e.target.value }))} rows={2} className="resize-none" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
+                <h2 className="font-semibold text-slate-800">Informasi PIC (Person In Charge)</h2>
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-sm">Nama PIC <span className="text-red-500">*</span></Label>
+                      <Input placeholder="Nama lengkap PIC" value={companyProfile.picName} onChange={(e) => setCompanyProfile((p) => ({ ...p, picName: e.target.value }))} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-sm">WhatsApp PIC <span className="text-red-500">*</span></Label>
+                      <Input placeholder="08xxxxxxxxxx" value={companyProfile.picWhatsapp} onChange={(e) => setCompanyProfile((p) => ({ ...p, picWhatsapp: e.target.value }))} />
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-sm">Email PIC</Label>
+                    <Input type="email" value={companyProfile.picEmail} onChange={(e) => setCompanyProfile((p) => ({ ...p, picEmail: e.target.value }))} />
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h2 className="font-semibold text-slate-800">Dokumen Pendukung</h2>
+                  <span className="text-xs text-slate-400">Opsional — dapat dilengkapi nanti</span>
+                </div>
+                <div className="space-y-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-sm">URL Dokumen Legal (Akta, SIUP, dll.)</Label>
+                    <Input placeholder="https://..." value={companyProfile.legalDocUrl} onChange={(e) => setCompanyProfile((p) => ({ ...p, legalDocUrl: e.target.value }))} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-sm">URL KTP PIC</Label>
+                      <Input placeholder="https://..." value={companyProfile.ktpPicUrl} onChange={(e) => setCompanyProfile((p) => ({ ...p, ktpPicUrl: e.target.value }))} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-sm">URL Surat Kuasa</Label>
+                      <Input placeholder="https://..." value={companyProfile.suratKuasaUrl} onChange={(e) => setCompanyProfile((p) => ({ ...p, suratKuasaUrl: e.target.value }))} />
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-sm">URL API / NIK Izin Impor-Ekspor</Label>
+                    <Input placeholder="https://..." value={companyProfile.apiNikIzinUrl} onChange={(e) => setCompanyProfile((p) => ({ ...p, apiNikIzinUrl: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-sm">Catatan Tambahan</Label>
+                    <Textarea placeholder="Informasi tambahan yang perlu diketahui tim CST..." value={companyProfile.additionalNotes} onChange={(e) => setCompanyProfile((p) => ({ ...p, additionalNotes: e.target.value }))} rows={2} className="resize-none" />
+                  </div>
+                </div>
+              </div>
+
+              <Button className="w-full h-12 text-base bg-blue-600 hover:bg-blue-700"
+                disabled={!profileRequiredDone || profileSaving}
+                onClick={saveProfileAndContinue}>
+                {profileSaving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                Simpan & Lanjut <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   // ── Step: Mode Select ──────────────────────────────────────────────────────
   if (step === "mode_select") return (

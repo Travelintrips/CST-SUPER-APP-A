@@ -557,6 +557,7 @@ export function AppShell({ children, noPadding }: AppShellProps) {
         { titleKey: "Monitor WA Driver", href: "/settings/wa-notification-logs", icon: Activity },
         // Logistics ops (dipindah dari menu Logistics)
         { titleKey: "Portal Orders", href: "/logistics/portal-orders", icon: ClipboardList, companyCodes: ["CST"] },
+        { titleKey: "Service Requests (CSR)", href: "/logistics/service-requests", icon: ClipboardCheck },
         { titleKey: "Pelanggan Portal", href: "/portal/customers", icon: Users },
         { titleKey: "Persetujuan Onboarding", href: "/portal/onboarding-approvals", icon: Users },
         { titleKey: "Balasan Quotation WA", href: "/logistics/quotation-reply", icon: MessageCircle },

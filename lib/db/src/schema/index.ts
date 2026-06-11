@@ -101,3 +101,4 @@ export * from "./airFreight";
 export * from "./oceanFreight";
 export * from "./customerServiceRequests";
 export * from "./servicePackages";
+export * from "./portalCustomerProfiles";

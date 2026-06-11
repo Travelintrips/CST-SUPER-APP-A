@@ -35,6 +35,8 @@ import mediaRouter from "./media";
 import taxRouter from "./tax.js";
 import { customerServiceRequestsRouter } from "./customerServiceRequests.js";
 import { servicePackagesRouter } from "./servicePackages.js";
+import { portalCustomerProfileRouter } from "./portalCustomerProfile.js";
+import { adminServiceRequestsRouter } from "./adminServiceRequests.js";
 
 import warehouseRouter from "./warehouse";
 import inventoryReceiveRouter from "./inventoryReceive";
@@ -312,6 +314,8 @@ router.use("/vendor-trucking-pricing", vendorTruckingPricingRouter);
 router.use("/tax", taxRouter);
 router.use("/customer-service-requests", customerServiceRequestsRouter);
 router.use("/service-packages", servicePackagesRouter);
+router.use("/portal/customer-profile", portalCustomerProfileRouter);
+router.use("/admin/service-requests", adminServiceRequestsRouter);
 
 router.get("/alerts/stream", async (req: Request, res: Response) => {
   const ok = await requireAdmin(req, res);
