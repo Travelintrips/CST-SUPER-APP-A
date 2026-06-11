@@ -104,6 +104,11 @@ export default defineConfig({
         changeOrigin: true,
         ws: true,
       },
+      "/wa-gateway": {
+        target: "http://localhost:8000",
+        changeOrigin: true,
+        ws: true,
+      },
     },
   },
   preview: {

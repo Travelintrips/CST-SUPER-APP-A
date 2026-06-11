@@ -160,6 +160,11 @@ if (h.indexOf('access_token') !== -1 || h.indexOf('error=') !== -1 ||
         changeOrigin: true,
         ws: true,
       },
+      "/wa-gateway": {
+        target: "http://localhost:8000",
+        changeOrigin: true,
+        ws: true,
+      },
     },
   },
   preview: {

@@ -69,6 +69,33 @@ function subIncludes(sub: string, ...keywords: string[]): boolean {
   return keywords.some((k) => sub.includes(k));
 }
 
+/**
+ * Hitung PPh 21 menggunakan tarif progresif Pasal 17 UU PPh (berlaku 2024).
+ * Input: gaji kotor TAHUNAN (rupiah). Output: pajak tahunan.
+ * Bracket: 0-60jt@5%, 60jt-250jt@15%, 250jt-500jt@25%, 500jt-5M@30%, >5M@35%.
+ */
+function calculatePph21Progressive(annualGross: number): number {
+  const brackets: Array<[number, number]> = [
+    [60_000_000,    0.05],
+    [250_000_000,   0.15],
+    [500_000_000,   0.25],
+    [5_000_000_000, 0.30],
+    [Infinity,      0.35],
+  ];
+  let tax = 0;
+  let remaining = Math.max(annualGross, 0);
+  let prevLimit = 0;
+  for (const [limit, rate] of brackets) {
+    const bracket = Math.min(remaining, limit - prevLimit);
+    if (bracket <= 0) break;
+    tax += bracket * rate;
+    remaining -= bracket;
+    prevLimit = limit;
+    if (remaining <= 0) break;
+  }
+  return tax;
+}
+
 async function detectTax(
   companyId: number,
   txType: TxType,
@@ -191,9 +218,17 @@ export async function recordTransactionTax(params: RecordTaxParams): Promise<voi
       return;
     }
 
-    const taxAmount = params.taxAmount != null
-      ? round2(params.taxAmount)
-      : round2((baseAmount * Number(tax.rate)) / 100);
+    // PPh 21: gunakan tarif progresif Pasal 17 UU PPh — asumsikan baseAmount = gaji bulanan
+    let taxAmount: number;
+    if (params.taxAmount != null) {
+      taxAmount = round2(params.taxAmount);
+    } else if (tax.name.toLowerCase().includes("pph 21")) {
+      const annualGross = baseAmount * 12;
+      const annualTax = calculatePph21Progressive(annualGross);
+      taxAmount = round2(annualTax / 12);
+    } else {
+      taxAmount = round2((baseAmount * Number(tax.rate)) / 100);
+    }
 
     const period = currentPeriod();
 

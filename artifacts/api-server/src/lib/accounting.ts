@@ -718,14 +718,25 @@ export async function postPurchaseBill(args: {
 
     // DR GR/IR (clears GRN accrual) or DR Persediaan for product lines
     if (inventoryAmount > 0) {
-      // Prefer GR/IR account — clears the liability posted when GRN was confirmed
-      const productDebitAccountId = settings.grirAccountId ?? settings.inventoryAccountId;
+      // Prefer GR/IR account — clears the liability posted when GRN was confirmed.
+      // Fallback chain: settings.grirAccountId → direct lookup 2-1045 → settings.inventoryAccountId
+      let grirAccountId: number | null = settings.grirAccountId ?? null;
+      if (!grirAccountId) {
+        const grirRows = await db.execute(sql`
+          SELECT id FROM chart_of_accounts
+          WHERE code LIKE '2-1045%' AND company_id = ${args.companyId ?? 1}
+          ORDER BY code LIMIT 1
+        `);
+        const grirRow = (grirRows as unknown as Record<string, unknown>[])[0];
+        if (grirRow?.["id"]) grirAccountId = Number(grirRow["id"]);
+      }
+      const productDebitAccountId = grirAccountId ?? settings.inventoryAccountId;
       if (!productDebitAccountId) {
         logger.warn({ purchaseDocId: args.purchaseDocId }, "grirAccountId & inventoryAccountId missing — falling back to expense account for product lines");
         expenseAmount = round2(expenseAmount + inventoryAmount);
         inventoryAmount = 0;
       } else {
-        const isGrir = !!settings.grirAccountId;
+        const isGrir = !!grirAccountId;
         lines.push({
           accountId: productDebitAccountId,
           debit: inventoryAmount,
@@ -1107,17 +1118,50 @@ export async function postSalesReturn(args: {
   returnId: number;
   returnNumber: string;
   customerName: string;
-  amount: number;
+  /** Nilai net penjualan yang diretur (tidak termasuk PPN) */
+  netAmount: number;
+  /** Nilai PPN Keluaran yang ikut diretur. Jika diisi, jurnal akan DR PPN Keluaran / CR Piutang. */
+  taxAmount?: number;
   createdById?: string | null;
+  companyId?: number | null;
 }): Promise<void> {
   try {
-    const settings = await ensureAccountingSettings();
+    const settings = await ensureAccountingSettings(args.companyId ?? undefined);
     if (!settings.salesIncomeAccountId || !settings.arAccountId || !settings.salesJournalId) {
       logger.warn({ returnId: args.returnId }, "Skipping sales return post: settings incomplete");
       return;
     }
-    const amt = round2(args.amount);
-    if (amt <= 0) return;
+    const net = round2(args.netAmount);
+    const tax = round2(args.taxAmount ?? 0);
+    const total = round2(net + tax);
+    if (total <= 0) return;
+
+    const lines: PostingLine[] = [
+      {
+        accountId: settings.salesIncomeAccountId,
+        debit: net,
+        credit: 0,
+        description: `Retur pendapatan ${args.returnNumber}`,
+      },
+    ];
+
+    // DR PPN Keluaran (membalik PPN yang sudah dikreditkan saat invoice)
+    if (tax > 0 && settings.ppnOutputAccountId) {
+      lines.push({
+        accountId: settings.ppnOutputAccountId,
+        debit: tax,
+        credit: 0,
+        description: `Retur PPN Keluaran ${args.returnNumber}`,
+      });
+    }
+
+    // CR Piutang Usaha (mengurangi piutang senilai total retur)
+    lines.push({
+      accountId: settings.arAccountId,
+      debit: 0,
+      credit: total,
+      description: `Pengurangan piutang retur ${args.returnNumber} - ${args.customerName}`,
+    });
 
     await postEntry(
       {
@@ -1128,24 +1172,12 @@ export async function postSalesReturn(args: {
         source: "sales_return",
         sourceId: args.returnId,
         createdById: args.createdById ?? null,
-        lines: [
-          {
-            accountId: settings.salesIncomeAccountId,
-            debit: amt,
-            credit: 0,
-            description: `Retur pendapatan ${args.returnNumber}`,
-          },
-          {
-            accountId: settings.arAccountId,
-            debit: 0,
-            credit: amt,
-            description: `Pengurangan piutang retur ${args.returnNumber} - ${args.customerName}`,
-          },
-        ],
+        companyId: args.companyId ?? null,
+        lines,
       },
       "SRR",
     );
-    logger.info({ returnId: args.returnId, amt }, "Sales return journal entry posted");
+    logger.info({ returnId: args.returnId, net, tax, total }, "Sales return journal entry posted (with PPN reversal)");
   } catch (err) {
     logger.error({ err, returnId: args.returnId }, "Auto-post sales return failed");
   }

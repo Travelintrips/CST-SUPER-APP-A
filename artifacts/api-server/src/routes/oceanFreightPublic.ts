@@ -683,3 +683,7 @@ oceanFreightPublicRouter.post("/quote/:token/decline", async (req: Request, res:
   }
 });
 
+// Gabungkan legacy oceanFreightPublicRouter ke router utama
+router.use(oceanFreightPublicRouter);
+
+export default router;

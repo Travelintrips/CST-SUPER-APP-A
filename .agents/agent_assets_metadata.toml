@@ -617,3 +617,9 @@ id = "mo1jBbtYCd5wI0y-sJBQG"
 uri = "file://attached_assets/products/truck_cdd_7ton.png"
 type = "image"
 title = "Angkut CDD 7 Ton"
+
+[[outputs]]
+id = "DjQ7klu46Spgwx1VsanKN"
+uri = "file://AUDIT_ACCOUNTING_TAX_REPORT.md"
+type = "text"
+title = "Audit Report: Accounting, Tax & Financial Modules"

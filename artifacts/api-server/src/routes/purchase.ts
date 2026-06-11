@@ -174,7 +174,7 @@ function serializeLine(l: typeof purchaseDocumentLinesTable.$inferSelect) {
   };
 }
 
-async function nextDocNumber(kind: PurchaseKind): Promise<string> {
+async function nextDocNumber(kind: PurchaseKind, offset = 0): Promise<string> {
   const prefix = kind === "rfq" ? "RFQ" : "PO";
   const year = new Date().getFullYear();
   const pattern = `${prefix}/${year}/%`;
@@ -184,7 +184,7 @@ async function nextDocNumber(kind: PurchaseKind): Promise<string> {
     })
     .from(purchaseDocumentsTable)
     .where(sql`doc_number LIKE ${pattern}`);
-  const seq = (Number(row?.maxSeq ?? 0) + 1).toString().padStart(5, "0");
+  const seq = (Number(row?.maxSeq ?? 0) + 1 + offset).toString().padStart(5, "0");
   return `${prefix}/${year}/${seq}`;
 }
 
@@ -353,42 +353,55 @@ router.post("/documents", async (req, res) => {
     if (!s) return res.status(400).json({ message: "Supplier not found" });
   }
 
-  const docNumber = await nextDocNumber(docKind);
   const total = (lines as LineInput[]).reduce(
     (s, l) => s + Number(l.quantity) * Number(l.unitCost),
     0,
   );
   const { taxAmount, grandTotal } = await computeTax(total, taxRateId);
 
-  const [doc] = await db
-    .insert(purchaseDocumentsTable)
-    .values({
-      companyId,
-      docNumber,
-      kind: docKind,
-      status: "draft",
-      warehouseId: warehouseId ? Number(warehouseId) : null,
-      supplierId: supplierId ?? null,
-      supplierName,
-      supplierAddress: supplierAddress ?? null,
-      totalAmount: String(total),
-      taxRateId: taxRateId ?? null,
-      taxAmount: String(taxAmount),
-      grandTotal: String(grandTotal),
-      expectedDate: expectedDate ? new Date(expectedDate) : null,
-      notes: notes ?? null,
-      productCategory: productCategory ? String(productCategory) : null,
-      incoterm: incoterm ? String(incoterm) : null,
-      deliveryTerm: deliveryTerm ? String(deliveryTerm) : null,
-      targetPrice: targetPrice ? String(targetPrice) : null,
-      commoditySpecs: commoditySpecs ?? null,
-      requiredDocuments: requiredDocuments ?? null,
-      categoryKey: categoryKey ? String(categoryKey) : null,
-      templateId: templateId ? String(templateId) : null,
-      templateVersion: templateVersion ? String(templateVersion) : null,
-      templateSnapshot: templateSnapshot ?? null,
-    })
-    .returning();
+  // Retry loop — prevents duplicate doc numbers under concurrent inserts
+  let doc: typeof purchaseDocumentsTable.$inferSelect | undefined;
+  let docNumber = "";
+  for (let attempt = 0; attempt < 5; attempt++) {
+    docNumber = await nextDocNumber(docKind, attempt);
+    try {
+      [doc] = await db
+        .insert(purchaseDocumentsTable)
+        .values({
+          companyId,
+          docNumber,
+          kind: docKind,
+          status: "draft",
+          warehouseId: warehouseId ? Number(warehouseId) : null,
+          supplierId: supplierId ?? null,
+          supplierName,
+          supplierAddress: supplierAddress ?? null,
+          totalAmount: String(total),
+          taxRateId: taxRateId ?? null,
+          taxAmount: String(taxAmount),
+          grandTotal: String(grandTotal),
+          expectedDate: expectedDate ? new Date(expectedDate) : null,
+          notes: notes ?? null,
+          productCategory: productCategory ? String(productCategory) : null,
+          incoterm: incoterm ? String(incoterm) : null,
+          deliveryTerm: deliveryTerm ? String(deliveryTerm) : null,
+          targetPrice: targetPrice ? String(targetPrice) : null,
+          commoditySpecs: commoditySpecs ?? null,
+          requiredDocuments: requiredDocuments ?? null,
+          categoryKey: categoryKey ? String(categoryKey) : null,
+          templateId: templateId ? String(templateId) : null,
+          templateVersion: templateVersion ? String(templateVersion) : null,
+          templateSnapshot: templateSnapshot ?? null,
+        })
+        .returning();
+      break;
+    } catch (e: any) {
+      const isUnique = e?.code === "23505" || String(e?.message ?? e).includes("unique");
+      if (isUnique && attempt < 4) continue;
+      throw e;
+    }
+  }
+  if (!doc) throw new Error("Gagal membuat dokumen pembelian setelah 5 percobaan");
 
   await db.insert(purchaseDocumentLinesTable).values(
     (lines as LineInput[]).map((l) => ({

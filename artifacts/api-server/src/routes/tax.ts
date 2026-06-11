@@ -4,6 +4,10 @@ import { sql } from "drizzle-orm";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { seedDefaultTaxRules } from "../lib/taxRulesMigration.js";
 import { logger } from "../lib/logger.js";
+import { audit } from "../lib/unifiedAudit.js";
+import { validateNpwp, formatNpwp, stripNpwp } from "../lib/npwpValidator.js";
+import { validateFakturPajak, formatFaktur } from "../lib/fakturPajakValidator.js";
+import { calculatePph21, calculatePph21NonPegawai, PTKP_OPTIONS, type PtkpStatus } from "../lib/pph21Calculator.js";
 
 const router = Router();
 
@@ -115,6 +119,7 @@ router.post("/rules", async (req, res) => {
     )
     RETURNING *
   `)).rows;
+  audit(req, { action: "create", module: "tax", resourceId: String((row as any)?.id ?? "?"), after: row as Record<string, unknown>, companyId });
   return res.json({ ok: true, data: row });
 });
 
@@ -122,6 +127,7 @@ router.post("/rules", async (req, res) => {
 router.put("/rules/:id", async (req, res) => {
   const id = Number(req.params.id);
   const { name, transaction_type, module_source, tax_type, tax_rate, tax_base_type, direction, is_active, effective_from, effective_to, notes } = req.body;
+  const [before] = (await db.execute(sql`SELECT * FROM tax_rules WHERE id = ${id}`)).rows;
   const [row] = (await db.execute(sql`
     UPDATE tax_rules SET
       name = COALESCE(${name ?? null}, name),
@@ -140,13 +146,16 @@ router.put("/rules/:id", async (req, res) => {
     RETURNING *
   `)).rows;
   if (!row) return res.status(404).json({ message: "Rule tidak ditemukan" });
+  audit(req, { action: "update", module: "tax", resourceId: String(id), before: before as Record<string, unknown>, after: row as Record<string, unknown> });
   return res.json({ ok: true, data: row });
 });
 
 // ── DELETE /api/tax/rules/:id ─────────────────────────────────────────────────
 router.delete("/rules/:id", async (req, res) => {
   const id = Number(req.params.id);
+  const [before] = (await db.execute(sql`SELECT * FROM tax_rules WHERE id = ${id}`)).rows;
   await db.execute(sql`DELETE FROM tax_rules WHERE id = ${id}`);
+  audit(req, { action: "delete", module: "tax", resourceId: String(id), before: before as Record<string, unknown> });
   return res.json({ ok: true });
 });
 
@@ -315,19 +324,299 @@ router.get("/export", async (req, res) => {
   return res.send("\uFEFF" + csv);
 });
 
+// ── GET /api/tax/reconciliation ───────────────────────────────────────────────
+router.get("/reconciliation", async (req, res) => {
+  const companyId = resolveCompanyId(req);
+  const { year } = req.query as Record<string, string>;
+  const y = year ?? new Date().getFullYear().toString();
+
+  const [summary, gaps, byPeriod] = await Promise.all([
+    // Summary tahunan per jenis pajak
+    db.execute(sql.raw(`
+      SELECT
+        tax_name,
+        direction,
+        COUNT(*)::int                                              AS total_tx,
+        COALESCE(SUM(base_amount),0)::numeric                     AS total_dpp,
+        COALESCE(SUM(tax_amount),0)::numeric                      AS total_tax,
+        SUM(CASE WHEN status='paid'     THEN tax_amount ELSE 0 END)::numeric AS paid,
+        SUM(CASE WHEN status='reported' THEN tax_amount ELSE 0 END)::numeric AS reported,
+        SUM(CASE WHEN status='pending'  THEN tax_amount ELSE 0 END)::numeric AS pending,
+        SUM(CASE WHEN npwp IS NULL OR npwp='' THEN 1 ELSE 0 END)::int       AS missing_npwp,
+        SUM(CASE WHEN tax_invoice_number IS NULL OR tax_invoice_number='' THEN 1 ELSE 0 END)::int AS missing_faktur
+      FROM transaction_taxes
+      WHERE company_id = ${companyId} AND period LIKE '${y}%'
+      GROUP BY tax_name, direction
+      ORDER BY tax_name, direction
+    `)),
+    // Baris yang belum lengkap (missing NPWP atau faktur, masih pending)
+    db.execute(sql.raw(`
+      SELECT id, period, tax_name, direction, transaction_type, transaction_ref,
+             partner_name, npwp, tax_invoice_number,
+             base_amount::numeric, tax_amount::numeric, status, created_at
+      FROM transaction_taxes
+      WHERE company_id = ${companyId} AND period LIKE '${y}%'
+        AND status = 'pending'
+        AND (npwp IS NULL OR npwp = '' OR tax_invoice_number IS NULL OR tax_invoice_number = '')
+      ORDER BY period DESC, tax_name, created_at DESC
+      LIMIT 200
+    `)),
+    // Monthly breakdown per jenis pajak
+    db.execute(sql.raw(`
+      SELECT
+        period,
+        tax_name,
+        direction,
+        COUNT(*)::int                                              AS total_tx,
+        COALESCE(SUM(tax_amount),0)::numeric                      AS total_tax,
+        SUM(CASE WHEN status='paid'     THEN tax_amount ELSE 0 END)::numeric AS paid,
+        SUM(CASE WHEN status='reported' THEN tax_amount ELSE 0 END)::numeric AS reported,
+        SUM(CASE WHEN status='pending'  THEN tax_amount ELSE 0 END)::numeric AS pending,
+        SUM(CASE WHEN npwp IS NULL OR npwp='' THEN 1 ELSE 0 END)::int       AS missing_npwp,
+        SUM(CASE WHEN tax_invoice_number IS NULL OR tax_invoice_number='' THEN 1 ELSE 0 END)::int AS missing_faktur
+      FROM transaction_taxes
+      WHERE company_id = ${companyId} AND period LIKE '${y}%'
+      GROUP BY period, tax_name, direction
+      ORDER BY period DESC, tax_name
+    `)),
+  ]);
+
+  return res.json({
+    year: y,
+    summary: summary.rows,
+    gaps: gaps.rows,
+    byPeriod: byPeriod.rows,
+  });
+});
+
+// ── PATCH /api/tax/reconciliation/bulk-status ──────────────────────────────────
+router.patch("/reconciliation/bulk-status", async (req, res) => {
+  const companyId = resolveCompanyId(req);
+  const { period, taxName, status } = req.body as {
+    period?: string;
+    taxName?: string;
+    status: "pending" | "paid" | "reported";
+  };
+
+  if (!["pending", "paid", "reported"].includes(status)) {
+    return res.status(400).json({ message: "status harus pending / paid / reported" });
+  }
+
+  const conds = [`company_id = ${companyId}`];
+  if (period) conds.push(`period = '${period.replace(/'/g, "''")}'`);
+  if (taxName) conds.push(`tax_name ILIKE '${taxName.replace(/'/g, "''")}%'`);
+
+  const paidAtSet = status === "paid"     ? `, paid_at = NOW()`     : status === "reported" ? `, reported_at = NOW()` : "";
+  const result = await db.execute(sql.raw(`
+    UPDATE transaction_taxes
+    SET status = '${status}', updated_at = NOW()${paidAtSet}
+    WHERE ${conds.join(" AND ")}
+    RETURNING id
+  `));
+
+  logger.info({ companyId, period, taxName, status, count: result.rows.length }, "[tax] bulk-status updated");
+  return res.json({ ok: true, updated: result.rows.length });
+});
+
 // ── PATCH /api/tax/transactions/:id/npwp ──────────────────────────────────────
 router.patch("/transactions/:id/npwp", async (req, res) => {
   const id = Number(req.params.id);
   const { npwp, taxInvoiceNumber, partnerName } = req.body;
+
+  // Validasi format NPWP jika diisi
+  if (npwp && npwp.trim()) {
+    const npwpResult = validateNpwp(npwp);
+    if (!npwpResult.valid) {
+      return res.status(400).json({
+        message: `NPWP tidak valid: ${npwpResult.error}`,
+        field: "npwp",
+        validation: npwpResult,
+      });
+    }
+    // Normalisasi ke format standar XX.XXX.XXX.X-XXX.XXX
+    req.body.npwp = npwpResult.formatted;
+  }
+
+  // Validasi format nomor faktur pajak jika diisi
+  if (taxInvoiceNumber && taxInvoiceNumber.trim()) {
+    const fakturResult = validateFakturPajak(taxInvoiceNumber);
+    if (!fakturResult.valid) {
+      return res.status(400).json({
+        message: `Nomor faktur tidak valid: ${fakturResult.error}`,
+        field: "taxInvoiceNumber",
+        validation: fakturResult,
+      });
+    }
+    // Normalisasi ke format standar KKK.SSS-TT.SSSSSSSS
+    req.body.taxInvoiceNumber = fakturResult.formatted;
+  }
+
+  const normalizedNpwp = req.body.npwp ?? null;
+  const normalizedFaktur = req.body.taxInvoiceNumber ?? null;
+
+  const [before] = (await db.execute(sql`SELECT npwp, tax_invoice_number, partner_name FROM transaction_taxes WHERE id = ${id}`)).rows;
   await db.execute(sql`
     UPDATE transaction_taxes SET
-      npwp = ${npwp ?? null},
-      tax_invoice_number = ${taxInvoiceNumber ?? null},
+      npwp = ${normalizedNpwp},
+      tax_invoice_number = ${normalizedFaktur},
       partner_name = ${partnerName ?? null},
       updated_at = NOW()
     WHERE id = ${id}
   `);
-  return res.json({ ok: true });
+  audit(req, {
+    action: "update",
+    module: "tax",
+    resourceId: String(id),
+    before: before as Record<string, unknown>,
+    after: { npwp: normalizedNpwp, taxInvoiceNumber: normalizedFaktur, partnerName: partnerName ?? null },
+  });
+  return res.json({ ok: true, npwp: normalizedNpwp, taxInvoiceNumber: normalizedFaktur });
+});
+
+// ── POST /api/tax/validate/npwp ───────────────────────────────────────────────
+router.post("/validate/npwp", (req, res) => {
+  const { npwp, loose = false } = req.body;
+  if (!npwp) return res.status(400).json({ message: "npwp wajib diisi" });
+
+  const result = loose
+    ? (() => {
+        const digits = stripNpwp(String(npwp));
+        if (digits.length !== 15)
+          return { valid: false, formatted: null, normalized: digits.length > 0 ? digits : null, error: `NPWP harus 15 digit (ditemukan ${digits.length} digit)` };
+        return { valid: true, formatted: formatNpwp(digits), normalized: digits };
+      })()
+    : validateNpwp(String(npwp));
+
+  return res.json(result);
+});
+
+// ── POST /api/tax/validate/faktur ─────────────────────────────────────────────
+router.post("/validate/faktur", (req, res) => {
+  const { faktur } = req.body;
+  if (!faktur) return res.status(400).json({ message: "faktur wajib diisi" });
+  const result = validateFakturPajak(String(faktur));
+  return res.json(result);
+});
+
+// ── POST /api/tax/pph21/calculate ─────────────────────────────────────────────
+router.post("/pph21/calculate", (req, res) => {
+  const {
+    grossMonthly, ptkpStatus = "TK/0", useTer = false, nonPegawai = false,
+    grossAmount, hasNpwp,
+  } = req.body;
+
+  if (nonPegawai) {
+    if (!grossAmount) return res.status(400).json({ message: "grossAmount wajib untuk non-pegawai" });
+    return res.json(calculatePph21NonPegawai({ grossAmount: Number(grossAmount), hasNpwp: hasNpwp !== false }));
+  }
+
+  if (grossMonthly == null) return res.status(400).json({ message: "grossMonthly wajib diisi" });
+  const result = calculatePph21({
+    grossMonthly: Number(grossMonthly),
+    ptkpStatus: ptkpStatus as PtkpStatus,
+    useTer: Boolean(useTer),
+  });
+  return res.json(result);
+});
+
+// ── GET /api/tax/pph21/ptkp-options ──────────────────────────────────────────
+router.get("/pph21/ptkp-options", (_req, res) => {
+  return res.json({ data: PTKP_OPTIONS });
+});
+
+// ── GET /api/tax/reconciliation/unmatched ─────────────────────────────────────
+router.get("/reconciliation/unmatched", async (req, res) => {
+  const companyId = resolveCompanyId(req);
+  const { year, period } = req.query as Record<string, string>;
+  const y = year ?? new Date().getFullYear().toString();
+  const periodFilter = period ? `AND tt.period = '${period}'` : `AND tt.period LIKE '${y}%'`;
+
+  const [orphaned, staleOpen, unmatchedEntries] = await Promise.all([
+
+    // 1. transaction_taxes yang module_source-nya bukan 'manual'
+    //    tetapi source_id tidak ada di tabel asal (orphaned)
+    db.execute(sql.raw(`
+      SELECT tt.id, tt.period, tt.tax_name, tt.direction,
+             tt.transaction_type, tt.transaction_ref, tt.partner_name,
+             tt.base_amount::numeric, tt.tax_amount::numeric, tt.status,
+             tt.created_at,
+             'orphaned' AS issue_type,
+             'Transaksi sumber tidak ditemukan' AS issue_desc
+      FROM transaction_taxes tt
+      WHERE tt.company_id = ${companyId}
+        ${periodFilter}
+        AND tt.status = 'pending'
+        AND tt.transaction_type = 'expense'
+        AND NOT EXISTS (
+          SELECT 1 FROM expenses e WHERE e.id = tt.source_id
+        )
+        AND tt.source_id IS NOT NULL
+      LIMIT 100
+    `)),
+
+    // 2. transaction_taxes pending lebih dari 60 hari tanpa update
+    db.execute(sql.raw(`
+      SELECT tt.id, tt.period, tt.tax_name, tt.direction,
+             tt.transaction_type, tt.transaction_ref, tt.partner_name,
+             tt.base_amount::numeric, tt.tax_amount::numeric, tt.status,
+             tt.created_at,
+             'stale_pending' AS issue_type,
+             'Pending > 60 hari tanpa update' AS issue_desc
+      FROM transaction_taxes tt
+      WHERE tt.company_id = ${companyId}
+        ${periodFilter}
+        AND tt.status = 'pending'
+        AND tt.created_at < NOW() - INTERVAL '60 days'
+      ORDER BY tt.created_at ASC
+      LIMIT 200
+    `)),
+
+    // 3. accounting entry lines ke akun PPN/PPh (COA code 2-10xx atau 1-13xx)
+    //    yang tidak punya transaction_taxes record dengan matching ref
+    db.execute(sql.raw(`
+      SELECT
+        ae.id AS entry_id,
+        ae.entry_number,
+        ae.date::date,
+        ae.description,
+        ae.ref,
+        ae.source,
+        COALESCE(SUM(CASE WHEN ael.debit  > 0 THEN ael.debit  ELSE 0 END), 0)::numeric AS debit_total,
+        COALESCE(SUM(CASE WHEN ael.credit > 0 THEN ael.credit ELSE 0 END), 0)::numeric AS credit_total,
+        'unmatched_entry' AS issue_type,
+        'Jurnal ke akun pajak tanpa transaction_taxes record' AS issue_desc
+      FROM accounting_entries ae
+      JOIN accounting_entry_lines ael ON ael.entry_id = ae.id
+      JOIN chart_of_accounts coa ON coa.id = ael.account_id
+      WHERE ae.company_id = ${companyId}
+        AND ae.date >= '${y}-01-01'
+        AND ae.date <  '${parseInt(y) + 1}-01-01'
+        AND ae.status != 'voided'
+        AND (coa.code LIKE '2-1030%' OR coa.code LIKE '2-1040%')
+        AND NOT EXISTS (
+          SELECT 1 FROM transaction_taxes tt
+          WHERE tt.company_id = ${companyId}
+            AND tt.transaction_ref = ae.ref
+            AND tt.period LIKE '${y}%'
+        )
+      GROUP BY ae.id, ae.entry_number, ae.date, ae.description, ae.ref, ae.source
+      ORDER BY ae.date DESC
+      LIMIT 100
+    `)),
+  ]);
+
+  const totalIssues =
+    (orphaned.rows as unknown[]).length +
+    (staleOpen.rows as unknown[]).length +
+    (unmatchedEntries.rows as unknown[]).length;
+
+  return res.json({
+    year: y,
+    totalIssues,
+    orphaned: orphaned.rows,
+    stalePending: staleOpen.rows,
+    unmatchedEntries: unmatchedEntries.rows,
+  });
 });
 
 // ── POST /api/tax/transactions/calculate ──────────────────────────────────────

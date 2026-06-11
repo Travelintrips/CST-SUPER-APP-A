@@ -51,6 +51,7 @@ import QcListPage from "@/pages/purchase/qc-list";
 import QcEditorPage from "@/pages/purchase/qc-editor";
 import { PurchaseReturnsListPage, PurchaseReturnEditorPage } from "@/pages/purchase/purchase-returns";
 import TaxDashboardPage from "@/pages/tax/dashboard";
+import TaxReconciliationPage from "@/pages/tax/reconciliation";
 import TaxRulesPage from "@/pages/tax/rules";
 import TaxTransactionsPage from "@/pages/tax/transactions";
 import TaxPpnPage from "@/pages/tax/ppn";
@@ -97,6 +98,7 @@ import AccountingBalanceSheetPage from "@/pages/accounting/reports/balance-sheet
 import AccountingFreightProfitabilityPage from "@/pages/accounting/reports/freight-profitability";
 import AccountingReconciliationPage from "@/pages/accounting/reconciliation";
 import AccountingGSheetPage from "@/pages/accounting/gsheet";
+import WhtReconciliationPage from "@/pages/accounting/wht-reconciliation";
 import TaxReportPage from "@/pages/accounting/tax-report";
 import HoldingPage from "@/pages/HoldingPage";
 import ExecutiveDashboardPage from "@/pages/executive/dashboard";
@@ -374,6 +376,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/accounting/settings" component={PR(AccountingSettingsPage)} />
       <Route path="/accounting/cost-centers" component={PR(CostCentersPage)} />
       <Route path="/accounting/reconciliation" component={PR(AccountingReconciliationPage)} />
+      <Route path="/accounting/wht-reconciliation" component={PR(WhtReconciliationPage)} />
       <Route path="/accounting/gsheet" component={PR(AccountingGSheetPage)} />
       <Route path="/accounting/tax-report" component={PR(TaxReportPage)} />
       <Route path="/accounting/reports/trial-balance" component={PR(AccountingTrialBalancePage)} />
@@ -525,6 +528,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/tax/ppn" component={PR(TaxPpnPage)} />
       <Route path="/tax/pph" component={PR(TaxPphPage)} />
       <Route path="/tax/spt" component={PR(TaxSptPage)} />
+      <Route path="/tax/reconciliation" component={PR(TaxReconciliationPage)} />
       <Route path="/tax" component={PR(TaxDashboardPage)} />
 
       {/* ── Legacy redirects ───────────────────────────────────────────── */}

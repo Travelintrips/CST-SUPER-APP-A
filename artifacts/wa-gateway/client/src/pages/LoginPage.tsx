@@ -70,9 +70,7 @@ export default function LoginPage() {
 
         <p className="text-center text-sm text-slate-500 mt-4">
           Don't have an account?{" "}
-          <Link href="/wa-gateway/register">
-            <a className="text-emerald-400 hover:text-emerald-300">Register</a>
-          </Link>
+          <Link href="/wa-gateway/register" className="text-emerald-400 hover:text-emerald-300">Register</Link>
         </p>
       </div>
     </div>
