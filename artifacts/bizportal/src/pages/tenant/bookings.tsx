@@ -10,7 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCompany } from "@/contexts/CompanyContext";
 import { useToast } from "@/hooks/use-toast";
-import { FileText, Plus, Search, Trash2, RefreshCw } from "lucide-react";
+import { useLocation } from "wouter";
+import { FileText, Plus, Search, Trash2, RefreshCw, Zap } from "lucide-react";
 
 const idr = (n: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
@@ -32,6 +33,7 @@ export default function TenantBookings() {
   const qc = useQueryClient();
   const { activeCompanyId } = useCompany();
   const { toast } = useToast();
+  const [, navigate] = useLocation();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [showDialog, setShowDialog] = useState(false);
@@ -83,6 +85,29 @@ export default function TenantBookings() {
       return r.json();
     },
     onSuccess: () => { toast({ title: "Penyewaan dihapus" }); qc.invalidateQueries({ queryKey: ["tenant-bookings"] }); },
+    onError: (e: Error) => toast({ title: e.message, variant: "destructive" }),
+  });
+
+  const genInvoiceMutation = useMutation({
+    mutationFn: async (bookingId: number) => {
+      const r = await fetch(`/api/tenant/invoices/generate-from-booking/${bookingId}`, {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" }, body: JSON.stringify({}),
+      });
+      const json = await r.json();
+      if (!r.ok && r.status !== 409) throw new Error(json.error ?? "Gagal");
+      return { ...json, httpStatus: r.status };
+    },
+    onSuccess: (data: any) => {
+      if (data.httpStatus === 409) {
+        toast({ title: `Invoice sudah ada: ${data.invoice_number}` });
+      } else {
+        toast({ title: `Invoice ${data.invoice_number} dibuat` });
+        qc.invalidateQueries({ queryKey: ["tenant-invoices"] });
+        qc.invalidateQueries({ queryKey: ["tenant-dashboard"] });
+      }
+      navigate("/tenant/invoices");
+    },
     onError: (e: Error) => toast({ title: e.message, variant: "destructive" }),
   });
 
@@ -152,10 +177,17 @@ export default function TenantBookings() {
                     </td>
                     <td className="py-2.5 px-3 font-medium text-foreground text-right whitespace-nowrap">{idr(Number(b.total_price ?? b.price ?? 0))}</td>
                     <td className="py-2.5 px-3 whitespace-nowrap text-right">
-                      <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1 text-red-400 hover:text-red-300"
-                        onClick={() => { if (confirm(`Hapus penyewaan ${b.order_number}?`)) deleteMutation.mutate(b.id); }}>
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
+                      <div className="flex items-center gap-1 justify-end">
+                        <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1 text-violet-400 hover:text-violet-300"
+                          disabled={genInvoiceMutation.isPending}
+                          onClick={() => genInvoiceMutation.mutate(b.id)}>
+                          <Zap className="h-3.5 w-3.5" /> Invoice
+                        </Button>
+                        <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1 text-red-400 hover:text-red-300"
+                          onClick={() => { if (confirm(`Hapus penyewaan ${b.order_number}?`)) deleteMutation.mutate(b.id); }}>
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))}
