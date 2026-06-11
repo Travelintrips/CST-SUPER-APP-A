@@ -397,32 +397,50 @@ router.post("/auth/dev-login", async (req: Request, res: Response) => {
 
   const normalizedEmail = email.trim().toLowerCase();
 
-  let [dbUser] = await db.select().from(usersTable).where(eq(usersTable.email, normalizedEmail));
+  const adminEmails = (process.env.ADMIN_EMAIL ?? "")
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+  const isAdmin = adminEmails.length === 0 || adminEmails.includes(normalizedEmail);
+  const parts = normalizedEmail.split("@")[0].split(".");
+  const firstName = parts[0] ? parts[0].charAt(0).toUpperCase() + parts[0].slice(1) : "Dev";
+  const lastName = parts[1] ? parts[1].charAt(0).toUpperCase() + parts[1].slice(1) : "User";
 
-  if (!dbUser) {
-    const adminEmails = (process.env.ADMIN_EMAIL ?? "")
-      .split(",")
-      .map((e) => e.trim().toLowerCase())
-      .filter(Boolean);
-    const isAdmin = adminEmails.length === 0 || adminEmails.includes(normalizedEmail);
-    const parts = normalizedEmail.split("@")[0].split(".");
-    const firstName = parts[0] ? parts[0].charAt(0).toUpperCase() + parts[0].slice(1) : "Dev";
-    const lastName = parts[1] ? parts[1].charAt(0).toUpperCase() + parts[1].slice(1) : "User";
-    try {
-      const [created] = await db.insert(usersTable).values({
-        id: `dev_${crypto.randomBytes(8).toString("hex")}`,
-        email: normalizedEmail,
-        name: `${firstName} ${lastName}`.trim(),
-        firstName,
-        lastName,
-        role: isAdmin ? "admin" : "ecommerce",
-      }).returning();
-      dbUser = created;
-    } catch {
-      const [retry] = await db.select().from(usersTable).where(eq(usersTable.email, normalizedEmail));
-      if (!retry) { res.status(500).json({ error: "Gagal membuat user" }); return; }
-      dbUser = retry;
+  // Build a synthetic user as fallback when DB is unavailable
+  const syntheticUser = {
+    id: `dev_${crypto.randomBytes(8).toString("hex")}`,
+    email: normalizedEmail,
+    name: `${firstName} ${lastName}`.trim(),
+    firstName,
+    lastName,
+    role: isAdmin ? "admin" : "ecommerce",
+    profileImageUrl: null as string | null,
+    companyId: null as number | null,
+  };
+
+  let dbUser: typeof syntheticUser;
+  try {
+    let [found] = await db.select().from(usersTable).where(eq(usersTable.email, normalizedEmail));
+    if (!found) {
+      try {
+        const [created] = await db.insert(usersTable).values({
+          id: syntheticUser.id,
+          email: normalizedEmail,
+          name: syntheticUser.name,
+          firstName,
+          lastName,
+          role: syntheticUser.role,
+        }).returning();
+        found = created;
+      } catch {
+        const [retry] = await db.select().from(usersTable).where(eq(usersTable.email, normalizedEmail));
+        found = retry;
+      }
     }
+    dbUser = found ?? syntheticUser;
+  } catch {
+    // DB unavailable — use synthetic user (session stored in memory)
+    dbUser = syntheticUser;
   }
 
   const sessionData: SessionData = {
@@ -632,27 +650,43 @@ router.post("/dev-login", async (req: Request, res: Response) => {
     return;
   }
 
-  // Kalau user dengan email ini sudah ada di DB (mis. dari OIDC prod), langsung pakai
-  // agar tidak trigger DELETE yang bisa gagal karena FK constraint di tabel lain.
-  const [existingUser] = await db
-    .select()
-    .from(usersTable)
-    .where(eq(usersTable.email, email))
-    .limit(1);
+  // Build synthetic user as fallback when DB is unavailable
+  const _nameParts = email.split("@")[0].split(".");
+  const _synth = {
+    id: `dev_${email.replace(/[^a-z0-9]/gi, "_")}`,
+    email,
+    firstName: _nameParts[0] ?? "Dev",
+    lastName: _nameParts[1] ?? null,
+    profileImageUrl: null as string | null,
+    role: "admin" as string | null,
+    companyId: null as number | null,
+  };
 
-  let dbUser;
-  if (existingUser) {
-    dbUser = existingUser;
-  } else {
-    const id = `dev_${email.replace(/[^a-z0-9]/gi, "_")}`;
-    const claims: Record<string, unknown> = {
-      sub: id,
-      email,
-      first_name: email.split("@")[0],
-      last_name: null,
-      picture: null,
-    };
-    dbUser = await upsertUser(claims);
+  let dbUser: typeof _synth;
+  try {
+    // Kalau user dengan email ini sudah ada di DB (mis. dari OIDC prod), langsung pakai
+    // agar tidak trigger DELETE yang bisa gagal karena FK constraint di tabel lain.
+    const [existingUser] = await db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.email, email))
+      .limit(1);
+
+    if (existingUser) {
+      dbUser = existingUser;
+    } else {
+      const claims: Record<string, unknown> = {
+        sub: _synth.id,
+        email,
+        first_name: _synth.firstName,
+        last_name: null,
+        picture: null,
+      };
+      dbUser = await upsertUser(claims);
+    }
+  } catch {
+    // DB unavailable — use synthetic user (session stored in memory)
+    dbUser = _synth;
   }
   const now = Math.floor(Date.now() / 1000);
   const sessionData: SessionData = {
