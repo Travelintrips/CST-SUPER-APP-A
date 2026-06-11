@@ -109,6 +109,14 @@ if (Number.isNaN(port) || port <= 0) {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+function isTransientDbError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const TRANSIENT = ["ECIRCUITBREAKER", "password authentication failed", "timeout exceeded", "ECONNREFUSED", "ETIMEDOUT", "temporarily blocked"];
+  const causeMsg = (err as unknown as { cause?: { message?: string } }).cause?.message ?? "";
+  const fullMsg = err.message + " " + causeMsg;
+  return TRANSIENT.some((t) => fullMsg.includes(t));
+}
+
 async function runWithRetry<T>(
   name: string,
   fn: () => Promise<T>,
@@ -120,14 +128,7 @@ async function runWithRetry<T>(
       await fn();
       return;
     } catch (err: unknown) {
-      const isTransient =
-        err instanceof Error &&
-        (err.message.includes("ECIRCUITBREAKER") ||
-          err.message.includes("password authentication failed") ||
-          err.message.includes("timeout exceeded") ||
-          err.message.includes("ECONNREFUSED") ||
-          err.message.includes("ETIMEDOUT") ||
-          err.message.includes("temporarily blocked"));
+      const isTransient = isTransientDbError(err);
       if (isTransient && attempt < maxAttempts) {
         const backoff = delayMs * attempt;
         logger.warn(
@@ -492,6 +493,67 @@ async function runCriticalPreStartMigrations() {
       END IF;
     END $$;
   `);
+
+  // Ensure sessions table exists (critical for login)
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS sessions (
+      sid    TEXT PRIMARY KEY,
+      sess   JSONB NOT NULL,
+      expire TIMESTAMPTZ NOT NULL
+    )
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON sessions (expire)
+  `);
+
+  // Add missing users columns (login query selects these)
+  await db.execute(sql`
+    DO $$ BEGIN
+      IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'users') THEN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='division') THEN
+          ALTER TABLE users ADD COLUMN division TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='system_role') THEN
+          ALTER TABLE users ADD COLUMN system_role TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='default_branch_id') THEN
+          ALTER TABLE users ADD COLUMN default_branch_id INTEGER;
+        END IF;
+      END IF;
+    END $$;
+  `);
+
+  // Add missing accounting_settings columns (portal and BizPortal queries select these)
+  await db.execute(sql`
+    DO $$ BEGIN
+      IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'accounting_settings') THEN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='accounting_settings' AND column_name='cogs_account_id') THEN
+          ALTER TABLE accounting_settings ADD COLUMN cogs_account_id INTEGER;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='accounting_settings' AND column_name='inventory_account_id') THEN
+          ALTER TABLE accounting_settings ADD COLUMN inventory_account_id INTEGER;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='accounting_settings' AND column_name='company_name') THEN
+          ALTER TABLE accounting_settings ADD COLUMN company_name TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='accounting_settings' AND column_name='company_address') THEN
+          ALTER TABLE accounting_settings ADD COLUMN company_address TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='accounting_settings' AND column_name='company_npwp') THEN
+          ALTER TABLE accounting_settings ADD COLUMN company_npwp TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='accounting_settings' AND column_name='company_logo_url') THEN
+          ALTER TABLE accounting_settings ADD COLUMN company_logo_url TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='accounting_settings' AND column_name='meta') THEN
+          ALTER TABLE accounting_settings ADD COLUMN meta JSONB;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='accounting_settings' AND column_name='updated_at') THEN
+          ALTER TABLE accounting_settings ADD COLUMN updated_at TIMESTAMPTZ DEFAULT NOW();
+        END IF;
+      END IF;
+    END $$;
+  `);
 }
 
 // Flag set to true once the full migration + seed chain completes.
@@ -579,15 +641,7 @@ async function startServer() {
           logger.info("Pre-start schema migrations applied");
           return;
         } catch (err: unknown) {
-          const isTransient =
-            err instanceof Error &&
-            (err.message.includes("ECIRCUITBREAKER") ||
-              err.message.includes("password authentication failed") ||
-              err.message.includes("timeout exceeded") ||
-              err.message.includes("temporarily blocked") ||
-              err.message.includes("ECONNREFUSED") ||
-              err.message.includes("ETIMEDOUT"));
-          if (isTransient && attempt < 10) {
+          if (isTransientDbError(err) && attempt < 10) {
             const backoff = Math.min(attempt * 15_000, 120_000);
             logger.warn(
               { attempt, backoff },
