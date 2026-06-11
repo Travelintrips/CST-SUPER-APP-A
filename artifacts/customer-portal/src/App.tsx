@@ -85,6 +85,9 @@ const EscrowConfirmPage         = lazy(() => import("@/pages/escrow-confirm"));
 const ProductApprovePage        = lazy(() => import("@/pages/product-approve"));
 const ShipmentSelectionPage     = lazy(() => import("@/pages/shipment-selection"));
 const TruckingPage              = lazy(() => import("@/pages/trucking"));
+const PortalDokumenPage         = lazy(() => import("@/pages/portal-dokumen"));
+const PortalInvoicePage         = lazy(() => import("@/pages/portal-invoice"));
+const CompanyProfilePage        = lazy(() => import("@/pages/company-profile"));
 const AirFreightBookingPage     = lazy(() => import("@/pages/air-freight-booking"));
 const AirFreightApprovalPage    = lazy(() => import("@/pages/air-freight-approval"));
 const AirFreightTrackPage       = lazy(() => import("@/pages/air-freight-track"));
@@ -304,6 +307,9 @@ function AppShell() {
         <Route path="/shipment-selection/:token" component={ShipmentSelectionPage} />
         <Route path="/marketplace/:id" component={MarketplaceDetail} />
         <Route path="/trucking" component={TruckingPage} />
+        <Route path="/portal-dokumen" component={PortalDokumenPage} />
+        <Route path="/portal-invoice" component={PortalInvoicePage} />
+        <Route path="/company-profile" component={CompanyProfilePage} />
         <Route path="/air-freight-booking" component={AirFreightBookingPage} />
         <Route path="/air-freight/approval/:token" component={AirFreightApprovalPage} />
         <Route path="/air-freight/track/:orderNumber" component={AirFreightTrackPage} />
