@@ -49,7 +49,7 @@ export default function OceanFreightQuotePage() {
 
   useEffect(() => {
     if (!token) return;
-    fetch(`/api/ocean-freight-public/quote/${token}`)
+    fetch(`/api/ocean-freight/quote/${token}`)
       .then(r => r.json())
       .then(d => {
         if (d.error) { setError(d.error); } else { setOrder(d); }
@@ -61,7 +61,7 @@ export default function OceanFreightQuotePage() {
   async function handleApprove() {
     setAction("approving");
     try {
-      const res = await fetch(`/api/ocean-freight-public/quote/${token}/approve`, { method: "POST" });
+      const res = await fetch(`/api/ocean-freight/quote/${token}/approve`, { method: "POST" });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error);
       setDone("approved");
@@ -76,7 +76,7 @@ export default function OceanFreightQuotePage() {
   async function handleDecline() {
     setAction("declining");
     try {
-      const res = await fetch(`/api/ocean-freight-public/quote/${token}/decline`, {
+      const res = await fetch(`/api/ocean-freight/quote/${token}/decline`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reason: declineReason }),
       });

@@ -282,9 +282,11 @@ router.use("/tenant", tenantRouter);
 router.use("/air-freight", airFreightNewRouter);
 router.use("/air-freight", airFreightRatesRouter);
 router.use("/air-freight", airFreightPublicRouter);
-router.use("/ocean-freight", oceanFreightRouter);
-router.use("/ocean-freight", oceanFreightRatesRouter);
+// Public/rates mounts FIRST — oceanFreightRouter has GET /:id catch-all
+// that would intercept /options, /rates, /calculate, /inquiry, etc. if mounted first.
 router.use("/ocean-freight", oceanFreightPublicRouter);
+router.use("/ocean-freight", oceanFreightRatesRouter);
+router.use("/ocean-freight", oceanFreightRouter);
 router.use("/ocean-freight/vendor-form", oceanFreightVendorFormRouter);
 router.use("/executive", executiveRouter);
 router.use("/cash-advances", cashAdvancesRouter);

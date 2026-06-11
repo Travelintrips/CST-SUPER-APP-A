@@ -10,73 +10,10 @@ import { logger } from "../lib/logger.js";
 export const oceanFreightPublicRouter = Router();
 
 
-// ── Options ───────────────────────────────────────────────────────────────────
-oceanFreightPublicRouter.get("/options", async (_req: Request, res: Response) => {
-  res.json({
-    ports: [
-      { city: "Jakarta",   port: "Tanjung Priok" },
-      { city: "Surabaya",  port: "Tanjung Perak" },
-      { city: "Semarang",  port: "Tanjung Emas" },
-      { city: "Makassar",  port: "Soekarno-Hatta" },
-      { city: "Medan",     port: "Belawan" },
-      { city: "Balikpapan",port: "Kariangau" },
-      { city: "Pontianak", port: "Dwikora" },
-      { city: "Singapore", port: "PSA Singapore" },
-      { city: "Port Klang",port: "Port Klang" },
-      { city: "Penang",    port: "Penang Port" },
-      { city: "Bangkok",   port: "Laem Chabang" },
-      { city: "Shanghai",  port: "Yangshan" },
-      { city: "Ningbo",    port: "Ningbo" },
-      { city: "Hong Kong", port: "Kwai Tsing" },
-      { city: "Busan",     port: "Busan New Port" },
-      { city: "Tokyo",     port: "Tokyo Port" },
-      { city: "Dubai",     port: "Jebel Ali" },
-      { city: "Rotterdam", port: "Rotterdam" },
-      { city: "Hamburg",   port: "Hamburg" },
-      { city: "Los Angeles",port: "Long Beach" },
-    ],
-    container_types: ["20ft","40ft","40HC","Reefer 20ft","Reefer 40ft","Open Top","Flat Rack"],
-    trade_types: [
-      { value: "domestic",     label: "Domestic" },
-      { value: "export",       label: "Export" },
-      { value: "import",       label: "Import" },
-      { value: "cross_border", label: "Cross Border" },
-    ],
-    service_modes: [
-      { value: "port_to_port",  label: "Port to Port" },
-      { value: "door_to_port",  label: "Door to Port" },
-      { value: "port_to_door",  label: "Port to Door" },
-      { value: "door_to_door",  label: "Door to Door" },
-    ],
-    cargo_conditions: [
-      { value: "general",   label: "General Cargo" },
-      { value: "dg",        label: "DG Cargo" },
-      { value: "reefer",    label: "Reefer" },
-      { value: "fragile",   label: "Fragile" },
-      { value: "oversize",  label: "Oversize" },
-      { value: "high_value",label: "High Value" },
-    ],
-    incoterms: ["EXW","FOB","CFR/CNF","CIF","DAP","DDP"],
-    additional_services: [
-      { value: "trucking_pickup",    label: "Trucking Pickup" },
-      { value: "trucking_delivery",  label: "Trucking Delivery" },
-      { value: "customs_clearance",  label: "Customs Clearance" },
-      { value: "insurance",          label: "Insurance" },
-      { value: "fumigation",         label: "Fumigation" },
-      { value: "coo_certificate",    label: "COO / Certificate" },
-      { value: "warehouse_handling", label: "Warehouse Handling" },
-      { value: "stuffing",           label: "Stuffing" },
-      { value: "unstuffing",         label: "Unstuffing" },
-      { value: "surveyor",           label: "Surveyor" },
-      { value: "doc_handling",       label: "Document Handling" },
-    ],
-  });
-});
-
 const estimateLimit = rateLimit({ windowMs: 60_000, max: 30, standardHeaders: true, legacyHeaders: false });
 const submitLimit   = rateLimit({ windowMs: 60_000, max: 10, standardHeaders: true, legacyHeaders: false });
 
-// ── GET /api/ocean-freight-public/options ─────────────────────────────────────
+// ── GET /options ──────────────────────────────────────────────────────────────
 oceanFreightPublicRouter.get("/options", async (_req: Request, res: Response) => {
   return res.json({
     trade_types: [
@@ -347,39 +284,7 @@ oceanFreightPublicRouter.post("/calculate", async (req: Request, res: Response) 
   }
 });
 
-// ── POST /inquiry ─────────────────────────────────────────────────────────────
-oceanFreightPublicRouter.post("/inquiry", async (req: Request, res: Response) => {
-  try {
-    const b = req.body;
-
-    // Validate
-    if (!b.origin_port || !b.destination_port)
-      return res.status(400).json({ error: "Origin dan destination wajib" });
-    if (!b.shipment_type)
-      return res.status(400).json({ error: "Shipment type wajib" });
-    if (!b.customer_name)
-      return res.status(400).json({ error: "Nama customer wajib" });
-    if (!b.customer_phone && !b.customer_email)
-      return res.status(400).json({ error: "Phone atau email wajib" });
-    if (Number(b.container_qty ?? 1) < 1)
-      return res.status(400).json({ error: "Container qty minimal 1" });
-    if (Number(b.total_cbm ?? 0) < 0 || Number(b.gross_weight ?? 0) < 0)
-      return res.status(400).json({ error: "CBM/berat tidak boleh negatif" });
-
-    const orderNumber = `OCF/${new Date().getFullYear().toString().slice(2)}${String(new Date().getMonth() + 1).padStart(2, "0")}/${Math.floor(Math.random() * 9000 + 1000)}`;
-
-    const pricingBreakdown = b.pricing_breakdown ? JSON.stringify(b.pricing_breakdown) : null;
-    const additionalSvc    = b.selected_additional_services ? JSON.stringify(b.selected_additional_services) : "[]";
-    const candidateRateIds = b.candidate_rate_ids ? JSON.stringify(b.candidate_rate_ids) : "[]";
-
-    // Inquiry creation handled by second router implementation below
-    return res.json({ ok: true, message: "Inquiry diterima" });
-  } catch (err) {
-    return res.status(500).json({ error: "Gagal submit inquiry" });
-  }
-});
-
-// ── POST /api/ocean-freight-public/estimate ───────────────────────────────────
+// ── POST /estimate ────────────────────────────────────────────────────────────
 oceanFreightPublicRouter.post("/estimate", estimateLimit, async (req: Request, res: Response) => {
   try {
     const b = req.body ?? {};
@@ -598,7 +503,7 @@ oceanFreightPublicRouter.post("/inquiry", submitLimit, async (req: Request, res:
 oceanFreightPublicRouter.get("/track/:orderNumber", async (req: Request, res: Response) => {
   try {
     const { orderNumber } = req.params;
-    const res2 = await db.execute(sql.raw(`SELECT order_number, customer_name, origin_city, origin_port, destination_city, destination_port, shipment_type, container_type, container_qty, total_cbm, carrier, vessel_name, voyage, etd, eta, booking_number, bl_number, tracking_status, tracking_notes, tracking_updated_at, status, created_at FROM ocean_freight_orders WHERE order_number = '${orderNumber.replace(/'/g, "''")}'`));
+    const res2 = await db.execute(sql.raw(`SELECT order_number, customer_name, origin_city, origin_port, destination_city, destination_port, shipment_type, container_type, container_qty, total_cbm, carrier, vessel_name, voyage, etd, eta, booking_number, bl_number, tracking_status, status, created_at FROM ocean_freight_orders WHERE order_number = '${orderNumber.replace(/'/g, "''")}'`));
     const order = res2.rows[0];
     if (!order) return res.status(404).json({ error: "Order tidak ditemukan" });
     res.json(order);
