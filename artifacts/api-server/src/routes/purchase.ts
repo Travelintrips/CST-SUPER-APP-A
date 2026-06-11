@@ -508,7 +508,8 @@ router.delete("/documents/:id", async (req, res) => {
 router.post("/documents/:id/action", async (req, res) => {
   const id = Number(req.params.id);
   if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
-  const { action } = req.body ?? {};
+  const { action, cancelReason, editReason } = req.body ?? {};
+  const actorId = (req.user as { id: string } | undefined)?.id ?? null;
   const [doc] = await db
     .select()
     .from(purchaseDocumentsTable)
@@ -524,14 +525,20 @@ router.post("/documents/:id/action", async (req, res) => {
       patch["status"] = "confirmed" satisfies PurchaseStatus;
       patch["kind"] = "order";
       patch["confirmedAt"] = new Date();
+      patch["approvedBy"] = actorId;
+      patch["approvedAt"] = new Date();
       patch["receiveStatus"] = "to_receive" satisfies PurchaseReceiveStatus;
       patch["billStatus"] = "to_bill" satisfies PurchaseBillStatus;
       break;
     case "cancel":
       patch["status"] = "cancelled" satisfies PurchaseStatus;
+      patch["cancelledAt"] = new Date();
+      patch["cancelledBy"] = actorId;
+      patch["cancelReason"] = cancelReason ?? null;
       break;
     case "draft":
       patch["status"] = "draft" satisfies PurchaseStatus;
+      if (editReason) patch["editReason"] = editReason;
       break;
     case "mark_received":
       patch["receiveStatus"] = "received" satisfies PurchaseReceiveStatus;
@@ -576,6 +583,8 @@ router.post("/documents/:id/action", async (req, res) => {
       patch["billNumber"] = null;
       patch["billDate"] = null;
       patch["dueDate"] = null;
+      patch["cancelledBy"] = actorId;
+      patch["cancelReason"] = cancelReason ?? null;
       // Kembalikan status ke confirmed jika sebelumnya done
       if (doc.status === "done") patch["status"] = "confirmed" satisfies PurchaseStatus;
       break;

@@ -647,4 +647,239 @@ router.post("/transactions/calculate", async (req, res) => {
   return res.json({ results, totalTax: results.reduce((s, r) => s + r.taxAmount, 0) });
 });
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// COMPLIANCE ENDPOINTS — laporan kepatuhan pajak
+// ─────────────────────────────────────────────────────────────────────────────
+
+function resolveCompanyIdAudit(req: import("express").Request): number {
+  const q = (req.query as Record<string, string>).companyId;
+  return q ? parseInt(q, 10) : 1;
+}
+
+// GET /api/tax/npwp-missing?companyId=N&period=YYYY-MM&limit=200
+router.get("/npwp-missing", async (req, res) => {
+  const companyId = resolveCompanyIdAudit(req);
+  const { period, limit: limitQ, direction } = req.query as Record<string, string>;
+  const limit = Math.min(parseInt(limitQ ?? "200", 10), 500);
+
+  try {
+    const rows = await db.execute(sql`
+      SELECT
+        tt.id,
+        tt.transaction_type,
+        tt.transaction_id,
+        tt.transaction_ref,
+        tt.tax_name,
+        tt.tax_amount::float,
+        tt.base_amount::float,
+        tt.direction,
+        tt.partner_name,
+        tt.npwp,
+        tt.period,
+        tt.status,
+        tt.created_at
+      FROM transaction_taxes tt
+      WHERE tt.company_id = ${companyId}
+        AND (tt.npwp IS NULL OR tt.npwp = '')
+        ${period ? sql`AND tt.period = ${period}` : sql``}
+        ${direction ? sql`AND tt.direction = ${direction}` : sql``}
+      ORDER BY tt.created_at DESC
+      LIMIT ${limit}
+    `);
+    return res.json({ total: rows.rows.length, items: rows.rows });
+  } catch (err) {
+    logger.error({ err }, "tax/npwp-missing: query failed");
+    return res.status(500).json({ message: "Gagal memuat transaksi tanpa NPWP" });
+  }
+});
+
+// GET /api/tax/faktur-missing?companyId=N&period=YYYY-MM&limit=200
+// Cek PPN output tanpa faktur pajak, PPh withholding tanpa bukti potong
+router.get("/faktur-missing", async (req, res) => {
+  const companyId = resolveCompanyIdAudit(req);
+  const { period, limit: limitQ } = req.query as Record<string, string>;
+  const limit = Math.min(parseInt(limitQ ?? "200", 10), 500);
+
+  try {
+    const [ppnRows, pphRows] = await Promise.all([
+      // PPN output tanpa faktur pajak
+      db.execute(sql`
+        SELECT
+          tt.id,
+          tt.transaction_type,
+          tt.transaction_id,
+          tt.transaction_ref,
+          tt.tax_name,
+          tt.tax_amount::float,
+          tt.base_amount::float,
+          tt.direction,
+          tt.partner_name,
+          tt.npwp,
+          tt.faktur_pajak_number,
+          tt.period,
+          tt.status,
+          tt.created_at,
+          'ppn_output' AS issue_type
+        FROM transaction_taxes tt
+        WHERE tt.company_id = ${companyId}
+          AND tt.direction = 'output'
+          AND (tt.faktur_pajak_number IS NULL OR tt.faktur_pajak_number = '')
+          ${period ? sql`AND tt.period = ${period}` : sql``}
+        ORDER BY tt.created_at DESC
+        LIMIT ${limit}
+      `),
+      // PPh withholding tanpa bukti potong
+      db.execute(sql`
+        SELECT
+          tt.id,
+          tt.transaction_type,
+          tt.transaction_id,
+          tt.transaction_ref,
+          tt.tax_name,
+          tt.tax_amount::float,
+          tt.base_amount::float,
+          tt.direction,
+          tt.partner_name,
+          tt.npwp,
+          tt.bukti_potong_number,
+          tt.period,
+          tt.status,
+          tt.created_at,
+          'pph_no_bukti_potong' AS issue_type
+        FROM transaction_taxes tt
+        WHERE tt.company_id = ${companyId}
+          AND tt.direction = 'withholding'
+          AND (tt.bukti_potong_number IS NULL OR tt.bukti_potong_number = '')
+          ${period ? sql`AND tt.period = ${period}` : sql``}
+        ORDER BY tt.created_at DESC
+        LIMIT ${limit}
+      `),
+    ]);
+
+    return res.json({
+      total: ppnRows.rows.length + pphRows.rows.length,
+      ppnOutputMissingFaktur:     ppnRows.rows,
+      pphWithholdingMissingBukti: pphRows.rows,
+    });
+  } catch (err) {
+    logger.error({ err }, "tax/faktur-missing: query failed");
+    return res.status(500).json({ message: "Gagal memuat transaksi tanpa faktur/bukti potong" });
+  }
+});
+
+// GET /api/tax/unpaid?companyId=N&period=YYYY-MM&direction=output|withholding&limit=200
+router.get("/unpaid", async (req, res) => {
+  const companyId = resolveCompanyIdAudit(req);
+  const { period, direction, limit: limitQ } = req.query as Record<string, string>;
+  const limit = Math.min(parseInt(limitQ ?? "200", 10), 500);
+
+  try {
+    const rows = await db.execute(sql`
+      SELECT
+        tt.id,
+        tt.transaction_type,
+        tt.transaction_id,
+        tt.transaction_ref,
+        tt.tax_name,
+        tt.tax_amount::float,
+        tt.base_amount::float,
+        tt.direction,
+        tt.partner_name,
+        tt.npwp,
+        tt.period,
+        tt.status,
+        tt.created_at
+      FROM transaction_taxes tt
+      WHERE tt.company_id = ${companyId}
+        AND tt.status NOT IN ('paid')
+        AND tt.paid_at IS NULL
+        ${period ? sql`AND tt.period = ${period}` : sql``}
+        ${direction ? sql`AND tt.direction = ${direction}` : sql``}
+      ORDER BY tt.period DESC, tt.tax_amount DESC
+      LIMIT ${limit}
+    `);
+    return res.json({ total: rows.rows.length, items: rows.rows });
+  } catch (err) {
+    logger.error({ err }, "tax/unpaid: query failed");
+    return res.status(500).json({ message: "Gagal memuat pajak belum dibayar" });
+  }
+});
+
+// GET /api/tax/compliance-summary?companyId=N&period=YYYY-MM
+router.get("/compliance-summary", async (req, res) => {
+  const companyId = resolveCompanyIdAudit(req);
+  const { period } = req.query as Record<string, string>;
+  const periodFilter = period ? sql`AND period = ${period}` : sql``;
+
+  try {
+    const [npwpMissing, fakturMissing, buktiMissing, unpaid] = await Promise.all([
+      db.execute(sql`
+        SELECT COUNT(*)::int AS cnt FROM transaction_taxes
+        WHERE company_id = ${companyId} AND (npwp IS NULL OR npwp = '') ${periodFilter}
+      `),
+      db.execute(sql`
+        SELECT COUNT(*)::int AS cnt FROM transaction_taxes
+        WHERE company_id = ${companyId} AND direction = 'output'
+          AND (faktur_pajak_number IS NULL OR faktur_pajak_number = '') ${periodFilter}
+      `),
+      db.execute(sql`
+        SELECT COUNT(*)::int AS cnt FROM transaction_taxes
+        WHERE company_id = ${companyId} AND direction = 'withholding'
+          AND (bukti_potong_number IS NULL OR bukti_potong_number = '') ${periodFilter}
+      `),
+      db.execute(sql`
+        SELECT COUNT(*)::int AS cnt, COALESCE(SUM(tax_amount::numeric),0)::float AS total
+        FROM transaction_taxes
+        WHERE company_id = ${companyId} AND status != 'paid' AND paid_at IS NULL ${periodFilter}
+      `),
+    ]);
+
+    const unpaidRow = unpaid.rows[0] as { cnt: number; total: number };
+    return res.json({
+      companyId,
+      period: period ?? "all",
+      npwpMissing:          (npwpMissing.rows[0] as { cnt: number }).cnt,
+      fakturPajakMissing:   (fakturMissing.rows[0] as { cnt: number }).cnt,
+      buktiPotongMissing:   (buktiMissing.rows[0] as { cnt: number }).cnt,
+      unpaidCount:          unpaidRow.cnt,
+      unpaidTotalAmount:    unpaidRow.total,
+    });
+  } catch (err) {
+    logger.error({ err }, "tax/compliance-summary: query failed");
+    return res.status(500).json({ message: "Gagal memuat ringkasan kepatuhan pajak" });
+  }
+});
+
+// PATCH /api/tax/transactions/:id — update faktur/bukti potong/npwp inline
+router.patch("/transactions/:id", async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
+
+  const { npwp, fakturPajakNumber, buktiPotongNumber, status, notes } = req.body ?? {};
+  const patch: Record<string, unknown> = { updatedAt: new Date() };
+  if (npwp !== undefined) patch.npwp = npwp;
+  if (fakturPajakNumber !== undefined) patch.fakturPajakNumber = fakturPajakNumber;
+  if (buktiPotongNumber !== undefined) patch.buktiPotongNumber = buktiPotongNumber;
+  if (status !== undefined) patch.status = status;
+  if (notes !== undefined) patch.notes = notes;
+  if (status === "paid") patch.paidAt = new Date();
+  if (status === "reported") patch.reportedAt = new Date();
+  if (status === "posted") patch.postedAt = new Date();
+
+  if (Object.keys(patch).length === 1) {
+    return res.status(400).json({ message: "Tidak ada field yang diupdate" });
+  }
+
+  try {
+    const { transactionTaxesTable } = await import("@workspace/db");
+    const { eq } = await import("drizzle-orm");
+    await db.update(transactionTaxesTable).set(patch as never).where(eq(transactionTaxesTable.id, id));
+    return res.json({ message: "Updated", id });
+  } catch (err) {
+    logger.error({ err }, "tax/transactions PATCH: failed");
+    return res.status(500).json({ message: "Gagal update transaksi pajak" });
+  }
+});
+
 export default router;

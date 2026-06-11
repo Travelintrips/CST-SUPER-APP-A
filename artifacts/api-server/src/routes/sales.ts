@@ -583,7 +583,8 @@ router.delete("/documents/:id", async (req, res) => {
 router.post("/documents/:id/action", async (req, res) => {
   const id = Number(req.params.id);
   if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
-  const { action } = req.body ?? {};
+  const { action, cancelReason, editReason, reversalReason } = req.body ?? {};
+  const actorId = (req.user as { id: string } | undefined)?.id ?? null;
   const [doc] = await db.select().from(salesDocumentsTable).where(eq(salesDocumentsTable.id, id));
   if (!doc) return res.status(404).json({ message: "Document not found" });
 
@@ -596,13 +597,19 @@ router.post("/documents/:id/action", async (req, res) => {
       patch["status"] = "confirmed" satisfies SalesDocStatus;
       patch["kind"] = "order";
       patch["confirmedAt"] = new Date();
+      patch["approvedBy"] = actorId;
+      patch["approvedAt"] = new Date();
       patch["deliveryStatus"] = "to_deliver";
       break;
     case "cancel":
       patch["status"] = "cancelled" satisfies SalesDocStatus;
+      patch["cancelledAt"] = new Date();
+      patch["cancelledBy"] = actorId;
+      patch["cancelReason"] = cancelReason ?? null;
       break;
     case "draft":
       patch["status"] = "draft" satisfies SalesDocStatus;
+      if (editReason) patch["editReason"] = editReason;
       break;
     case "mark_invoiced": {
       // Idempotency guard via service
@@ -637,6 +644,9 @@ router.post("/documents/:id/action", async (req, res) => {
         return res.status(400).json({ message: "Hanya invoice yang sudah diposting yang bisa dibatalkan" });
       }
       patch["cancelledAt"] = new Date();
+      patch["cancelledBy"] = actorId;
+      patch["cancelReason"] = cancelReason ?? null;
+      if (reversalReason) patch["reversalReason"] = reversalReason;
       break;
     }
     case "send_reminder":

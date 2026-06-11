@@ -84,6 +84,79 @@ export async function runTaxRulesMigration(): Promise<void> {
       END IF;
     END $$;
   `);
+  await db.execute(sql`
+    DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'transaction_taxes' AND column_name = 'faktur_pajak_number'
+      ) THEN
+        ALTER TABLE transaction_taxes ADD COLUMN faktur_pajak_number TEXT;
+      END IF;
+    END $$;
+  `);
+  await db.execute(sql`
+    DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'transaction_taxes' AND column_name = 'bukti_potong_number'
+      ) THEN
+        ALTER TABLE transaction_taxes ADD COLUMN bukti_potong_number TEXT;
+      END IF;
+    END $$;
+  `);
+  await db.execute(sql`
+    DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'transaction_taxes' AND column_name = 'posted_at'
+      ) THEN
+        ALTER TABLE transaction_taxes ADD COLUMN posted_at TIMESTAMPTZ;
+      END IF;
+    END $$;
+  `);
+  await db.execute(sql`
+    DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'accounting_entries' AND column_name = 'approved_by'
+      ) THEN
+        ALTER TABLE accounting_entries ADD COLUMN approved_by TEXT;
+        ALTER TABLE accounting_entries ADD COLUMN approved_at TIMESTAMPTZ;
+        ALTER TABLE accounting_entries ADD COLUMN cancelled_by TEXT;
+        ALTER TABLE accounting_entries ADD COLUMN cancelled_at TIMESTAMPTZ;
+        ALTER TABLE accounting_entries ADD COLUMN cancel_reason TEXT;
+      END IF;
+    END $$;
+  `);
+  await db.execute(sql`
+    DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'sales_documents' AND column_name = 'cancelled_by'
+      ) THEN
+        ALTER TABLE sales_documents ADD COLUMN cancelled_by TEXT;
+        ALTER TABLE sales_documents ADD COLUMN cancel_reason TEXT;
+        ALTER TABLE sales_documents ADD COLUMN approved_by TEXT;
+        ALTER TABLE sales_documents ADD COLUMN approved_at TIMESTAMPTZ;
+        ALTER TABLE sales_documents ADD COLUMN edit_reason TEXT;
+        ALTER TABLE sales_documents ADD COLUMN reversal_reason TEXT;
+      END IF;
+    END $$;
+  `);
+  await db.execute(sql`
+    DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'purchase_documents' AND column_name = 'cancelled_by'
+      ) THEN
+        ALTER TABLE purchase_documents ADD COLUMN cancelled_by TEXT;
+        ALTER TABLE purchase_documents ADD COLUMN cancel_reason TEXT;
+        ALTER TABLE purchase_documents ADD COLUMN approved_by TEXT;
+        ALTER TABLE purchase_documents ADD COLUMN approved_at TIMESTAMPTZ;
+        ALTER TABLE purchase_documents ADD COLUMN edit_reason TEXT;
+      END IF;
+    END $$;
+  `);
 
   logger.info("Tax rules migration: selesai (tax_rules table + transaction_taxes columns ready)");
 }

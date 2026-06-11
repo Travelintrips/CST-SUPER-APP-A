@@ -154,6 +154,11 @@ export const accountingEntriesTable = pgTable("accounting_entries", {
   totalDebit: numeric("total_debit", { precision: 14, scale: 2 }).notNull().default("0"),
   totalCredit: numeric("total_credit", { precision: 14, scale: 2 }).notNull().default("0"),
   createdById: text("created_by_id"),
+  approvedBy: text("approved_by"),
+  approvedAt: timestamp("approved_at"),
+  cancelledBy: text("cancelled_by"),
+  cancelledAt: timestamp("cancelled_at"),
+  cancelReason: text("cancel_reason"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   costCenterId: integer("cost_center_id").references(() => costCentersTable.id, { onDelete: "set null" }),
   facilityId: integer("facility_id"),
@@ -337,6 +342,30 @@ export type InsertTax = z.infer<typeof insertTaxSchema>;
 export type InsertEntry = z.infer<typeof insertEntrySchema>;
 export type InsertEntryLine = z.infer<typeof insertEntryLineSchema>;
 
+export const taxRulesTable = pgTable("tax_rules", {
+  id: serial("id").primaryKey(),
+  companyId: integer("company_id").notNull(),
+  name: text("name").notNull(),
+  transactionType: text("transaction_type").notNull(),
+  moduleSource: text("module_source").notNull().default("all"),
+  partnerType: text("partner_type").notNull().default("all"),
+  partnerPkpStatus: text("partner_pkp_status").notNull().default("all"),
+  partnerHasNpwp: text("partner_has_npwp").notNull().default("all"),
+  taxType: text("tax_type").notNull(),
+  taxRate: numeric("tax_rate", { precision: 8, scale: 4 }).notNull().default("0"),
+  taxBaseType: text("tax_base_type").notNull().default("dpp"),
+  direction: text("direction").notNull().default("output"),
+  isActive: boolean("is_active").notNull().default(true),
+  effectiveFrom: date("effective_from"),
+  effectiveTo: date("effective_to"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (t) => ({
+  companyActiveIdx: index("tax_rules_company_idx").on(t.companyId, t.isActive),
+  txTypeIdx: index("tax_rules_tx_type_idx").on(t.transactionType),
+}));
+
 export const transactionTaxesTable = pgTable("transaction_taxes", {
   id: serial("id").primaryKey(),
   companyId: integer("company_id").notNull(),
@@ -352,6 +381,14 @@ export const transactionTaxesTable = pgTable("transaction_taxes", {
   accountId: integer("account_id").references(() => chartOfAccountsTable.id, { onDelete: "set null" }),
   period: text("period").notNull(),
   status: text("status").notNull().default("pending"),
+  direction: text("direction").notNull().default("output"),
+  taxRuleId: integer("tax_rule_id").references(() => taxRulesTable.id, { onDelete: "set null" }),
+  partnerName: text("partner_name"),
+  npwp: text("npwp"),
+  fakturPajakNumber: text("faktur_pajak_number"),
+  buktiPotongNumber: text("bukti_potong_number"),
+  taxInvoiceNumber: text("tax_invoice_number"),
+  postedAt: timestamp("posted_at"),
   paidAt: timestamp("paid_at"),
   reportedAt: timestamp("reported_at"),
   notes: text("notes"),
@@ -361,6 +398,9 @@ export const transactionTaxesTable = pgTable("transaction_taxes", {
   txUniq: uniqueIndex("tx_taxes_tx_uniq").on(t.transactionType, t.transactionId, t.taxId),
   companyPeriodIdx: index("tx_taxes_company_period_idx").on(t.companyId, t.period),
   statusIdx: index("tx_taxes_status_idx").on(t.status),
+  directionIdx: index("tx_taxes_direction_idx").on(t.direction),
 }));
 
+export type TaxRule = typeof taxRulesTable.$inferSelect;
+export type InsertTaxRule = typeof taxRulesTable.$inferInsert;
 export type TransactionTax = typeof transactionTaxesTable.$inferSelect;

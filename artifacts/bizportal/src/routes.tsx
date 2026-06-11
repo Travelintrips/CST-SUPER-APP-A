@@ -100,6 +100,8 @@ import AccountingReconciliationPage from "@/pages/accounting/reconciliation";
 import AccountingGSheetPage from "@/pages/accounting/gsheet";
 import WhtReconciliationPage from "@/pages/accounting/wht-reconciliation";
 import TaxReportPage from "@/pages/accounting/tax-report";
+import AccountingAuditReportPage from "@/pages/accounting/audit-report";
+import TaxMissingCompliancePage from "@/pages/tax/missing-compliance";
 import HoldingPage from "@/pages/HoldingPage";
 import ExecutiveDashboardPage from "@/pages/executive/dashboard";
 import ExecutiveLogisticsDashboardPage from "@/pages/executive/logistics-dashboard";
@@ -379,6 +381,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/accounting/wht-reconciliation" component={PR(WhtReconciliationPage)} />
       <Route path="/accounting/gsheet" component={PR(AccountingGSheetPage)} />
       <Route path="/accounting/tax-report" component={PR(TaxReportPage)} />
+      <Route path="/accounting/audit-report" component={PR(AccountingAuditReportPage)} />
       <Route path="/accounting/reports/trial-balance" component={PR(AccountingTrialBalancePage)} />
       <Route path="/accounting/reports/general-ledger" component={PR(AccountingGeneralLedgerPage)} />
       <Route path="/accounting/reports/profit-loss" component={PR(AccountingProfitLossPage)} />
@@ -529,6 +532,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/tax/pph" component={PR(TaxPphPage)} />
       <Route path="/tax/spt" component={PR(TaxSptPage)} />
       <Route path="/tax/reconciliation" component={PR(TaxReconciliationPage)} />
+      <Route path="/tax/missing-compliance" component={PR(TaxMissingCompliancePage)} />
       <Route path="/tax" component={PR(TaxDashboardPage)} />
 
       {/* ── Legacy redirects ───────────────────────────────────────────── */}

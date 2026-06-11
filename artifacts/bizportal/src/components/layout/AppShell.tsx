@@ -394,6 +394,7 @@ export function AppShell({ children, noPadding }: AppShellProps) {
         { titleKey: "Profitabilitas Freight", href: "/accounting/reports/freight-profitability", icon: Ship },
         { titleKey: "reconciliation", href: "/accounting/reconciliation", icon: GitMerge },
         { titleKey: "Rekonsiliasi WHT Payable", href: "/accounting/wht-reconciliation", icon: ShieldCheck },
+        { titleKey: "Audit Akuntansi", href: "/accounting/audit-report", icon: AlertTriangle },
         { titleKey: "accountingSettings", href: "/accounting/settings", icon: Settings },
         { titleKey: "Google Sheets Sync", href: "/accounting/gsheet", icon: FileSpreadsheet },
         { titleKey: "Overview Perusahaan", href: "/holding", icon: Building2 },
@@ -420,6 +421,7 @@ export function AppShell({ children, noPadding }: AppShellProps) {
         { titleKey: "Semua Transaksi Pajak", href: "/tax/transactions", icon: ClipboardList },
         { titleKey: "Rekonsiliasi Pajak", href: "/tax/reconciliation", icon: GitMerge },
         { titleKey: "Master Aturan Pajak", href: "/tax/rules", icon: Shield },
+        { titleKey: "Kepatuhan Pajak", href: "/tax/missing-compliance", icon: ShieldAlert },
       ],
     },
 

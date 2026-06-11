@@ -22,6 +22,10 @@ interface RecordTaxParams {
   baseAmount: number;
   taxAmount?: number;
   subType?: string | null;
+  partnerName?: string | null;
+  npwp?: string | null;
+  fakturPajakNumber?: string | null;
+  buktiPotongNumber?: string | null;
 }
 
 function currentPeriod(): string {
@@ -196,6 +200,12 @@ async function detectTax(
   }
 }
 
+function taxDirection(tax: typeof accountingTaxesTable.$inferSelect): string {
+  if (tax.kind === "sale") return "output";
+  if (tax.kind === "purchase") return "input";
+  return "withholding";
+}
+
 export async function recordTransactionTax(params: RecordTaxParams): Promise<void> {
   try {
     const {
@@ -205,6 +215,10 @@ export async function recordTransactionTax(params: RecordTaxParams): Promise<voi
       transactionRef,
       baseAmount,
       subType,
+      partnerName,
+      npwp,
+      fakturPajakNumber,
+      buktiPotongNumber,
     } = params;
 
     if (!baseAmount || baseAmount <= 0) return;
@@ -231,6 +245,7 @@ export async function recordTransactionTax(params: RecordTaxParams): Promise<voi
     }
 
     const period = currentPeriod();
+    const direction = taxDirection(tax);
 
     await db
       .insert(transactionTaxesTable)
@@ -248,8 +263,29 @@ export async function recordTransactionTax(params: RecordTaxParams): Promise<voi
         accountId: tax.accountId ?? null,
         period,
         status: "pending",
+        direction,
+        partnerName: partnerName ?? null,
+        npwp: npwp ?? null,
+        fakturPajakNumber: fakturPajakNumber ?? null,
+        buktiPotongNumber: buktiPotongNumber ?? null,
       })
-      .onConflictDoNothing();
+      .onConflictDoUpdate({
+        target: [
+          transactionTaxesTable.transactionType,
+          transactionTaxesTable.transactionId,
+          transactionTaxesTable.taxId,
+        ],
+        set: {
+          baseAmount: String(round2(baseAmount)),
+          taxAmount: String(taxAmount),
+          direction,
+          partnerName: partnerName ?? null,
+          npwp: npwp ?? null,
+          fakturPajakNumber: fakturPajakNumber ?? null,
+          buktiPotongNumber: buktiPotongNumber ?? null,
+          updatedAt: new Date(),
+        },
+      });
 
     logger.info(
       { companyId, transactionType, transactionId, taxName: tax.name, taxAmount },

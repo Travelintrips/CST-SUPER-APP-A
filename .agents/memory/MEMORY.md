@@ -8,4 +8,5 @@
 - [ESM external lazy import pattern](esm-external-lazy-import.md) — esbuild externals leave static imports as top-level ESM → runtime _link fails if package absent; use createRequire for true call-time resolution.
 - [Workspace package symlinks](workspace-package-symlinks.md) — @workspace/product-templates, service-templates, logistics-constants live in lib/; if missing from node_modules/@workspace run pnpm install at root.
 - [Accounting gap fixes — Fase 3](accounting-fase3.md) — audit trail + NPWP/faktur validators: 3 new lib files; audit hooks in tax/vendorPayments/accounting routes.
+- [CompanyContext field name](company-context-field.md) — use `activeCompanyId` (type CompanyScope = number | "all"), NOT `selectedCompanyId`; can be "all" for consolidated view.
 - [DB connection string order (lib/db)](db-connection-order.md) — SUPABASE_PG_URL may have stale creds; in dev mode always prefer SUPABASE_DATABASE_URL before SUPABASE_PG_URL.
