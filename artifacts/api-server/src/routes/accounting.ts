@@ -717,7 +717,12 @@ router.get("/payments", async (req, res) => {
   if (range.error) return res.status(400).json({ message: range.error });
   const conds: SQL<unknown>[] = [];
   if (scope !== "all") {
-    conds.push(eq(accountingPaymentsTable.companyId, scope));
+    conds.push(
+      or(
+        eq(accountingPaymentsTable.companyId, scope),
+        isNull(accountingPaymentsTable.companyId),
+      )!,
+    );
   }
   if (range.from)
     conds.push(

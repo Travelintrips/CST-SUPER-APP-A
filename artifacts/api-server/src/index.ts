@@ -85,6 +85,7 @@ import { runStartupValidation } from "./lib/startupValidator.js";
 import { backfillVendorPerformance } from "./routes/vendorPerformance.js";
 import { runProductMediaMigration } from "./lib/productMediaMigration.js";
 import { runTaxRulesMigration } from "./lib/taxRulesMigration.js";
+import { backfillSportCenterAccountingPayments } from "./lib/backfillSportCenterPayments.js";
 
 
 // REPLIT_API_PORT overrides PORT so the server listens on the local port
@@ -738,6 +739,11 @@ async function startServer() {
     .then(() =>
       backfillVendorPerformance().catch((err) => {
         logger.warn({ err }, "Vendor performance backfill failed (non-fatal)");
+      })
+    )
+    .then(() =>
+      backfillSportCenterAccountingPayments().catch((err) => {
+        logger.warn({ err }, "Sport Center accounting payments backfill failed (non-fatal)");
       })
     )
     .then(() => {
