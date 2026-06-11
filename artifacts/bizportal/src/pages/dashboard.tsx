@@ -1,4 +1,4 @@
-import { useCallback, useState, useEffect } from "react";
+import { useCallback, useState, useEffect, type ElementType, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AppShell } from "@/components/layout/AppShell";
 import { getLastResponseTime, useListLogisticOrders } from "@workspace/api-client-react";
@@ -1222,7 +1222,7 @@ export default function DashboardPage() {
 interface StatCardProps {
   title: string;
   href: string;
-  icon: React.ReactNode;
+  icon: ReactNode;
   isLoading: boolean;
   value: string;
   valueClassName?: string;
@@ -1455,7 +1455,7 @@ function RevenueSparkline({ data }: { data: { month: string; revenue: number }[]
 // ── Dashboard Quick Nav ────────────────────────────────────────────────────────
 
 interface DashNavItem { label: string; href: string; }
-interface DashNavCard { label: string; icon: React.ElementType; color: string; bg: string; items: DashNavItem[]; }
+interface DashNavCard { label: string; icon: ElementType; color: string; bg: string; items: DashNavItem[]; }
 
 const DASH_NAV_CARDS: DashNavCard[] = [
   {
@@ -1565,7 +1565,7 @@ const DASH_NAV_CARDS: DashNavCard[] = [
 ];
 
 function DashboardQuickNav() {
-  const [open, setOpen] = React.useState(() => {
+  const [open, setOpen] = useState(() => {
     try { return localStorage.getItem("dashboard_quicknav_open") !== "false"; } catch { return true; }
   });
   const toggle = () => setOpen((v) => {
