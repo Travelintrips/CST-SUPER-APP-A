@@ -33,7 +33,7 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "fuser -k 5000/tcp 2>/dev/null; sleep 0.3; BIZPORTAL_PORT=6800 PORT=5000 node gateway.mjs"
+args = "bash start-dev-all.sh"
 waitForPort = 5000
 
 [[workflows.workflow]]

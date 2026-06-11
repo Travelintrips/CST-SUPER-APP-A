@@ -182,18 +182,16 @@ async function ensurePaymentForPaidBooking(
     }).catch((err: unknown) => console.error('[sport-center] insertAccountingPayment (ensurePayment) failed:', err));
   }
 
-  if (bTaxAmount > 0) {
-    import("../../../lib/taxAutoService.js").then(({ recordTransactionTax }) => {
-      void recordTransactionTax({
-        companyId: bCompanyId ?? 1,
-        transactionType: "sport_center",
-        transactionId: id,
-        transactionRef: String(row.booking_number ?? id),
-        baseAmount: bTotalAmount - bTaxAmount,
-        taxAmount: bTaxAmount,
-      });
-    }).catch(() => {/* ignore */});
-  }
+  import("../../../lib/taxAutoService.js").then(({ recordTransactionTax }) => {
+    void recordTransactionTax({
+      companyId: bCompanyId ?? 1,
+      transactionType: "sport_center",
+      transactionId: id,
+      transactionRef: String(row.booking_number ?? id),
+      baseAmount: bTaxAmount > 0 ? bTotalAmount - bTaxAmount : bTotalAmount,
+      ...(bTaxAmount > 0 ? { taxAmount: bTaxAmount } : {}),
+    });
+  }).catch(() => {/* ignore */});
 
   await db.execute(sql`
     INSERT INTO sport_audit_logs (company_id, entity_type, entity_id, action, actor, new_data)
@@ -1688,19 +1686,17 @@ router.post("/payments", async (req, res) => {
       }).catch((err: unknown) => console.error('[sport-center] postSportCenterBooking failed:', err));
     }
 
-    // 7. Tax Engine hook
-    if (bTaxAmount > 0) {
-      import("../../../lib/taxAutoService.js").then(({ recordTransactionTax }) => {
-        void recordTransactionTax({
-          companyId: bCompanyId ?? 1,
-          transactionType: "sport_center",
-          transactionId: Number(booking_id),
-          transactionRef: bCode,
-          baseAmount: bTotalAmount - bTaxAmount,
-          taxAmount: bTaxAmount,
-        });
-      }).catch(() => {/* ignore */});
-    }
+    // 7. Tax Engine hook — selalu catat PPN Keluaran untuk semua booking sport center
+    import("../../../lib/taxAutoService.js").then(({ recordTransactionTax }) => {
+      void recordTransactionTax({
+        companyId: bCompanyId ?? 1,
+        transactionType: "sport_center",
+        transactionId: Number(booking_id),
+        transactionRef: bCode,
+        baseAmount: bTaxAmount > 0 ? bTotalAmount - bTaxAmount : bTotalAmount,
+        ...(bTaxAmount > 0 ? { taxAmount: bTaxAmount } : {}),
+      });
+    }).catch(() => {/* ignore */});
 
     // 8. Accounting Payments — agar muncul di Finance BizPortal → Payments
     insertAccountingPaymentForSportCenter({

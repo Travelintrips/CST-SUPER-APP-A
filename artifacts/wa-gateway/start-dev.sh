@@ -1,5 +1,4 @@
 #!/bin/bash
-set -e
 cd "$(dirname "$0")"
 
 VITE_PORT=${VITE_PORT:-21174}
