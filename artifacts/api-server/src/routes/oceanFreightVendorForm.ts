@@ -28,7 +28,6 @@ oceanFreightVendorFormRouter.get("/:token", async (req: Request, res: Response) 
       LEFT JOIN suppliers v ON v.id = s.vendor_id
       WHERE s.token = ${token}
     `);
-
     if (!subs.length) return res.status(404).json({ error: "Link tidak ditemukan" });
     const sub = subs[0] as any;
     if (!sub.is_active) return res.status(410).json({ error: "Link sudah tidak aktif" });
@@ -48,13 +47,10 @@ oceanFreightVendorFormRouter.get("/:token", async (req: Request, res: Response) 
              selected_additional_services, etd_preferred
       FROM ocean_freight_orders WHERE id = ${sub.order_id}
     `);
-
     if (!orders.length) return res.status(404).json({ error: "Order tidak ditemukan" });
 
     if (!sub.form_opened_at) {
-      await db.execute(sql`
-        UPDATE ocean_freight_rate_submissions SET form_opened_at = NOW() WHERE token = ${token}
-      `);
+      await db.execute(sql`UPDATE ocean_freight_rate_submissions SET form_opened_at = NOW() WHERE token = ${token}`);
     }
 
     return res.json({
