@@ -392,6 +392,8 @@ function IssuesPanel({
   const [autofillResult, setAutofillResult] = useState<{ updated: number } | null>(null);
   const [autofillingFaktur, setAutofillingFaktur] = useState(false);
   const [autofillFakturResult, setAutofillFakturResult] = useState<{ updated: number } | null>(null);
+  const [autofillingPartner, setAutofillingPartner] = useState(false);
+  const [autofillPartnerResult, setAutofillPartnerResult] = useState<{ updated: number } | null>(null);
 
   const params = new URLSearchParams({ period, type: filter });
   if (companyId) params.set("companyId", String(companyId));
@@ -462,6 +464,33 @@ function IssuesPanel({
     }
   }
 
+  async function runAutofillPartner() {
+    setAutofillingPartner(true);
+    setAutofillPartnerResult(null);
+    try {
+      const p = new URLSearchParams({ period });
+      if (companyId) p.set("companyId", String(companyId));
+      const r = await fetch(`/api/tax/export/autofill-partner?${p}`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const body = await r.json();
+      if (!r.ok) throw new Error(body.message ?? "Gagal auto-isi nama mitra");
+      setAutofillPartnerResult({ updated: body.updated ?? 0 });
+      if (body.updated > 0) {
+        toast.success(body.message);
+        refetch();
+        onFixed();
+      } else {
+        toast.info("Tidak ada Nama Mitra yang perlu diisi (sudah terisi atau tidak ada sales order terkait)");
+      }
+    } catch (e: any) {
+      toast.error(e?.message ?? "Gagal auto-isi Nama Mitra");
+    } finally {
+      setAutofillingPartner(false);
+    }
+  }
+
   if (totalIssues === 0) return null;
 
   return (
@@ -489,6 +518,11 @@ function IssuesPanel({
           {autofillFakturResult && autofillFakturResult.updated > 0 && (
             <Badge className="bg-emerald-200 text-emerald-800 border-0 text-[10px]">
               {autofillFakturResult.updated} No. Faktur diisi otomatis
+            </Badge>
+          )}
+          {autofillPartnerResult && autofillPartnerResult.updated > 0 && (
+            <Badge className="bg-violet-200 text-violet-800 border-0 text-[10px]">
+              {autofillPartnerResult.updated} Nama Mitra diisi otomatis
             </Badge>
           )}
         </div>
@@ -537,6 +571,19 @@ function IssuesPanel({
                   ? <Loader2 className="h-3 w-3 animate-spin" />
                   : <FileText className="h-3 w-3" />}
                 Auto-isi No. Faktur dari Invoice
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-6 px-2.5 text-[11px] gap-1 border-violet-300 text-violet-700 hover:bg-violet-50"
+                onClick={runAutofillPartner}
+                disabled={autofillingPartner}
+                title="Isi Nama Mitra secara otomatis dari nama customer di sales order terkait, agar Auto-isi NPWP punya lebih banyak kecocokan"
+              >
+                {autofillingPartner
+                  ? <Loader2 className="h-3 w-3 animate-spin" />
+                  : <Sparkles className="h-3 w-3" />}
+                Auto-isi Nama Mitra
               </Button>
               <Button size="sm" variant="ghost" className="h-6 px-2" onClick={() => refetch()} disabled={isLoading}>
                 <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? "animate-spin" : ""}`} />

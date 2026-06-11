@@ -1090,6 +1090,45 @@ router.post("/export/autofill-faktur", async (req, res) => {
   }
 });
 
+// ── POST /api/tax/export/autofill-partner ─────────────────────────────────────
+// Batch isi partner_name di transaction_taxes dari sales_documents.customer_name
+// Hanya untuk transaction_type = 'sales_order' yang partner_name-nya masih kosong
+router.post("/export/autofill-partner", async (req, res) => {
+  const companyId = resolveCompanyId(req);
+  const { period } = req.query as Record<string, string>;
+  if (!period) return res.status(400).json({ message: "period (YYYY-MM) wajib diisi" });
+
+  try {
+    const result = await db.execute(sql.raw(`
+      WITH matched AS (
+        SELECT DISTINCT ON (tt.id) tt.id, sd.customer_name AS new_partner
+        FROM transaction_taxes tt
+        JOIN sales_documents sd ON sd.id = tt.transaction_id
+        WHERE tt.company_id = ${companyId}
+          AND tt.period = '${period}'
+          AND tt.transaction_type = 'sales_order'
+          AND sd.customer_name IS NOT NULL AND sd.customer_name != ''
+          AND (tt.partner_name IS NULL OR tt.partner_name = '')
+      )
+      UPDATE transaction_taxes tt
+      SET partner_name = matched.new_partner, updated_at = NOW()
+      FROM matched
+      WHERE tt.id = matched.id
+      RETURNING tt.id
+    `));
+
+    const updated = result.rows.length;
+    logger.info({ companyId, period, updated }, "[tax] autofill-partner completed");
+    return res.json({
+      message: `${updated} baris Nama Mitra berhasil diisi dari invoice penjualan`,
+      updated,
+    });
+  } catch (err) {
+    logger.error({ err }, "tax/export/autofill-partner: query failed");
+    return res.status(500).json({ message: "Gagal auto-isi Nama Mitra" });
+  }
+});
+
 // ── GET /api/tax/export/validate ─────────────────────────────────────────────
 // Pre-flight: hitung baris siap export, bermasalah NPWP, bermasalah faktur
 router.get("/export/validate", async (req, res) => {
