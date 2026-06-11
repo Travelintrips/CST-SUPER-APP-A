@@ -1539,30 +1539,44 @@ const DASH_NAV_CARDS: DashNavCard[] = [
 ];
 
 function DashboardQuickNav() {
+  const [open, setOpen] = React.useState(true);
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-      {DASH_NAV_CARDS.map(({ label, icon: Icon, color, bg, items }) => (
-        <div key={label} className="rounded-xl border bg-card p-4 flex flex-col gap-3">
-          <div className="flex items-center gap-2">
-            <div className={`rounded-lg p-2 ${bg} shrink-0`}>
-              <Icon className={`h-4 w-4 ${color}`} />
-            </div>
-            <p className="text-sm font-semibold text-foreground leading-tight">{label}</p>
-          </div>
-          <div className="flex flex-col gap-0.5">
-            {items.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="group flex items-center justify-between rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
-              >
-                <span>{item.label}</span>
-                <ArrowRight className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
-              </Link>
+    <div className="rounded-xl border bg-card">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between px-4 py-3 hover:bg-muted/40 transition-colors rounded-xl"
+      >
+        <span className="text-sm font-semibold text-foreground">Navigasi Cepat</span>
+        <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && (
+        <div className="px-4 pb-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            {DASH_NAV_CARDS.map(({ label, icon: Icon, color, bg, items }) => (
+              <div key={label} className="rounded-xl border bg-background p-4 flex flex-col gap-3">
+                <div className="flex items-center gap-2">
+                  <div className={`rounded-lg p-2 ${bg} shrink-0`}>
+                    <Icon className={`h-4 w-4 ${color}`} />
+                  </div>
+                  <p className="text-sm font-semibold text-foreground leading-tight">{label}</p>
+                </div>
+                <div className="flex flex-col gap-0.5">
+                  {items.map((item) => (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      className="group flex items-center justify-between rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+                    >
+                      <span>{item.label}</span>
+                      <ArrowRight className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                    </Link>
+                  ))}
+                </div>
+              </div>
             ))}
           </div>
         </div>
-      ))}
+      )}
     </div>
   );
 }
