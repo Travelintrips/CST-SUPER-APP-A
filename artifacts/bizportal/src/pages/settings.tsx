@@ -2392,8 +2392,6 @@ export default function SettingsPage() {
           <p className="text-muted-foreground mt-2">Manage your account preferences and view your organizational role.</p>
         </div>
 
-        {isAdmin && <SettingsStatsBar />}
-
         {isAdmin && <SettingsHubGrid />}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
