@@ -82,17 +82,18 @@ if (VITE_PORT) {
 }
 
 async function main() {
-  try {
-    await runWaGatewayMigration();
-  } catch (e: any) {
-    console.error("[wa-gateway] Migration error:", e.message);
-  }
-
+  // Listen immediately so the port check passes, then run migration + sessions in background
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`[wa-gateway] API server on port ${PORT}`);
     console.log(`[wa-gateway] Base path: ${BASE}`);
     console.log(`[wa-gateway] Send API: POST ${BASE}/api/send  OR  POST ${BASE}/api/messages/send`);
   });
+
+  try {
+    await runWaGatewayMigration();
+  } catch (e: any) {
+    console.error("[wa-gateway] Migration error:", e.message);
+  }
 
   try {
     await initAllSessions();
