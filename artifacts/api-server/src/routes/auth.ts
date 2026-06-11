@@ -632,16 +632,28 @@ router.post("/dev-login", async (req: Request, res: Response) => {
     return;
   }
 
-  const id = `dev_${email.replace(/[^a-z0-9]/gi, "_")}`;
-  const claims: Record<string, unknown> = {
-    sub: id,
-    email,
-    first_name: email.split("@")[0],
-    last_name: null,
-    picture: null,
-  };
+  // Kalau user dengan email ini sudah ada di DB (mis. dari OIDC prod), langsung pakai
+  // agar tidak trigger DELETE yang bisa gagal karena FK constraint di tabel lain.
+  const [existingUser] = await db
+    .select()
+    .from(usersTable)
+    .where(eq(usersTable.email, email))
+    .limit(1);
 
-  const dbUser = await upsertUser(claims);
+  let dbUser;
+  if (existingUser) {
+    dbUser = existingUser;
+  } else {
+    const id = `dev_${email.replace(/[^a-z0-9]/gi, "_")}`;
+    const claims: Record<string, unknown> = {
+      sub: id,
+      email,
+      first_name: email.split("@")[0],
+      last_name: null,
+      picture: null,
+    };
+    dbUser = await upsertUser(claims);
+  }
   const now = Math.floor(Date.now() / 1000);
   const sessionData: SessionData = {
     user: {

@@ -3,17 +3,13 @@ import { rateLimit } from "express-rate-limit";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { logger } from "../lib/logger.js";
-import { logger } from "../lib/logger.js";
-import { rateLimit } from "express-rate-limit";
-import { db } from "@workspace/db";
-import { sql } from "drizzle-orm";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getAdminGroupWa } from "../lib/adminWa.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import multer from "multer";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
-const storage = nw ObjectStorageService();
+const storage = new ObjectStorageService();
 
 const submitLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false });
 
@@ -92,14 +88,6 @@ oceanFreightVendorFormRouter.post(
       const sub = subs[0] as any;
       if (!sub.is_active) return res.status(410).json({ error: "Link sudah tidak aktif" });
       if (sub.status === "submitted") return res.status(409).json({ error: "Rate sudah pernah disubmit" });
-
-    const { rows: subs } = await db.execute(sql`
-      SELECT * FROM ocean_freight_rate_submissions WHERE token = ${token}
-    `);
-    if (!subs.length) return res.status(404).json({ error: "Link tidak ditemukan" });
-    const sub = subs[0] as any;
-    if (!sub.is_active) return res.status(410).json({ error: "Link sudah tidak aktif" });
-    if (sub.status === "submitted") return res.status(409).json({ error: "Rate sudah pernah disubmit" });
 
       const b = req.body ?? {};
       if (!b.ocean_freight_amount || Number(b.ocean_freight_amount) <= 0)
@@ -198,11 +186,5 @@ oceanFreightVendorFormRouter.post(
     }
   }
 );
-    return res.json({ ok: true, message: "Rate berhasil disubmit. Terima kasih." });
-  } catch (outerErr) {
-    logger.error({ err: outerErr }, "[ocean-freight-vendor-form] POST /:token");
-    res.status(500).json({ error: "Gagal submit rate" });
-  }
-});
 
 export { oceanFreightVendorFormRouter as default };
