@@ -22,9 +22,12 @@ function resolveUserDisplay(user: { id: string; firstName?: string | null; lastN
 const TRANSPORT_MODES = ["sea", "air", "land", "multimodal"] as const;
 const CARGO_TYPES = ["FCL", "LCL", "Air"] as const;
 const FREIGHT_SHIPMENT_STATUSES = ["draft", "rfq_sent", "confirmed", "in_transit", "completed", "cancelled"] as const;
+// Unified Shipment Core — kategori layanan forwarding
+const SERVICE_CATEGORIES = ["FF_UDARA", "FF_LAUT", "PPJK", "TRUCKING", "MULTIMODAL", "GENERAL_FORWARDING"] as const;
 type TransportMode = typeof TRANSPORT_MODES[number];
 type CargoType = typeof CARGO_TYPES[number];
 type FreightShipmentStatus = typeof FREIGHT_SHIPMENT_STATUSES[number];
+type FreightServiceCategory = typeof SERVICE_CATEGORIES[number];
 
 function validateTransportMode(v: unknown): TransportMode | null | undefined {
   if (v === undefined) return undefined;
@@ -45,6 +48,13 @@ function validateShipmentStatus(v: unknown): FreightShipmentStatus | undefined {
   if (!FREIGHT_SHIPMENT_STATUSES.includes(v as FreightShipmentStatus))
     throw Object.assign(new Error(`status tidak valid. Nilai yang diterima: ${FREIGHT_SHIPMENT_STATUSES.join(", ")}`), { statusCode: 400 });
   return v as FreightShipmentStatus;
+}
+function validateServiceCategory(v: unknown): FreightServiceCategory | null | undefined {
+  if (v === undefined) return undefined;
+  if (v === null || v === "") return null;
+  if (!SERVICE_CATEGORIES.includes(v as FreightServiceCategory))
+    throw Object.assign(new Error(`serviceCategory tidak valid. Nilai yang diterima: ${SERVICE_CATEGORIES.join(", ")}`), { statusCode: 400 });
+  return v as FreightServiceCategory;
 }
 
 const STAGE_STATUSES = ["pending", "in_progress", "completed", "skipped"] as const;
@@ -222,15 +232,18 @@ router.post("/freight-shipments", async (req, res) => {
   const { shipperName, shipperAddress, consigneeName, consigneeAddress, commodity,
     grossWeight, netWeight, quantity, packingType, dimensions, hsCode, origin, destination,
     portOfLoading, portOfDischarge, vessel, voyage, notifyParty, marksAndNumbers, measurement, notes,
-    transportMode, cargoType, containerNo, salesDocId, purchaseDocId, freightCost } = req.body;
+    transportMode, cargoType, containerNo, salesDocId, purchaseDocId, freightCost,
+    serviceCategory, sourceModule, sourceOrderId } = req.body;
   if (!salesDocId) {
     return res.status(400).json({ message: "Sales Order wajib dipilih sebelum membuat shipment." });
   }
   let validatedTM: TransportMode | null;
   let validatedCT: CargoType | null;
+  let validatedSC: FreightServiceCategory | null;
   try {
     validatedTM = validateTransportMode(transportMode) ?? null;
     validatedCT = validateCargoType(cargoType) ?? null;
+    validatedSC = validateServiceCategory(serviceCategory) ?? null;
   } catch (e: any) {
     return res.status(400).json({ message: e.message });
   }
@@ -264,6 +277,9 @@ router.post("/freight-shipments", async (req, res) => {
     freightCost: freightCost != null ? String(freightCost) : "0",
     salesDocId: salesDocId ? Number(salesDocId) : null,
     purchaseDocId: purchaseDocId ? Number(purchaseDocId) : null,
+    serviceCategory: validatedSC,
+    sourceModule: sourceModule || "freight",
+    sourceOrderId: sourceOrderId ? Number(sourceOrderId) : null,
   }).returning();
   saveAndBroadcast("freight_shipment_created", {
     type: "freight_new",
@@ -357,7 +373,8 @@ router.put("/freight-shipments/:id", async (req, res) => {
     grossWeight, netWeight, quantity, packingType, dimensions, hsCode, origin, destination,
     portOfLoading, portOfDischarge, vessel, voyage, notifyParty, marksAndNumbers, measurement, status, notes,
     actualCost, departureDate, arrivalDate, trackingNumber, awbNumber,
-    transportMode, cargoType, containerNo, salesDocId, purchaseDocId, freightCost } = req.body;
+    transportMode, cargoType, containerNo, salesDocId, purchaseDocId, freightCost,
+    serviceCategory, sourceModule, sourceOrderId } = req.body;
   const [existing] = await db.select().from(freightShipmentsTable).where(eq(freightShipmentsTable.id, id));
   if (!existing) return res.status(404).json({ message: "Shipment not found" });
   const patch: Partial<typeof freightShipmentsTable.$inferInsert> = {};
@@ -401,6 +418,12 @@ router.put("/freight-shipments/:id", async (req, res) => {
     catch (e: any) { return res.status(400).json({ message: e.message }); }
   }
   if (containerNo !== undefined) patch.containerNo = containerNo || null;
+  if (serviceCategory !== undefined) {
+    try { patch.serviceCategory = validateServiceCategory(serviceCategory) ?? null; }
+    catch (e: any) { return res.status(400).json({ message: e.message }); }
+  }
+  if (sourceModule !== undefined) patch.sourceModule = sourceModule || null;
+  if (sourceOrderId !== undefined) patch.sourceOrderId = sourceOrderId ? Number(sourceOrderId) : null;
   if (salesDocId !== undefined) patch.salesDocId = salesDocId ? Number(salesDocId) : null;
   if (purchaseDocId !== undefined) {
     if (purchaseDocId) {

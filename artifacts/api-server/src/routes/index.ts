@@ -124,7 +124,10 @@ import expenseApprovalsRouter from "./expenseApprovals.js";
 import expenseDashboardRouter from "./expenseDashboard.js";
 import expenseTemplatesRouter from "./expenseTemplates.js";
 import expenseBudgetsRouter from "./expenseBudgets.js";
-import { airFreightRouter } from "./airFreight.js"; // legacy ORM router (old freight module)
+// ⛔ DEAD IMPORT — airFreightRouter (named export) diimport tapi TIDAK pernah di-mount.
+// Hanya default export (airFreightNewRouter) yang dipakai via router.use("/air-freight", airFreightNewRouter).
+// Jangan hapus file airFreight.js, hanya import ini yang di-freeze.
+// import { airFreightRouter } from "./airFreight.js"; // FROZEN 2026-06-11
 import { airFreightVendorFormRouter } from "./airFreightVendorForm.js";
 import { watiRouter } from "./wati.js";
 import { marketplaceRouter } from "./marketplace.js";

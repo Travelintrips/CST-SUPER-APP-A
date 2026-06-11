@@ -11,3 +11,4 @@
 - [CompanyContext field name](company-context-field.md) — use `activeCompanyId` (type CompanyScope = number | "all"), NOT `selectedCompanyId`; can be "all" for consolidated view.
 - [DB URL priority in dev mode](db-url-priority-dev.md) — SUPABASE_PG_URL (wrong Supabase project) must come AFTER SUPABASE_DATABASE_URL in dev candidates or all Drizzle queries fail.
 - [DB connection string order (lib/db)](db-connection-order.md) — SUPABASE_PG_URL may have stale creds; in dev mode always prefer SUPABASE_DATABASE_URL before SUPABASE_PG_URL.
+- [Logistics module audit map](logistics-audit-map.md) — 6 route namespaces, 3-router collision at /logistic/orders, dead airFreightRouter import, Air/Ocean use raw SQL (not Drizzle); unified fields added to freight_shipments.
