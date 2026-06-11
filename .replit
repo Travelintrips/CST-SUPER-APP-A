@@ -85,7 +85,7 @@ timeoutMs = 120000
 
 [userenv.shared]
 ADMIN_EMAILS = "divatranssoetta@gmail.com,admcst001@gmail.com,almanosetiawan@gmail.com,divarestorxr@gmail.com,wangsamasindo@gmail.com"
-PORTAL_ADMIN_EMAILS = "admcst001@gmail.com,wangsamasindo@gmail.com"
+PORTAL_ADMIN_EMAILS = "admcst001@gmail.com,wangsamasindo@gmail.com,irawansandi03@gmail.com"
 FONNTE_ADMIN_WA = "085121073537"
 ADMIN_WA_PHONES = "085121073537,087882639826"
 ADMIN_EMAIL = "admcst001@gmail.com"
