@@ -682,3 +682,5 @@ oceanFreightPublicRouter.post("/quote/:token/decline", async (req: Request, res:
     return res.status(500).json({ error: "Gagal decline quote" });
   }
 });
+
+export default oceanFreightPublicRouter;

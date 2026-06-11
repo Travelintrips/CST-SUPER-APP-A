@@ -112,24 +112,31 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 async function runWithRetry<T>(
   name: string,
   fn: () => Promise<T>,
-  maxAttempts = 3,
-  delayMs = 10_000
+  maxAttempts = 5,
+  delayMs = 15_000
 ): Promise<void> {
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       await fn();
       return;
     } catch (err: unknown) {
-      const isCircuitBreaker =
-        err instanceof Error && err.message.includes("ECIRCUITBREAKER");
-      if (isCircuitBreaker && attempt < maxAttempts) {
+      const isTransient =
+        err instanceof Error &&
+        (err.message.includes("ECIRCUITBREAKER") ||
+          err.message.includes("password authentication failed") ||
+          err.message.includes("timeout exceeded") ||
+          err.message.includes("ECONNREFUSED") ||
+          err.message.includes("ETIMEDOUT") ||
+          err.message.includes("temporarily blocked"));
+      if (isTransient && attempt < maxAttempts) {
+        const backoff = delayMs * attempt;
         logger.warn(
-          { attempt, maxAttempts, delayMs },
-          `${name}: circuit breaker tripped, retrying after ${delayMs}ms...`
+          { attempt, maxAttempts, backoff },
+          `${name}: transient DB error, retrying after ${backoff}ms...`
         );
-        await sleep(delayMs);
+        await sleep(backoff);
       } else {
-        logger.error({ err }, `${name} failed`);
+        logger.error({ err }, `${name} failed (giving up after ${attempt} attempts)`);
         return;
       }
     }
@@ -562,15 +569,36 @@ async function startServer() {
     });
   }, 5 * 60 * 1000).unref();
 
-  // Run all migrations + seeds in the background with a small initial delay
-  // to prevent a DB connection storm on cold starts.
-  sleep(2_000)
+  // Run all migrations + seeds in the background with an initial delay
+  // to let the DB pool stabilize before hammering pgBouncer with DDL.
+  sleep(8_000)
     .then(async () => {
-      try {
-        await runCriticalPreStartMigrations();
-        logger.info("Pre-start schema migrations applied");
-      } catch (err) {
-        logger.warn({ err }, "Pre-start migrations failed (non-fatal)");
+      for (let attempt = 1; attempt <= 10; attempt++) {
+        try {
+          await runCriticalPreStartMigrations();
+          logger.info("Pre-start schema migrations applied");
+          return;
+        } catch (err: unknown) {
+          const isTransient =
+            err instanceof Error &&
+            (err.message.includes("ECIRCUITBREAKER") ||
+              err.message.includes("password authentication failed") ||
+              err.message.includes("timeout exceeded") ||
+              err.message.includes("temporarily blocked") ||
+              err.message.includes("ECONNREFUSED") ||
+              err.message.includes("ETIMEDOUT"));
+          if (isTransient && attempt < 10) {
+            const backoff = Math.min(attempt * 15_000, 120_000);
+            logger.warn(
+              { attempt, backoff },
+              `Pre-start migration: transient DB error, retrying after ${backoff}ms...`
+            );
+            await sleep(backoff);
+          } else {
+            logger.warn({ err }, "Pre-start migrations failed (non-fatal)");
+            return;
+          }
+        }
       }
     })
     .then(() => runWithRetry("Sessions migration", runSessionsMigration))

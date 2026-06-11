@@ -10,6 +10,7 @@ import multer from "multer";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 const storage = new ObjectStorageService();
+
 const submitLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false });
 
 export const oceanFreightVendorFormRouter = Router();
@@ -181,3 +182,5 @@ oceanFreightVendorFormRouter.post(
     }
   }
 );
+
+export { oceanFreightVendorFormRouter as default };

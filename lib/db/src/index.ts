@@ -40,11 +40,13 @@ const isLocalConn = /localhost|127\.0\.0\.1|helium/.test(connectionString);
 export const pool = new Pool({
   connectionString,
   ssl: isLocalConn ? false : { rejectUnauthorized: false },
-  max: 10,
+  max: 5,
+  min: 0,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 10000,
+  connectionTimeoutMillis: 15000,
   keepAlive: true,
   keepAliveInitialDelayMillis: 10000,
+  allowExitOnIdle: false,
 });
 
 pool.on("error", (err) => {
