@@ -2338,11 +2338,18 @@ const SETTINGS_HUB_CARDS: QuickNavCard[] = [
 ];
 
 function SettingsHubGrid() {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(() => {
+    try { return localStorage.getItem("settings_hub_open") !== "false"; } catch { return true; }
+  });
+  const toggle = () => setOpen((v) => {
+    const next = !v;
+    try { localStorage.setItem("settings_hub_open", String(next)); } catch {}
+    return next;
+  });
   return (
     <div className="rounded-xl border bg-card">
       <button
-        onClick={() => setOpen((v) => !v)}
+        onClick={toggle}
         className="w-full flex items-center justify-between px-4 py-3 hover:bg-muted/40 transition-colors rounded-xl"
       >
         <span className="text-sm font-semibold text-foreground">Modul Settings</span>

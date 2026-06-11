@@ -1539,11 +1539,18 @@ const DASH_NAV_CARDS: DashNavCard[] = [
 ];
 
 function DashboardQuickNav() {
-  const [open, setOpen] = React.useState(true);
+  const [open, setOpen] = React.useState(() => {
+    try { return localStorage.getItem("dashboard_quicknav_open") !== "false"; } catch { return true; }
+  });
+  const toggle = () => setOpen((v) => {
+    const next = !v;
+    try { localStorage.setItem("dashboard_quicknav_open", String(next)); } catch {}
+    return next;
+  });
   return (
     <div className="rounded-xl border bg-card">
       <button
-        onClick={() => setOpen((v) => !v)}
+        onClick={toggle}
         className="w-full flex items-center justify-between px-4 py-3 hover:bg-muted/40 transition-colors rounded-xl"
       >
         <span className="text-sm font-semibold text-foreground">Navigasi Cepat</span>
