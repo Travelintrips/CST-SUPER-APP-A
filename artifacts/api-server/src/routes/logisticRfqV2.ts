@@ -245,6 +245,34 @@ db.execute(sql`
     ADD COLUMN IF NOT EXISTS freight_shipment_id INTEGER;
 `).catch((e: unknown) => logger.warn({ e }, "rfq freight_shipment_id migration warn"));
 
+// Migration: per-item vendor offers table (Step 11)
+db.execute(sql`
+  CREATE TABLE IF NOT EXISTS rfq_vendor_item_offers (
+    id SERIAL PRIMARY KEY,
+    rfq_vendor_link_id INTEGER NOT NULL REFERENCES rfq_vendor_links(id) ON DELETE CASCADE,
+    order_item_id INTEGER,
+    service_name TEXT NOT NULL,
+    offered_price NUMERIC(14,2),
+    currency TEXT DEFAULT 'IDR',
+    schedule_etd TEXT,
+    schedule_eta TEXT,
+    lead_time_days INTEGER,
+    validity_date TEXT,
+    terms TEXT,
+    notes TEXT,
+    attachment_url TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  )
+`).catch((e: unknown) => logger.warn({ e }, "rfq_vendor_item_offers migration warn"));
+
+// Migration: add currency, validity_date, terms to rfq_vendor_links (Step 11)
+db.execute(sql.raw(`
+  ALTER TABLE rfq_vendor_links
+    ADD COLUMN IF NOT EXISTS currency TEXT DEFAULT 'IDR',
+    ADD COLUMN IF NOT EXISTS validity_date TEXT,
+    ADD COLUMN IF NOT EXISTS terms TEXT
+`)).catch((e: unknown) => logger.warn({ e }, "rfq_vendor_links extra cols migration warn"));
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function getVendorFormUrl(token: string): string {
   const domain = getPreferredDomain();
@@ -646,6 +674,7 @@ logisticRfqV2Router.get("/vendor-form/:token", async (req: Request, res: Respons
   // Fetch order items + vendor's own catalog items (for price reference per etalase)
   const [orderItems, vendorCatalog] = await Promise.all([
     db.select({
+      id: logisticOrderItemsTable.id,
       serviceName: logisticOrderItemsTable.serviceName,
       category: logisticOrderItemsTable.category,
       calculatorType: logisticOrderItemsTable.calculatorType,
@@ -693,6 +722,16 @@ logisticRfqV2Router.get("/vendor-form/:token", async (req: Request, res: Respons
       if (origin && destination) break;
     }
   }
+
+  // Fetch extra fields + existing item offers for this link (Step 11)
+  const [linkExtrasRes, existingItemOffersRes] = await Promise.all([
+    db.execute(sql`SELECT currency, validity_date, terms FROM rfq_vendor_links WHERE id = ${link.id}`)
+      .catch(() => ({ rows: [] as unknown[] })),
+    db.execute(sql`SELECT * FROM rfq_vendor_item_offers WHERE rfq_vendor_link_id = ${link.id} ORDER BY created_at ASC`)
+      .catch(() => ({ rows: [] as unknown[] })),
+  ]);
+  const linkExtras = (linkExtrasRes.rows[0] ?? {}) as Record<string, unknown>;
+  const existingItemOffers = existingItemOffersRes.rows as Record<string, unknown>[];
 
   // Hitung basicPrice dari katalog vendor (harga etalase vendor itu sendiri)
   const basicPrice: number | null = (() => {
@@ -798,6 +837,7 @@ logisticRfqV2Router.get("/vendor-form/:token", async (req: Request, res: Respons
         ? vendorSubtotal + ppnAmount : null;
 
       return {
+        id: i.id,
         serviceName: i.serviceName,
         category: i.category,
         calculatorType: i.calculatorType,
@@ -811,6 +851,23 @@ logisticRfqV2Router.get("/vendor-form/:token", async (req: Request, res: Respons
         vendorGrandTotal,
       };
     }),
+    currentCurrency: String(linkExtras.currency || "IDR"),
+    currentValidityDate: linkExtras.validity_date ? String(linkExtras.validity_date) : null,
+    currentTerms: linkExtras.terms ? String(linkExtras.terms) : null,
+    currentItemOffers: existingItemOffers.map(r => ({
+      id: Number(r.id),
+      orderItemId: r.order_item_id != null ? Number(r.order_item_id) : null,
+      serviceName: String(r.service_name ?? ""),
+      offeredPrice: r.offered_price != null ? Number(r.offered_price) : null,
+      currency: String(r.currency || "IDR"),
+      scheduleEtd: r.schedule_etd ? String(r.schedule_etd) : null,
+      scheduleEta: r.schedule_eta ? String(r.schedule_eta) : null,
+      leadTimeDays: r.lead_time_days != null ? Number(r.lead_time_days) : null,
+      validityDate: r.validity_date ? String(r.validity_date) : null,
+      terms: r.terms ? String(r.terms) : null,
+      notes: r.notes ? String(r.notes) : null,
+      attachmentUrl: r.attachment_url ? String(r.attachment_url) : null,
+    })),
   });
 });
 
@@ -890,7 +947,10 @@ logisticRfqV2Router.post("/vendor-form/:token", async (req: Request, res: Respon
     .where(eq(logisticOrderRfqsTable.id, link.rfqId));
   if (!rfq) return res.status(404).json({ message: "RFQ tidak ditemukan" });
 
-  const { action, offeredPrice, eta, notes, attachmentUrl, leadTimeDays, stockAvailability } = req.body as {
+  const {
+    action, offeredPrice, eta, notes, attachmentUrl, leadTimeDays, stockAvailability,
+    itemOffers, currency, validityDate, terms,
+  } = req.body as {
     action: "accept" | "counter" | "reject";
     offeredPrice?: number;
     eta?: string;
@@ -898,6 +958,22 @@ logisticRfqV2Router.post("/vendor-form/:token", async (req: Request, res: Respon
     attachmentUrl?: string;
     leadTimeDays?: number;
     stockAvailability?: string;
+    itemOffers?: Array<{
+      orderItemId?: number | null;
+      serviceName: string;
+      offeredPrice?: number | null;
+      currency?: string;
+      scheduleEtd?: string;
+      scheduleEta?: string;
+      leadTimeDays?: number;
+      validityDate?: string;
+      terms?: string;
+      notes?: string;
+      attachmentUrl?: string;
+    }>;
+    currency?: string;
+    validityDate?: string;
+    terms?: string;
   };
 
   if (!action || !["accept", "counter", "reject"].includes(action)) {
@@ -991,6 +1067,38 @@ logisticRfqV2Router.post("/vendor-form/:token", async (req: Request, res: Respon
     submittedAt: link.submittedAt ?? now,
     lastUpdatedAt: now,
   }).where(eq(rfqVendorLinksTable.id, link.id));
+
+  // Save extra fields (currency, validity_date, terms) added via migration
+  await db.execute(sql`
+    UPDATE rfq_vendor_links SET
+      currency      = ${(currency ?? "IDR")},
+      validity_date = ${(validityDate ?? null)},
+      terms         = ${(terms ?? null)}
+    WHERE id = ${link.id}
+  `).catch(() => {});
+
+  // Save per-item offers if vendor provided per-item pricing (Step 11)
+  if (Array.isArray(itemOffers) && itemOffers.length > 0) {
+    await db.execute(sql`DELETE FROM rfq_vendor_item_offers WHERE rfq_vendor_link_id = ${link.id}`).catch(() => {});
+    for (const offer of itemOffers) {
+      if (!offer.serviceName) continue;
+      await db.execute(sql`
+        INSERT INTO rfq_vendor_item_offers
+          (rfq_vendor_link_id, order_item_id, service_name, offered_price, currency,
+           schedule_etd, schedule_eta, lead_time_days, validity_date, terms, notes, attachment_url)
+        VALUES
+          (${link.id}, ${offer.orderItemId ?? null}, ${String(offer.serviceName)},
+           ${offer.offeredPrice != null ? Number(offer.offeredPrice) : null},
+           ${String(offer.currency || currency || "IDR")},
+           ${offer.scheduleEtd ?? null}, ${offer.scheduleEta ?? eta ?? null},
+           ${offer.leadTimeDays != null ? Number(offer.leadTimeDays) : (leadTimeDays != null ? Number(leadTimeDays) : null)},
+           ${offer.validityDate ?? validityDate ?? null},
+           ${offer.terms ?? terms ?? null}, ${offer.notes ?? notes ?? null},
+           ${offer.attachmentUrl ?? attachmentUrl ?? null})
+      `).catch(() => {});
+    }
+  }
+
   await transitionVendorLinkStatus(link.id, newStatus, { source: "logisticRfqV2:vendor_response", actorType: "vendor", force: true });
 
   const actionLabel = action === "accept" ? "Terima Harga Basic"
@@ -1623,12 +1731,28 @@ logisticRfqV2Router.get("/rfq/:rfqId/comparison", async (req: Request, res: Resp
     .orderBy(sql`created_at DESC`).limit(50);
 
   // Compute order items subtotal — fallback basicPrice ketika link.basic_price null
-  const orderItemsForComp = await db.select({ subtotal: logisticOrderItemsTable.subtotal })
-    .from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, rfq.orderId));
+  const orderItemsForComp = await db.select({
+    id: logisticOrderItemsTable.id,
+    serviceName: logisticOrderItemsTable.serviceName,
+    category: logisticOrderItemsTable.category,
+    inputData: logisticOrderItemsTable.inputData,
+    subtotal: logisticOrderItemsTable.subtotal,
+  }).from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, rfq.orderId));
   const orderItemsSubtotal = orderItemsForComp.reduce(
     (s, i) => s + (i.subtotal ? parseFloat(i.subtotal) : 0), 0
   );
   const fallbackBasicPrice = orderItemsSubtotal > 0 ? orderItemsSubtotal : null;
+
+  // Fetch per-item vendor offers (Step 12)
+  const vendorItemOffersRes = await db.execute(sql`
+    SELECT vio.id, vio.rfq_vendor_link_id, rvl.vendor_id, vio.order_item_id,
+           vio.service_name, vio.offered_price, vio.currency, vio.schedule_etd,
+           vio.schedule_eta, vio.lead_time_days, vio.validity_date, vio.terms, vio.notes
+    FROM rfq_vendor_item_offers vio
+    JOIN rfq_vendor_links rvl ON rvl.id = vio.rfq_vendor_link_id
+    WHERE rvl.rfq_id = ${rfqId}
+    ORDER BY vio.created_at ASC
+  `).catch(() => ({ rows: [] as unknown[] }));
 
   const vendorRows = links
     .sort((a, b) => {
@@ -1771,6 +1895,28 @@ logisticRfqV2Router.get("/rfq/:rfqId/comparison", async (req: Request, res: Resp
       phone: r.phone ?? null,
       hasInternalTruck: Boolean(r.has_internal_truck),
       internalTruckPrice: r.internal_truck_price ? Number(r.internal_truck_price) : null,
+    })),
+    // Step 12: per-item comparison data
+    orderItems: orderItemsForComp.map(i => {
+      const inp = (i.inputData as Record<string, unknown>) ?? {};
+      const qty = Number(inp.qty ?? inp.quantity ?? inp.jumlah ?? 1) || 1;
+      const unit = inp.unit ? String(inp.unit) : "unit";
+      return { id: i.id, serviceName: i.serviceName, category: i.category, qty, unit };
+    }),
+    vendorItemOffers: (vendorItemOffersRes.rows as any[]).map(r => ({
+      id: Number(r.id),
+      rfqVendorLinkId: Number(r.rfq_vendor_link_id),
+      vendorId: Number(r.vendor_id),
+      orderItemId: r.order_item_id != null ? Number(r.order_item_id) : null,
+      serviceName: String(r.service_name ?? ""),
+      offeredPrice: r.offered_price != null ? Number(r.offered_price) : null,
+      currency: String(r.currency || "IDR"),
+      scheduleEtd: r.schedule_etd ?? null,
+      scheduleEta: r.schedule_eta ?? null,
+      leadTimeDays: r.lead_time_days != null ? Number(r.lead_time_days) : null,
+      validityDate: r.validity_date ?? null,
+      terms: r.terms ?? null,
+      notes: r.notes ?? null,
     })),
   });
 });
