@@ -48,6 +48,55 @@ async function nextVendorPoNumber(): Promise<string> {
   return `PO/${year}/${seq}`;
 }
 
+// ─── GET / (list) ─────────────────────────────────────────────────────────────
+logisticVendorFulfillmentAdminRouter.get("/", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  try {
+    const status   = (req.query.status as string) || null;
+    const orderId  = req.query.orderId ? parseInt(req.query.orderId as string, 10) : null;
+    const vendorId = req.query.vendorId ? parseInt(req.query.vendorId as string, 10) : null;
+    const page     = Math.max(1, Number(req.query.page ?? 1));
+    const limit    = Math.min(100, Math.max(1, Number(req.query.limit ?? 50)));
+    const offset   = (page - 1) * limit;
+
+    const conditions = and(
+      status ? eq(logisticVendorFulfillmentsTable.status, status) : undefined,
+      orderId && !isNaN(orderId) ? eq(logisticVendorFulfillmentsTable.orderId, orderId) : undefined,
+      vendorId && !isNaN(vendorId) ? eq(logisticVendorFulfillmentsTable.vendorId, vendorId) : undefined,
+    );
+
+    const rows = await db
+      .select({
+        id:           logisticVendorFulfillmentsTable.id,
+        orderId:      logisticVendorFulfillmentsTable.orderId,
+        orderItemId:  logisticVendorFulfillmentsTable.orderItemId,
+        vendorId:     logisticVendorFulfillmentsTable.vendorId,
+        serviceType:  logisticVendorFulfillmentsTable.serviceType,
+        status:       logisticVendorFulfillmentsTable.status,
+        vendorPoId:   logisticVendorFulfillmentsTable.vendorPoId,
+        adminNotes:   logisticVendorFulfillmentsTable.adminNotes,
+        createdAt:    logisticVendorFulfillmentsTable.createdAt,
+        updatedAt:    logisticVendorFulfillmentsTable.updatedAt,
+        orderNumber:  logisticOrdersTable.orderNumber,
+        customerName: logisticOrdersTable.customerName,
+        orderStatus:  logisticOrdersTable.status,
+        vendorName:   suppliersTable.name,
+      })
+      .from(logisticVendorFulfillmentsTable)
+      .leftJoin(logisticOrdersTable, eq(logisticOrdersTable.id, logisticVendorFulfillmentsTable.orderId))
+      .leftJoin(suppliersTable, eq(suppliersTable.id, logisticVendorFulfillmentsTable.vendorId))
+      .where(conditions)
+      .orderBy(desc(logisticVendorFulfillmentsTable.createdAt))
+      .limit(limit)
+      .offset(offset);
+
+    return res.json({ data: rows, page, limit });
+  } catch (err) {
+    logger.error({ err }, "[fulfillment-admin] GET / error");
+    return res.status(500).json({ message: "Gagal memuat data fulfillment" });
+  }
+});
+
 // ─── GET /:id ─────────────────────────────────────────────────────────────────
 logisticVendorFulfillmentAdminRouter.get("/:id", requireClerkUser, async (req: Request, res: Response) => {
   const id = parseInt(req.params.id ?? "", 10);
