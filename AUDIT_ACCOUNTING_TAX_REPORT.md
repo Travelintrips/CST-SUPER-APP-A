@@ -1,351 +1,426 @@
-# AUDIT REPORT: Accounting, Tax & Financial Modules
-**Tanggal Audit:** 09 Juni 2026  
-**Scope:** Penjualan, Pembelian, Penerimaan, Pengeluaran, Accounting, Pajak, Laporan Pajak, Rekonsiliasi, Audit Trail  
-**Auditor:** Automated Code Audit (7 parallel subagents)
+# Laporan Audit Akuntansi, Pajak & Keuangan
+**BizPortal ERP — Audit Menyeluruh**
+Tanggal: 2026-06-11 | Auditor: AI Architect Review (7 sub-agent paralel)
 
 ---
 
-## RINGKASAN EKSEKUTIF
+## Ringkasan Eksekutif
 
-Sistem ERP ini memiliki fondasi akuntansi yang **cukup solid** — double-entry enforced, multi-company isolation, auto-posting jurnal, dan reversal mechanism sudah ada. Namun terdapat **8 gap kritikal** dan **12 risiko medium** yang perlu ditangani sebelum sistem bisa dianggap audit-ready untuk pelaporan pajak formal.
-
----
-
-## A. MODUL YANG SUDAH BENAR
-
-### ✅ Accounting Core
-- Double-entry validation ketat: `Math.abs(debit - credit) > 0.01` → throw error
-- Multi-company isolation via `company_id` di semua tabel akuntansi
-- Deduplication journal via `uniqueIndex("accounting_entries_source_uniq")`
-- Reversal mechanism: `POST /entries/:id/reverse` (debit ↔ kredit)
-- Status jurnal `draft` dan `posted`
-- Cost center support untuk reporting departemen/proyek
-
-### ✅ Alur Penjualan (Sales)
-- Lifecycle status lengkap: `draft → sent → confirmed → done → cancelled`
-- Payment status enum: `unpaid → partial → paid → overdue`
-- Invoice status: `none → to_invoice → invoiced`
-- Jurnal auto-post saat `invoiced`: DR Piutang / CR Pendapatan / CR PPN Keluaran
-- COGS posting: DR HPP / CR Persediaan (via `postSalesCogs`)
-- Sales return: reversal HPP + stock in otomatis
-- Invoice reversal saat pembatalan (`postSalesInvoiceReversal`)
-
-### ✅ Alur Pembelian (Purchase)
-- Full cycle: PR → RFQ → VQ → PO → GRN → QC → VI → PayReq
-- 3-way matching: PO ↔ GRN ↔ Vendor Invoice
-- Jurnal GRN: DR Inventory / CR GR/IR Accrual
-- Jurnal Vendor Bill: DR GR/IR / DR PPN Masukan / CR Hutang Usaha
-- Jurnal Vendor Payment: DR Hutang Usaha / CR Bank
-- Weighted Average Cost saat GRN dikonfirmasi
-- Landed Cost allocation ke harga pokok barang
-- Purchase Return: DR Hutang / CR Inventory + jurnal reversal
-
-### ✅ Sistem Pajak
-- Master `accounting_taxes`: kind (sale/purchase/withholding), cutType, link ke COA
-- `transaction_taxes` sebagai tax ledger: baseAmount, taxAmount, period (YYYY-MM), status
-- `tax_rules` engine untuk deteksi otomatis per tipe transaksi
-- PPN Keluaran (sales) dan PPN Masukan (purchase) terpisah via `direction: input | output`
-- PPh coverage: PPh 21 (5%), PPh 23 (2%), PPh 4(2) (10%), PPh 15 (1.1% freight)
-- Auto-detect PPh 15 untuk Ocean Freight berdasarkan keyword "sea"/"kapal"
-- NPWP dan Nomor Faktur Pajak fields di `transaction_taxes`
-- Status pajak: `pending`, `paid`, `reported` dengan timestamp `paid_at`, `reported_at`
-
-### ✅ Laporan Pajak & Rekonsiliasi
-- Dashboard SPT Masa: rekap bulanan per tahun, status paid/reported/pending
-- Laporan PPN Keluaran & Masukan per periode + kalkulasi Kurang/Lebih Bayar
-- Rekap PPh 21, 23, 4(2) per jenis
-- Export CSV via `/api/tax/export`
-- Validasi kelengkapan: transaksi tanpa NPWP atau nomor faktur
-- Rekonsiliasi Google Sheets dengan exact-match (Tanggal + Nominal + Jenis)
-- Rekonsiliasi terjadwal otomatis + notifikasi WhatsApp admin
-- Export XLSX + Print Preview untuk laporan rekonsiliasi
-
-### ✅ Audit Trail (Partial)
-- `erp_audit_logs`: action, module, reference_id, old_data (JSONB), new_data (JSONB), user_id
-- `order_audit_logs` untuk modul logistik
-- `activity_logs` dengan old_value/new_value
-- `void_reason` di accounting_payments
-- `rejection_reason` di approval workflow
+Sistem BizPortal memiliki fondasi akuntansi yang **cukup solid**: double-entry journaling ter-enforce, reversal yang idempoten, dan tax engine yang komprehensif. Namun terdapat **gap kritis** terutama di: audit trail field yang tidak lengkap di skema utama, tax fields yang hanya ada via raw SQL (tidak sinkron di Drizzle schema), tidak adanya endpoint audit "transaksi tanpa jurnal" untuk modul Sales/Purchase/Logistik, serta rekonsiliasi AR/AP yang belum punya UI formal.
 
 ---
 
-## B. MODUL YANG BELUM LENGKAP
+## 1. Modul yang Sudah Benar ✅
 
-### ⚠️ 1. Jurnal PPN Masukan dari Expense — TIDAK masuk Buku Besar
-**Masalah:** `postQuickExpenseJournal` tidak memisahkan PPN Masukan ke akun COA tersendiri. Nilai total (termasuk pajak) digabung ke akun beban. Akibatnya, **PPN Masukan dari expense tidak masuk ke Neraca** meskipun tercatat di `transaction_taxes`.
+### 1.1 Alur Penjualan (Sales)
+| Fitur | Status | Catatan |
+|-------|--------|---------|
+| Jurnal invoice (DR Piutang / CR Revenue / CR PPN Keluaran) | ✅ | `postSalesInvoice()` di `lib/accounting.ts` |
+| Jurnal COGS & pengurangan inventory saat delivery | ✅ | `postSalesCogs()`, `postStockOut()` |
+| Status transitions (draft→sent→confirmed→done) | ✅ | `invoiceStatus`, `deliveryStatus`, `paymentStatus` |
+| Reversal jurnal saat cancellation | ✅ | `postSalesInvoiceReversal()` — idempoten via sourceId check |
+| Sales return (credit note) | ✅ | `POST /documents/:id/return` → `postSalesReturn()` + `postSalesCogsReturn()` |
+| Pencatatan tax di `transaction_taxes` saat confirm | ✅ | `recordTransactionTax()` dipanggil di action "confirm" |
 
-**Seharusnya:**
-```
-DR Akun Beban     = DPP (net of tax)
-DR PPN Masukan    = tax amount
-CR Kas/Bank/Hutang = total
-```
+### 1.2 Alur Pembelian (Purchase)
+| Fitur | Status | Catatan |
+|-------|--------|---------|
+| Jurnal bill (DR Expense/Inventory + DR PPN Masukan / CR AP) | ✅ | `postPurchaseBill()` |
+| Jurnal logistic vendor cost | ✅ | `postLogisticVendorCostJournal()` per service type |
+| Penerimaan barang → tambah stok | ✅ | `postStockIn()`, `inventory_stock` table |
+| Reversal bill saat cancel_bill | ✅ | `postPurchaseBillReversal()` — idempoten |
+| Status tracking (billStatus, receiveStatus, paymentStatus) | ✅ | Tersedia di `purchase_documents` |
 
-**File:** `artifacts/api-server/src/routes/expenses.ts` → `postQuickExpenseJournal`
+### 1.3 Accounting Engine
+| Fitur | Status | Catatan |
+|-------|--------|---------|
+| Double-entry validation (DR = CR) | ✅ | `postEntry()` validasi balance sebelum insert |
+| COA Indonesia standard | ✅ | Seed otomatis via `accountingSeed.ts` |
+| Journal types (Sales, Purchase, Bank, Cash, General) | ✅ | `accounting_journals` table |
+| Cost centers | ✅ | `cost_centers` table, propagated ke entry lines |
+| Multi-company via `company_id` | ✅ | Filter di semua query |
+| Kasbon / Employee Advance journaling | ✅ | `journalMappingService.ts` |
+| Bank Loan journaling | ✅ | `postLoanRepaymentJournal()` |
+| Fixed Asset journaling | ✅ | `postFixedAssetJournal()` |
+| Logistic revenue per service type | ✅ | Sea/Air/Trucking → COA spesifik |
 
----
+### 1.4 Tax Engine
+| Fitur | Status | Catatan |
+|-------|--------|---------|
+| `tax_rules` table (company, tx_type, tax_type, rate, direction) | ✅ | Via `taxRulesMigration.ts` (raw SQL) |
+| `transaction_taxes` table di Drizzle schema | ✅ | Status: pending/paid/reported |
+| PPN Keluaran terpisah dari PPN Masukan | ✅ | `direction` field di tax_rules |
+| PPh 21 kalkulator progresif (bracket UU PPh 2024) | ✅ | `pph21Calculator.ts` |
+| PPh 23/26 withholding | ✅ | `taxAutoService.ts` |
+| PPh 4 ayat 2 | ✅ | Via tax rules, dikelompokkan di `pph.tsx` |
+| Endpoint tax dashboard, PPN, PPh | ✅ | `routes/tax.ts` |
+| SSE real-time broadcast untuk tax updates | ✅ | `taxSseBroadcast.ts` |
+| Faktur pajak validator | ✅ | `fakturPajakValidator.ts` |
+| NPWP validator | ✅ | `npwpValidator.ts` |
 
-### ⚠️ 2. Retur Penjualan Tidak Membalik Invoice (Piutang)
-**Masalah:** Fungsi `/sales/documents/:id/return` membalik COGS dan stok, tetapi **tidak otomatis membalik jurnal Invoice** (piutang dan pendapatan). Piutang tetap menggantung setelah barang dikembalikan kecuali ada proses manual.
+### 1.5 Laporan Pajak (Frontend)
+| Laporan | Status | File |
+|---------|--------|------|
+| SPT Masa PPN (rekap per periode) | ✅ | `tax/spt.tsx` |
+| Rekap PPN Masukan & Keluaran + Kurang/Lebih Bayar | ✅ | `tax/ppn.tsx` |
+| Rekap PPh (21/23/4(2)) | ✅ | `tax/pph.tsx` |
+| Tax dashboard | ✅ | `tax/dashboard.tsx` |
+| Tax transactions detail | ✅ | `tax/transactions.tsx` |
+| Tax reconciliation + bulk status update | ✅ | `tax/reconciliation.tsx` |
+| WHT reconciliation (WHT Payable COA 2-1030) | ✅ | `accounting/wht-reconciliation.tsx` |
+| Export Excel/CSV semua laporan pajak | ✅ | `window.open('/api/tax/export?...')` |
+| Laporan Laba Rugi | ✅ | `accounting/reports/profit-loss.tsx` |
+| Neraca (Balance Sheet) | ✅ | `accounting/reports/balance-sheet.tsx` |
+| Neraca Saldo (Trial Balance) | ✅ | `accounting/reports/trial-balance.tsx` |
+| Buku Besar (General Ledger) | ✅ | `accounting/reports/general-ledger.tsx` |
 
-**Seharusnya:** Retur penjualan harus membuat Credit Note yang membalik:
-```
-DR Pendapatan (reversal)
-DR PPN Keluaran (reversal)
-CR Piutang Usaha
-```
+### 1.6 Audit Trail (Parsial)
+| Fitur | Status | Catatan |
+|-------|--------|---------|
+| `erp_audit_logs` table | ✅ | `old_data` + `new_data` JSONB, user_id, action, module |
+| `unifiedAudit.ts` service | ✅ | Standard logging, dipakai di tax route |
+| `auditLog.ts` per module | ✅ | Per-transaksi logging |
+| Audit report module | ✅ | `auditReports.ts`, numbering AUD/YYYY/NNNNN |
+| `storageAuditLog` | ✅ | File upload/access tracking |
 
-**File:** `artifacts/api-server/src/routes/sales.ts`
-
----
-
-### ⚠️ 3. PPh Withholding Tidak Otomatis saat Pembayaran
-**Masalah:** Tidak ada mekanisme otomatis pemotongan PPh (PPh 23, PPh 4(2)) saat posting pembayaran di `postPaymentReceived`. Ini harus dilakukan manual atau tidak tercatat sama sekali.
-
-**Seharusnya:** Saat vendor payment untuk jasa, jika ada withholding tax:
-```
-DR Hutang Usaha  = total invoice
-CR Bank/Kas      = total invoice - PPh
-CR PPh Payable   = PPh amount
-```
-
-**File:** `artifacts/api-server/src/lib/accounting.ts` → `postPaymentReceived`
-
----
-
-### ⚠️ 4. Status Pembayaran Partial Tidak Auto-Update
-**Masalah:** Enum `payment_status: partial` ada di schema, tetapi saat ada pembayaran masuk sebagian terhadap invoice, update status ke `partial` bergantung pada service eksternal yang tidak konsisten. Beberapa invoice bisa stuck di `unpaid` meski sudah ada partial payment.
-
-**File:** `artifacts/api-server/src/routes/sales.ts`, `lib/paymentStatusService.ts` (jika ada)
-
----
-
-### ⚠️ 5. Audit Trail Tidak Konsisten Antar Modul
-**Masalah:** Field audit tidak seragam:
-
-| Tabel | created_by | approved_by | cancelled_by | cancel_reason |
-|-------|-----------|-------------|--------------|---------------|
-| sales_documents | ✅ createdById | ❌ tidak ada | ❌ tidak ada | ❌ tidak ada |
-| purchase_documents | ✅ createdById | ✅ approved_by | ❌ tidak ada | ❌ tidak ada |
-| accounting_entries | ✅ createdById | ❌ tidak ada | ❌ tidak ada | di description |
-| logistic_orders | ✅ createdByUserId | ✅ approvedAt | ❌ tidak ada | ✅ decline_reason |
-
-Nama field tidak seragam: `created_by`, `created_by_id`, `created_by_user_id`.
-
----
-
-### ⚠️ 6. Laporan Pajak Belum Ada Format PDF Resmi
-**Masalah:** Export pajak hanya CSV biasa, belum ada:
-- Template SPT Masa PPN (formulir 1111)
-- Bukti Potong PPh 23 (format DJP)
-- e-Faktur format file
-
----
-
-### ⚠️ 7. PPh 21 Masih Flat Rate (Bukan Progresif/TER)
-**Masalah:** PPh 21 menggunakan tarif flat 5%, belum mendukung:
-- Tarif progresif Pasal 17 (5%/15%/25%/30%/35%)
-- Metode TER (Tarif Efektif Rata-rata) sesuai PMK terbaru
-
----
-
-### ⚠️ 8. Rekonsiliasi Bank Masih Manual/Google Sheets
-**Masalah:** Tidak ada integrasi API Bank langsung. Rekonsiliasi bergantung pada copy-paste ke Google Sheets. Tidak ada fitur:
-- Unmatched transactions report
-- Duplicate match detection
-- Partial match suggestion
+### 1.7 Rekonsiliasi
+| Fitur | Status | Catatan |
+|-------|--------|---------|
+| Bank vs Google Sheets rekonsiliasi | ✅ | `rekonsiliasiWorker.ts` — COCOK/DUPLIKAT/TIDAK ADA |
+| Bank reconciliation UI | ✅ | `accounting/reconciliation.tsx` |
+| Expense missing journal endpoint | ✅ | `GET /api/expenses/missing-journals` |
+| Expense bulk repost journal | ✅ | `POST /api/expenses/bulk-repost` |
+| Tax reconciliation gaps (NPWP, faktur) | ✅ | `GET /api/tax/reconciliation` |
 
 ---
 
-## C. BUG & RISIKO
+## 2. Modul yang Belum Lengkap ⚠️
 
-### 🔴 RISIKO TINGGI
+### 2.1 Audit Trail — Field Tidak Lengkap di Schema
 
-| # | Bug/Risiko | Dampak | Lokasi |
-|---|-----------|--------|--------|
-| R1 | **PPN Masukan expense tidak ke neraca** | Laporan keuangan tidak akurat; PPN kredit tidak bisa diklaim | `expenses.ts → postQuickExpenseJournal` |
-| R2 | **Retur penjualan tidak balik piutang** | Piutang menggantung setelah retur; AR overstated | `sales.ts → /return` |
-| R3 | **Accounting fallback GR/IR → AP langsung** | Double-counting hutang jika `grirAccountId` tidak diset | `purchaseWorkflow.ts L628` |
-| R4 | **Race condition doc number** | Nomor SO/PO duplikat di high concurrency → error 500 | `nextDocNumber()` di accounting |
-| R5 | **Dua router untuk Purchase (purchase.ts + purchaseWorkflow.ts)** | PO dari `purchase.ts` bisa tidak punya field workflow → downstream error | `routes/purchase.ts` vs `routes/purchaseWorkflow.ts` |
+**GAP KRITIS:** Tabel utama transaksi hanya punya `created_by_id` (di sales_documents saja). Field `approved_by`, `posted_by`, `cancelled_by`, `cancel_reason`, `edit_reason`, `reversal_reason` **tidak ada** di Drizzle schema manapun.
 
-### 🟡 RISIKO MEDIUM
+| Tabel | `created_by_id` | `approved_by` | `cancelled_by` | `cancel_reason` | `edit_reason` |
+|-------|:-:|:-:|:-:|:-:|:-:|
+| `sales_documents` | ✅ | ❌ | ❌ | ❌ | ❌ |
+| `purchase_documents` | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `accounting_entries` | ✅ | ❌ | ❌ | ❌ | ❌ |
+| `accounting_entry_lines` | ❌ | — | — | — | — |
+| `expenses` | — | ❌ | ❌ | ❌ | ❌ |
 
-| # | Bug/Risiko | Dampak | Lokasi |
-|---|-----------|--------|--------|
-| M1 | Race condition stok saat GRN + Sales simultan | Saldo stok bisa negatif atau salah | `purchaseWorkflow.ts L628` (non-atomic update) |
-| M2 | Floating point di kalkulasi pajak (`Math.round(total * rate / 100)`) | Selisih 1-2 perak vs database `numeric` | `computeTax()`, `taxAutoService.ts` |
-| M3 | Idempotency jurnal saat SO direvisi setelah invoiced | Jurnal tidak ter-update, nilai salah | `accounting.ts → postSalesInvoice` |
-| M4 | `CREATE TABLE IF NOT EXISTS` dalam route handler | Anti-pattern; migrasi seharusnya di file migrasi | `vendorPayments.ts L20` |
-| M5 | Purchase return tidak link ke GRN baris spesifik | Partial return tidak bisa dilacak per item | `purchaseWorkflow.ts → postPurchaseReturn` |
-| M6 | Audit trigger via API saja (tidak ada DB trigger) | Update langsung ke DB atau migrasi script tidak ter-audit | Semua tabel transaksi |
-| M7 | Validasi format NPWP/faktur pajak hanya teks bebas (tidak ada regex check) | Data pajak tidak valid bisa masuk laporan | `transaction_taxes` fields |
-| M8 | Status pajak `draft` tidak ada (langsung `pending`) | Transaksi terhitung sebelum review | `transaction_taxes` schema |
-| M9 | Kompensasi kelebihan PPN antar masa tidak otomatis | Kelebihan bayar PPN tidak terbawa ke masa berikutnya | `routes/tax.ts` |
-| M10 | Debit Note tidak dihasilkan dari Purchase Return | Tidak ada dokumen formal ke vendor | `purchaseWorkflow.ts` |
-| M11 | Tidak ada `cancel_reason` explicit di `sales_documents` | Audit tanpa context alasan pembatalan | `lib/db/src/schema/salesDocuments.ts` |
-| M12 | PPh 21 tidak progresif/TER | Pelaporan PPh 21 tidak akurat untuk karyawan | `taxAutoService.ts` |
+**Dampak:** Tidak bisa trace siapa yang approve, batalkan, atau edit transaksi penting. `erp_audit_logs` mencatat perubahan tapi tidak embedded di dokumen transaksi itu sendiri sehingga butuh join extra dan bisa terlewat.
+
+### 2.2 Tax Schema — Field Ada di DB Tapi Tidak di Drizzle (Raw SQL Only)
+
+Field berikut ditambahkan via `taxRulesMigration.ts` menggunakan raw `ALTER TABLE` — **tidak ada** di Drizzle schema file `lib/db/src/schema/accounting.ts`:
+
+| Field | Tabel | Status |
+|-------|-------|--------|
+| `direction` (input/output/withholding) | `transaction_taxes` | ⚠️ Raw SQL ALTER TABLE only |
+| `tax_rule_id` | `transaction_taxes` | ⚠️ Raw SQL ALTER TABLE only |
+| `partner_name` | `transaction_taxes` | ⚠️ Raw SQL ALTER TABLE only |
+| `npwp` | `transaction_taxes` | ⚠️ Raw SQL ALTER TABLE only |
+| `faktur_pajak_number` / `bukti_potong_number` | `transaction_taxes` | ❌ Belum ada sama sekali |
+| Seluruh tabel `tax_rules` | — | ⚠️ Raw SQL only — tidak ada di Drizzle schema |
+
+**Dampak:** Drizzle ORM tidak bisa generate type-safe queries untuk field ini. Jika `drizzle-kit push` dijalankan pada DB fresh, field-field ini tidak akan dibuat.
+
+### 2.3 Status Tax — Kurang Lengkap
+
+`transaction_taxes.status` hanya: `pending` → `paid` → `reported`.
+
+**Seharusnya:** `draft` → `calculated` → `posted` → `reported` → `paid`
+
+Tidak ada status `calculated` (sudah dihitung tapi belum diposting ke jurnal akuntansi) dan `posted` (sudah masuk jurnal, menunggu pelaporan SPT).
+
+### 2.4 Audit Query — Transaksi Tanpa Jurnal
+
+Hanya **expenses** yang punya endpoint `/missing-journals`. Modul lain tidak ada:
+
+| Modul | Missing Journal Endpoint | Bulk Repost |
+|-------|:---:|:---:|
+| Expenses | ✅ | ✅ |
+| Sales Documents | ❌ | ❌ |
+| Purchase Documents | ❌ | ❌ |
+| Logistic Orders | ❌ | ❌ |
+| Payments (Penerimaan) | ❌ | ❌ |
+| Vendor Payments (Pengeluaran) | ❌ | ❌ |
+| Cash Advances (Kasbon) | ❌ | ❌ |
+| Bank Loans | ❌ | ❌ |
+| Fixed Assets | ❌ | ❌ |
+
+### 2.5 Rekonsiliasi AR/AP — Tidak Ada UI Formal
+
+`rekonsiliasiWorker.ts` hanya rekonsiliasi **bank vs Google Sheets** (hasil ditulis ke GSheet, bukan ke DB). Tidak ada:
+- Laporan invoice belum dilunasi (AR unmatched)
+- Laporan vendor bill belum dibayar (AP unmatched)
+- Partial match report (invoice dibayar sebagian)
+- Manual approval untuk matching yang ambigu
+- Endpoint `GET /api/accounting/reconciliation/ar-unmatched`
+- Endpoint `GET /api/accounting/reconciliation/ap-unmatched`
+- Aging report AR/AP
+
+### 2.6 Laporan Pajak — Gap
+
+| Laporan | Status | Catatan |
+|---------|--------|---------|
+| Daftar transaksi tanpa NPWP/NIK | ❌ | Belum ada endpoint/halaman |
+| Daftar transaksi tanpa faktur pajak/bukti potong | ❌ | Belum ada (field pun belum ada di schema) |
+| Daftar pajak belum diposting ke jurnal | ❌ | Tidak bisa — tidak ada status "posted" |
+| Daftar pajak belum dibayar (formal) | ⚠️ | Ada via filter `status=pending` tapi bukan laporan formal |
+| Export **PDF** untuk laporan pajak | ❌ | Semua export hanya Excel/CSV |
+| SPT Masa PPh 21 detail per karyawan | ❌ | Tidak ada halaman detail |
+| SPT Masa PPh 4(2) laporan terpisah | ❌ | Hanya di-group di `pph.tsx` |
+| Rekap PPh 23/26 detail per vendor | ⚠️ | Ada tapi kurang detail (tidak ada nama vendor per baris) |
+
+### 2.7 Jurnal Tidak Balance — Tidak Ada Audit Query
+
+Tidak ada endpoint batch untuk cek **total debit ≠ total kredit** di `accounting_entries`. Validasi hanya real-time saat `postEntry()` dipanggil — tidak ada retrospective audit untuk data lama.
+
+### 2.8 Rekonsiliasi Mutasi Bank — Hasil Tidak Masuk DB
+
+`rekonsiliasiWorker.ts` menulis hasil ke Google Sheets, bukan ke tabel database. Akibatnya:
+- Tidak ada history rekonsiliasi yang bisa di-query via API
+- Tidak ada status per line item (matched/unmatched/manual) yang persisten
+- Tidak ada approval workflow untuk item yang perlu manual review
 
 ---
 
-## D. FILE YANG PERLU DIUBAH
+## 3. Bug / Risiko 🔴
 
-### Backend API Server
+### 3.1 🔴 KRITIS — Faktur Pajak & Bukti Potong Tidak Tersimpan
+**Risiko:** Field `faktur_pajak_number` dan `bukti_potong_number` tidak ada di `transaction_taxes` (baik di Drizzle maupun raw SQL). Ini berarti tidak ada cara menyimpan atau melacak nomor faktur pajak PPN dan bukti potong PPh per transaksi — **kewajiban perpajakan Indonesia**.
+**File:** `lib/db/src/schema/accounting.ts`, `artifacts/api-server/src/lib/taxRulesMigration.ts`
+
+### 3.2 🔴 KRITIS — Drizzle Schema & DB Out of Sync
+**Risiko:** Field `direction`, `npwp`, `tax_rule_id`, `partner_name` di `transaction_taxes` + seluruh tabel `tax_rules` hanya ada via raw `ALTER TABLE`. Jika `drizzle-kit push` dijalankan pada DB baru/fresh, field ini tidak dibuat. Deploy baru akan fail.
+**File:** `lib/db/src/schema/accounting.ts`, `artifacts/api-server/src/lib/taxRulesMigration.ts`
+
+### 3.3 🟠 TINGGI — `purchase_documents` Tidak Ada `created_by_id` Sama Sekali
+Berbeda dengan `sales_documents` (punya `created_by_id`), tabel `purchase_documents` tidak memiliki **field apapun** untuk tracking user. Tidak bisa audit siapa yang buat PO/bill.
+**File:** `lib/db/src/schema/purchaseDocuments.ts`
+
+### 3.4 🟠 TINGGI — Reversal Idempoten Bergantung `journalId` dari Settings
+`postSalesInvoiceReversal()` cek idempoten: `source = 'reversal' AND sourceId = salesDocId AND journalId = salesJournalId`. Jika `salesJournalId` di settings berubah (misal setting di-reset), reversal bisa dieksekusi ulang → double-posting.
+**File:** `artifacts/api-server/src/lib/accounting.ts` line ~1706–1715
+
+### 3.5 🟡 SEDANG — PPh Expense Tidak Selalu Rekam `transaction_taxes`
+Expense yang kena PPh potong (PPh 23 jasa) tidak selalu memanggil `recordTransactionTax()`. Bergantung apakah expense di-link ke vendor atau tidak. Laporan PPh dari expenses kemungkinan tidak lengkap.
+**File:** `artifacts/api-server/src/routes/expenses.ts`
+
+### 3.6 🟡 SEDANG — `transaction_taxes` uniqueIndex Berisiko Upsert Conflict
+`uniqueIndex("tx_taxes_tx_uniq").on(transactionType, transactionId, taxId)` — Logika upsert di `taxAutoService.ts` perlu dicek apakah selalu melakukan `ON CONFLICT DO UPDATE` dengan benar, atau bisa menghasilkan constraint violation jika tax diperhitungkan ulang.
+**File:** `lib/db/src/schema/accounting.ts`, `artifacts/api-server/src/lib/taxAutoService.ts`
+
+### 3.7 🟡 SEDANG — Rekonsiliasi Bank Output ke GSheet Saja
+Jika Google Sheets API quota habis atau token expired, hasil rekonsiliasi hilang tanpa fallback. Tidak ada persistensi ke DB.
+**File:** `artifacts/api-server/src/lib/rekonsiliasiWorker.ts`
+
+### 3.8 🟡 SEDANG — Tidak Ada Audit untuk Cross-Company Entry Lines
+Tidak ada query yang memeriksa apakah `accounting_entry_lines.company_id` cocok dengan `accounting_entries.company_id`. Data multi-company bisa tercampur tanpa terdeteksi.
+**File:** `artifacts/api-server/src/routes/accounting.ts`
+
+---
+
+## 4. File yang Perlu Diubah
+
+### Fase 1 — Schema (`lib/db/src/schema/`)
 | File | Perubahan |
 |------|-----------|
-| `src/routes/expenses.ts` | Fix `postQuickExpenseJournal`: pisahkan PPN Masukan ke akun COA |
-| `src/routes/sales.ts` | Tambah Credit Note / invoice reversal saat return |
-| `src/lib/accounting.ts` | Tambah withholding tax handling di `postPaymentReceived` |
-| `src/routes/purchaseWorkflow.ts` | Fix stok update jadi atomic, tambah link return → GRN line |
-| `src/routes/vendorPayments.ts` | Pindah `CREATE TABLE` ke file migrasi |
-| `src/lib/taxAutoService.ts` | Tambah status `draft`, validasi format NPWP/faktur |
-| `src/routes/tax.ts` | Tambah kompensasi PPN, laporan unmatched/draft pajak |
+| `accounting.ts` | Pindahkan `tax_rules` ke Drizzle; tambah `direction`, `npwp`, `fakturPajakNumber`, `buktiPotongNumber`, `taxRuleId`, `partnerName` ke `transactionTaxesTable`; tambah `approvedBy`, `cancelledBy`, `cancelReason` ke `accountingEntriesTable` |
+| `salesDocuments.ts` | Tambah `approvedBy`, `approvedAt`, `cancelledBy`, `cancelledAt`, `cancelReason`, `editReason`, `reversalReason` |
+| `purchaseDocuments.ts` | Tambah `createdById`, `approvedBy`, `approvedAt`, `cancelledBy`, `cancelledAt`, `cancelReason`, `editReason` |
 
-### Database Schema
+### Fase 2 — Lib & Routes (API Server)
 | File | Perubahan |
 |------|-----------|
-| `lib/db/src/schema/salesDocuments.ts` | Tambah `cancel_reason`, `cancelled_by`, `approved_by` |
-| `lib/db/src/schema/purchaseDocuments.ts` | Tambah `cancelled_by`, `cancel_reason` |
-| `lib/db/src/schema/accounting.ts` | Tambah status `draft` di `transaction_taxes` |
+| `lib/taxAutoService.ts` | Tambah status `calculated` & `posted`; fix upsert logic |
+| `lib/taxRulesMigration.ts` | Hapus ALTER TABLE yang sudah pindah ke Drizzle schema |
+| `lib/accounting.ts` | Fix reversal idempoten; propagate `approvedBy`/`cancelledBy` |
+| `routes/sales.ts` | Simpan `approvedBy`/`cancelledBy`/`cancelReason` di tiap action handler |
+| `routes/purchase.ts` | Simpan `createdById`/`approvedBy`/`cancelledBy` di tiap action handler |
+| `routes/expenses.ts` | Pastikan `recordTransactionTax()` dipanggil untuk semua expense dengan vendor |
 
-### Frontend BizPortal
+### Fase 3 — Endpoint Audit & Compliance
+| File | Endpoint Baru |
+|------|---------------|
+| `routes/accounting.ts` | `GET /api/accounting/audit/missing-journals` (lintas modul) |
+| `routes/accounting.ts` | `GET /api/accounting/audit/unbalanced-entries` |
+| `routes/accounting.ts` | `GET /api/accounting/audit/cross-company` |
+| `routes/accounting.ts` | `GET /api/accounting/audit/no-coa` |
+| `routes/tax.ts` | `GET /api/tax/npwp-missing` |
+| `routes/tax.ts` | `GET /api/tax/faktur-missing` |
+| `routes/tax.ts` | `GET /api/tax/unposted` |
+| `routes/tax.ts` | `GET /api/tax/unpaid` |
+| `routes/payments.ts` | `GET /api/payments/reconciliation/ar-unmatched` |
+| `routes/payments.ts` | `GET /api/payments/reconciliation/ar-partial` |
+| `routes/vendorPayments.ts` | `GET /api/vendor-payments/reconciliation/ap-unmatched` |
+
+### Fase 4 — Frontend BizPortal
 | File | Perubahan |
 |------|-----------|
-| `src/pages/tax/ppn.tsx` | Tambah kompensasi PPN, export PDF |
-| `src/pages/tax/pph.tsx` | Tambah laporan per karyawan PPh 21, progresif indicator |
-| `src/pages/accounting/reconciliation.tsx` | Tambah unmatched/partial match report |
-| `src/pages/sales/` | Tambah UI Credit Note dari retur |
+| `pages/accounting/audit-report.tsx` (BARU) | Halaman audit: transaksi tanpa jurnal, jurnal tidak balance, cross-company, COA invalid |
+| `pages/tax/missing-compliance.tsx` (BARU) | Laporan: tanpa NPWP, tanpa faktur/bukti potong, belum posting, belum dibayar |
+| `pages/accounting/reconciliation-ar.tsx` (BARU) | AR unmatched, partial match, manual approval |
+| `pages/accounting/reconciliation-ap.tsx` (BARU) | AP unmatched, aging report |
+| `pages/tax/ppn.tsx` | Tambah kolom faktur pajak, filter missing faktur |
+| `pages/tax/pph.tsx` | Detail per karyawan (PPh 21), export PDF |
+
+### Fase 5 — Hardening
+| File | Perubahan |
+|------|-----------|
+| `lib/accounting.ts` | Fix reversal idempoten tanpa bergantung journalId settings |
+| `lib/rekonsiliasiWorker.ts` | Tambah fallback simpan hasil ke DB |
+| `lib/db/src/schema/accounting.ts` | Tambah tabel `bank_reconciliation_items` |
 
 ---
 
-## E. TABEL REKOMENDASI PRIORITAS
+## 5. Tabel Rekomendasi Prioritas
 
-| Prioritas | Item | Dampak | Effort | Fase |
-|-----------|------|--------|--------|------|
-| 🔴 P1 | Fix jurnal PPN Masukan di Expense | Laporan keuangan akurat | M | 1 |
-| 🔴 P1 | Fix retur penjualan → balik piutang (Credit Note) | AR tidak menggantung | M | 1 |
-| 🔴 P1 | Fix GR/IR accounting fallback | Prevent double AP | S | 1 |
-| 🔴 P2 | Withholding tax (PPh) otomatis saat payment | Compliance pajak | M | 2 |
-| 🔴 P2 | Fix race condition doc number (SELECT FOR UPDATE / sequence) | Data integrity | S | 2 |
-| 🟡 P3 | Atomic stock update di GRN | Data integrity stok | S | 2 |
-| 🟡 P3 | Status `draft` di transaction_taxes | Workflow pajak | S | 2 |
-| 🟡 P3 | Standardisasi audit fields di semua tabel | Compliance audit | M | 3 |
-| 🟡 P4 | Validasi format NPWP/faktur (15/16 digit) | Data quality pajak | S | 3 |
-| 🟡 P4 | Kompensasi kelebihan PPN ke masa berikutnya | Akurasi SPT PPN | M | 3 |
-| 🟢 P5 | PPh 21 progresif / TER | Kepatuhan PPh 21 | L | 4 |
-| 🟢 P5 | Laporan unmatched rekonsiliasi bank | Visibility rekonsiliasi | M | 4 |
-| 🟢 P6 | Export PDF SPT / Bukti Potong format DJP | e-Filing ready | L | 5 |
-| 🟢 P6 | Debit Note dari Purchase Return | Dokumen lengkap | M | 5 |
-| 🟢 P6 | Pindah `CREATE TABLE` dari route ke migrasi | Code quality | S | 5 |
-
-*Effort: S = < 4 jam, M = 4-16 jam, L = > 16 jam*
-
----
-
-## F. RENCANA IMPLEMENTASI
-
-### FASE 1 — Critical Accounting Fixes (Prioritas Laporan Keuangan)
-**Target:** 3-5 hari  
-**Tujuan:** Pastikan semua transaksi sudah masuk ke Buku Besar dengan benar
-
-1. **Fix PPN Masukan Expense** (`expenses.ts`)
-   - Pecah jurnal expense: DR Beban + DR PPN Masukan / CR Kas/Bank
-   - Tambah parameter `taxAccountId` ke `postQuickExpenseJournal`
-
-2. **Credit Note dari Retur Penjualan** (`sales.ts`)
-   - Buat fungsi `postSalesReturnInvoice`: DR Pendapatan + DR PPN Keluaran / CR Piutang
-   - Panggil di `/documents/:id/return` setelah `postSalesCogsReturn`
-
-3. **Fix GR/IR Fallback** (`purchaseWorkflow.ts`)
-   - Tambah warning jika `grirAccountId` tidak diset (jangan silently fall ke AP)
-   - Atau: Hardcode akun GR/IR default saat seeding COA
+| No | Item | Modul | Risiko | Prioritas |
+|----|------|-------|--------|-----------|
+| 1 | Tambah `faktur_pajak_number` & `bukti_potong_number` ke Drizzle schema `transaction_taxes` | Tax | KRITIS | **P1** |
+| 2 | Sinkronkan Drizzle schema: pindah `tax_rules` & field `direction`/`npwp` dari raw SQL | Tax | KRITIS | **P1** |
+| 3 | Tambah `approved_by`, `cancelled_by`, `cancel_reason` ke `sales_documents` | Sales | TINGGI | **P1** |
+| 4 | Tambah `created_by_id`, `approved_by`, `cancelled_by` ke `purchase_documents` | Purchase | TINGGI | **P1** |
+| 5 | Endpoint audit `missing-journals` lintas modul (sales/purchase/logistik/kasbon) | Accounting | TINGGI | **P1** |
+| 6 | Laporan transaksi tanpa NPWP & tanpa faktur/bukti potong | Tax | TINGGI | **P1** |
+| 7 | Tambah status `calculated` & `posted` ke `transaction_taxes` | Tax | SEDANG | **P2** |
+| 8 | Endpoint `unbalanced-entries` — cek DR ≠ CR retrospective | Accounting | SEDANG | **P2** |
+| 9 | Endpoint AR unmatched & AP unmatched | Accounting | SEDANG | **P2** |
+| 10 | Fix reversal idempoten (jangan bergantung journalId dari settings) | Accounting | SEDANG | **P2** |
+| 11 | PPh recording untuk semua expense dengan vendor (PPh 23) | Tax | SEDANG | **P2** |
+| 12 | Halaman audit report di frontend | Frontend | SEDANG | **P2** |
+| 13 | Halaman missing compliance di frontend | Frontend | SEDANG | **P2** |
+| 14 | Halaman AR/AP reconciliation formal di frontend | Frontend | SEDANG | **P2** |
+| 15 | Export PDF untuk SPT, PPN, PPh | Tax | RENDAH | **P3** |
+| 16 | Simpan hasil rekonsiliasi bank ke DB (bukan hanya GSheet) | Accounting | RENDAH | **P3** |
+| 17 | Detail PPh 21 per karyawan per periode | Tax | RENDAH | **P3** |
 
 ---
 
-### FASE 2 — Tax Compliance & Data Integrity
-**Target:** 5-7 hari  
-**Tujuan:** Pastikan pajak dipotong dan dicatat benar
+## 6. Rencana Implementasi Per Fase
 
-4. **Withholding Tax di Payment** (`accounting.ts`)
-   - Tambah parameter `withholdingTaxId` optional di `postPaymentReceived`
-   - Jika ada WHT: DR AP = total, CR Bank = net, CR PPh Payable = WHT
+### Fase 1 — Schema & Data Integrity *(Estimasi: 1–2 hari)*
+**Tujuan:** Memperbaiki fondasi data sebelum fitur lain bisa berjalan benar.
 
-5. **Atomic Doc Number** (`accounting.ts`)
-   - Ganti `SELECT MAX(seq) + 1` dengan PostgreSQL `SEQUENCE` atau `SELECT ... FOR UPDATE`
+- [ ] **F1.1** Drizzle schema `accounting.ts`:
+  - `transactionTaxesTable`: tambah `direction`, `npwp`, `fakturPajakNumber`, `buktiPotongNumber`, `taxRuleId`, `partnerName`
+  - `accountingEntriesTable`: tambah `approvedBy`, `cancelledBy`, `cancelReason`
+  - Buat `taxRulesTable` di Drizzle (migrasi dari raw SQL)
+- [ ] **F1.2** Drizzle schema `salesDocuments.ts`: tambah `approvedBy`, `approvedAt`, `cancelledBy`, `cancelledAt`, `cancelReason`, `editReason`, `reversalReason`
+- [ ] **F1.3** Drizzle schema `purchaseDocuments.ts`: tambah `createdById`, `approvedBy`, `approvedAt`, `cancelledBy`, `cancelledAt`, `cancelReason`, `editReason`
+- [ ] **F1.4** Update `taxRulesMigration.ts` — hapus ALTER TABLE duplikat yang sudah masuk Drizzle
+- [ ] **F1.5** Generate & push: `drizzle-kit generate && drizzle-kit push`
 
-6. **Atomic Stock Update GRN** (`purchaseWorkflow.ts`)
-   - Ganti manual update stok dengan `sql\`qty = qty + ${delta}\`` atomic
+### Fase 2 — Audit Trail & Tax Status Flow *(Estimasi: 1 hari)*
+**Tujuan:** Semua action penting menyimpan siapa yang melakukan, tax flow lengkap.
 
-7. **Status `draft` di transaction_taxes** (schema + `taxAutoService.ts`)
-   - Tambah `draft` ke enum status; transaksi baru masuk `draft`, di-promote ke `pending` saat di-post
+- [ ] **F2.1** `routes/sales.ts`: simpan `approvedBy`/`cancelledBy`/`cancelReason` di action "confirm"/"cancel"
+- [ ] **F2.2** `routes/purchase.ts`: simpan `createdById`/`approvedBy`/`cancelledBy` di tiap action
+- [ ] **F2.3** `lib/accounting.ts` `postEntry()`: propagate `approvedBy`, fix reversal idempoten (gunakan `source_doc_type + source_doc_id`, tidak bergantung `journalId` dari settings)
+- [ ] **F2.4** `lib/taxAutoService.ts`: tambah status `calculated` → `posted` → `reported` → `paid`; propagasi `fakturPajakNumber`/`buktiPotongNumber` saat posting
+- [ ] **F2.5** `routes/expenses.ts`: pastikan `recordTransactionTax()` dipanggil untuk semua expense dengan vendor PPh 23
 
----
+### Fase 3 — Endpoint Audit & Compliance *(Estimasi: 1–2 hari)*
+**Tujuan:** Backend menyediakan data monitoring & kepatuhan lengkap.
 
-### FASE 3 — Audit Trail Standardisasi
-**Target:** 3-5 hari  
-**Tujuan:** Semua transaksi traceable dan audit-ready
+- [ ] **F3.1** `routes/accounting.ts` — sub-router `/api/accounting/audit/`:
+  - `GET /missing-journals?module=all|sales|purchase|logistic|kasbon|payment` — query lintas modul
+  - `GET /unbalanced-entries` — accounting_entries di mana sum(debit_amount) ≠ sum(credit_amount)
+  - `GET /cross-company` — entry lines dengan company_id berbeda dari header
+  - `GET /no-coa` — entry lines dengan account_id null atau COA tidak aktif
+- [ ] **F3.2** `routes/tax.ts` — tambah endpoint:
+  - `GET /npwp-missing` — `transaction_taxes` di mana npwp IS NULL atau ''
+  - `GET /faktur-missing` — PPN output tanpa `faktur_pajak_number`, PPh tanpa `bukti_potong_number`
+  - `GET /unposted` — status 'calculated' (hitung sudah, posting belum)
+  - `GET /unpaid` — status 'posted' atau 'reported' tapi belum paid
+- [ ] **F3.3** `routes/payments.ts`: `GET /reconciliation/ar-unmatched` dan `GET /reconciliation/ar-partial`
+- [ ] **F3.4** `routes/vendorPayments.ts`: `GET /reconciliation/ap-unmatched`
 
-8. **Standardisasi field audit di sales_documents & purchase_documents** (schema migration)
-   - Tambah kolom: `cancelled_by`, `cancel_reason`, `approved_by` (konsisten semua tabel)
+### Fase 4 — Frontend Monitoring & Laporan *(Estimasi: 2 hari)*
+**Tujuan:** Semua laporan tersedia dan bisa diaksi di UI.
 
-9. **Validasi NPWP & Nomor Faktur** (`taxAutoService.ts` + frontend)
-   - Regex NPWP: `^\d{2}\.\d{3}\.\d{3}\.\d-\d{3}\.\d{3}$` (15 digit dengan format)
-   - Regex Faktur: `^\d{16}$`
+- [ ] **F4.1** Halaman baru `pages/accounting/audit-report.tsx`:
+  - Tab: Transaksi Tanpa Jurnal | Jurnal Tidak Balance | Cross-Company | COA Tidak Valid
+  - Tombol "Repost" untuk yang bisa di-repost otomatis
+  - Export CSV
+- [ ] **F4.2** Halaman baru `pages/tax/missing-compliance.tsx`:
+  - Tab: Tanpa NPWP | Tanpa Faktur Pajak | Belum Diposting | Belum Dibayar
+  - Filter per periode, modul, company
+  - Inline edit untuk isi NPWP / nomor faktur
+  - Export Excel
+- [ ] **F4.3** Halaman baru `pages/accounting/reconciliation-ar.tsx`:
+  - Daftar invoice belum lunas (unmatched)
+  - Daftar bayar sebagian (partial match)
+  - Manual link payment ke invoice
+  - Aging report AR (0-30, 31-60, 61-90, >90 hari)
+- [ ] **F4.4** Halaman baru `pages/accounting/reconciliation-ap.tsx`:
+  - Daftar vendor bill belum dibayar
+  - Aging report AP
+- [ ] **F4.5** Update `pages/tax/ppn.tsx`: tambah kolom `faktur_pajak_number`, filter missing
+- [ ] **F4.6** Update `pages/tax/pph.tsx`: detail per karyawan (PPh 21), export PDF
 
-10. **Kompensasi PPN** (`routes/tax.ts`)
-    - Tambah endpoint `POST /api/tax/ppn/kompensasi` untuk carry-forward kelebihan bayar PPN ke masa berikutnya
+### Fase 5 — Hardening & Export PDF *(Estimasi: 1 hari)*
+**Tujuan:** Keandalan, kelengkapan output, dan ketahanan sistem.
 
----
-
-### FASE 4 — Reporting Enhancements
-**Target:** 7-10 hari  
-**Tujuan:** Laporan lebih lengkap dan actionable
-
-11. **PPh 21 Tarif Progresif** (`taxAutoService.ts`)
-    - Implementasi tarif Pasal 17: bracket 5%/15%/25%/30%/35%
-    - Tambah `ptkp_type` per karyawan sebagai basis PTKP
-
-12. **Rekonsiliasi Bank — Unmatched & Partial Report** (`routes/accounting.ts`)
-    - Endpoint: `GET /api/accounting/reconciliation/unmatched`
-    - Frontend: Tab "Belum Cocok" di halaman rekonsiliasi
-
-13. **Auto-update Payment Status Partial** (service/worker)
-    - Worker yang re-check semua invoice dengan `payment_status != paid` dan hitung total payment received
-    - Update ke `partial` jika 0 < received < total, `paid` jika received >= total
-
----
-
-### FASE 5 — Document & e-Filing Ready
-**Target:** 10-14 hari  
-**Tujuan:** Siap untuk pelaporan pajak formal
-
-14. **Export PDF Laporan Pajak** (frontend + backend)
-    - Laporan Rekap PPN (format A4 dengan header perusahaan)
-    - Bukti Potong PPh 23 (format standar DJP)
-    - Gunakan `@react-pdf/renderer` (sudah tersedia di stack)
-
-15. **Debit Note dari Purchase Return** (`purchaseWorkflow.ts`)
-    - Auto-generate dokumen Debit Note saat purchase return dikonfirmasi
-    - Tampil di list purchase documents dengan kind `debit_note`
-
-16. **Pindah DDL dari Route ke Migrasi** (`vendorPayments.ts`)
-    - Pindah `CREATE TABLE IF NOT EXISTS vendor_payments` ke file migrasi dedicated
-
----
-
-## G. LAMPIRAN — COVERAGE MATRIX
-
-| Modul | Jurnal Auto | Pajak Auto | Status Lifecycle | Reversal | Audit Log | Dokumen |
-|-------|------------|-----------|-----------------|---------|-----------|---------|
-| Sales Invoice | ✅ | ✅ PPN | ✅ Lengkap | ✅ | ⚠️ Parsial | ✅ |
-| Sales Return | ⚠️ COGS only | ⚠️ Tidak balik PPN | ✅ | ⚠️ COGS only | ⚠️ | ⚠️ No Credit Note |
-| Purchase Bill | ✅ | ✅ PPN Masukan | ✅ | ✅ | ⚠️ Parsial | ✅ |
-| Purchase Payment | ✅ | ❌ No WHT | ✅ | N/A | ⚠️ | ✅ |
-| Expense | ✅ | ⚠️ Tax record ada, jurnal tidak | ✅ | N/A | ⚠️ | ✅ |
-| Bank Payment (AR) | ✅ | ❌ No WHT | ✅ | N/A | ⚠️ | ✅ |
-| GRN | ✅ | N/A | ✅ | ✅ | ⚠️ | ✅ |
-| Tax Ledger | ✅ | ✅ | ⚠️ No draft | N/A | ⚠️ | ⚠️ CSV only |
+- [ ] **F5.1** `lib/rekonsiliasiWorker.ts`: tambah tabel `bank_reconciliation_items` di DB sebagai fallback penyimpanan hasil rekonsiliasi
+- [ ] **F5.2** Export PDF menggunakan `@react-pdf/renderer` untuk: SPT Masa PPN, PPh 21, PPh 23
+- [ ] **F5.3** Halaman detail PPh 21 per karyawan per periode
+- [ ] **F5.4** Regression test: verifikasi semua jurnal balance setelah implementasi fase 1–4
 
 ---
 
-*Laporan ini dihasilkan dari audit otomatis. Sebelum implementasi, konfirmasi prioritas fase dengan tim bisnis.*
+## Lampiran: Peta Alur Jurnal Saat Ini
+
+```
+PENJUALAN:
+  Confirm SO      → postSalesInvoice()         : DR Piutang Dagang   / CR Pendapatan + CR PPN Keluaran
+  Delivery        → postSalesCogs()            : DR HPP              / CR Persediaan
+  Payment recv.   → postSalesPayment()         : DR Kas/Bank         / CR Piutang Dagang
+  Cancel          → postSalesInvoiceReversal() : Semua di-balik (idempoten via sourceId)
+  Return          → postSalesReturn()          : Credit note + COGS reversal
+
+PEMBELIAN:
+  Receive barang  → postStockIn()              : DR Persediaan       / CR Titipan GRN
+  Bill posting    → postPurchaseBill()         : DR Expense/Inventory + DR PPN Masukan / CR Hutang Vendor
+  Vendor payment  → postVendorPayment()        : DR Hutang Vendor    / CR Kas/Bank
+  Cancel bill     → postPurchaseBillReversal() : Semua di-balik (idempoten)
+
+LOGISTIK:
+  Revenue posting → postLogisticSalesInvoice()      : DR Piutang   / CR Revenue (per service type)
+  Vendor cost     → postLogisticVendorCostJournal() : DR COGS      / CR Hutang Vendor
+
+KASBON:
+  Disbursement    →                            : DR Piutang Karyawan / CR Kas/Bank
+  Repayment       →                            : DR Kas/Bank         / CR Piutang Karyawan
+
+PINJAMAN BANK:
+  Disbursement    →                            : DR Kas/Bank        / CR Hutang Bank (+ admin fee → DR Biaya Bunga)
+  Repayment       →                            : DR Hutang Pokok + DR Biaya Bunga / CR Kas/Bank
+
+ASET TETAP:
+  Purchase        →                            : DR Aset Tetap      / CR Kas/Bank
+  Depreciation    →                            : DR Beban Penyusutan / CR Akumulasi Depresiasi
+```
+
+---
+
+## Lampiran: Status Audit per Poin Permintaan
+
+| # | Permintaan Audit | Status |
+|---|-----------------|--------|
+| 1 | Audit Alur Penjualan | ✅ Alur benar, jurnal lengkap, reversal ada. Gap: audit trail field |
+| 2 | Audit Alur Pembelian | ✅ Alur benar, jurnal lengkap, reversal ada. Gap: created_by_id tidak ada |
+| 3 | Audit Penerimaan | ✅ Payment journaling ada. Gap: AR unmatched report belum ada |
+| 4 | Audit Pengeluaran | ✅ Expense journaling ada. Gap: PPh 23 tidak selalu direkam |
+| 5 | Audit Accounting Posting | ⚠️ Hanya expenses punya missing-journal check. Modul lain belum ada |
+| 6 | Audit Pajak | ⚠️ Tax engine ada tapi field faktur/bukti potong & status lengkap belum ada |
+| 7 | Audit Laporan Pajak | ⚠️ SPT/PPN/PPh ada, tapi laporan compliance (tanpa NPWP/faktur) belum ada |
+| 8 | Audit Rekonsiliasi | ⚠️ Bank rekonsiliasi ada tapi AR/AP formal belum ada |
+| 9 | Audit Trail | ⚠️ erp_audit_logs ada, tapi field di tabel transaksi tidak lengkap |
+| 10 | Output Laporan Audit | ✅ Laporan ini (AUDIT_ACCOUNTING_TAX_REPORT.md) |
+
+---
+
+*Laporan ini hasil audit otomatis berdasarkan analisis kode sumber secara menyeluruh. Lanjutkan implementasi per fase setelah laporan di-review dan disetujui.*
