@@ -4,7 +4,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { getLastResponseTime, useListLogisticOrders } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ShoppingCart, DollarSign, Truck, Package, Activity, AlertTriangle, ChevronRight, Ship, ArrowRight, Clock, RefreshCw, TrendingUp, TrendingDown, Minus, PackageOpen, ChevronDown, ChevronUp, FilePlus, X, Users, CheckCircle2, CircleDot, FileText, BarChart2, ExternalLink, Globe, LayoutGrid, Receipt, GripVertical, Settings2 } from "lucide-react";
+import { ShoppingCart, DollarSign, Truck, Package, Activity, AlertTriangle, ChevronRight, Ship, ArrowRight, Clock, RefreshCw, TrendingUp, TrendingDown, Minus, PackageOpen, ChevronDown, ChevronUp, FilePlus, X, Users, CheckCircle2, CircleDot, FileText, BarChart2, ExternalLink, Globe, LayoutGrid, Receipt, GripVertical, Settings2, Eye, EyeOff } from "lucide-react";
 import { useCompany } from "@/contexts/CompanyContext";
 import { useQueryClient } from "@tanstack/react-query";
 import { useUpdateLogisticOrderStatus, useCreateSalesDocument, getListLogisticOrdersQueryKey } from "@workspace/api-client-react";
@@ -1565,6 +1565,7 @@ const DASH_NAV_CARDS: DashNavCard[] = [
 ];
 
 const QUICKNAV_ORDER_KEY = "dashboard_quicknav_order_v1";
+const QUICKNAV_HIDDEN_KEY = "dashboard_quicknav_hidden_v1";
 
 function loadCardOrder(): string[] {
   try {
@@ -1580,12 +1581,24 @@ function loadCardOrder(): string[] {
   return DASH_NAV_CARDS.map((c) => c.label);
 }
 
+function loadHiddenCards(): Set<string> {
+  try {
+    const saved = localStorage.getItem(QUICKNAV_HIDDEN_KEY);
+    if (saved) {
+      const parsed: string[] = JSON.parse(saved);
+      return new Set(parsed);
+    }
+  } catch {}
+  return new Set();
+}
+
 function DashboardQuickNav() {
   const [open, setOpen] = useState(() => {
     try { return localStorage.getItem("dashboard_quicknav_open") !== "false"; } catch { return true; }
   });
   const [editMode, setEditMode] = useState(false);
   const [cardOrder, setCardOrder] = useState<string[]>(loadCardOrder);
+  const [hiddenCards, setHiddenCards] = useState<Set<string>>(loadHiddenCards);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
@@ -1599,6 +1612,17 @@ function DashboardQuickNav() {
   const orderedCards = cardOrder
     .map((label) => DASH_NAV_CARDS.find((c) => c.label === label))
     .filter(Boolean) as typeof DASH_NAV_CARDS;
+
+  const visibleCards = orderedCards.filter((c) => !hiddenCards.has(c.label));
+
+  const toggleHidden = (label: string) => {
+    setHiddenCards((prev) => {
+      const next = new Set(prev);
+      if (next.has(label)) next.delete(label); else next.add(label);
+      try { localStorage.setItem(QUICKNAV_HIDDEN_KEY, JSON.stringify([...next])); } catch {}
+      return next;
+    });
+  };
 
   const handleDragStart = (e: React.DragEvent, index: number) => {
     setDragIndex(index);
@@ -1632,11 +1656,17 @@ function DashboardQuickNav() {
     setDragOverIndex(null);
   };
 
-  const resetOrder = () => {
+  const resetAll = () => {
     const defaultOrder = DASH_NAV_CARDS.map((c) => c.label);
     setCardOrder(defaultOrder);
-    try { localStorage.removeItem(QUICKNAV_ORDER_KEY); } catch {}
+    setHiddenCards(new Set());
+    try {
+      localStorage.removeItem(QUICKNAV_ORDER_KEY);
+      localStorage.removeItem(QUICKNAV_HIDDEN_KEY);
+    } catch {}
   };
+
+  const hiddenCount = hiddenCards.size;
 
   return (
     <div className="rounded-xl border bg-card">
@@ -1646,16 +1676,19 @@ function DashboardQuickNav() {
           className="flex items-center gap-2 hover:text-foreground text-foreground transition-colors"
         >
           <span className="text-sm font-semibold">Navigasi Cepat</span>
+          {!editMode && hiddenCount > 0 && (
+            <span className="text-xs text-muted-foreground/60 font-normal">({hiddenCount} disembunyikan)</span>
+          )}
           <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
         </button>
         {open && (
           <div className="flex items-center gap-2">
             {editMode && (
               <button
-                onClick={resetOrder}
+                onClick={resetAll}
                 className="text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded-md hover:bg-muted/60"
               >
-                Reset
+                Reset Semua
               </button>
             )}
             <button
@@ -1667,7 +1700,7 @@ function DashboardQuickNav() {
               }`}
             >
               <Settings2 className="h-3 w-3" />
-              {editMode ? "Selesai" : "Atur Urutan"}
+              {editMode ? "Selesai" : "Kustomisasi"}
             </button>
           </div>
         )}
@@ -1677,35 +1710,49 @@ function DashboardQuickNav() {
           {editMode && (
             <p className="text-xs text-muted-foreground mb-3 flex items-center gap-1.5">
               <GripVertical className="h-3 w-3" />
-              Drag kartu untuk mengubah urutan
+              Drag untuk ubah urutan · klik ikon mata untuk sembunyikan/tampilkan
             </p>
           )}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-            {orderedCards.map(({ label, icon: Icon, color, bg, items }, index) => {
-              const isDragging = dragIndex === index;
-              const isDragOver = dragOverIndex === index && dragIndex !== index;
+            {(editMode ? orderedCards : visibleCards).map(({ label, icon: Icon, color, bg, items }, index) => {
+              const isHidden = hiddenCards.has(label);
+              const isDragging = editMode && dragIndex === index;
+              const isDragOver = editMode && dragOverIndex === index && dragIndex !== index;
               return (
                 <div
                   key={label}
-                  draggable={editMode}
-                  onDragStart={editMode ? (e) => handleDragStart(e, index) : undefined}
-                  onDragOver={editMode ? (e) => handleDragOver(e, index) : undefined}
-                  onDrop={editMode ? (e) => handleDrop(e, index) : undefined}
+                  draggable={editMode && !isHidden}
+                  onDragStart={editMode && !isHidden ? (e) => handleDragStart(e, index) : undefined}
+                  onDragOver={editMode && !isHidden ? (e) => handleDragOver(e, index) : undefined}
+                  onDrop={editMode && !isHidden ? (e) => handleDrop(e, index) : undefined}
                   onDragEnd={editMode ? handleDragEnd : undefined}
                   className={`rounded-xl border bg-background p-4 flex flex-col gap-3 transition-all duration-150 ${
-                    editMode ? "cursor-grab active:cursor-grabbing" : ""
+                    editMode && !isHidden ? "cursor-grab active:cursor-grabbing" : ""
                   } ${isDragging ? "opacity-40 scale-95" : "opacity-100"} ${
                     isDragOver ? "border-primary ring-2 ring-primary/30 bg-primary/5" : ""
-                  }`}
+                  } ${isHidden ? "opacity-40" : ""}`}
                 >
                   <div className="flex items-center gap-2">
-                    {editMode && (
+                    {editMode && !isHidden && (
                       <GripVertical className="h-4 w-4 text-muted-foreground/50 shrink-0 -ml-1" />
                     )}
                     <div className={`rounded-lg p-2 ${bg} shrink-0`}>
                       <Icon className={`h-4 w-4 ${color}`} />
                     </div>
-                    <p className="text-sm font-semibold text-foreground leading-tight">{label}</p>
+                    <p className="text-sm font-semibold text-foreground leading-tight flex-1 min-w-0 truncate">{label}</p>
+                    {editMode && (
+                      <button
+                        onClick={() => toggleHidden(label)}
+                        className={`shrink-0 rounded-md p-1 transition-colors ${
+                          isHidden
+                            ? "text-muted-foreground/40 hover:text-muted-foreground"
+                            : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                        }`}
+                        title={isHidden ? "Tampilkan" : "Sembunyikan"}
+                      >
+                        {isHidden ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                      </button>
+                    )}
                   </div>
                   {!editMode && (
                     <div className="flex flex-col gap-0.5">
