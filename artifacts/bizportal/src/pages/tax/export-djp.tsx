@@ -390,6 +390,8 @@ function IssuesPanel({
   const [savedCount, setSavedCount]   = useState(0);
   const [autofilling, setAutofilling] = useState(false);
   const [autofillResult, setAutofillResult] = useState<{ updated: number } | null>(null);
+  const [autofillingFaktur, setAutofillingFaktur] = useState(false);
+  const [autofillFakturResult, setAutofillFakturResult] = useState<{ updated: number } | null>(null);
 
   const params = new URLSearchParams({ period, type: filter });
   if (companyId) params.set("companyId", String(companyId));
@@ -433,6 +435,33 @@ function IssuesPanel({
     }
   }
 
+  async function runAutofillFaktur() {
+    setAutofillingFaktur(true);
+    setAutofillFakturResult(null);
+    try {
+      const p = new URLSearchParams({ period });
+      if (companyId) p.set("companyId", String(companyId));
+      const r = await fetch(`/api/tax/export/autofill-faktur?${p}`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const body = await r.json();
+      if (!r.ok) throw new Error(body.message ?? "Gagal auto-isi faktur");
+      setAutofillFakturResult({ updated: body.updated ?? 0 });
+      if (body.updated > 0) {
+        toast.success(body.message);
+        refetch();
+        onFixed();
+      } else {
+        toast.info("Tidak ada No. Faktur yang bisa diisi otomatis (invoice penjualan belum memiliki nomor faktur atau sudah terisi)");
+      }
+    } catch (e: any) {
+      toast.error(e?.message ?? "Gagal auto-isi No. Faktur");
+    } finally {
+      setAutofillingFaktur(false);
+    }
+  }
+
   if (totalIssues === 0) return null;
 
   return (
@@ -455,6 +484,11 @@ function IssuesPanel({
           {autofillResult && autofillResult.updated > 0 && (
             <Badge className="bg-blue-200 text-blue-800 border-0 text-[10px]">
               {autofillResult.updated} NPWP diisi otomatis
+            </Badge>
+          )}
+          {autofillFakturResult && autofillFakturResult.updated > 0 && (
+            <Badge className="bg-emerald-200 text-emerald-800 border-0 text-[10px]">
+              {autofillFakturResult.updated} No. Faktur diisi otomatis
             </Badge>
           )}
         </div>
@@ -490,6 +524,19 @@ function IssuesPanel({
                   ? <Loader2 className="h-3 w-3 animate-spin" />
                   : <Sparkles className="h-3 w-3" />}
                 Auto-isi NPWP dari Master
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-6 px-2.5 text-[11px] gap-1 border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                onClick={runAutofillFaktur}
+                disabled={autofillingFaktur}
+                title="Isi No. Faktur Pajak secara otomatis dari nomor invoice penjualan terkait"
+              >
+                {autofillingFaktur
+                  ? <Loader2 className="h-3 w-3 animate-spin" />
+                  : <FileText className="h-3 w-3" />}
+                Auto-isi No. Faktur dari Invoice
               </Button>
               <Button size="sm" variant="ghost" className="h-6 px-2" onClick={() => refetch()} disabled={isLoading}>
                 <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? "animate-spin" : ""}`} />

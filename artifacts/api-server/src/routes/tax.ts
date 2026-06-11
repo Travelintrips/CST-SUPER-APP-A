@@ -1050,6 +1050,46 @@ router.post("/export/autofill-npwp", async (req, res) => {
   }
 });
 
+// ── POST /api/tax/export/autofill-faktur ──────────────────────────────────────
+// Batch isi tax_invoice_number di transaction_taxes dari sales_documents.invoice_number
+// Hanya untuk transaction_type = 'sales_order' yang invoice_number-nya belum terisi
+router.post("/export/autofill-faktur", async (req, res) => {
+  const companyId = resolveCompanyId(req);
+  const { period } = req.query as Record<string, string>;
+  if (!period) return res.status(400).json({ message: "period (YYYY-MM) wajib diisi" });
+
+  try {
+    const result = await db.execute(sql.raw(`
+      WITH matched AS (
+        SELECT DISTINCT ON (tt.id) tt.id, sd.invoice_number AS new_faktur
+        FROM transaction_taxes tt
+        JOIN sales_documents sd ON sd.id = tt.transaction_id
+        WHERE tt.company_id = ${companyId}
+          AND tt.period = '${period}'
+          AND tt.transaction_type = 'sales_order'
+          AND sd.invoice_number IS NOT NULL AND sd.invoice_number != ''
+          AND (tt.tax_invoice_number IS NULL OR tt.tax_invoice_number = '')
+          AND (tt.faktur_pajak_number IS NULL OR tt.faktur_pajak_number = '')
+      )
+      UPDATE transaction_taxes tt
+      SET tax_invoice_number = matched.new_faktur, updated_at = NOW()
+      FROM matched
+      WHERE tt.id = matched.id
+      RETURNING tt.id
+    `));
+
+    const updated = result.rows.length;
+    logger.info({ companyId, period, updated }, "[tax] autofill-faktur completed");
+    return res.json({
+      message: `${updated} baris No. Faktur berhasil diisi dari invoice penjualan`,
+      updated,
+    });
+  } catch (err) {
+    logger.error({ err }, "tax/export/autofill-faktur: query failed");
+    return res.status(500).json({ message: "Gagal auto-isi No. Faktur" });
+  }
+});
+
 // ── GET /api/tax/export/validate ─────────────────────────────────────────────
 // Pre-flight: hitung baris siap export, bermasalah NPWP, bermasalah faktur
 router.get("/export/validate", async (req, res) => {
