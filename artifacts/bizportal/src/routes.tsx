@@ -283,6 +283,18 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/logistics/product-first/audit" component={PR(ProductFirstAuditPage)} />
       <Route path="/logistics/import-assistant" component={PR(LogisticsImportAssistantPage)} />
       <Route path="/air-freight-form/:token" component={AirFreightVendorFormPage} />
+
+      {/* ── Logistics clean-URL aliases ────────────────────────────────── */}
+      <Route path="/logistics/dashboard" component={PR(OperationalDashboardPage)} />
+      <Route path="/logistics/shipments" component={PR(LogisticsPage)} />
+      <Route path="/logistics/trucking" component={PR(TruckingOrdersPage)} />
+      <Route path="/logistics/air-freight" component={PR(AirFreightNewOrdersPage)} />
+      <Route path="/logistics/ocean-freight" component={PR(OceanFreightOrdersPage)} />
+      <Route path="/logistics/ppjk" component={PR(LogisticsFreightPage)} />
+      <Route path="/logistics/vendor-fulfillment" component={PR(LogisticsVendorFulfillmentsPage)} />
+      <Route path="/logistics/profitability" component={PR(AccountingFreightProfitabilityPage)} />
+      <Route path="/logistics/settings" component={PR(LogisticsMarginRulesPage)} />
+
       <Route path="/portal-product-orders" component={PR(PortalProductOrdersPage)} />
       <Route path="/portal/customers" component={PR(PortalCustomersPage)} />
       <Route path="/portal/onboarding-approvals" component={PR(PortalOnboardingApprovalsPage)} />
