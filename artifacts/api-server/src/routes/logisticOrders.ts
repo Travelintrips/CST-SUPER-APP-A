@@ -321,6 +321,19 @@ logisticOrdersRouter.post("/", async (req: Request, res: Response) => {
   }
   const body = parsed.data;
 
+  // ── Extra validation (beyond generated Zod schema) ───────────────────────
+  const extraErrors: string[] = [];
+  if (!body.customerName.trim()) extraErrors.push("customerName tidak boleh kosong");
+  if (!body.email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email.trim()))
+    extraErrors.push("Format email tidak valid");
+  if (!body.phone.trim()) extraErrors.push("phone tidak boleh kosong");
+  if (body.subtotal < 0) extraErrors.push("subtotal tidak boleh negatif");
+  if (body.tax < 0) extraErrors.push("tax tidak boleh negatif");
+  if (body.grandTotal < 0) extraErrors.push("grandTotal tidak boleh negatif");
+  if (body.items.length === 0) extraErrors.push("items tidak boleh kosong");
+  if (extraErrors.length > 0)
+    return res.status(400).json({ message: "Data tidak valid", errors: extraErrors });
+
   // Server-side subtotal validation: jumlahkan subtotal per item, jangan percaya nilai agregat dari client
   const computedSubtotal = body.items.reduce((sum, item) => sum + Number(item.subtotal ?? 0), 0);
   const clientSubtotal = Number(body.subtotal);
@@ -1634,6 +1647,7 @@ logisticOrdersRouter.get("/:id", async (req: Request, res: Response) => {
 
 // POST /api/logistic/orders/:id/resend-wa-group — resend order_new notif ke Admin Group
 logisticOrdersRouter.post("/:id/resend-wa-group", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
   const id = parseInt(String(req.params["id"] ?? ""));
   if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
 
@@ -1762,6 +1776,7 @@ async function notifyVendorStatusChange(
 
 // PUT /api/logistic/orders/:id/status — update status (admin)
 logisticOrdersRouter.put("/:id/status", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
   const paramsParsed = UpdateLogisticOrderStatusParams.safeParse({
     id: parseInt(String(req.params.id), 10),
   });
@@ -1987,6 +2002,7 @@ logisticOrdersRouter.get("/:id/valid-transitions", async (req: Request, res: Res
 
 // PATCH /api/logistic/orders/:id/details — update detail order (admin)
 logisticOrdersRouter.patch("/:id/details", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
   const id = parseInt(String(req.params["id"] ?? ""), 10);
   if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
 
@@ -2056,6 +2072,7 @@ logisticOrdersRouter.patch("/:id/details", async (req: Request, res: Response) =
 
 // PATCH /api/logistic/orders/:id/type — update shipment type (admin)
 logisticOrdersRouter.patch("/:id/type", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
   const id = parseInt(String(req.params["id"] ?? ""), 10);
   if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
   const { shipmentType, version: typeVersion } = req.body as { shipmentType?: unknown; version?: unknown };
@@ -2096,6 +2113,7 @@ logisticOrdersRouter.patch("/:id/type", async (req: Request, res: Response) => {
 
 // PUT /api/logistic/orders/bulk-status — ubah status banyak order sekaligus
 logisticOrdersRouter.put("/bulk-status", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
   const parsed = z.object({
     ids: z.array(z.number().int().positive()).min(1),
     status: z.enum([
@@ -2207,6 +2225,7 @@ async function cleanupLogisticOrderStorage(orderIds: number[]): Promise<void> {
 
 // DELETE /api/logistic/orders/bulk — hapus banyak order sekaligus
 logisticOrdersRouter.delete("/bulk", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
   const parsed = z.object({ ids: z.array(z.number().int().positive()).min(1) }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ message: "ids harus array angka yang valid" });
   const { ids } = parsed.data;
@@ -2221,6 +2240,7 @@ logisticOrdersRouter.delete("/bulk", async (req: Request, res: Response) => {
 
 // DELETE /api/logistic/orders/:id
 logisticOrdersRouter.delete("/:id", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
   const id = parseInt(String(req.params["id"] ?? ""));
   if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
   // Cleanup storage dulu sebelum delete DB

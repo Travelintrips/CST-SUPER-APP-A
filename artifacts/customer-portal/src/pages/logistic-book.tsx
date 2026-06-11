@@ -958,8 +958,16 @@ export default function BookPage() {
 
   function handleSubmit() {
     const { companyName, customerName, email, phone, origin, destination, shippingAddress } = customerForm;
-    if (!customerName || !email) {
-      toast({ title: "Lengkapi nama PIC dan email", variant: "destructive" });
+    if (!customerName.trim()) {
+      toast({ title: "Nama PIC wajib diisi", variant: "destructive" });
+      return;
+    }
+    if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      toast({ title: "Format email tidak valid", variant: "destructive" });
+      return;
+    }
+    if (!phone.trim()) {
+      toast({ title: "Nomor telepon / WhatsApp wajib diisi", variant: "destructive" });
       return;
     }
     if (cartItems.length === 0) {
@@ -1749,7 +1757,7 @@ export default function BookPage() {
                 <Input type="email" placeholder="email@perusahaan.com" value={f.email} onChange={e => set("email", e.target.value)} />
               </div>
               <div className="col-span-2 sm:col-span-1">
-                <Label className="text-xs">Telepon / WhatsApp</Label>
+                <Label className="text-xs">Telepon / WhatsApp <span className="text-destructive">*</span></Label>
                 <Input placeholder="+62..." value={f.phone} onChange={e => set("phone", e.target.value)} />
               </div>
 
@@ -2531,13 +2539,21 @@ export default function BookPage() {
     if (step === 0) return !!orderType && (orderType !== "shipment" || !!shipmentType);
     if (step === 1) return false;
     if (step === 2) return cartItems.length > 0;
-    if (step === 3) return !!(customerForm.customerName && customerForm.email);
+    if (step === 3) return !!(
+      customerForm.customerName.trim() &&
+      customerForm.email.trim() && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerForm.email.trim()) &&
+      customerForm.phone.trim()
+    );
     if (step === 4) {
       if (!paymentType) return false;
       if (paymentType === "transfer") return !!transferTerm && (transferTerm !== "termin" || !!paymentTerm) && (transferTerm !== "dp" || !!dpNext);
       return true;
     }
-    if (step === 5) return !!(customerForm.customerName && customerForm.email) && cartItems.length > 0;
+    if (step === 5) return !!(
+      customerForm.customerName.trim() &&
+      customerForm.email.trim() && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerForm.email.trim()) &&
+      customerForm.phone.trim()
+    ) && cartItems.length > 0;
     return false;
   };
 
