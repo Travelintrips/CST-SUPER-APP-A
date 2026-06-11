@@ -1693,10 +1693,10 @@ function DashboardQuickNav() {
             )}
             <button
               onClick={() => setEditMode((v) => !v)}
-              className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border transition-colors ${
+              className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border transition-colors font-medium ${
                 editMode
                   ? "bg-primary text-primary-foreground border-primary"
-                  : "text-muted-foreground hover:text-foreground border-transparent hover:bg-muted/60"
+                  : "text-amber-400 border-amber-500/50 bg-amber-500/10 hover:bg-amber-500/20 hover:border-amber-400"
               }`}
             >
               <Settings2 className="h-3 w-3" />

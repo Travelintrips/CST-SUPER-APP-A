@@ -133,7 +133,7 @@ export function PinnedShortcuts() {
       <div className="hidden lg:flex h-8 items-center px-6 border-b border-border bg-background/80">
         <button
           onClick={() => setPickerOpen(true)}
-          className="flex items-center gap-1.5 text-[11px] text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+          className="flex items-center gap-1.5 text-[11px] font-medium text-amber-400 hover:text-amber-300 border border-dashed border-amber-500/40 hover:border-amber-400/70 rounded-md px-2.5 py-1 transition-colors bg-amber-500/5 hover:bg-amber-500/10"
         >
           <Pin className="h-3 w-3" />
           <span>Pin shortcut favorit...</span>
