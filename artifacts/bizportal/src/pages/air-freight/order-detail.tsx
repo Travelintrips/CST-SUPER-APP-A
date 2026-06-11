@@ -21,6 +21,7 @@ import {
   Collapsible, CollapsibleContent, CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { FreightCustomsPanel } from "@/components/freight/FreightCustomsPanel";
 
 /* ── helpers ─────────────────────────────────────────────────────────────── */
 const IDR = (n: number | null | undefined) =>
@@ -548,6 +549,21 @@ export default function AirFreightOrderDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* ── PPJK — Dokumen Kepabeanan ─────────────────────────────────────── */}
+      <Card className="border-border/60">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <FileText className="h-4 w-4 text-muted-foreground" /> Dokumen Kepabeanan (PPJK)
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <FreightCustomsPanel
+            sourceModule="air_freight"
+            sourceOrderId={parseInt(id || "0")}
+          />
+        </CardContent>
+      </Card>
     </AppShell>
   );
 }

@@ -226,6 +226,7 @@ import AirFreightRatesPage from "@/pages/air-freight/rates";
 import AirFreightNewOrderDetailPage from "@/pages/air-freight/order-detail";
 import AirFreightApprovalPage from "@/pages/air-freight/approval";
 import AirFreightTrackPage from "@/pages/air-freight/track";
+import PpjkPage from "@/pages/logistics/ppjk";
 
 const PR = (C: React.ComponentType) => () => <ProtectedRoute component={C} />;
 
@@ -523,6 +524,9 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       {/* Legacy redirect — /logistics/air-freight → /air-freight/orders */}
       <Route path="/logistics/air-freight/:id" component={({ params }: { params: { id: string } }) => <Redirect to={`/air-freight/orders/${params.id}`} />} />
       <Route path="/logistics/air-freight" component={() => <Redirect to="/air-freight/orders" />} />
+
+      {/* ── PPJK — Dokumen Kepabeanan ────────────────────────────────────── */}
+      <Route path="/logistics/ppjk" component={PR(PpjkPage)} />
 
       {/* ── Tax Management ─────────────────────────────────────────────── */}
       <Route path="/tax/dashboard" component={PR(TaxDashboardPage)} />

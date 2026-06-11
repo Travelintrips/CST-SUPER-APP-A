@@ -308,6 +308,7 @@ export function AppShell({ children, noPadding }: AppShellProps) {
         { titleKey: "Order Trucking", href: "/logistics/trucking-orders", icon: Truck, companyCodes: ["CST"] },
         { titleKey: "Ocean Freight Orders", href: "/logistics/ocean-freight-orders", icon: Anchor, companyCodes: ["CST"] },
         { titleKey: "Air Freight Orders", href: "/air-freight/orders", icon: Plane, companyCodes: ["CST"] },
+        { titleKey: "PPJK — Kepabeanan", href: "/logistics/ppjk", icon: FileText, companyCodes: ["CST"] },
         { titleKey: "Vendor Fulfillment", href: "/logistics/vendor-fulfillments", icon: PackageCheck, companyCodes: ["CST"] },
         { titleKey: "Manajemen Driver", href: "/logistics/drivers", icon: Users, companyCodes: ["CST"] },
         { titleKey: "Performa Driver", href: "/logistics/driver-performance", icon: BarChart2, companyCodes: ["CST"] },

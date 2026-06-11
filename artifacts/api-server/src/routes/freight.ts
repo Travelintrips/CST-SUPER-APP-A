@@ -927,7 +927,7 @@ router.delete("/freight-shipments/:shipmentId/attachments/:attachmentId", async 
   return res.json({ message: "Deleted" });
 });
 
-// ─── FREIGHT CUSTOMS DOCS ────────────────────────────────────────────────────
+// ─── FREIGHT CUSTOMS DOCS — Legacy (General Freight shipmentId-bound) ─────────
 
 // GET /api/logistics/freight-shipments/:shipmentId/customs-docs
 router.get("/freight-shipments/:shipmentId/customs-docs", async (req, res) => {
@@ -949,6 +949,7 @@ router.post("/freight-shipments/:shipmentId/customs-docs", async (req, res) => {
   if (!docType) return res.status(400).json({ message: "docType wajib diisi" });
   const [created] = await db.insert(freightCustomsDocsTable).values({
     shipmentId,
+    sourceModule: "general",
     docType,
     nomorAju: nomorAju || null,
     nomorDokumen: nomorDokumen || null,
@@ -990,6 +991,77 @@ router.delete("/freight-shipments/:shipmentId/customs-docs/:docId", async (req, 
   const [deleted] = await db
     .delete(freightCustomsDocsTable)
     .where(and(eq(freightCustomsDocsTable.id, docId), eq(freightCustomsDocsTable.shipmentId, shipmentId)))
+    .returning();
+  if (!deleted) return res.status(404).json({ message: "Dokumen tidak ditemukan" });
+  return res.json({ message: "Deleted" });
+});
+
+// ─── UNIFIED CUSTOMS DOCS (multi-source: general / air_freight / ocean_freight) ─
+
+// GET /api/logistics/customs-docs?shipmentId=X  OR  ?sourceModule=Y&sourceOrderId=Z
+router.get("/customs-docs", async (req, res) => {
+  const conditions = [];
+  if (req.query.shipmentId) conditions.push(eq(freightCustomsDocsTable.shipmentId, Number(req.query.shipmentId)));
+  if (req.query.sourceModule) conditions.push(eq(freightCustomsDocsTable.sourceModule, String(req.query.sourceModule)));
+  if (req.query.sourceOrderId) conditions.push(eq(freightCustomsDocsTable.sourceOrderId, Number(req.query.sourceOrderId)));
+  const docs = await db
+    .select()
+    .from(freightCustomsDocsTable)
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .orderBy(desc(freightCustomsDocsTable.createdAt));
+  return res.json(docs.map((d) => ({ ...d, createdAt: d.createdAt.toISOString(), updatedAt: d.updatedAt.toISOString() })));
+});
+
+// POST /api/logistics/customs-docs
+router.post("/customs-docs", async (req, res) => {
+  const { shipmentId, sourceModule, sourceOrderId, docType, nomorAju, nomorDokumen, tanggalDokumen, customsStatus, data, scanSource, notes } = req.body;
+  if (!docType) return res.status(400).json({ message: "docType wajib diisi" });
+  if (!shipmentId && !sourceModule) return res.status(400).json({ message: "shipmentId atau sourceModule wajib diisi" });
+  const [created] = await db.insert(freightCustomsDocsTable).values({
+    shipmentId: shipmentId ? Number(shipmentId) : null,
+    sourceModule: sourceModule || null,
+    sourceOrderId: sourceOrderId ? Number(sourceOrderId) : null,
+    docType,
+    nomorAju: nomorAju || null,
+    nomorDokumen: nomorDokumen || null,
+    tanggalDokumen: tanggalDokumen || null,
+    customsStatus: customsStatus || null,
+    data: data ?? {},
+    scanSource: scanSource || "manual",
+    notes: notes || null,
+  }).returning();
+  return res.status(201).json({ ...created, createdAt: created.createdAt.toISOString(), updatedAt: created.updatedAt.toISOString() });
+});
+
+// PUT /api/logistics/customs-docs/:docId
+router.put("/customs-docs/:docId", async (req, res) => {
+  const docId = Number(req.params.docId);
+  if (!Number.isInteger(docId)) return res.status(400).json({ message: "Invalid id" });
+  const { docType, nomorAju, nomorDokumen, tanggalDokumen, customsStatus, data, notes } = req.body;
+  const patch: Record<string, unknown> = { updatedAt: new Date() };
+  if (docType !== undefined) patch.docType = docType;
+  if (nomorAju !== undefined) patch.nomorAju = nomorAju || null;
+  if (nomorDokumen !== undefined) patch.nomorDokumen = nomorDokumen || null;
+  if (tanggalDokumen !== undefined) patch.tanggalDokumen = tanggalDokumen || null;
+  if (customsStatus !== undefined) patch.customsStatus = customsStatus || null;
+  if (data !== undefined) patch.data = data;
+  if (notes !== undefined) patch.notes = notes || null;
+  const [updated] = await db
+    .update(freightCustomsDocsTable)
+    .set(patch)
+    .where(eq(freightCustomsDocsTable.id, docId))
+    .returning();
+  if (!updated) return res.status(404).json({ message: "Dokumen tidak ditemukan" });
+  return res.json({ ...updated, createdAt: updated.createdAt.toISOString(), updatedAt: updated.updatedAt.toISOString() });
+});
+
+// DELETE /api/logistics/customs-docs/:docId
+router.delete("/customs-docs/:docId", async (req, res) => {
+  const docId = Number(req.params.docId);
+  if (!Number.isInteger(docId)) return res.status(400).json({ message: "Invalid id" });
+  const [deleted] = await db
+    .delete(freightCustomsDocsTable)
+    .where(eq(freightCustomsDocsTable.id, docId))
     .returning();
   if (!deleted) return res.status(404).json({ message: "Dokumen tidak ditemukan" });
   return res.json({ message: "Deleted" });

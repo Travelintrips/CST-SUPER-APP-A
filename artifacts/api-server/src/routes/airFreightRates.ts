@@ -5,67 +5,6 @@ import { sql } from "drizzle-orm";
 
 const router = Router();
 
-// ── CREATE TABLE ─────────────────────────────────────────────────────────────
-db.execute(sql`
-  CREATE TABLE IF NOT EXISTS air_freight_rates (
-    id                          SERIAL PRIMARY KEY,
-    rate_source_type            TEXT NOT NULL DEFAULT 'agent',
-    rate_source_name            TEXT NOT NULL DEFAULT '',
-    airline                     TEXT NOT NULL DEFAULT '',
-    origin_city                 TEXT NOT NULL DEFAULT '',
-    origin_airport              TEXT NOT NULL DEFAULT '',
-    destination_city            TEXT NOT NULL DEFAULT '',
-    destination_airport         TEXT NOT NULL DEFAULT '',
-    trade_type                  TEXT NOT NULL DEFAULT 'export',
-    service_mode                TEXT NOT NULL DEFAULT 'door_to_door',
-    service_level               TEXT NOT NULL DEFAULT 'standard',
-    currency                    TEXT NOT NULL DEFAULT 'IDR',
-    exchange_rate_to_idr        NUMERIC(15,4) NOT NULL DEFAULT 1,
-    rate_minimum                NUMERIC(15,2),
-    rate_45                     NUMERIC(15,2),
-    rate_100                    NUMERIC(15,2),
-    rate_250                    NUMERIC(15,2),
-    rate_300                    NUMERIC(15,2),
-    rate_500                    NUMERIC(15,2),
-    rate_1000                   NUMERIC(15,2),
-    fuel_surcharge_per_kg       NUMERIC(15,2) NOT NULL DEFAULT 0,
-    security_surcharge_per_kg   NUMERIC(15,2) NOT NULL DEFAULT 0,
-    xray_fee                    NUMERIC(15,2) NOT NULL DEFAULT 0,
-    awb_fee                     NUMERIC(15,2) NOT NULL DEFAULT 0,
-    handling_fee                NUMERIC(15,2) NOT NULL DEFAULT 0,
-    doc_fee                     NUMERIC(15,2) NOT NULL DEFAULT 0,
-    edi_fee                     NUMERIC(15,2) NOT NULL DEFAULT 0,
-    customs_clearance_fee       NUMERIC(15,2) NOT NULL DEFAULT 0,
-    pickup_trucking_estimate    NUMERIC(15,2) NOT NULL DEFAULT 0,
-    delivery_trucking_estimate  NUMERIC(15,2) NOT NULL DEFAULT 0,
-    insurance_percent           NUMERIC(8,4) NOT NULL DEFAULT 0,
-    dg_surcharge_percent        NUMERIC(8,4) NOT NULL DEFAULT 0,
-    perishable_surcharge_percent NUMERIC(8,4) NOT NULL DEFAULT 0,
-    live_animal_surcharge_percent NUMERIC(8,4) NOT NULL DEFAULT 0,
-    valuable_surcharge_percent  NUMERIC(8,4) NOT NULL DEFAULT 0,
-    oversize_surcharge_percent  NUMERIC(8,4) NOT NULL DEFAULT 0,
-    cold_chain_surcharge        NUMERIC(15,2) NOT NULL DEFAULT 0,
-    peak_season_surcharge       NUMERIC(15,2) NOT NULL DEFAULT 0,
-    minimum_charge              NUMERIC(15,2) NOT NULL DEFAULT 0,
-    transit_days                INTEGER,
-    flight_number               TEXT,
-    etd                         TEXT,
-    eta                         TEXT,
-    routing_type                TEXT NOT NULL DEFAULT 'direct'
-                                  CHECK (routing_type IN ('direct','transit')),
-    cargo_type                  TEXT NOT NULL DEFAULT 'general',
-    valid_from                  DATE NOT NULL DEFAULT CURRENT_DATE,
-    valid_until                 DATE NOT NULL DEFAULT (CURRENT_DATE + INTERVAL '30 days'),
-    price_status                TEXT NOT NULL DEFAULT 'active'
-                                  CHECK (price_status IN ('active','draft','expired')),
-    is_active                   BOOLEAN NOT NULL DEFAULT TRUE,
-    company_id                  INTEGER,
-    created_by                  TEXT,
-    created_at                  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at                  TIMESTAMPTZ NOT NULL DEFAULT NOW()
-  )
-`).catch(() => {});
-
 // ── Validasi helper ───────────────────────────────────────────────────────────
 function validateRate(body: Record<string, unknown>): string | null {
   if (body.valid_until && body.valid_from && body.valid_until < body.valid_from) {

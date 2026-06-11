@@ -17,6 +17,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { FreightCustomsPanel } from "@/components/freight/FreightCustomsPanel";
 
 const STATUS_LABEL: Record<string, string> = {
   draft:"Draft", estimated:"Estimasi", waiting_rate:"Menunggu Rate",
@@ -523,6 +524,14 @@ export default function OceanFreightOrderDetailPage() {
             </div>
           </Section>
         ) : null}
+
+        {/* ── PPJK — Dokumen Kepabeanan ──────────────────────────────────── */}
+        <Section title="Dokumen Kepabeanan (PPJK)" icon={Anchor} defaultOpen={false}>
+          <FreightCustomsPanel
+            sourceModule="ocean_freight"
+            sourceOrderId={id}
+          />
+        </Section>
       </div>
     </AppShell>
   );

@@ -7,6 +7,7 @@ import {
   jsonb,
   timestamp,
   boolean,
+  date,
   index,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
@@ -148,7 +149,68 @@ export const airFreightRateSubmissionsTable = pgTable("air_freight_rate_submissi
   orderIdx: index("afr_submissions_order_idx").on(t.orderId),
 }));
 
+export const airFreightRatesTable = pgTable("air_freight_rates", {
+  id: serial("id").primaryKey(),
+  rateSourceType: text("rate_source_type").notNull().default("agent"),
+  rateSourceName: text("rate_source_name").notNull().default(""),
+  airline: text("airline").notNull().default(""),
+  originCity: text("origin_city").notNull().default(""),
+  originAirport: text("origin_airport").notNull().default(""),
+  destinationCity: text("destination_city").notNull().default(""),
+  destinationAirport: text("destination_airport").notNull().default(""),
+  tradeType: text("trade_type").notNull().default("export"),
+  serviceMode: text("service_mode").notNull().default("door_to_door"),
+  serviceLevel: text("service_level").notNull().default("standard"),
+  currency: text("currency").notNull().default("IDR"),
+  exchangeRateToIdr: numeric("exchange_rate_to_idr", { precision: 15, scale: 4 }).notNull().default("1"),
+  rateMinimum: numeric("rate_minimum", { precision: 15, scale: 2 }),
+  rate45: numeric("rate_45", { precision: 15, scale: 2 }),
+  rate100: numeric("rate_100", { precision: 15, scale: 2 }),
+  rate250: numeric("rate_250", { precision: 15, scale: 2 }),
+  rate300: numeric("rate_300", { precision: 15, scale: 2 }),
+  rate500: numeric("rate_500", { precision: 15, scale: 2 }),
+  rate1000: numeric("rate_1000", { precision: 15, scale: 2 }),
+  fuelSurchargePerKg: numeric("fuel_surcharge_per_kg", { precision: 15, scale: 2 }).notNull().default("0"),
+  securitySurchargePerKg: numeric("security_surcharge_per_kg", { precision: 15, scale: 2 }).notNull().default("0"),
+  xrayFee: numeric("xray_fee", { precision: 15, scale: 2 }).notNull().default("0"),
+  awbFee: numeric("awb_fee", { precision: 15, scale: 2 }).notNull().default("0"),
+  handlingFee: numeric("handling_fee", { precision: 15, scale: 2 }).notNull().default("0"),
+  docFee: numeric("doc_fee", { precision: 15, scale: 2 }).notNull().default("0"),
+  ediFee: numeric("edi_fee", { precision: 15, scale: 2 }).notNull().default("0"),
+  customsClearanceFee: numeric("customs_clearance_fee", { precision: 15, scale: 2 }).notNull().default("0"),
+  pickupTruckingEstimate: numeric("pickup_trucking_estimate", { precision: 15, scale: 2 }).notNull().default("0"),
+  deliveryTruckingEstimate: numeric("delivery_trucking_estimate", { precision: 15, scale: 2 }).notNull().default("0"),
+  insurancePercent: numeric("insurance_percent", { precision: 8, scale: 4 }).notNull().default("0"),
+  dgSurchargePercent: numeric("dg_surcharge_percent", { precision: 8, scale: 4 }).notNull().default("0"),
+  perishableSurchargePercent: numeric("perishable_surcharge_percent", { precision: 8, scale: 4 }).notNull().default("0"),
+  liveAnimalSurchargePercent: numeric("live_animal_surcharge_percent", { precision: 8, scale: 4 }).notNull().default("0"),
+  valuableSurchargePercent: numeric("valuable_surcharge_percent", { precision: 8, scale: 4 }).notNull().default("0"),
+  oversizeSurchargePercent: numeric("oversize_surcharge_percent", { precision: 8, scale: 4 }).notNull().default("0"),
+  coldChainSurcharge: numeric("cold_chain_surcharge", { precision: 15, scale: 2 }).notNull().default("0"),
+  peakSeasonSurcharge: numeric("peak_season_surcharge", { precision: 15, scale: 2 }).notNull().default("0"),
+  minimumCharge: numeric("minimum_charge", { precision: 15, scale: 2 }).notNull().default("0"),
+  transitDays: integer("transit_days"),
+  flightNumber: text("flight_number"),
+  etd: text("etd"),
+  eta: text("eta"),
+  routingType: text("routing_type").notNull().default("direct"),
+  cargoType: text("cargo_type").notNull().default("general"),
+  validFrom: date("valid_from").notNull(),
+  validUntil: date("valid_until").notNull(),
+  priceStatus: text("price_status").notNull().default("active"),
+  isActive: boolean("is_active").notNull().default(true),
+  companyId: integer("company_id").references(() => companiesTable.id, { onDelete: "set null" }),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  routeIdx: index("afr_rates_route_idx").on(t.originAirport, t.destinationAirport),
+  activeIdx: index("afr_rates_active_idx").on(t.isActive, t.validFrom, t.validUntil),
+}));
+
 export type AirFreightOrder = typeof airFreightOrdersTable.$inferSelect;
 export type InsertAirFreightOrder = typeof airFreightOrdersTable.$inferInsert;
 export type AirFreightRfq = typeof airFreightRfqsTable.$inferSelect;
 export type AirFreightRateSubmission = typeof airFreightRateSubmissionsTable.$inferSelect;
+export type AirFreightRate = typeof airFreightRatesTable.$inferSelect;
+export type InsertAirFreightRate = typeof airFreightRatesTable.$inferInsert;

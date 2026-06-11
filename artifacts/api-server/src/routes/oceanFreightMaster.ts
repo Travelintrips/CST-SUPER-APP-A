@@ -5,84 +5,8 @@ import { sql } from "drizzle-orm";
 
 const router = Router();
 
-// ── Boot: Create master tables ─────────────────────────────────────────────────
+// ── Seed: Master data ──────────────────────────────────────────────────────────
 (async () => {
-  await db.execute(sql.raw(`
-    CREATE TABLE IF NOT EXISTS freight_ports (
-      id SERIAL PRIMARY KEY,
-      code TEXT NOT NULL,
-      name TEXT NOT NULL,
-      city TEXT NOT NULL DEFAULT '',
-      country TEXT NOT NULL DEFAULT '',
-      country_code TEXT NOT NULL DEFAULT '',
-      region TEXT NOT NULL DEFAULT '',
-      port_type TEXT NOT NULL DEFAULT 'sea',
-      timezone TEXT NOT NULL DEFAULT 'Asia/Jakarta',
-      is_active BOOLEAN NOT NULL DEFAULT TRUE,
-      sort_order INTEGER NOT NULL DEFAULT 0,
-      notes TEXT,
-      created_at TIMESTAMPTZ DEFAULT NOW(),
-      updated_at TIMESTAMPTZ DEFAULT NOW(),
-      CONSTRAINT freight_ports_code_key UNIQUE (code)
-    )
-  `)).catch((e: unknown) => console.warn("freight_ports boot:", e));
-
-  await db.execute(sql.raw(`
-    CREATE TABLE IF NOT EXISTS freight_carriers (
-      id SERIAL PRIMARY KEY,
-      code TEXT NOT NULL,
-      name TEXT NOT NULL,
-      carrier_type TEXT NOT NULL DEFAULT 'shipping_line',
-      country TEXT NOT NULL DEFAULT '',
-      country_code TEXT NOT NULL DEFAULT '',
-      logo_url TEXT,
-      is_active BOOLEAN NOT NULL DEFAULT TRUE,
-      sort_order INTEGER NOT NULL DEFAULT 0,
-      notes TEXT,
-      created_at TIMESTAMPTZ DEFAULT NOW(),
-      updated_at TIMESTAMPTZ DEFAULT NOW(),
-      CONSTRAINT freight_carriers_code_key UNIQUE (code)
-    )
-  `)).catch((e: unknown) => console.warn("freight_carriers boot:", e));
-
-  await db.execute(sql.raw(`
-    CREATE TABLE IF NOT EXISTS freight_container_types (
-      id SERIAL PRIMARY KEY,
-      code TEXT NOT NULL,
-      name TEXT NOT NULL,
-      teu NUMERIC(5,2) NOT NULL DEFAULT 1,
-      max_cbm NUMERIC(10,2),
-      max_payload_kg INTEGER,
-      is_reefer BOOLEAN NOT NULL DEFAULT FALSE,
-      is_special BOOLEAN NOT NULL DEFAULT FALSE,
-      is_active BOOLEAN NOT NULL DEFAULT TRUE,
-      sort_order INTEGER NOT NULL DEFAULT 0,
-      notes TEXT,
-      CONSTRAINT freight_container_types_code_key UNIQUE (code)
-    )
-  `)).catch((e: unknown) => console.warn("freight_container_types boot:", e));
-
-  await db.execute(sql.raw(`
-    CREATE TABLE IF NOT EXISTS ocean_freight_route_matrix (
-      id SERIAL PRIMARY KEY,
-      origin_port_code TEXT NOT NULL,
-      destination_port_code TEXT NOT NULL,
-      carrier_code TEXT NOT NULL,
-      service_name TEXT NOT NULL DEFAULT '',
-      transit_days_min INTEGER,
-      transit_days_max INTEGER,
-      frequency TEXT NOT NULL DEFAULT 'weekly',
-      direct_or_transshipment TEXT NOT NULL DEFAULT 'direct',
-      pol TEXT,
-      pod TEXT,
-      transshipment_port TEXT,
-      is_active BOOLEAN NOT NULL DEFAULT TRUE,
-      notes TEXT,
-      created_at TIMESTAMPTZ DEFAULT NOW(),
-      updated_at TIMESTAMPTZ DEFAULT NOW(),
-      CONSTRAINT ofr_route_matrix_uq UNIQUE (origin_port_code, destination_port_code, carrier_code)
-    )
-  `)).catch((e: unknown) => console.warn("ocean_freight_route_matrix boot:", e));
 
   // ── Seed: Ports ──────────────────────────────────────────────────────────────
   await db.execute(sql.raw(`
