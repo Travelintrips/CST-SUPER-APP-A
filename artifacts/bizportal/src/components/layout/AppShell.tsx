@@ -293,7 +293,6 @@ export function AppShell({ children, noPadding }: AppShellProps) {
     },
 
     // ── 5. OPERATIONS / LOGISTICS ─────────────────────────────────────
-    // Menggabungkan Operations (Trading) + Logistics dalam satu parent
     {
       type: "group",
       titleKey: "Operations / Logistics",
@@ -307,6 +306,8 @@ export function AppShell({ children, noPadding }: AppShellProps) {
         { titleKey: "freightForwarding", href: "/logistics/freight", icon: Ship, companyCodes: ["CST"] },
         { titleKey: "portalOrders", href: "/logistics/portal-orders", icon: ClipboardList, companyCodes: ["CST"] },
         { titleKey: "Order Trucking", href: "/logistics/trucking-orders", icon: Truck, companyCodes: ["CST"] },
+        { titleKey: "Ocean Freight Orders", href: "/logistics/ocean-freight-orders", icon: Anchor, companyCodes: ["CST"] },
+        { titleKey: "Air Freight Orders", href: "/air-freight/orders", icon: Plane, companyCodes: ["CST"] },
         { titleKey: "Vendor Fulfillment", href: "/logistics/vendor-fulfillments", icon: PackageCheck, companyCodes: ["CST"] },
         { titleKey: "Manajemen Driver", href: "/logistics/drivers", icon: Users, companyCodes: ["CST"] },
         { titleKey: "Performa Driver", href: "/logistics/driver-performance", icon: BarChart2, companyCodes: ["CST"] },
@@ -317,19 +318,25 @@ export function AppShell({ children, noPadding }: AppShellProps) {
         { titleKey: "AI Import Advisor", href: "/logistics/import-assistant", icon: Bot, companyCodes: ["CST"] },
         { titleKey: "Margin Rules", href: "/logistics/margin-rules", icon: Calculator },
         { titleKey: "Internal Tasks", href: "/logistics/internal-tasks", icon: ClipboardCheck },
-        { titleKey: "Air Freight Orders", href: "/logistics/air-freight", icon: PlaneTakeoff, companyCodes: ["CST"] },
-        { titleKey: "AI Import Advisor", href: "/logistics/import-assistant", icon: Bot, companyCodes: ["CST"] },
         { titleKey: "Vendor Recommendation", href: "/logistics/vendor-recommendation", icon: BarChart2, roles: ["admin", "owner"] },
         { titleKey: "Vendor × Komoditas", href: "/logistics/vendor-commodity-intelligence", icon: BarChart2, roles: ["admin", "owner"] },
         { titleKey: "Pelanggan Portal", href: "/portal/customers", icon: Users },
         { titleKey: "Persetujuan Onboarding", href: "/portal/onboarding-approvals", icon: Users },
-        { titleKey: "Air Freight Orders", href: "/air-freight/orders", icon: Plane, companyCodes: ["CST"] },
-        { titleKey: "Air Freight Rates", href: "/air-freight/rates", icon: Plane, roles: ["admin", "owner"], companyCodes: ["CST"] },
-        { titleKey: "Ocean Freight Orders", href: "/ocean-freight/orders", icon: Ship, companyCodes: ["CST"] },
-        { titleKey: "Ocean Freight Rates", href: "/ocean-freight/rates", icon: Ship, roles: ["admin", "owner"], companyCodes: ["CST"] },
-        { titleKey: "Ocean Freight Orders", href: "/logistics/ocean-freight-orders", icon: Ship, companyCodes: ["CST"] },
-        { titleKey: "Ocean Freight Rates", href: "/logistics/ocean-freight-rates", icon: Ship, roles: ["admin", "owner"], companyCodes: ["CST"] },
-        { titleKey: "Ocean Freight Master Data", href: "/ocean-freight-master-data", icon: Anchor, roles: ["admin", "owner"], companyCodes: ["CST"] },
+      ],
+    },
+
+    // ── 5.5. RATE MANAGEMENT ──────────────────────────────────────────
+    {
+      type: "group",
+      titleKey: "Rate Management",
+      basePath: "/rate-management",
+      icon: Tags,
+      roles: ["admin", "owner"],
+      children: [
+        { titleKey: "Trucking Rates", href: "/settings/trucking-rates", icon: Truck },
+        { titleKey: "Ocean Freight Rates", href: "/logistics/ocean-freight-rates", icon: Anchor },
+        { titleKey: "Air Freight Rates", href: "/air-freight/rates", icon: Plane },
+        { titleKey: "Freight Master Data", href: "/ocean-freight-master-data", icon: Database },
       ],
     },
 

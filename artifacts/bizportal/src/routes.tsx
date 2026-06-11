@@ -179,8 +179,6 @@ import LogisticsVendorFulfillmentDetailPage from "@/pages/logistics-vendor-fulfi
 import ProductFirstAnalyticsPage from "@/pages/logistics/product-first-analytics";
 import ProductFirstAuditPage from "@/pages/logistics/product-first-audit";
 import LogisticsImportAssistantPage from "@/pages/logistics-import-assistant";
-import AirFreightOrdersPage from "@/pages/logistics/air-freight-orders";
-import AirFreightOrderDetailPage from "@/pages/logistics/air-freight-order-detail";
 import AirFreightVendorFormPage from "@/pages/air-freight-vendor-form";
 import OceanFreightOrdersPage from "@/pages/logistics/ocean-freight-orders";
 import OceanFreightOrderDetailPage from "@/pages/logistics/ocean-freight-order-detail";
@@ -283,8 +281,6 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/logistics/product-first/analytics" component={PR(ProductFirstAnalyticsPage)} />
       <Route path="/logistics/product-first/audit" component={PR(ProductFirstAuditPage)} />
       <Route path="/logistics/import-assistant" component={PR(LogisticsImportAssistantPage)} />
-      <Route path="/logistics/air-freight/:id" component={PR(AirFreightOrderDetailPage)} />
-      <Route path="/logistics/air-freight" component={PR(AirFreightOrdersPage)} />
       <Route path="/air-freight-form/:token" component={AirFreightVendorFormPage} />
       <Route path="/portal-product-orders" component={PR(PortalProductOrdersPage)} />
       <Route path="/portal/customers" component={PR(PortalCustomersPage)} />
@@ -510,19 +506,22 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/logistics/ocean-freight/:id" component={PR(OceanFreightOrderDetailPage)} />
       <Route path="/logistics/ocean-freight-rates" component={PR(OceanFreightRatesPage)} />
       <Route path="/ocean-freight-master-data" component={PR(OceanFreightMasterDataPage)} />
+      {/* Legacy redirects — canonical path is /logistics/ocean-freight-* */}
+      <Route path="/ocean-freight/orders/:id" component={({ params }: { params: { id: string } }) => <Redirect to={`/logistics/ocean-freight/${params.id}`} />} />
+      <Route path="/ocean-freight/orders" component={() => <Redirect to="/logistics/ocean-freight-orders" />} />
+      <Route path="/ocean-freight/rates" component={() => <Redirect to="/logistics/ocean-freight-rates" />} />
 
       {/* ── Air Freight ─────────────────────────────────────────────────── */}
+      {/* Canonical: /air-freight/orders (newer, more complete) */}
       <Route path="/air-freight/orders/:id" component={PR(AirFreightNewOrderDetailPage)} />
       <Route path="/air-freight/orders" component={PR(AirFreightNewOrdersPage)} />
       <Route path="/air-freight/rates" component={PR(AirFreightRatesPage)} />
       {/* public — no auth */}
       <Route path="/air-freight/approval/:token" component={AirFreightApprovalPage} />
       <Route path="/air-freight/track/:orderNumber" component={AirFreightTrackPage} />
-
-      {/* ── Ocean Freight ────────────────────────────────────────────────── */}
-      <Route path="/ocean-freight/orders/:id" component={PR(OceanFreightOrderDetailPage)} />
-      <Route path="/ocean-freight/orders" component={PR(OceanFreightOrdersPage)} />
-      <Route path="/ocean-freight/rates" component={PR(OceanFreightRatesPage)} />
+      {/* Legacy redirect — /logistics/air-freight → /air-freight/orders */}
+      <Route path="/logistics/air-freight/:id" component={({ params }: { params: { id: string } }) => <Redirect to={`/air-freight/orders/${params.id}`} />} />
+      <Route path="/logistics/air-freight" component={() => <Redirect to="/air-freight/orders" />} />
 
       {/* ── Tax Management ─────────────────────────────────────────────── */}
       <Route path="/tax/dashboard" component={PR(TaxDashboardPage)} />
