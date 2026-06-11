@@ -136,6 +136,27 @@ export function Step14CustomerDataPanel({ rfqId }: { rfqId: number }) {
     onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
+  const sendFormLinkMutation = useMutation({
+    mutationFn: async () => {
+      const fields = selectedMissing.size > 0 ? Array.from(selectedMissing) : data?.missingRequired ?? [];
+      const r = await fetch(`/api/logistic/rfq/${rfqId}/request-customer-data-form`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ missingFields: fields, customMessage: customMsg || undefined }),
+      });
+      const result = await r.json();
+      if (!r.ok) throw new Error(result.message ?? "Gagal kirim form link");
+      return result;
+    },
+    onSuccess: (result) => {
+      toast({ title: "Link Form Terkirim", description: result.message ?? "Link form data dikirim ke customer via WA" });
+      setShowRequestDialog(false);
+      qc.invalidateQueries({ queryKey: ["customer-data-check", rfqId] });
+    },
+    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
   if (isLoading) return <div className="h-20 animate-pulse bg-muted rounded-xl" />;
   if (error || !data) return null;
 
@@ -294,15 +315,25 @@ export function Step14CustomerDataPanel({ rfqId }: { rfqId: number }) {
               />
             </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
             <Button variant="outline" size="sm" onClick={() => setShowRequestDialog(false)}>Batal</Button>
             <Button
+              variant="outline"
               size="sm"
               onClick={() => requestDataMutation.mutate()}
-              disabled={requestDataMutation.isPending || selectedMissing.size === 0}
+              disabled={requestDataMutation.isPending || sendFormLinkMutation.isPending}
             >
               {requestDataMutation.isPending && <Loader2 className="h-3 w-3 mr-1.5 animate-spin" />}
-              Kirim WA
+              Kirim Teks WA
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => sendFormLinkMutation.mutate()}
+              disabled={sendFormLinkMutation.isPending || requestDataMutation.isPending}
+            >
+              {sendFormLinkMutation.isPending && <Loader2 className="h-3 w-3 mr-1.5 animate-spin" />}
+              <Send className="h-3 w-3 mr-1.5" />
+              Kirim Link Form
             </Button>
           </DialogFooter>
         </DialogContent>

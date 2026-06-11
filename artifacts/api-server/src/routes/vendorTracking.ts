@@ -17,6 +17,7 @@ import { getAdminGroupWa } from "../lib/adminWa.js";
 import { getPreferredDomain } from "../lib/domain.js";
 import { logger } from "../lib/logger.js";
 import { transitionLogisticOrderStatus } from "../lib/services/logisticOrderStatusService.js";
+import rateLimit from "express-rate-limit";
 
 export const vendorTrackingAdminRouter = Router();
 export const vendorTrackingPublicRouter = Router();
@@ -98,6 +99,15 @@ void db.execute(sql.raw(`
     ADD COLUMN IF NOT EXISTS vendor_tracking_token TEXT
 `)).catch((e: unknown) => logger.warn({ e }, "rfq_vendor_links tracking_token migration warn"));
 
+void db.execute(sql.raw(`
+  ALTER TABLE logistic_order_vendor_tracking_logs
+    ADD COLUMN IF NOT EXISTS recipient_name TEXT
+`)).catch((e: unknown) => logger.warn({ e }, "tracking_logs recipient_name migration warn"));
+
+// ─── Rate Limiters ────────────────────────────────────────────────────────────
+const trackingGetLimiter  = rateLimit({ windowMs: 15 * 60 * 1000, max: 60, standardHeaders: true, legacyHeaders: false });
+const trackingPostLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false });
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 const fmtRp = (n: number | string | null | undefined) =>
   n == null ? "—" : `Rp ${Math.round(Number(n)).toLocaleString("id-ID")}`;
@@ -114,7 +124,7 @@ function getTrackingFormUrl(token: string): string {
 }
 
 // ─── PUBLIC: GET /api/vendor-tracking/:token ──────────────────────────────────
-vendorTrackingPublicRouter.get("/:token", async (req: Request, res: Response) => {
+vendorTrackingPublicRouter.get("/:token", trackingGetLimiter, async (req: Request, res: Response) => {
   const { token } = req.params;
   try {
     const rows = await db.execute(sql.raw(`
@@ -165,10 +175,10 @@ vendorTrackingPublicRouter.get("/:token", async (req: Request, res: Response) =>
 });
 
 // ─── PUBLIC: POST /api/vendor-tracking/:token/update ─────────────────────────
-vendorTrackingPublicRouter.post("/:token/update", async (req: Request, res: Response) => {
+vendorTrackingPublicRouter.post("/:token/update", trackingPostLimiter, async (req: Request, res: Response) => {
   const { token } = req.params;
-  const { status, notes, attachmentUrl } = req.body as {
-    status: string; notes?: string; attachmentUrl?: string;
+  const { status, notes, attachmentUrl, recipientName } = req.body as {
+    status: string; notes?: string; attachmentUrl?: string; recipientName?: string;
   };
 
   if (!status || !VENDOR_TRACKING_STATUSES.includes(status as VendorTrackingStatus)) {
@@ -205,9 +215,10 @@ vendorTrackingPublicRouter.post("/:token/update", async (req: Request, res: Resp
     `));
 
     await db.execute(sql.raw(`
-      INSERT INTO logistic_order_vendor_tracking_logs (tracking_id, status, notes, attachment_url, submitted_ip)
+      INSERT INTO logistic_order_vendor_tracking_logs (tracking_id, status, notes, attachment_url, recipient_name, submitted_ip)
       VALUES (${tracking.id}, '${status}', ${notes ? `'${safeStr(notes)}'` : "NULL"},
               ${attachmentUrl ? `'${safeStr(attachmentUrl)}'` : "NULL"},
+              ${recipientName ? `'${safeStr(recipientName)}'` : "NULL"},
               '${safeStr(req.ip ?? "")}')
     `));
 

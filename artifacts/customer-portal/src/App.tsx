@@ -98,6 +98,7 @@ const OceanFreightPage          = lazy(() => import("@/pages/ocean-freight"));
 const OceanFreightVendorForm    = lazy(() => import("@/pages/ocean-freight-vendor-form"));
 const OceanFreightQuotePage     = lazy(() => import("@/pages/ocean-freight-quote"));
 const VendorTrackingFormPage    = lazy(() => import("@/pages/vendor-tracking-form"));
+const CustomerDataFormPage      = lazy(() => import("@/pages/customer-data-form"));
 const ServiceCartPage           = lazy(() => import("@/pages/service-cart"));
 const NotFound                  = lazy(() => import("@/pages/not-found"));
 
@@ -135,6 +136,7 @@ const NO_SHELL_PREFIXES = [
   "/ocean-freight-quote",
   "/q/",
   "/vendor-tracking",
+  "/customer-data-form",
 ];
 
 // Routes that should skip the Supabase auth check entirely (public/standalone pages)
@@ -160,6 +162,7 @@ const NO_AUTH_CHECK_PREFIXES = [
   "/ocean-freight-vendor-form",
   "/ocean-freight-quote",
   "/vendor-tracking",
+  "/customer-data-form",
 ];
 
 const BASE_PREFIX = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -324,6 +327,7 @@ function AppShell() {
         <Route path="/ocean-freight-vendor-form/:token" component={OceanFreightVendorForm} />
         <Route path="/ocean-freight-quote/:token" component={OceanFreightQuotePage} />
         <Route path="/vendor-tracking/:token" component={VendorTrackingFormPage} />
+        <Route path="/customer-data-form/:token" component={CustomerDataFormPage} />
         <Route path="/service-cart" component={ServiceCartPage} />
         <Route path="/service-cart/:requestId" component={ServiceCartPage} />
         <Route component={NotFound} />

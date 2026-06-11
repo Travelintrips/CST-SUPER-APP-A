@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 
@@ -43,6 +43,7 @@ export default function VendorTrackingFormPage() {
   const { token } = useParams<{ token: string }>();
   const [selectedStatus, setSelectedStatus] = useState<string>("");
   const [notes, setNotes] = useState("");
+  const [recipientName, setRecipientName] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -60,11 +61,11 @@ export default function VendorTrackingFormPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: async ({ status, notes: n }: { status: string; notes: string }) => {
+    mutationFn: async ({ status, notes: n, recipientName: rn }: { status: string; notes: string; recipientName?: string }) => {
       const r = await fetch(`/api/vendor-tracking/${encodeURIComponent(token ?? "")}/update`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status, notes: n || undefined }),
+        body: JSON.stringify({ status, notes: n || undefined, recipientName: rn || undefined }),
       });
       const result = await r.json() as { ok?: boolean; message?: string; error?: string };
       if (!r.ok) throw new Error(result.error ?? "Gagal update status");
@@ -77,6 +78,13 @@ export default function VendorTrackingFormPage() {
     onError: (e: Error) => setError(e.message),
   });
 
+  // Auto-reset recipientName when status changes away from DELIVERED/COMPLETED
+  useEffect(() => {
+    if (!["DELIVERED", "COMPLETED"].includes(selectedStatus)) {
+      setRecipientName("");
+    }
+  }, [selectedStatus]);
+
   const currentIdx = data ? (STATUS_ORDER[data.currentStatus] ?? -1) : -1;
 
   const availableStatuses = STATUSES.filter((s) => {
@@ -84,10 +92,16 @@ export default function VendorTrackingFormPage() {
     return idx >= currentIdx;
   });
 
+  const isPodStatus = ["DELIVERED", "COMPLETED"].includes(selectedStatus);
+
   const handleSubmit = () => {
     if (!selectedStatus) { setError("Pilih status terlebih dahulu"); return; }
+    if (isPodStatus && !recipientName.trim()) {
+      setError("Nama penerima wajib diisi untuk status Terkirim/Selesai");
+      return;
+    }
     setError(null);
-    updateMutation.mutate({ status: selectedStatus, notes });
+    updateMutation.mutate({ status: selectedStatus, notes, recipientName: recipientName.trim() || undefined });
   };
 
   if (isLoading) {
@@ -264,6 +278,27 @@ export default function VendorTrackingFormPage() {
                 className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
               />
             </div>
+
+            {/* POD: Recipient name (required for DELIVERED/COMPLETED) */}
+            {isPodStatus && (
+              <div className="mb-4 space-y-3">
+                <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm text-blue-800">
+                  📦 <strong>Bukti Pengiriman (POD)</strong> diperlukan untuk status ini
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Nama Penerima <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={recipientName}
+                    onChange={(e) => setRecipientName(e.target.value)}
+                    placeholder="Nama orang yang menerima barang..."
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+            )}
 
             {selectedStatus === "COMPLETED" && (
               <div className="mb-4 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800">

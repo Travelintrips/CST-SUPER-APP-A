@@ -1,0 +1,75 @@
+STEP 17 — WA MINI FORM
+Buat mini form:
+1. Customer Request Mini Form
+2. Vendor Quotation Mini Form
+3. Customer Approval Mini Form
+4. Customer Company Data Mini Form
+5. Vendor Processing Update Mini Form
+6. POD / Completed Mini Form
+
+Semua link WA harus:
+- pakai token aman
+- punya expiry
+- tidak membuka data internal
+- masuk audit log
+
+STEP 18 — SECURITY & VISIBILITY RULES
+Aturan:
+1. Customer tidak boleh melihat cost vendor, margin, internal note.
+2. Vendor tidak boleh melihat data customer yang tidak perlu.
+3. Vendor hanya lihat item yang dikirim ke vendor tersebut.
+4. Semua dokumen punya verified/unverified.
+5. Semua aksi masuk audit log.
+6. Semua upload divalidasi.
+7. Semua public token harus aman dan expired.
+8. Jangan tampilkan debug text atau dummy data di production UI.
+
+STEP 19 — UI FINAL CLEANUP
+Setelah fitur utama siap, rapikan lagi UI:
+- navbar
+- cards
+- spacing
+- table
+- form
+- modal
+- stepper
+- mobile responsive
+- empty state
+- loading state
+- error state
+- toast notification
+
+Pastikan tidak ada:
+- card overlap
+- menu duplikat
+- tombol mati
+- route mati
+- infinite loading
+- widget internal di customer portal
+
+STEP 20 — END TO END TEST
+Test wajib:
+
+A. Item Mandiri:
+Customer pilih Export → tambah Air Freight + PPJK + Trucking → submit → admin approve → vendor RFQ per item → vendor quote → admin pilih vendor → customer approve → data customer dikirim ke vendor → vendor update progress → completed → invoice.
+
+B. Paket Borongan:
+Customer pilih Export Air Door to Door → item otomatis muncul → customer lengkapi data → submit → admin RFQ vendor per item → customer approve total borongan → vendor proses → completed → invoice.
+
+C. Customer Master Data:
+Customer yang sudah punya data lengkap tidak diminta isi ulang.
+
+D. Responsive:
+Cek desktop, tablet, mobile.
+
+Output akhir:
+- file yang diubah
+- route baru/update
+- tabel/migration baru
+- menu yang disembunyikan
+- card/widget yang dirapikan
+- hasil test end-to-end
+- bug yang masih tersisa
+- rekomendasi cleanup berikutnya
+
+Jangan klaim selesai kalau perubahan belum terlihat di web.

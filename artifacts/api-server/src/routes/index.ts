@@ -94,6 +94,7 @@ import { paymentProofPublicRouter, paymentProofAdminRouter } from "./paymentProo
 import { orderAuditTrailRouter } from "./orderAuditTrail.js";
 import { serviceTemplatesRouter } from "./serviceTemplates.js";
 import { vendorTrackingAdminRouter, vendorTrackingPublicRouter } from "./vendorTracking.js";
+import { customerDataFormPublicRouter, customerDataFormAdminRouter } from "./customerDataForm.js";
 import { paymentProofRouter } from "./paymentProof.js";
 
 import { exceptionsRouter } from "./exceptions.js";
@@ -274,6 +275,8 @@ router.use("/logistic", orderAuditTrailRouter);
 router.use("/logistic", orderExceptionsRouter);
 router.use("/logistic", vendorTrackingAdminRouter);
 router.use("/vendor-tracking", vendorTrackingPublicRouter);
+router.use("/customer-data", customerDataFormPublicRouter);
+router.use("/logistic", customerDataFormAdminRouter);
 router.use("/logistic/orders", productFirstOverrideRouter);
 router.use("/logistic/product-first/analytics", productFirstAnalyticsRouter);
 router.use("/logistic/product-first/audit", productFirstAuditDashboardRouter);
