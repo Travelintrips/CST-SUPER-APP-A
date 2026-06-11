@@ -125,6 +125,7 @@ import {
 } from "@dnd-kit/sortable";
 import { SortableNavWrapper } from "./SortableNavWrapper";
 import { PinnedShortcuts } from "./PinnedShortcuts";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 const IS_DEV = import.meta.env.DEV;
 
@@ -1061,7 +1062,7 @@ export function AppShell({ children, noPadding }: AppShellProps) {
                   {dbUser.name || dbUser.email}
                 </span>
               )}
-              {IS_DEV && <DevUserSwitcher />}
+              {IS_DEV && <ErrorBoundary fallback={null}><DevUserSwitcher /></ErrorBoundary>}
               <button
                 onClick={() => setShowShortcuts(true)}
                 className="hidden sm:flex items-center justify-center rounded-md border border-border bg-muted/50 px-2 py-1 text-xs text-muted-foreground hover:bg-accent transition-colors"
@@ -1091,7 +1092,7 @@ export function AppShell({ children, noPadding }: AppShellProps) {
                   <span className="truncate">{dbUser.name || dbUser.email}</span>
                 </span>
               )}
-              {IS_DEV && <DevUserSwitcher />}
+              {IS_DEV && <ErrorBoundary fallback={null}><DevUserSwitcher /></ErrorBoundary>}
               <button
                 onClick={() => setShowShortcuts(true)}
                 className="flex items-center justify-center rounded-md border border-border bg-muted/50 px-2 py-1.5 text-xs text-muted-foreground hover:bg-accent transition-colors"
