@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,7 +13,7 @@ import {
 import {
   AlertTriangle, CheckCircle2, Download, RefreshCw,
   FileText, ShieldCheck, Info, XCircle, PencilLine,
-  Save, ChevronDown, ChevronUp, Loader2,
+  Save, ChevronDown, ChevronUp, Loader2, Search, Sparkles,
 } from "lucide-react";
 import { useCompany } from "@/contexts/CompanyContext";
 import { toast } from "sonner";
@@ -139,12 +139,110 @@ function ExportButton({ label, href, disabled, loading }: { label: string; href:
   );
 }
 
+// ── NpwpLookupDropdown ────────────────────────────────────────────────────────
+
+type LookupCandidate = {
+  id: number; name: string; npwp: string; source: "supplier" | "customer"; email?: string; phone?: string;
+};
+
+function NpwpLookupDropdown({
+  partnerName,
+  companyId,
+  onSelect,
+}: {
+  partnerName: string;
+  companyId: number | null;
+  onSelect: (npwp: string) => void;
+}) {
+  const [open, setOpen]         = useState(false);
+  const [loading, setLoading]   = useState(false);
+  const [candidates, setCandidates] = useState<LookupCandidate[]>([]);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function onClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, []);
+
+  async function lookup() {
+    if (!partnerName || partnerName.length < 2) {
+      toast.error("Nama mitra terlalu pendek untuk dicari");
+      return;
+    }
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({ partnerName });
+      if (companyId) params.set("companyId", String(companyId));
+      const r = await fetch(`/api/tax/export/lookup-npwp?${params}`, { credentials: "include" });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.message ?? "Gagal mencari");
+      setCandidates(data.items ?? []);
+      setOpen(true);
+    } catch (e: any) {
+      toast.error(e?.message ?? "Gagal mencari NPWP");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="relative" ref={ref}>
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        className="h-7 px-2 text-[10px] border-dashed shrink-0"
+        onClick={lookup}
+        disabled={loading}
+        title="Cari NPWP dari master vendor/customer"
+      >
+        {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3" />}
+      </Button>
+      {open && (
+        <div className="absolute z-50 top-8 left-0 w-72 rounded-lg border bg-white shadow-lg overflow-hidden">
+          {candidates.length === 0 ? (
+            <div className="text-xs text-muted-foreground px-3 py-2.5">
+              Tidak ada mitra dengan NPWP ditemukan untuk "<span className="font-medium">{partnerName}</span>"
+            </div>
+          ) : (
+            <>
+              <div className="text-[10px] text-muted-foreground px-3 py-1.5 bg-gray-50 border-b font-medium uppercase tracking-wide">
+                Pilih NPWP dari master data
+              </div>
+              {candidates.map((c) => (
+                <button
+                  key={`${c.source}-${c.id}`}
+                  type="button"
+                  className="w-full text-left px-3 py-2 hover:bg-blue-50 transition-colors border-b last:border-b-0"
+                  onClick={() => { onSelect(c.npwp); setOpen(false); }}
+                >
+                  <div className="text-xs font-medium truncate">{c.name}</div>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className="text-[10px] font-mono text-blue-700">{formatNpwp(c.npwp)}</span>
+                    <Badge variant="outline" className={`text-[9px] h-4 px-1 ${c.source === "supplier" ? "border-purple-300 text-purple-700" : "border-teal-300 text-teal-700"}`}>
+                      {c.source === "supplier" ? "Vendor" : "Customer"}
+                    </Badge>
+                  </div>
+                </button>
+              ))}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── InlineEditRow component ───────────────────────────────────────────────────
 
 function InlineEditRow({
-  row, onSaved,
+  row, companyId, onSaved,
 }: {
   row: IssueRow;
+  companyId: number | null;
   onSaved: () => void;
 }) {
   const [npwp, setNpwp]     = useState(row.npwp ?? "");
@@ -208,6 +306,11 @@ function InlineEditRow({
             onChange={(e) => setNpwp(formatNpwp(e.target.value))}
             placeholder="XX.XXX.XXX.X-XXX.XXX"
             className={`h-7 text-xs font-mono w-44 ${row.npwp_issue ? "border-red-300 focus-visible:ring-red-400" : ""} ${isNpwpValid(npwp) ? "border-emerald-400" : ""}`}
+          />
+          <NpwpLookupDropdown
+            partnerName={row.partner_name ?? ""}
+            companyId={companyId}
+            onSelect={(val) => setNpwp(formatNpwp(val))}
           />
           {isNpwpValid(npwp) && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />}
           {npwp && !isNpwpValid(npwp) && <XCircle className="h-3.5 w-3.5 text-red-400 shrink-0" />}
@@ -282,9 +385,11 @@ function IssuesPanel({
   totalIssues: number;
   onFixed: () => void;
 }) {
-  const [open, setOpen]           = useState(false);
-  const [filter, setFilter]       = useState<"all" | "npwp" | "faktur" | "bukpot">("all");
-  const [savedCount, setSavedCount] = useState(0);
+  const [open, setOpen]               = useState(false);
+  const [filter, setFilter]           = useState<"all" | "npwp" | "faktur" | "bukpot">("all");
+  const [savedCount, setSavedCount]   = useState(0);
+  const [autofilling, setAutofilling] = useState(false);
+  const [autofillResult, setAutofillResult] = useState<{ updated: number } | null>(null);
 
   const params = new URLSearchParams({ period, type: filter });
   if (companyId) params.set("companyId", String(companyId));
@@ -299,6 +404,33 @@ function IssuesPanel({
     setSavedCount((c) => c + 1);
     refetch();
     onFixed();
+  }
+
+  async function runAutofill() {
+    setAutofilling(true);
+    setAutofillResult(null);
+    try {
+      const p = new URLSearchParams({ period });
+      if (companyId) p.set("companyId", String(companyId));
+      const r = await fetch(`/api/tax/export/autofill-npwp?${p}`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const body = await r.json();
+      if (!r.ok) throw new Error(body.message ?? "Gagal auto-isi");
+      setAutofillResult({ updated: body.updated ?? 0 });
+      if (body.updated > 0) {
+        toast.success(body.message);
+        refetch();
+        onFixed();
+      } else {
+        toast.info("Tidak ada NPWP yang bisa diisi otomatis (nama mitra tidak cocok atau master kosong)");
+      }
+    } catch (e: any) {
+      toast.error(e?.message ?? "Gagal auto-isi NPWP");
+    } finally {
+      setAutofilling(false);
+    }
   }
 
   if (totalIssues === 0) return null;
@@ -320,6 +452,11 @@ function IssuesPanel({
               {savedCount} disimpan
             </Badge>
           )}
+          {autofillResult && autofillResult.updated > 0 && (
+            <Badge className="bg-blue-200 text-blue-800 border-0 text-[10px]">
+              {autofillResult.updated} NPWP diisi otomatis
+            </Badge>
+          )}
         </div>
         {open ? <ChevronUp className="h-4 w-4 text-orange-600" /> : <ChevronDown className="h-4 w-4 text-orange-600" />}
       </button>
@@ -327,7 +464,7 @@ function IssuesPanel({
       {open && (
         <div className="border-t border-orange-200">
           {/* Filter bar */}
-          <div className="flex items-center gap-2 px-4 py-2.5 bg-white/60 border-b border-orange-100">
+          <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 bg-white/60 border-b border-orange-100">
             <span className="text-xs text-muted-foreground">Filter:</span>
             {(["all", "npwp", "faktur", "bukpot"] as const).map((f) => (
               <Button
@@ -340,9 +477,24 @@ function IssuesPanel({
                 {f === "all" ? "Semua" : f === "npwp" ? "NPWP" : f === "faktur" ? "No. Faktur" : "No. Bukpot"}
               </Button>
             ))}
-            <Button size="sm" variant="ghost" className="h-6 px-2 ml-auto" onClick={() => refetch()} disabled={isLoading}>
-              <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? "animate-spin" : ""}`} />
-            </Button>
+            <div className="ml-auto flex items-center gap-1.5">
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-6 px-2.5 text-[11px] gap-1 border-blue-300 text-blue-700 hover:bg-blue-50"
+                onClick={runAutofill}
+                disabled={autofilling}
+                title="Isi NPWP secara otomatis dari master vendor/customer berdasarkan kecocokan nama"
+              >
+                {autofilling
+                  ? <Loader2 className="h-3 w-3 animate-spin" />
+                  : <Sparkles className="h-3 w-3" />}
+                Auto-isi NPWP dari Master
+              </Button>
+              <Button size="sm" variant="ghost" className="h-6 px-2" onClick={() => refetch()} disabled={isLoading}>
+                <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? "animate-spin" : ""}`} />
+              </Button>
+            </div>
           </div>
 
           {/* Table */}
@@ -368,7 +520,7 @@ function IssuesPanel({
                 </TableHeader>
                 <TableBody>
                   {data.items.map((row) => (
-                    <InlineEditRow key={row.id} row={row} onSaved={handleSaved} />
+                    <InlineEditRow key={row.id} row={row} companyId={companyId} onSaved={handleSaved} />
                   ))}
                 </TableBody>
               </Table>

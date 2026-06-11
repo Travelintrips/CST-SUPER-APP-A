@@ -959,6 +959,97 @@ router.get("/export/issues", async (req, res) => {
   }
 });
 
+// ── GET /api/tax/export/lookup-npwp ──────────────────────────────────────────
+// Cari NPWP dari master suppliers/customers berdasarkan nama mitra
+// Query: partnerName (wajib), companyId
+router.get("/export/lookup-npwp", async (req, res) => {
+  const companyId = resolveCompanyId(req);
+  const { partnerName } = req.query as Record<string, string>;
+  if (!partnerName || partnerName.trim().length < 2) {
+    return res.status(400).json({ message: "partnerName minimal 2 karakter" });
+  }
+
+  const escaped = partnerName.replace(/'/g, "''");
+
+  try {
+    const rows = await db.execute(sql.raw(`
+      WITH combined AS (
+        SELECT id, name, tax_id AS npwp, 'supplier' AS source, contact_email AS email, phone
+        FROM suppliers
+        WHERE company_id = ${companyId}
+          AND tax_id IS NOT NULL AND tax_id != ''
+          AND (name ILIKE '%${escaped}%' OR SIMILARITY(name, '${escaped}') > 0.25)
+        UNION ALL
+        SELECT id, name, tax_id AS npwp, 'customer' AS source, email, phone
+        FROM customers
+        WHERE company_id = ${companyId}
+          AND tax_id IS NOT NULL AND tax_id != ''
+          AND (name ILIKE '%${escaped}%' OR SIMILARITY(name, '${escaped}') > 0.25)
+      )
+      SELECT *, SIMILARITY(name, '${escaped}') AS score
+      FROM combined
+      ORDER BY score DESC, name
+      LIMIT 5
+    `));
+    return res.json({ items: rows.rows });
+  } catch (err) {
+    logger.error({ err }, "tax/export/lookup-npwp: query failed");
+    return res.status(500).json({ message: "Gagal mencari NPWP" });
+  }
+});
+
+// ── POST /api/tax/export/autofill-npwp ────────────────────────────────────────
+// Batch isi NPWP di transaction_taxes dari master suppliers/customers by nama exact/fuzzy
+// Query: period, companyId — update hanya baris yang NPWP kosong/invalid
+router.post("/export/autofill-npwp", async (req, res) => {
+  const companyId = resolveCompanyId(req);
+  const { period } = req.query as Record<string, string>;
+  if (!period) return res.status(400).json({ message: "period (YYYY-MM) wajib diisi" });
+
+  try {
+    const result = await db.execute(sql.raw(`
+      WITH master AS (
+        SELECT LOWER(TRIM(name)) AS name_key, tax_id AS npwp
+        FROM suppliers
+        WHERE company_id = ${companyId}
+          AND tax_id IS NOT NULL AND tax_id != ''
+          AND LENGTH(REGEXP_REPLACE(tax_id,'[^0-9]','','g')) = 15
+        UNION ALL
+        SELECT LOWER(TRIM(name)) AS name_key, tax_id AS npwp
+        FROM customers
+        WHERE company_id = ${companyId}
+          AND tax_id IS NOT NULL AND tax_id != ''
+          AND LENGTH(REGEXP_REPLACE(tax_id,'[^0-9]','','g')) = 15
+      ),
+      matched AS (
+        SELECT DISTINCT ON (tt.id) tt.id, m.npwp
+        FROM transaction_taxes tt
+        JOIN master m ON LOWER(TRIM(tt.partner_name)) = m.name_key
+        WHERE tt.company_id = ${companyId}
+          AND tt.period = '${period}'
+          AND (tt.npwp IS NULL OR tt.npwp = ''
+               OR LENGTH(REGEXP_REPLACE(tt.npwp,'[^0-9]','','g')) != 15)
+          AND tt.partner_name IS NOT NULL AND tt.partner_name != ''
+      )
+      UPDATE transaction_taxes tt
+      SET npwp = matched.npwp, updated_at = NOW()
+      FROM matched
+      WHERE tt.id = matched.id
+      RETURNING tt.id
+    `));
+
+    const updated = result.rows.length;
+    logger.info({ companyId, period, updated }, "[tax] autofill-npwp completed");
+    return res.json({
+      message: `${updated} baris NPWP berhasil diisi dari master vendor/customer`,
+      updated,
+    });
+  } catch (err) {
+    logger.error({ err }, "tax/export/autofill-npwp: query failed");
+    return res.status(500).json({ message: "Gagal auto-isi NPWP" });
+  }
+});
+
 // ── GET /api/tax/export/validate ─────────────────────────────────────────────
 // Pre-flight: hitung baris siap export, bermasalah NPWP, bermasalah faktur
 router.get("/export/validate", async (req, res) => {
