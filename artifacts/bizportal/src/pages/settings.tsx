@@ -1,5 +1,4 @@
-import { useState, useEffect, useRef } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useEffect, useRef, type ElementType } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { useGetCurrentUser, getGetCurrentUserQueryKey } from "@workspace/api-client-react";
 import { useSupabaseAuth } from "@/contexts/SupabaseAuthContext";
@@ -2139,60 +2138,123 @@ function WaLogsCard() {
   );
 }
 
-// ── Settings Stats Bar ────────────────────────────────────────────────────────
+// ── Settings Quick Nav Cards ───────────────────────────────────────────────────
 
-interface QuickStats {
-  logisticOrders: number;
-  salesOrders: number;
-  customers: number;
-  vendors: number;
-  shipments: number;
-  staff: number;
+interface QuickNavItem {
+  label: string;
+  href: string;
 }
 
-const STAT_ITEMS = [
-  { key: "logisticOrders", label: "Logistic Orders", icon: Truck,         href: "/bizportal/logistic-orders",      color: "text-blue-500",   bg: "bg-blue-500/10" },
-  { key: "salesOrders",    label: "Sales Orders",    icon: ShoppingCart,   href: "/bizportal/sales/orders",         color: "text-emerald-500", bg: "bg-emerald-500/10" },
-  { key: "customers",      label: "Customers",       icon: Users,          href: "/bizportal/customers",            color: "text-violet-500",  bg: "bg-violet-500/10" },
-  { key: "vendors",        label: "Vendors",         icon: Building2,      href: "/bizportal/purchase/vendors",     color: "text-amber-500",   bg: "bg-amber-500/10" },
-  { key: "shipments",      label: "Shipments",       icon: Ship,           href: "/bizportal/freight/shipments",    color: "text-cyan-500",    bg: "bg-cyan-500/10" },
-  { key: "staff",          label: "Staff",           icon: User,           href: "/bizportal/org/users",            color: "text-rose-500",    bg: "bg-rose-500/10" },
-] as const;
+interface QuickNavCard {
+  label: string;
+  icon: ElementType;
+  color: string;
+  bg: string;
+  items: QuickNavItem[];
+}
+
+const QUICK_NAV_CARDS: QuickNavCard[] = [
+  {
+    label: "Logistic Orders",
+    icon: Truck,
+    color: "text-blue-500",
+    bg: "bg-blue-500/10",
+    items: [
+      { label: "Semua Order",     href: "/bizportal/logistic-orders" },
+      { label: "Buat Order Baru", href: "/bizportal/logistic-orders/new" },
+      { label: "RFQ / Penawaran", href: "/bizportal/logistic-rfq" },
+      { label: "Tracking",        href: "/bizportal/logistic-orders?tab=tracking" },
+    ],
+  },
+  {
+    label: "Sales Orders",
+    icon: ShoppingCart,
+    color: "text-emerald-500",
+    bg: "bg-emerald-500/10",
+    items: [
+      { label: "Semua Order",   href: "/bizportal/sales/orders" },
+      { label: "Quotation",     href: "/bizportal/sales/quotations" },
+      { label: "Invoice",       href: "/bizportal/sales/invoices" },
+      { label: "Sales Items",   href: "/bizportal/sales/items" },
+    ],
+  },
+  {
+    label: "Customers",
+    icon: Users,
+    color: "text-violet-500",
+    bg: "bg-violet-500/10",
+    items: [
+      { label: "Semua Customer",    href: "/bizportal/customers" },
+      { label: "Customer Portal",   href: "/bizportal/customer-portal-admin" },
+      { label: "Quote Requests",    href: "/bizportal/customer-quotes" },
+      { label: "Portal Orders",     href: "/bizportal/portal-orders" },
+    ],
+  },
+  {
+    label: "Vendors",
+    icon: Building2,
+    color: "text-amber-500",
+    bg: "bg-amber-500/10",
+    items: [
+      { label: "Semua Vendor",    href: "/bizportal/purchase/vendors" },
+      { label: "Purchase Orders", href: "/bizportal/purchase/orders" },
+      { label: "Bills",           href: "/bizportal/purchase/bills" },
+      { label: "RFQ Vendor",      href: "/bizportal/purchase/rfq" },
+    ],
+  },
+  {
+    label: "Shipments",
+    icon: Ship,
+    color: "text-cyan-500",
+    bg: "bg-cyan-500/10",
+    items: [
+      { label: "Semua Shipment",  href: "/bizportal/freight/shipments" },
+      { label: "Air Freight",     href: "/bizportal/air-freight/orders" },
+      { label: "Ocean Freight",   href: "/bizportal/ocean-freight/orders" },
+      { label: "Trucking",        href: "/bizportal/trucking/orders" },
+    ],
+  },
+  {
+    label: "Staff",
+    icon: User,
+    color: "text-rose-500",
+    bg: "bg-rose-500/10",
+    items: [
+      { label: "Semua Staff",  href: "/bizportal/org/users" },
+      { label: "Roles",        href: "/bizportal/settings/roles" },
+      { label: "Org Chart",    href: "/bizportal/org" },
+      { label: "Approval",     href: "/bizportal/settings/approval-rules" },
+    ],
+  },
+];
 
 function SettingsStatsBar() {
-  const { data: stats, isLoading } = useQuery<QuickStats>({
-    queryKey: ["settings-quick-stats"],
-    queryFn: async () => {
-      const r = await fetch("/api/settings/quick-stats", { credentials: "include" });
-      if (!r.ok) throw new Error("Failed");
-      return r.json();
-    },
-    staleTime: 60_000,
-  });
-
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-      {STAT_ITEMS.map(({ key, label, icon: Icon, href, color, bg }) => (
-        <a
-          key={key}
-          href={href}
-          className="group rounded-xl border bg-card hover:border-primary/50 hover:shadow-md transition-all duration-150 p-4 flex flex-col gap-2 cursor-pointer"
+      {QUICK_NAV_CARDS.map(({ label, icon: Icon, color, bg, items }) => (
+        <div
+          key={label}
+          className="rounded-xl border bg-card p-4 flex flex-col gap-3"
         >
-          <div className="flex items-center justify-between">
-            <div className={`rounded-lg p-2 ${bg}`}>
+          <div className="flex items-center gap-2">
+            <div className={`rounded-lg p-2 ${bg} shrink-0`}>
               <Icon className={`h-4 w-4 ${color}`} />
             </div>
-            <ArrowRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+            <p className="text-sm font-semibold text-foreground leading-tight">{label}</p>
           </div>
-          {isLoading ? (
-            <Skeleton className="h-7 w-12" />
-          ) : (
-            <p className="text-2xl font-bold tracking-tight text-foreground">
-              {(stats?.[key] ?? 0).toLocaleString("id-ID")}
-            </p>
-          )}
-          <p className="text-xs text-muted-foreground leading-tight">{label}</p>
-        </a>
+          <div className="flex flex-col gap-0.5">
+            {items.map((item) => (
+              <a
+                key={item.href}
+                href={item.href}
+                className="group flex items-center justify-between rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+              >
+                <span>{item.label}</span>
+                <ArrowRight className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+              </a>
+            ))}
+          </div>
+        </div>
       ))}
     </div>
   );
