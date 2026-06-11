@@ -97,6 +97,7 @@ const OceanFreightTrackPage     = lazy(() => import("@/pages/ocean-freight-track
 const OceanFreightPage          = lazy(() => import("@/pages/ocean-freight"));
 const OceanFreightVendorForm    = lazy(() => import("@/pages/ocean-freight-vendor-form"));
 const OceanFreightQuotePage     = lazy(() => import("@/pages/ocean-freight-quote"));
+const ServiceCartPage           = lazy(() => import("@/pages/service-cart"));
 const NotFound                  = lazy(() => import("@/pages/not-found"));
 
 const queryClient = new QueryClient();
@@ -319,6 +320,8 @@ function AppShell() {
         <Route path="/ocean-freight" component={OceanFreightPage} />
         <Route path="/ocean-freight-vendor-form/:token" component={OceanFreightVendorForm} />
         <Route path="/ocean-freight-quote/:token" component={OceanFreightQuotePage} />
+        <Route path="/service-cart" component={ServiceCartPage} />
+        <Route path="/service-cart/:requestId" component={ServiceCartPage} />
         <Route component={NotFound} />
       </Switch>
     </Suspense>
