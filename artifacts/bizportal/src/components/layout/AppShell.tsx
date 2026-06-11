@@ -124,6 +124,7 @@ import {
   arrayMove,
 } from "@dnd-kit/sortable";
 import { SortableNavWrapper } from "./SortableNavWrapper";
+import { PinnedShortcuts } from "./PinnedShortcuts";
 
 const IS_DEV = import.meta.env.DEV;
 
@@ -1071,7 +1072,8 @@ export function AppShell({ children, noPadding }: AppShellProps) {
               <NotificationBell />
             </div>
           </div>
-          <div className="hidden lg:flex sticky top-0 z-10 h-12 items-center justify-between border-b border-border bg-background px-6">
+          <div className="hidden lg:sticky lg:top-0 lg:z-10 lg:flex lg:flex-col">
+          <div className="flex h-12 items-center justify-between border-b border-border bg-background px-6">
             <CompanySwitcher />
             <div className="flex items-center gap-3">
               <button
@@ -1138,6 +1140,8 @@ export function AppShell({ children, noPadding }: AppShellProps) {
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
+          </div>
+          <PinnedShortcuts />
           </div>
           <div className={noPadding ? "flex-1 overflow-hidden flex flex-col" : "flex-1 overflow-auto p-4 sm:p-6 lg:p-8"}>
             {children}
