@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import { User, Mail, Briefcase, Shield, MessageCircle, Save, Loader2, CheckCircle, Calculator, ChevronDown, ChevronUp, Package, Plus, X, Bot, Link2, RotateCcw, History, RefreshCw, Download, Layers, ExternalLink, FileText, Truck, ShoppingCart, Users, Building2, Ship, ArrowRight, Send, XCircle } from "lucide-react";
+import { User, Mail, Briefcase, Shield, MessageCircle, Save, Loader2, CheckCircle, Calculator, ChevronDown, ChevronUp, Package, Plus, X, Bot, Link2, RotateCcw, History, RefreshCw, Download, Layers, ExternalLink, FileText, Truck, ShoppingCart, Users, Building2, Ship, ArrowRight, Send, XCircle, Key } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
@@ -2260,6 +2260,117 @@ function SettingsStatsBar() {
   );
 }
 
+// ── Settings Hub Grid ──────────────────────────────────────────────────────────
+
+const SETTINGS_HUB_CARDS: QuickNavCard[] = [
+  {
+    label: "WhatsApp & Notifikasi",
+    icon: MessageCircle,
+    color: "text-green-500",
+    bg: "bg-green-500/10",
+    items: [
+      { label: "WA Templates",            href: "/bizportal/settings/wa-templates" },
+      { label: "Enterprise WA Templates", href: "/bizportal/settings/enterprise-wa-templates" },
+      { label: "WA Gateway",              href: "/bizportal/settings/wa-gateway" },
+      { label: "WA Notification Logs",    href: "/bizportal/settings/wa-notification-logs" },
+      { label: "WATI Config",             href: "/bizportal/settings/wati" },
+    ],
+  },
+  {
+    label: "AI & Otomasi",
+    icon: Bot,
+    color: "text-purple-500",
+    bg: "bg-purple-500/10",
+    items: [
+      { label: "AI Chatbot",      href: "/bizportal/settings/ai-chatbot" },
+      { label: "Knowledge Base",  href: "/bizportal/settings/ai-chatbot/knowledge" },
+      { label: "AI Scan / OCR",   href: "/bizportal/settings/ai-scan" },
+    ],
+  },
+  {
+    label: "Template & Dokumen",
+    icon: FileText,
+    color: "text-indigo-500",
+    bg: "bg-indigo-500/10",
+    items: [
+      { label: "Document Templates", href: "/bizportal/settings/document-templates" },
+      { label: "Product Templates",  href: "/bizportal/settings/product-templates" },
+      { label: "Service Templates",  href: "/bizportal/settings/service-templates" },
+    ],
+  },
+  {
+    label: "Konfigurasi Logistik",
+    icon: Truck,
+    color: "text-cyan-500",
+    bg: "bg-cyan-500/10",
+    items: [
+      { label: "Satuan Logistik",  href: "/bizportal/settings/logistics-units" },
+      { label: "Trucking Rates",   href: "/bizportal/settings/trucking-rates" },
+      { label: "Vehicle Images",   href: "/bizportal/settings/vehicle-images" },
+      { label: "Unit of Measure",  href: "/bizportal/settings/uom" },
+    ],
+  },
+  {
+    label: "Akun & Pengguna",
+    icon: Shield,
+    color: "text-rose-500",
+    bg: "bg-rose-500/10",
+    items: [
+      { label: "Roles",           href: "/bizportal/settings/roles" },
+      { label: "Approval Rules",  href: "/bizportal/settings/approval-rules" },
+      { label: "Users",           href: "/bizportal/users" },
+      { label: "Org Chart",       href: "/bizportal/org" },
+    ],
+  },
+  {
+    label: "Sistem & Keamanan",
+    icon: Key,
+    color: "text-amber-500",
+    bg: "bg-amber-500/10",
+    items: [
+      { label: "App Secrets",          href: "/bizportal/settings/secrets" },
+      { label: "Short Links",          href: "/bizportal/settings/short-links" },
+      { label: "Nav & Company Config", href: "/bizportal/settings/nav-company-config" },
+      { label: "System Health",        href: "/bizportal/system-health" },
+    ],
+  },
+];
+
+function SettingsHubGrid() {
+  return (
+    <div>
+      <h2 className="text-lg font-semibold text-foreground mb-3">Modul Settings</h2>
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        {SETTINGS_HUB_CARDS.map(({ label, icon: Icon, color, bg, items }) => (
+          <div
+            key={label}
+            className="rounded-xl border bg-card p-4 flex flex-col gap-3"
+          >
+            <div className="flex items-center gap-2">
+              <div className={`rounded-lg p-2 ${bg} shrink-0`}>
+                <Icon className={`h-4 w-4 ${color}`} />
+              </div>
+              <p className="text-sm font-semibold text-foreground leading-tight">{label}</p>
+            </div>
+            <div className="flex flex-col gap-0.5">
+              {items.map((item) => (
+                <a
+                  key={item.href}
+                  href={item.href}
+                  className="group flex items-center justify-between rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+                >
+                  <span>{item.label}</span>
+                  <ArrowRight className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                </a>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function SettingsPage() {
   const { isAuthenticated } = useSupabaseAuth();
   const { data: dbUser, isLoading } = useGetCurrentUser({
@@ -2281,6 +2392,8 @@ export default function SettingsPage() {
         </div>
 
         {isAdmin && <SettingsStatsBar />}
+
+        {isAdmin && <SettingsHubGrid />}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <Card className="col-span-1 md:col-span-2 bg-card border-border">
