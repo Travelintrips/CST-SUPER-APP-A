@@ -102,3 +102,4 @@ export * from "./oceanFreight";
 export * from "./customerServiceRequests";
 export * from "./servicePackages";
 export * from "./portalCustomerProfiles";
+export * from "./customerVerificationDocuments";

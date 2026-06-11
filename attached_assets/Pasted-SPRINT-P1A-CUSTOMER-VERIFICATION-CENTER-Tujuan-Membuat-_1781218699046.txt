@@ -1,0 +1,201 @@
+SPRINT P1A — CUSTOMER VERIFICATION CENTER
+
+Tujuan:
+Membuat pusat verifikasi customer untuk kebutuhan Freight Forwarding, PPJK, Export, Import, Customs Clearance, dan Logistics Services.
+
+Jangan buat fitur baru lain sebelum sprint ini selesai.
+
+====================================================
+FASE 1 — CUSTOMER VERIFICATION MASTER
+=====================================
+
+Buat modul baru di BizPortal:
+
+Customer Management
+└── Customer Verification
+
+Status Customer:
+
+* DRAFT
+* PENDING_VERIFICATION
+* NEED_REVISION
+* VERIFIED
+* REJECTED
+* EXPIRED
+
+Tambahkan field:
+
+customer_verification_status
+verification_submitted_at
+verified_at
+verified_by
+verification_expired_at
+verification_notes
+
+====================================================
+FASE 2 — CUSTOMER LEGAL DOCUMENTS
+=================================
+
+Buat tabel:
+
+customer_verification_documents
+
+Field:
+
+* id
+* customer_id
+* document_type
+* document_number
+* file_url
+* verification_status
+* verified_by
+* verified_at
+* rejection_reason
+* expiry_date
+* created_at
+
+Jenis dokumen:
+
+* NPWP
+* NIB
+* KTP PIC
+* Akta Perusahaan
+* Surat Kuasa
+* API-U
+* API-P
+* NIK Kepabeanan
+* SIUP/NIB Activity
+* Other
+
+Status dokumen:
+
+* UPLOADED
+* PENDING_REVIEW
+* VERIFIED
+* REJECTED
+* EXPIRED
+
+====================================================
+FASE 3 — CUSTOMER PORTAL
+========================
+
+Tambahkan halaman:
+
+/profile/company-verification
+
+Customer dapat:
+
+* upload dokumen
+* lihat status verifikasi
+* lihat dokumen yang ditolak
+* upload ulang revisi
+* melihat catatan admin
+
+Dashboard tampilkan:
+
+Verification Status:
+✓ Verified
+⚠ Need Revision
+⏳ Pending Review
+
+====================================================
+FASE 4 — BIZPORTAL REVIEW
+=========================
+
+Admin dapat:
+
+* buka profil customer
+* lihat seluruh dokumen
+* preview file
+* approve
+* reject
+* request revision
+* beri catatan
+
+Tombol:
+
+Approve
+Reject
+Request Revision
+
+Semua aksi masuk audit log.
+
+====================================================
+FASE 5 — REQUEST QUOTE INTEGRATION
+==================================
+
+Saat customer submit request:
+
+Jika status VERIFIED:
+→ langsung lanjut ke RFQ
+
+Jika status belum VERIFIED:
+→ tetap boleh submit
+→ tetapi status request menjadi:
+
+WAITING_VERIFICATION
+
+Admin tidak dapat blast RFQ sebelum customer verified.
+
+====================================================
+FASE 6 — PPJK RULES
+===================
+
+Untuk layanan:
+
+* PPJK
+* Export
+* Import
+* Customs Clearance
+
+Dokumen minimum wajib:
+
+* NPWP
+* NIB
+* KTP PIC
+
+Jika dokumen wajib belum lengkap:
+
+* request tidak bisa masuk tahap vendor processing
+* tampil warning ke admin
+
+====================================================
+FASE 7 — WA MINI FORM
+=====================
+
+WA Notification:
+
+1. Customer submit dokumen
+2. Admin approve dokumen
+3. Admin reject dokumen
+4. Admin request revision
+5. Customer upload revisi
+6. Customer verification completed
+
+====================================================
+FASE 8 — AUDIT
+==============
+
+Audit:
+
+* upload dokumen
+* approve
+* reject
+* revisi
+* expiry
+* audit log
+* permission
+* customer portal
+* BizPortal
+
+Output:
+
+1. tabel baru
+2. migration
+3. halaman customer portal
+4. halaman BizPortal
+5. WA template
+6. hasil test end-to-end
+7. bug yang tersisa
+
+Jangan lanjut ke Paket Borongan sebelum modul verifikasi customer selesai dan stabil.

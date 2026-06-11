@@ -24,6 +24,12 @@ export const portalCustomerProfilesTable = pgTable("portal_customer_profiles", {
   isVerified: boolean("is_verified").notNull().default(false),
   verifiedBy: text("verified_by"),
   verifiedAt: timestamp("verified_at", { withTimezone: true }),
+  // ── Verification Center (P1A) ─────────────────────────────────────────────
+  verificationStatus: text("verification_status").notNull().default("DRAFT"),
+  verificationSubmittedAt: timestamp("verification_submitted_at", { withTimezone: true }),
+  verificationExpiredAt: timestamp("verification_expired_at", { withTimezone: true }),
+  verificationNotes: text("verification_notes"),
+  // ─────────────────────────────────────────────────────────────────────────
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });

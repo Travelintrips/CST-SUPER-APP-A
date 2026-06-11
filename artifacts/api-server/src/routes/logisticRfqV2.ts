@@ -14,6 +14,8 @@ import {
   freightShipmentsTable,
   vendorPerformanceTable,
   productTemplatesTable,
+  portalCustomerProfilesTable,
+  portalCustomersTable,
 } from "@workspace/db";
 import { resolveTemplate } from "@workspace/product-templates";
 import { requireClerkUser } from "../lib/requireAdmin.js";
@@ -1170,6 +1172,46 @@ logisticRfqV2Router.post("/orders/:orderId/rfq-blast", async (req: Request, res:
     }
   }
   // ────────────────────────────────────────────────────────────────────────────
+
+  // ── Verification Guard: customer portal harus VERIFIED sebelum blast RFQ ──
+  {
+    const { forceBlast } = req.body as { forceBlast?: boolean };
+    if (!forceBlast) {
+      const orderEmail = (order as unknown as Record<string, unknown>).email as string | null | undefined;
+      const orderGuestEmail = (order as unknown as Record<string, unknown>).guestEmail as string | null | undefined;
+      const lookupEmail = orderEmail ?? orderGuestEmail;
+      if (lookupEmail) {
+        const [portalCustomer] = await db
+          .select({ id: portalCustomersTable.id })
+          .from(portalCustomersTable)
+          .where(eq(portalCustomersTable.email, lookupEmail))
+          .limit(1);
+        if (portalCustomer) {
+          const [profile] = await db
+            .select({ verificationStatus: portalCustomerProfilesTable.verificationStatus })
+            .from(portalCustomerProfilesTable)
+            .where(eq(portalCustomerProfilesTable.customerId, portalCustomer.id))
+            .limit(1);
+          const vStatus = profile?.verificationStatus ?? "DRAFT";
+          if (vStatus !== "VERIFIED") {
+            await transitionLogisticOrderStatus(orderId, "Waiting Verification", {
+              actorType: "admin",
+              actorName: "System",
+              source: "rfq-blast-verification-guard",
+              skipAudit: false,
+            }).catch(() => {}); // jika status tidak bisa transisi, abaikan
+            return res.status(422).json({
+              message: `Customer belum terverifikasi (status: ${vStatus}). Blast RFQ ditangguhkan sampai verifikasi dokumen selesai.`,
+              verificationStatus: vStatus,
+              customerEmail: lookupEmail,
+              waitingVerification: true,
+            });
+          }
+        }
+      }
+    }
+  }
+  // ─────────────────────────────────────────────────────────────────────────
 
   // Reuse existing RFQ or create new one
   const existingRfqs = await db.select().from(logisticOrderRfqsTable)

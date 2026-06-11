@@ -391,6 +391,7 @@ export function AppShell({ children, noPadding }: AppShellProps) {
         { titleKey: "Portal Orders", href: "/logistics/portal-orders", icon: ClipboardList, companyCodes: ["CST"] },
         { titleKey: "Service Requests (CSR)", href: "/logistics/service-requests", icon: ClipboardCheck },
         { titleKey: "Pelanggan Portal", href: "/portal/customers", icon: Users },
+        { titleKey: "Verifikasi Customer", href: "/portal/customer-verification", icon: Users },
         { titleKey: "Persetujuan Onboarding", href: "/portal/onboarding-approvals", icon: Users },
         { titleKey: "Balasan Quotation WA", href: "/logistics/quotation-reply", icon: MessageCircle },
         { titleKey: "AI Import Advisor", href: "/logistics/import-assistant", icon: Bot },

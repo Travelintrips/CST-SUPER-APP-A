@@ -171,6 +171,7 @@ import ProductRecipesPage from "@/pages/products/recipes";
 // Portal
 import PortalCustomersPage from "@/pages/portal-customers";
 import PortalOnboardingApprovalsPage from "@/pages/portal-onboarding-approvals";
+import PortalCustomerVerificationPage from "@/pages/portal-customer-verification";
 // Logistics RFQ + Order detail
 import LogisticsRfqListPage from "@/pages/logistics-rfq-list";
 import LogisticsRfqDetailPage from "@/pages/logistics-rfq-detail";
@@ -306,6 +307,8 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/portal-product-orders" component={PR(PortalProductOrdersPage)} />
       <Route path="/portal/customers" component={PR(PortalCustomersPage)} />
       <Route path="/portal/onboarding-approvals" component={PR(PortalOnboardingApprovalsPage)} />
+      <Route path="/portal/customer-verification/:id" component={PR(PortalCustomerVerificationPage)} />
+      <Route path="/portal/customer-verification" component={PR(PortalCustomerVerificationPage)} />
 
       {/* ── Sales ──────────────────────────────────────────────────────── */}
       <Route path="/sales/documents/new" component={PR(SalesDocumentEditorPage)} />
