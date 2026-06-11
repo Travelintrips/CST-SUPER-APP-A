@@ -394,6 +394,10 @@ function IssuesPanel({
   const [autofillFakturResult, setAutofillFakturResult] = useState<{ updated: number } | null>(null);
   const [autofillingPartner, setAutofillingPartner] = useState(false);
   const [autofillPartnerResult, setAutofillPartnerResult] = useState<{ updated: number } | null>(null);
+  const [autofillingPurchasePartner, setAutofillingPurchasePartner] = useState(false);
+  const [autofillPurchasePartnerResult, setAutofillPurchasePartnerResult] = useState<{ updated: number } | null>(null);
+  const [autofillingPurchaseFaktur, setAutofillingPurchaseFaktur] = useState(false);
+  const [autofillPurchaseFakturResult, setAutofillPurchaseFakturResult] = useState<{ updated: number } | null>(null);
 
   const params = new URLSearchParams({ period, type: filter });
   if (companyId) params.set("companyId", String(companyId));
@@ -491,6 +495,60 @@ function IssuesPanel({
     }
   }
 
+  async function runAutofillPurchasePartner() {
+    setAutofillingPurchasePartner(true);
+    setAutofillPurchasePartnerResult(null);
+    try {
+      const p = new URLSearchParams({ period });
+      if (companyId) p.set("companyId", String(companyId));
+      const r = await fetch(`/api/tax/export/autofill-purchase-partner?${p}`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const body = await r.json();
+      if (!r.ok) throw new Error(body.message ?? "Gagal auto-isi nama mitra pembelian");
+      setAutofillPurchasePartnerResult({ updated: body.updated ?? 0 });
+      if (body.updated > 0) {
+        toast.success(body.message);
+        refetch();
+        onFixed();
+      } else {
+        toast.info("Tidak ada Nama Mitra pembelian yang perlu diisi (sudah terisi atau tidak ada purchase order terkait)");
+      }
+    } catch (e: any) {
+      toast.error(e?.message ?? "Gagal auto-isi Nama Mitra pembelian");
+    } finally {
+      setAutofillingPurchasePartner(false);
+    }
+  }
+
+  async function runAutofillPurchaseFaktur() {
+    setAutofillingPurchaseFaktur(true);
+    setAutofillPurchaseFakturResult(null);
+    try {
+      const p = new URLSearchParams({ period });
+      if (companyId) p.set("companyId", String(companyId));
+      const r = await fetch(`/api/tax/export/autofill-purchase-faktur?${p}`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const body = await r.json();
+      if (!r.ok) throw new Error(body.message ?? "Gagal auto-isi no. faktur pembelian");
+      setAutofillPurchaseFakturResult({ updated: body.updated ?? 0 });
+      if (body.updated > 0) {
+        toast.success(body.message);
+        refetch();
+        onFixed();
+      } else {
+        toast.info("Tidak ada No. Faktur pembelian yang bisa diisi (bill_number belum ada atau sudah terisi)");
+      }
+    } catch (e: any) {
+      toast.error(e?.message ?? "Gagal auto-isi No. Faktur pembelian");
+    } finally {
+      setAutofillingPurchaseFaktur(false);
+    }
+  }
+
   if (totalIssues === 0) return null;
 
   return (
@@ -523,6 +581,16 @@ function IssuesPanel({
           {autofillPartnerResult && autofillPartnerResult.updated > 0 && (
             <Badge className="bg-violet-200 text-violet-800 border-0 text-[10px]">
               {autofillPartnerResult.updated} Nama Mitra diisi otomatis
+            </Badge>
+          )}
+          {autofillPurchasePartnerResult && autofillPurchasePartnerResult.updated > 0 && (
+            <Badge className="bg-amber-200 text-amber-800 border-0 text-[10px]">
+              {autofillPurchasePartnerResult.updated} Nama Mitra PO diisi otomatis
+            </Badge>
+          )}
+          {autofillPurchaseFakturResult && autofillPurchaseFakturResult.updated > 0 && (
+            <Badge className="bg-teal-200 text-teal-800 border-0 text-[10px]">
+              {autofillPurchaseFakturResult.updated} No. Faktur PO diisi otomatis
             </Badge>
           )}
         </div>
@@ -584,6 +652,32 @@ function IssuesPanel({
                   ? <Loader2 className="h-3 w-3 animate-spin" />
                   : <Sparkles className="h-3 w-3" />}
                 Auto-isi Nama Mitra
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-6 px-2.5 text-[11px] gap-1 border-amber-300 text-amber-700 hover:bg-amber-50"
+                onClick={runAutofillPurchasePartner}
+                disabled={autofillingPurchasePartner}
+                title="Isi Nama Mitra dari supplier_name di purchase order terkait (transaction_type=purchase_order)"
+              >
+                {autofillingPurchasePartner
+                  ? <Loader2 className="h-3 w-3 animate-spin" />
+                  : <Sparkles className="h-3 w-3" />}
+                Auto-isi Nama Mitra (PO)
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-6 px-2.5 text-[11px] gap-1 border-teal-300 text-teal-700 hover:bg-teal-50"
+                onClick={runAutofillPurchaseFaktur}
+                disabled={autofillingPurchaseFaktur}
+                title="Isi No. Faktur dari bill_number di purchase order terkait"
+              >
+                {autofillingPurchaseFaktur
+                  ? <Loader2 className="h-3 w-3 animate-spin" />
+                  : <FileText className="h-3 w-3" />}
+                Auto-isi No. Faktur (PO)
               </Button>
               <Button size="sm" variant="ghost" className="h-6 px-2" onClick={() => refetch()} disabled={isLoading}>
                 <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? "animate-spin" : ""}`} />
