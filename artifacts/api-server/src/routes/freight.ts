@@ -234,9 +234,6 @@ router.post("/freight-shipments", async (req, res) => {
     portOfLoading, portOfDischarge, vessel, voyage, notifyParty, marksAndNumbers, measurement, notes,
     transportMode, cargoType, containerNo, salesDocId, purchaseDocId, freightCost,
     serviceCategory, sourceModule, sourceOrderId } = req.body;
-  if (!salesDocId) {
-    return res.status(400).json({ message: "Sales Order wajib dipilih sebelum membuat shipment." });
-  }
   let validatedTM: TransportMode | null;
   let validatedCT: CargoType | null;
   let validatedSC: FreightServiceCategory | null;
@@ -247,9 +244,11 @@ router.post("/freight-shipments", async (req, res) => {
   } catch (e: any) {
     return res.status(400).json({ message: e.message });
   }
-  const [linkedDoc] = await db.select({ id: salesDocumentsTable.id }).from(salesDocumentsTable).where(eq(salesDocumentsTable.id, Number(salesDocId))).limit(1);
-  if (!linkedDoc) {
-    return res.status(400).json({ message: "Sales Order tidak ditemukan." });
+  if (salesDocId) {
+    const [linkedDoc] = await db.select({ id: salesDocumentsTable.id }).from(salesDocumentsTable).where(eq(salesDocumentsTable.id, Number(salesDocId))).limit(1);
+    if (!linkedDoc) {
+      return res.status(400).json({ message: "Sales Order tidak ditemukan." });
+    }
   }
   if (purchaseDocId) {
     const [linkedPO] = await db.select({ id: purchaseDocumentsTable.id }).from(purchaseDocumentsTable).where(eq(purchaseDocumentsTable.id, Number(purchaseDocId))).limit(1);
