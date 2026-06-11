@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, type ElementType } from "react";
+import { Link } from "wouter";
 import { AppShell } from "@/components/layout/AppShell";
 import { useGetCurrentUser, getGetCurrentUserQueryKey } from "@workspace/api-client-react";
 import { useSupabaseAuth } from "@/contexts/SupabaseAuthContext";
@@ -2160,10 +2161,10 @@ const QUICK_NAV_CARDS: QuickNavCard[] = [
     color: "text-blue-500",
     bg: "bg-blue-500/10",
     items: [
-      { label: "Semua Order",     href: "/bizportal/logistic-orders" },
-      { label: "Buat Order Baru", href: "/bizportal/logistic-orders/new" },
-      { label: "RFQ / Penawaran", href: "/bizportal/logistic-rfq" },
-      { label: "Tracking",        href: "/bizportal/logistic-orders?tab=tracking" },
+      { label: "Semua Order",     href: "/logistics" },
+      { label: "Buat Order Baru", href: "/logistics/freight/new" },
+      { label: "RFQ / Penawaran", href: "/logistics/rfq" },
+      { label: "Tracking",        href: "/logistics/portal-orders" },
     ],
   },
   {
@@ -2172,10 +2173,10 @@ const QUICK_NAV_CARDS: QuickNavCard[] = [
     color: "text-emerald-500",
     bg: "bg-emerald-500/10",
     items: [
-      { label: "Semua Order",   href: "/bizportal/sales/orders" },
-      { label: "Quotation",     href: "/bizportal/sales/quotations" },
-      { label: "Invoice",       href: "/bizportal/sales/invoices" },
-      { label: "Sales Items",   href: "/bizportal/sales/items" },
+      { label: "Semua Order",   href: "/sales/orders" },
+      { label: "Quotation",     href: "/sales/quotations" },
+      { label: "Invoice",       href: "/sales/invoices" },
+      { label: "Sales Items",   href: "/sales/items" },
     ],
   },
   {
@@ -2184,10 +2185,10 @@ const QUICK_NAV_CARDS: QuickNavCard[] = [
     color: "text-violet-500",
     bg: "bg-violet-500/10",
     items: [
-      { label: "Semua Customer",    href: "/bizportal/customers" },
-      { label: "Customer Portal",   href: "/bizportal/customer-portal-admin" },
-      { label: "Quote Requests",    href: "/bizportal/customer-quotes" },
-      { label: "Portal Orders",     href: "/bizportal/portal-orders" },
+      { label: "Semua Customer",    href: "/sales/customers" },
+      { label: "Customer Portal",   href: "/portal/customers" },
+      { label: "Quote Requests",    href: "/logistics/quote-requests" },
+      { label: "Portal Orders",     href: "/logistics/portal-orders" },
     ],
   },
   {
@@ -2196,10 +2197,10 @@ const QUICK_NAV_CARDS: QuickNavCard[] = [
     color: "text-amber-500",
     bg: "bg-amber-500/10",
     items: [
-      { label: "Semua Vendor",    href: "/bizportal/purchase/vendors" },
-      { label: "Purchase Orders", href: "/bizportal/purchase/orders" },
-      { label: "Bills",           href: "/bizportal/purchase/bills" },
-      { label: "RFQ Vendor",      href: "/bizportal/purchase/rfq" },
+      { label: "Semua Vendor",    href: "/purchase/vendors" },
+      { label: "Purchase Orders", href: "/purchase/orders" },
+      { label: "Bills",           href: "/purchase/bills" },
+      { label: "RFQ Vendor",      href: "/purchase/rfq" },
     ],
   },
   {
@@ -2208,10 +2209,10 @@ const QUICK_NAV_CARDS: QuickNavCard[] = [
     color: "text-cyan-500",
     bg: "bg-cyan-500/10",
     items: [
-      { label: "Semua Shipment",  href: "/bizportal/freight/shipments" },
-      { label: "Air Freight",     href: "/bizportal/air-freight/orders" },
-      { label: "Ocean Freight",   href: "/bizportal/ocean-freight/orders" },
-      { label: "Trucking",        href: "/bizportal/trucking/orders" },
+      { label: "Semua Shipment",  href: "/logistics/freight" },
+      { label: "Air Freight",     href: "/logistics/air-freight" },
+      { label: "Ocean Freight",   href: "/logistics/ocean-freight" },
+      { label: "Trucking",        href: "/logistics/trucking" },
     ],
   },
   {
@@ -2220,10 +2221,10 @@ const QUICK_NAV_CARDS: QuickNavCard[] = [
     color: "text-rose-500",
     bg: "bg-rose-500/10",
     items: [
-      { label: "Semua Staff",  href: "/bizportal/org/users" },
-      { label: "Roles",        href: "/bizportal/settings/roles" },
-      { label: "Org Chart",    href: "/bizportal/org" },
-      { label: "Approval",     href: "/bizportal/settings/approval-rules" },
+      { label: "Semua Staff",  href: "/users" },
+      { label: "Roles",        href: "/settings/roles" },
+      { label: "Org Chart",    href: "/org" },
+      { label: "Approval",     href: "/settings/approval-rules" },
     ],
   },
 ];
@@ -2244,14 +2245,14 @@ function SettingsStatsBar() {
           </div>
           <div className="flex flex-col gap-0.5">
             {items.map((item) => (
-              <a
+              <Link
                 key={item.href}
                 href={item.href}
                 className="group flex items-center justify-between rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
               >
                 <span>{item.label}</span>
                 <ArrowRight className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
-              </a>
+              </Link>
             ))}
           </div>
         </div>
@@ -2269,11 +2270,11 @@ const SETTINGS_HUB_CARDS: QuickNavCard[] = [
     color: "text-green-500",
     bg: "bg-green-500/10",
     items: [
-      { label: "WA Templates",            href: "/bizportal/settings/wa-templates" },
-      { label: "Enterprise WA Templates", href: "/bizportal/settings/enterprise-wa-templates" },
-      { label: "WA Gateway",              href: "/bizportal/settings/wa-gateway" },
-      { label: "WA Notification Logs",    href: "/bizportal/settings/wa-notification-logs" },
-      { label: "WATI Config",             href: "/bizportal/settings/wati" },
+      { label: "WA Templates",            href: "/settings/wa-templates" },
+      { label: "Enterprise WA Templates", href: "/settings/enterprise-wa-templates" },
+      { label: "WA Gateway",              href: "/settings/wa-gateway" },
+      { label: "WA Notification Logs",    href: "/settings/wa-notification-logs" },
+      { label: "WATI Config",             href: "/settings/wati" },
     ],
   },
   {
@@ -2282,9 +2283,9 @@ const SETTINGS_HUB_CARDS: QuickNavCard[] = [
     color: "text-purple-500",
     bg: "bg-purple-500/10",
     items: [
-      { label: "AI Chatbot",      href: "/bizportal/settings/ai-chatbot" },
-      { label: "Knowledge Base",  href: "/bizportal/settings/ai-chatbot/knowledge" },
-      { label: "AI Scan / OCR",   href: "/bizportal/settings/ai-scan" },
+      { label: "AI Chatbot",      href: "/settings/ai-chatbot" },
+      { label: "Knowledge Base",  href: "/settings/ai-chatbot/knowledge" },
+      { label: "AI Scan / OCR",   href: "/settings/ai-scan" },
     ],
   },
   {
@@ -2293,9 +2294,9 @@ const SETTINGS_HUB_CARDS: QuickNavCard[] = [
     color: "text-indigo-500",
     bg: "bg-indigo-500/10",
     items: [
-      { label: "Document Templates", href: "/bizportal/settings/document-templates" },
-      { label: "Product Templates",  href: "/bizportal/settings/product-templates" },
-      { label: "Service Templates",  href: "/bizportal/settings/service-templates" },
+      { label: "Document Templates", href: "/settings/document-templates" },
+      { label: "Product Templates",  href: "/settings/product-templates" },
+      { label: "Service Templates",  href: "/settings/service-templates" },
     ],
   },
   {
@@ -2304,10 +2305,10 @@ const SETTINGS_HUB_CARDS: QuickNavCard[] = [
     color: "text-cyan-500",
     bg: "bg-cyan-500/10",
     items: [
-      { label: "Satuan Logistik",  href: "/bizportal/settings/logistics-units" },
-      { label: "Trucking Rates",   href: "/bizportal/settings/trucking-rates" },
-      { label: "Vehicle Images",   href: "/bizportal/settings/vehicle-images" },
-      { label: "Unit of Measure",  href: "/bizportal/settings/uom" },
+      { label: "Satuan Logistik",  href: "/settings/logistics-units" },
+      { label: "Trucking Rates",   href: "/settings/trucking-rates" },
+      { label: "Vehicle Images",   href: "/settings/vehicle-images" },
+      { label: "Unit of Measure",  href: "/settings/uom" },
     ],
   },
   {
@@ -2316,10 +2317,10 @@ const SETTINGS_HUB_CARDS: QuickNavCard[] = [
     color: "text-rose-500",
     bg: "bg-rose-500/10",
     items: [
-      { label: "Roles",           href: "/bizportal/settings/roles" },
-      { label: "Approval Rules",  href: "/bizportal/settings/approval-rules" },
-      { label: "Users",           href: "/bizportal/users" },
-      { label: "Org Chart",       href: "/bizportal/org" },
+      { label: "Roles",           href: "/settings/roles" },
+      { label: "Approval Rules",  href: "/settings/approval-rules" },
+      { label: "Users",           href: "/users" },
+      { label: "Org Chart",       href: "/org" },
     ],
   },
   {
@@ -2328,10 +2329,10 @@ const SETTINGS_HUB_CARDS: QuickNavCard[] = [
     color: "text-amber-500",
     bg: "bg-amber-500/10",
     items: [
-      { label: "App Secrets",          href: "/bizportal/settings/secrets" },
-      { label: "Short Links",          href: "/bizportal/settings/short-links" },
-      { label: "Nav & Company Config", href: "/bizportal/settings/nav-company-config" },
-      { label: "System Health",        href: "/bizportal/system-health" },
+      { label: "App Secrets",          href: "/settings/secrets" },
+      { label: "Short Links",          href: "/settings/short-links" },
+      { label: "Nav & Company Config", href: "/settings/nav-company-config" },
+      { label: "System Health",        href: "/system-health" },
     ],
   },
 ];
@@ -2354,14 +2355,14 @@ function SettingsHubGrid() {
             </div>
             <div className="flex flex-col gap-0.5">
               {items.map((item) => (
-                <a
+                <Link
                   key={item.href}
                   href={item.href}
                   className="group flex items-center justify-between rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
                 >
                   <span>{item.label}</span>
                   <ArrowRight className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
-                </a>
+                </Link>
               ))}
             </div>
           </div>
