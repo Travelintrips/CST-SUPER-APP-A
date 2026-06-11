@@ -159,13 +159,13 @@ const AUTOCOMPLETE_MAP: AutocompleteEntry[] = [
 
 // Default popular suggestions shown before user types
 const DEFAULT_SUGGESTIONS: AutocompleteEntry[] = [
-  AUTOCOMPLETE_MAP.find(e => e.label === "Trucking Domestik")!,
-  AUTOCOMPLETE_MAP.find(e => e.label === "Sea Freight")!,
-  AUTOCOMPLETE_MAP.find(e => e.label === "PPJK / Customs Clearance")!,
-  AUTOCOMPLETE_MAP.find(e => e.label === "Kopi / Coffee")!,
-  AUTOCOMPLETE_MAP.find(e => e.label === "Batubara")!,
-  AUTOCOMPLETE_MAP.find(e => e.label === "Minyak Sawit / CPO")!,
-];
+  AUTOCOMPLETE_MAP.find(e => e.label === "Trucking Domestik"),
+  AUTOCOMPLETE_MAP.find(e => e.label === "Ocean Freight"),
+  AUTOCOMPLETE_MAP.find(e => e.label === "PPJK / Customs Clearance"),
+  AUTOCOMPLETE_MAP.find(e => e.label === "Kopi / Coffee"),
+  AUTOCOMPLETE_MAP.find(e => e.label === "Batubara"),
+  AUTOCOMPLETE_MAP.find(e => e.label === "Minyak Sawit / CPO"),
+].filter((e): e is AutocompleteEntry => e !== undefined);
 
 function getAutocompleteSuggestions(
   q: string,
