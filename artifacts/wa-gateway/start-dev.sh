@@ -23,6 +23,8 @@ const server = net.createServer((src) => {
 server.listen(LISTEN, '0.0.0.0', () => {
   process.stdout.write('[wa-gateway-forwarder] ' + LISTEN + ' -> ' + TARGET + '\n');
 });
+process.on('SIGTERM', () => { server.close(); process.exit(0); });
+process.on('SIGINT',  () => { server.close(); process.exit(0); });
 " &
 FORWARDER_PID=$!
 
@@ -30,11 +32,11 @@ FORWARDER_PID=$!
 (cd client && node_modules/.bin/vite --port "$VITE_PORT" --host 0.0.0.0) &
 VITE_PID=$!
 
-# Start Express on ACTUAL_PORT — proxies non-API requests to Vite
-BASE_PATH=/wa-gateway PORT=$ACTUAL_PORT VITE_PORT=$VITE_PORT node_modules/.bin/tsx watch src/index.ts &
-BACKEND_PID=$!
+trap "kill \$VITE_PID \$FORWARDER_PID 2>/dev/null; exit" TERM INT
 
-trap "kill \$BACKEND_PID \$VITE_PID \$FORWARDER_PID 2>/dev/null; exit" TERM INT
-
-wait $BACKEND_PID
-kill $VITE_PID $FORWARDER_PID 2>/dev/null || true
+# Keep backend running — auto-restart on crash
+while true; do
+  BASE_PATH=/wa-gateway PORT=$ACTUAL_PORT VITE_PORT=$VITE_PORT node_modules/.bin/tsx watch src/index.ts
+  echo "[wa-gateway] backend exited (code $?), restarting in 2s..."
+  sleep 2
+done

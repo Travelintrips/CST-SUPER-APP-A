@@ -46,7 +46,6 @@ outputType = "console"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "cd artifacts/wa-gateway && bash start-dev.sh"
-waitForPort = 8000
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
