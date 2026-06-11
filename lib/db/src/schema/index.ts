@@ -100,3 +100,4 @@ export * from "./waGateway";
 export * from "./airFreight";
 export * from "./oceanFreight";
 export * from "./customerServiceRequests";
+export * from "./servicePackages";
