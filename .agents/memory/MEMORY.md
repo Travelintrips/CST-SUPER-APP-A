@@ -8,3 +8,4 @@
 - [ESM external lazy import pattern](esm-external-lazy-import.md) — esbuild externals leave static imports as top-level ESM → runtime _link fails if package absent; use createRequire for true call-time resolution.
 - [Workspace package symlinks](workspace-package-symlinks.md) — @workspace/product-templates, service-templates, logistics-constants live in lib/; if missing from node_modules/@workspace run pnpm install at root.
 - [Accounting gap fixes — Fase 3](accounting-fase3.md) — audit trail + NPWP/faktur validators: 3 new lib files; audit hooks in tax/vendorPayments/accounting routes.
+- [DB URL priority in dev mode](db-url-priority-dev.md) — SUPABASE_PG_URL (wrong Supabase project) must come AFTER SUPABASE_DATABASE_URL in dev candidates or all Drizzle queries fail.
