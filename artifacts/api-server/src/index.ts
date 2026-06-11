@@ -86,6 +86,7 @@ import { backfillVendorPerformance } from "./routes/vendorPerformance.js";
 import { runProductMediaMigration } from "./lib/productMediaMigration.js";
 import { runTaxRulesMigration } from "./lib/taxRulesMigration.js";
 import { backfillSportCenterAccountingPayments } from "./lib/backfillSportCenterPayments.js";
+import { runFreightAccountingMigration } from "./lib/freightAccountingMigration.js";
 
 
 // REPLIT_API_PORT overrides PORT so the server listens on the local port
@@ -710,6 +711,7 @@ async function startServer() {
     .then(() => runWithRetry("Logistic vendor fulfillments migration", runLogisticVendorFulfillmentsMigration))
     .then(() => runWithRetry("Product media migration", runProductMediaMigration))
     .then(() => runWithRetry("Tax rules migration", runTaxRulesMigration))
+    .then(() => runWithRetry("Freight accounting migration", runFreightAccountingMigration))
     .then(() => enableRealtimeTables().catch((err) => {
       logger.warn({ err }, "Supabase Realtime table enable failed (non-fatal)");
     }))
