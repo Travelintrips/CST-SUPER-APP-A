@@ -34,6 +34,7 @@ async function buildAll() {
       "*.node",
       "pdfkit",
       "sharp",
+      "fluent-ffmpeg",
       "better-sqlite3",
       "sqlite3",
       "canvas",

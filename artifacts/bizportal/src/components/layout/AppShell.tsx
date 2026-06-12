@@ -459,8 +459,10 @@ export function AppShell({ children, noPadding }: AppShellProps) {
       roles: ["admin", "owner", "manager"],
       children: [
         { titleKey: "Dashboard", href: "/tenant/dashboard", icon: LayoutDashboard },
-        { titleKey: "Penyewa", href: "/tenant/tenants", icon: Store },
-        { titleKey: "Penyewaan", href: "/tenant/bookings", icon: FileText },
+        { titleKey: "Data Tenant", href: "/tenant/tenants", icon: Store },
+        { titleKey: "Unit Kantin", href: "/tenant/units", icon: Building2 },
+        { titleKey: "Booking Tenant", href: "/tenant/bookings", icon: FileText },
+        { titleKey: "Invoice Tenant", href: "/tenant/invoices", icon: Receipt },
         { titleKey: "Pembayaran Sewa", href: "/tenant/payments", icon: DollarSign },
       ],
     },

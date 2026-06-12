@@ -195,6 +195,8 @@ import TenantDashboard from "@/pages/tenant/dashboard";
 import TenantList from "@/pages/tenant/tenants";
 import TenantBookings from "@/pages/tenant/bookings";
 import TenantPayments from "@/pages/tenant/payments";
+import TenantUnits from "@/pages/tenant/units";
+import TenantInvoices from "@/pages/tenant/invoices";
 
 const PR = (C: React.ComponentType) => () => <ProtectedRoute component={C} />;
 
@@ -453,8 +455,10 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/sport-center" component={PR(SportCenterDashboard)} />
       <Route path="/tenant/dashboard" component={PR(TenantDashboard)} />
       <Route path="/tenant/tenants" component={PR(TenantList)} />
+      <Route path="/tenant/units" component={PR(TenantUnits)} />
       <Route path="/tenant/bookings" component={PR(TenantBookings)} />
       <Route path="/tenant/payments" component={PR(TenantPayments)} />
+      <Route path="/tenant/invoices" component={PR(TenantInvoices)} />
       <Route path="/tenant" component={PR(TenantDashboard)} />
 
       {/* ── Legacy redirects ───────────────────────────────────────────── */}

@@ -40,6 +40,7 @@ router.get("/dashboard", async (req, res) => {
   if (!(await requireAdmin(req, res))) return;
   const companyId = companyOf(req);
   const cFilter = companyId ? sql`WHERE company_id = ${companyId}` : sql``;
+  const cAnd = companyId ? sql`AND company_id = ${companyId}` : sql``;
   try {
     const { rows: t } = (await db.execute(
       sql`SELECT COUNT(*)::int AS total, COUNT(*) FILTER (WHERE status = 'active')::int AS active FROM tenants ${cFilter}`,
@@ -47,19 +48,34 @@ router.get("/dashboard", async (req, res) => {
     const { rows: b } = (await db.execute(
       sql`SELECT COUNT(*)::int AS total, COUNT(*) FILTER (WHERE payment_status = 'unpaid')::int AS unpaid FROM tenant_bookings ${cFilter}`,
     )) as unknown as { rows: { total: number; unpaid: number }[] };
-    const pFilter = companyId ? sql`AND company_id = ${companyId}` : sql``;
     const { rows: p } = (await db.execute(
-      sql`SELECT COALESCE(SUM(amount), 0)::float AS revenue, COUNT(*) FILTER (WHERE status = 'pending')::int AS pending
-          FROM tenant_payments WHERE status = 'confirmed' ${pFilter}`,
-    )) as unknown as { rows: { revenue: number; pending: number }[] };
+      sql`SELECT COALESCE(SUM(amount), 0)::float AS revenue FROM tenant_payments WHERE status = 'confirmed' ${cAnd}`,
+    )) as unknown as { rows: { revenue: number }[] };
     const { rows: pendingAll } = (await db.execute(
-      sql`SELECT COUNT(*)::int AS pending FROM tenant_payments WHERE status = 'pending' ${pFilter}`,
+      sql`SELECT COUNT(*)::int AS pending FROM tenant_payments WHERE status = 'pending' ${cAnd}`,
     )) as unknown as { rows: { pending: number }[] };
+    const { rows: inv } = (await db.execute(
+      sql`SELECT
+            COUNT(*)::int AS total,
+            COUNT(*) FILTER (WHERE status = 'overdue')::int AS overdue,
+            COUNT(*) FILTER (WHERE status IN ('draft','sent'))::int AS pending,
+            COALESCE(SUM(outstanding_amount) FILTER (WHERE status NOT IN ('paid','cancelled')), 0)::float AS piutang
+          FROM tenant_invoices WHERE 1=1 ${cAnd}`,
+    )) as unknown as { rows: { total: number; overdue: number; pending: number; piutang: number }[] };
+    const { rows: u } = (await db.execute(
+      sql`SELECT
+            COUNT(*)::int AS total,
+            COUNT(*) FILTER (WHERE status = 'occupied')::int AS occupied,
+            COUNT(*) FILTER (WHERE status = 'available')::int AS available
+          FROM tenant_units ${cFilter}`,
+    )) as unknown as { rows: { total: number; occupied: number; available: number }[] };
     res.json({
       tenants: t[0] ?? { total: 0, active: 0 },
       bookings: b[0] ?? { total: 0, unpaid: 0 },
       revenue: p[0]?.revenue ?? 0,
       pendingPayments: pendingAll[0]?.pending ?? 0,
+      invoices: inv[0] ?? { total: 0, overdue: 0, pending: 0, piutang: 0 },
+      units: u[0] ?? { total: 0, occupied: 0, available: 0 },
     });
   } catch (err) {
     logger.error({ err }, "tenant dashboard failed");
@@ -359,6 +375,153 @@ router.post("/payments/:id/confirm", async (req, res) => {
   } catch (err) {
     logger.error({ err }, "confirm payment failed");
     res.status(500).json({ error: "Gagal konfirmasi pembayaran" });
+  }
+});
+
+/* ───────────────────────── UNITS ───────────────────────── */
+router.get("/units", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  const companyId = companyOf(req);
+  const search = String(req.query.search ?? "").trim();
+  try {
+    const conds: ReturnType<typeof sql>[] = [];
+    if (companyId) conds.push(sql`company_id = ${companyId}`);
+    if (search) conds.push(sql`(unit_code ILIKE ${"%" + search + "%"} OR name ILIKE ${"%" + search + "%"} OR area_name ILIKE ${"%" + search + "%"})`);
+    const where = conds.length ? sql`WHERE ${sql.join(conds, sql` AND `)}` : sql``;
+    const { rows } = (await db.execute(
+      sql`SELECT * FROM tenant_units ${where} ORDER BY area_name, unit_code`,
+    )) as unknown as { rows: any[] };
+    res.json({ data: rows, total: rows.length });
+  } catch (err) {
+    logger.error({ err }, "list units failed");
+    res.status(500).json({ error: "Gagal memuat unit" });
+  }
+});
+
+router.post("/units", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  const b = req.body ?? {};
+  if (!b.unit_code || !b.name) return res.status(400).json({ error: "Kode dan nama unit wajib diisi" });
+  const companyId = companyOf(req) ?? 1;
+  try {
+    const { rows } = (await db.execute(sql`
+      INSERT INTO tenant_units (company_id, unit_code, name, area_name, unit_type, area_sqm, monthly_rate, status, notes, position_x, position_y, width, height)
+      VALUES (${companyId}, ${b.unit_code}, ${b.name}, ${b.area_name ?? ""}, ${b.unit_type ?? "other"},
+              ${b.area_sqm ?? null}, ${b.monthly_rate ?? null}, ${b.status ?? "available"},
+              ${b.notes ?? null}, 0, 0, 100, 80)
+      RETURNING *`)) as unknown as { rows: any[] };
+    res.json(rows[0]);
+  } catch (err) {
+    logger.error({ err }, "create unit failed");
+    res.status(500).json({ error: "Gagal menyimpan unit" });
+  }
+});
+
+router.put("/units/:id", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  const id = Number(req.params.id);
+  const b = req.body ?? {};
+  const companyId = companyOf(req);
+  const cf = companyId ? sql`AND company_id = ${companyId}` : sql``;
+  try {
+    const { rows } = (await db.execute(sql`
+      UPDATE tenant_units SET
+        unit_code = COALESCE(${b.unit_code ?? null}, unit_code),
+        name = COALESCE(${b.name ?? null}, name),
+        area_name = COALESCE(${b.area_name ?? null}, area_name),
+        unit_type = COALESCE(${b.unit_type ?? null}, unit_type),
+        area_sqm = ${b.area_sqm ?? null},
+        monthly_rate = ${b.monthly_rate ?? null},
+        status = COALESCE(${b.status ?? null}, status),
+        notes = ${b.notes ?? null},
+        updated_at = NOW()
+      WHERE id = ${id} ${cf} RETURNING *`)) as unknown as { rows: any[] };
+    if (!rows[0]) return res.status(404).json({ error: "Unit tidak ditemukan" });
+    res.json(rows[0]);
+  } catch (err) {
+    logger.error({ err }, "update unit failed");
+    res.status(500).json({ error: "Gagal memperbarui unit" });
+  }
+});
+
+router.delete("/units/:id", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  const id = Number(req.params.id);
+  const companyId = companyOf(req);
+  const cf = companyId ? sql`AND company_id = ${companyId}` : sql``;
+  try {
+    const { rows } = (await db.execute(sql`DELETE FROM tenant_units WHERE id = ${id} ${cf} RETURNING id`)) as unknown as { rows: any[] };
+    if (!rows[0]) return res.status(404).json({ error: "Unit tidak ditemukan" });
+    res.json({ ok: true });
+  } catch (err) {
+    logger.error({ err }, "delete unit failed");
+    res.status(500).json({ error: "Gagal menghapus unit" });
+  }
+});
+
+/* ───────────────────────── INVOICES ───────────────────────── */
+router.get("/invoices", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  const companyId = companyOf(req);
+  const status = String(req.query.status ?? "all");
+  const search = String(req.query.search ?? "").trim();
+  try {
+    const conds: ReturnType<typeof sql>[] = [];
+    if (companyId) conds.push(sql`i.company_id = ${companyId}`);
+    if (status !== "all") conds.push(sql`i.status = ${status}`);
+    if (search) conds.push(sql`(i.invoice_number ILIKE ${"%" + search + "%"} OR t.business_name ILIKE ${"%" + search + "%"} OR i.unit_code ILIKE ${"%" + search + "%"})`);
+    const where = conds.length ? sql`WHERE ${sql.join(conds, sql` AND `)}` : sql``;
+    const { rows } = (await db.execute(sql`
+      SELECT i.*, t.business_name
+      FROM tenant_invoices i
+      LEFT JOIN tenants t ON t.id = i.tenant_id
+      ${where} ORDER BY i.created_at DESC`)) as unknown as { rows: any[] };
+    res.json({ data: rows, total: rows.length });
+  } catch (err) {
+    logger.error({ err }, "list invoices failed");
+    res.status(500).json({ error: "Gagal memuat invoice" });
+  }
+});
+
+router.get("/invoices/:id", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  const id = Number(req.params.id);
+  const companyId = companyOf(req);
+  const cf = companyId ? sql`AND i.company_id = ${companyId}` : sql``;
+  try {
+    const { rows } = (await db.execute(sql`
+      SELECT i.*, t.business_name
+      FROM tenant_invoices i
+      LEFT JOIN tenants t ON t.id = i.tenant_id
+      WHERE i.id = ${id} ${cf} LIMIT 1`)) as unknown as { rows: any[] };
+    if (!rows[0]) return res.status(404).json({ error: "Invoice tidak ditemukan" });
+    res.json(rows[0]);
+  } catch (err) {
+    logger.error({ err }, "get invoice failed");
+    res.status(500).json({ error: "Gagal memuat invoice" });
+  }
+});
+
+router.put("/invoices/:id/status", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  const id = Number(req.params.id);
+  const { status } = req.body ?? {};
+  const allowed = ["draft", "sent", "partial", "paid", "overdue", "cancelled"];
+  if (!allowed.includes(status)) return res.status(400).json({ error: "Status tidak valid" });
+  const companyId = companyOf(req);
+  const cf = companyId ? sql`AND company_id = ${companyId}` : sql``;
+  try {
+    const paidAt = status === "paid" ? sql`, paid_at = COALESCE(paid_at, NOW())` : sql``;
+    const cancelledAt = status === "cancelled" ? sql`, cancelled_at = COALESCE(cancelled_at, NOW())` : sql``;
+    const sentAt = status === "sent" ? sql`, sent_at = COALESCE(sent_at, NOW())` : sql``;
+    const { rows } = (await db.execute(sql`
+      UPDATE tenant_invoices SET status = ${status}, updated_at = NOW() ${paidAt} ${cancelledAt} ${sentAt}
+      WHERE id = ${id} ${cf} RETURNING *`)) as unknown as { rows: any[] };
+    if (!rows[0]) return res.status(404).json({ error: "Invoice tidak ditemukan" });
+    res.json(rows[0]);
+  } catch (err) {
+    logger.error({ err }, "update invoice status failed");
+    res.status(500).json({ error: "Gagal memperbarui status invoice" });
   }
 });
 
