@@ -1,9 +1,7 @@
 import { Router } from "express";
 import multer from "multer";
 import { db, productMediaTable, vendorCatalogItemsTable, suppliersTable } from "@workspace/db";
-import { eq, and, asc, inArray, isNull, ne } from "drizzle-orm";
-import { db, productMediaTable, vendorCatalogItemsTable } from "@workspace/db";
-import { eq, and, asc, desc, isNull, sql } from "drizzle-orm";
+import { eq, and, asc, desc, inArray, isNull, ne, sql } from "drizzle-orm";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { uploadToSupabase, deleteFromSupabase } from "../lib/supabaseStorage.js";
 import { compressImageBuffer, isCompressibleImage } from "../lib/imageCompress.js";
@@ -94,7 +92,7 @@ router.get("/generation-status", async (req, res): Promise<void> => {
       ORDER BY vci.is_published DESC, vci.id
     `);
 
-    const items = (rows as any[]).map((r: any) => ({
+    const items = ((rows as any).rows as any[]).map((r: any) => ({
       id: r.id,
       name: r.name,
       templateKind: r.template_kind,

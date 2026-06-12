@@ -3,7 +3,7 @@ import { logger } from "./lib/logger";
 import { seedAccountingDefaults, seedAdditionalTaxes } from "./lib/accountingSeed";
 import { seedLogisticsServiceItems } from "./lib/seedLogisticsItems";
 import { seedCatalogProducts } from "./lib/seedCatalogProducts";
-import { seedDemoData, seedDemoDrivers } from "./lib/seedDemoData";
+import { seedDemoData, seedDemoDrivers, seedAirFreightRates } from "./lib/seedDemoData";
 import { startImapPoller } from "./lib/imapPoller";
 import { startOcrTempCleanup } from "./lib/ocrTempCleanup";
 import { startVmfGapNotifier, runVmfGapCheck } from "./lib/vmfGapNotifier";
@@ -59,6 +59,7 @@ import { runOrderProgressMigration } from "./lib/orderProgress.js";
 import { runExceptionEnumMigration, runOrderExceptionsMigration } from "./lib/services/exceptionService.js";
 import { runVendorCompanyAssignmentsMigration } from "./lib/vendorCompanyAssignmentsMigration.js";
 import { runVendorCatalogSchemaMigration } from "./lib/vendorCatalogSchemaMigration.js";
+import { runLogisticVendorFulfillmentsMigration } from "./lib/logisticVendorFulfillmentsMigration.js";
 import { runProductFirstFlowMigration } from "./lib/productFirstFlowMigration.js";
 import { runStep4TemplateMigration } from "./lib/step4TemplateMigration.js";
 import { runServiceTemplateMigration } from "./lib/serviceTemplateMigration.js";
@@ -71,17 +72,22 @@ import { runTenantMigration } from "./modules/tenant/migration.js";
 import { startRecurringExpenseWorker } from "./modules/sport-center/recurringExpenseWorker.js";
 import { startMemberReminderWorker } from "./modules/sport-center/memberReminderWorker.js";
 import { startExpenseReminderWorker } from "./lib/expenseReminderWorker.js";
+import { startWhtReminderWorker } from "./lib/whtReminderWorker.js";
 import { startProductFirstReminderWorker } from "./lib/productFirstReminderWorker.js";
 import { startProductFirstExceptionWorker } from "./lib/productFirstExceptionWorker.js";
 import { startRekonsiliasiWorker } from "./lib/rekonsiliasiWorker.js";
 import { runCostCenterMigration } from "./lib/costCenterMigration.js";
 import { runDriverPodMigration, runDriverAssignmentMigration } from "./routes/driver.js";
+import { runLogisticsRatesMigration } from "./lib/logisticsRatesMigration.js";
 import { runProductVolumeCbmMigration } from "./routes/ecommerce.js";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { runStartupValidation } from "./lib/startupValidator.js";
 import { backfillVendorPerformance } from "./routes/vendorPerformance.js";
 import { runProductMediaMigration } from "./lib/productMediaMigration.js";
+import { runTaxRulesMigration } from "./lib/taxRulesMigration.js";
+import { backfillSportCenterAccountingPayments } from "./lib/backfillSportCenterPayments.js";
+import { runFreightAccountingMigration } from "./lib/freightAccountingMigration.js";
 
 
 // REPLIT_API_PORT overrides PORT so the server listens on the local port
@@ -106,27 +112,35 @@ if (Number.isNaN(port) || port <= 0) {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+function isTransientDbError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const TRANSIENT = ["ECIRCUITBREAKER", "password authentication failed", "timeout exceeded", "ECONNREFUSED", "ETIMEDOUT", "temporarily blocked"];
+  const causeMsg = (err as unknown as { cause?: { message?: string } }).cause?.message ?? "";
+  const fullMsg = err.message + " " + causeMsg;
+  return TRANSIENT.some((t) => fullMsg.includes(t));
+}
+
 async function runWithRetry<T>(
   name: string,
   fn: () => Promise<T>,
-  maxAttempts = 3,
-  delayMs = 10_000
+  maxAttempts = 5,
+  delayMs = 15_000
 ): Promise<void> {
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       await fn();
       return;
     } catch (err: unknown) {
-      const isCircuitBreaker =
-        err instanceof Error && err.message.includes("ECIRCUITBREAKER");
-      if (isCircuitBreaker && attempt < maxAttempts) {
+      const isTransient = isTransientDbError(err);
+      if (isTransient && attempt < maxAttempts) {
+        const backoff = delayMs * attempt;
         logger.warn(
-          { attempt, maxAttempts, delayMs },
-          `${name}: circuit breaker tripped, retrying after ${delayMs}ms...`
+          { attempt, maxAttempts, backoff },
+          `${name}: transient DB error, retrying after ${backoff}ms...`
         );
-        await sleep(delayMs);
+        await sleep(backoff);
       } else {
-        logger.error({ err }, `${name} failed`);
+        logger.error({ err }, `${name} failed (giving up after ${attempt} attempts)`);
         return;
       }
     }
@@ -482,6 +496,70 @@ async function runCriticalPreStartMigrations() {
       END IF;
     END $$;
   `);
+
+  // Ensure sessions table exists (critical for login)
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS sessions (
+      sid    TEXT PRIMARY KEY,
+      sess   JSONB NOT NULL,
+      expire TIMESTAMPTZ NOT NULL
+    )
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON sessions (expire)
+  `);
+
+  // Add missing users columns (login query selects these)
+  await db.execute(sql`
+    DO $$ BEGIN
+      IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'users') THEN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='division') THEN
+          ALTER TABLE users ADD COLUMN division TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='system_role') THEN
+          ALTER TABLE users ADD COLUMN system_role TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='default_branch_id') THEN
+          ALTER TABLE users ADD COLUMN default_branch_id INTEGER;
+        END IF;
+      END IF;
+    END $$;
+  `);
+
+  // Add missing accounting_settings columns (portal and BizPortal queries select these)
+  await db.execute(sql`
+    DO $$ BEGIN
+      IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'accounting_settings') THEN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='accounting_settings' AND column_name='cogs_account_id') THEN
+          ALTER TABLE accounting_settings ADD COLUMN cogs_account_id INTEGER;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='accounting_settings' AND column_name='inventory_account_id') THEN
+          ALTER TABLE accounting_settings ADD COLUMN inventory_account_id INTEGER;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='accounting_settings' AND column_name='company_name') THEN
+          ALTER TABLE accounting_settings ADD COLUMN company_name TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='accounting_settings' AND column_name='company_address') THEN
+          ALTER TABLE accounting_settings ADD COLUMN company_address TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='accounting_settings' AND column_name='company_npwp') THEN
+          ALTER TABLE accounting_settings ADD COLUMN company_npwp TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='accounting_settings' AND column_name='company_logo_url') THEN
+          ALTER TABLE accounting_settings ADD COLUMN company_logo_url TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='accounting_settings' AND column_name='meta') THEN
+          ALTER TABLE accounting_settings ADD COLUMN meta JSONB;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='accounting_settings' AND column_name='updated_at') THEN
+          ALTER TABLE accounting_settings ADD COLUMN updated_at TIMESTAMPTZ DEFAULT NOW();
+        END IF;
+      END IF;
+    END $$;
+  `);
+
+  // Create logistics rate tables (needed before first request, not deferrable)
+  await runLogisticsRatesMigration();
 }
 
 // Flag set to true once the full migration + seed chain completes.
@@ -545,6 +623,7 @@ async function startServer() {
   startRecurringExpenseWorker();
   startMemberReminderWorker();
   startExpenseReminderWorker();
+  startWhtReminderWorker();
   startProductFirstReminderWorker();
   startProductFirstExceptionWorker();
   startRekonsiliasiWorker();
@@ -558,15 +637,28 @@ async function startServer() {
     });
   }, 5 * 60 * 1000).unref();
 
-  // Run all migrations + seeds in the background with a small initial delay
-  // to prevent a DB connection storm on cold starts.
-  sleep(2_000)
+  // Run all migrations + seeds in the background with an initial delay
+  // to let the DB pool stabilize before hammering pgBouncer with DDL.
+  sleep(8_000)
     .then(async () => {
-      try {
-        await runCriticalPreStartMigrations();
-        logger.info("Pre-start schema migrations applied");
-      } catch (err) {
-        logger.warn({ err }, "Pre-start migrations failed (non-fatal)");
+      for (let attempt = 1; attempt <= 10; attempt++) {
+        try {
+          await runCriticalPreStartMigrations();
+          logger.info("Pre-start schema migrations applied");
+          return;
+        } catch (err: unknown) {
+          if (isTransientDbError(err) && attempt < 10) {
+            const backoff = Math.min(attempt * 15_000, 120_000);
+            logger.warn(
+              { attempt, backoff },
+              `Pre-start migration: transient DB error, retrying after ${backoff}ms...`
+            );
+            await sleep(backoff);
+          } else {
+            logger.warn({ err }, "Pre-start migrations failed (non-fatal)");
+            return;
+          }
+        }
       }
     })
     .then(() => runWithRetry("Sessions migration", runSessionsMigration))
@@ -620,7 +712,11 @@ async function startServer() {
     .then(() => runWithRetry("Driver assignment migration", runDriverAssignmentMigration))
     .then(() => runWithRetry("Vendor company assignments migration", runVendorCompanyAssignmentsMigration))
     .then(() => runWithRetry("Vendor catalog schema migration", runVendorCatalogSchemaMigration))
+    .then(() => runWithRetry("Logistic vendor fulfillments migration", runLogisticVendorFulfillmentsMigration))
     .then(() => runWithRetry("Product media migration", runProductMediaMigration))
+    .then(() => runWithRetry("Tax rules migration", runTaxRulesMigration))
+    .then(() => runWithRetry("Freight accounting migration", runFreightAccountingMigration))
+    .then(() => runWithRetry("Logistics rates migration", runLogisticsRatesMigration))
     .then(() => enableRealtimeTables().catch((err) => {
       logger.warn({ err }, "Supabase Realtime table enable failed (non-fatal)");
     }))
@@ -641,6 +737,7 @@ async function startServer() {
         .then(() => seedCatalogProducts())
         .then(() => seedDemoData())
         .then(() => seedDemoDrivers())
+        .then(() => seedAirFreightRates())
         .then(() => remediateOrphanProducts())
         .catch((seedErr) => {
           logger.error({ err: seedErr }, "Logistics/demo seed failed");
@@ -649,6 +746,11 @@ async function startServer() {
     .then(() =>
       backfillVendorPerformance().catch((err) => {
         logger.warn({ err }, "Vendor performance backfill failed (non-fatal)");
+      })
+    )
+    .then(() =>
+      backfillSportCenterAccountingPayments().catch((err) => {
+        logger.warn({ err }, "Sport Center accounting payments backfill failed (non-fatal)");
       })
     )
     .then(() => {

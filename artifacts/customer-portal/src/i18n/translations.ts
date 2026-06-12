@@ -351,8 +351,16 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       tagline: "Layanan logistik terintegrasi untuk kebutuhan bisnis Anda",
       viewAll: "Lihat Semua Layanan",
       freight: {
-        title: "Freight Shipment",
+        title: "Freight Forwarding",
         desc: "Pengiriman udara & laut internasional ke seluruh dunia",
+      },
+      airFreight: {
+        title: "Air Freight Booking",
+        desc: "Booking udara langsung — kalkulasi chargeable weight & pilih rate",
+      },
+      ocean: {
+        title: "Ocean Freight",
+        desc: "Pengiriman laut FCL/LCL internasional",
       },
       customs: {
         title: "Custom Management/PPJK",
@@ -836,8 +844,16 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       tagline: "Integrated logistics services for your business needs",
       viewAll: "View All Services",
       freight: {
-        title: "Freight Shipment",
+        title: "Freight Forwarding",
         desc: "International air & sea freight to and from anywhere in the world",
+      },
+      airFreight: {
+        title: "Air Freight Booking",
+        desc: "Direct air booking — calculate chargeable weight & choose rate",
+      },
+      ocean: {
+        title: "Ocean Freight",
+        desc: "International FCL/LCL sea shipment",
       },
       customs: {
         title: "Custom Management/PPJK",

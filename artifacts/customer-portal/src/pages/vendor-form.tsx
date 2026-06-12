@@ -21,6 +21,7 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 interface OrderItem {
+  id?: number | null;
   serviceName: string;
   category: string;
   calculatorType: string;
@@ -32,6 +33,21 @@ interface OrderItem {
   vendorSubtotal: number | null;
   ppnAmount: number | null;
   vendorGrandTotal: number | null;
+}
+
+interface VendorItemOffer {
+  id: number;
+  orderItemId: number | null;
+  serviceName: string;
+  offeredPrice: number | null;
+  currency: string;
+  scheduleEtd: string | null;
+  scheduleEta: string | null;
+  leadTimeDays: number | null;
+  validityDate: string | null;
+  terms: string | null;
+  notes: string | null;
+  attachmentUrl: string | null;
 }
 
 interface FormData {
@@ -55,6 +71,10 @@ interface FormData {
   currentNotes: string | null;
   orderItems?: OrderItem[] | null;
   templateSnapshot?: Record<string, unknown> | null;
+  currentCurrency?: string;
+  currentValidityDate?: string | null;
+  currentTerms?: string | null;
+  currentItemOffers?: VendorItemOffer[];
 }
 
 function useCountdown(targetIso: string | null | undefined) {
@@ -94,6 +114,11 @@ export default function VendorFormPage() {
   const [error, setError] = useState("");
   const [uploadingFile, setUploadingFile] = useState(false);
   const [attachmentUrl, setAttachmentUrl] = useState("");
+  // Per-item pricing state (Step 11)
+  const [itemPrices, setItemPrices] = useState<Record<string, string>>({});
+  const [globalCurrency, setGlobalCurrency] = useState("IDR");
+  const [validityDate, setValidityDate] = useState("");
+  const [termsInput, setTermsInput] = useState("");
 
   const { data, isLoading, isError, error: qError } = useQuery<FormData>({
     queryKey: ["vendor-form", token],
@@ -108,6 +133,22 @@ export default function VendorFormPage() {
     retry: false,
     enabled: !!token,
   });
+
+  // Initialize per-item pricing from existing item offers (Step 11)
+  useEffect(() => {
+    if (!data) return;
+    if (data.currentCurrency) setGlobalCurrency(data.currentCurrency);
+    if (data.currentValidityDate) setValidityDate(data.currentValidityDate);
+    if (data.currentTerms) setTermsInput(data.currentTerms);
+    if (data.currentItemOffers && data.currentItemOffers.length > 0) {
+      const prices: Record<string, string> = {};
+      data.currentItemOffers.forEach(offer => {
+        const key = offer.orderItemId != null ? String(offer.orderItemId) : offer.serviceName;
+        if (offer.offeredPrice != null) prices[key] = String(offer.offeredPrice);
+      });
+      if (Object.keys(prices).length > 0) setItemPrices(prices);
+    }
+  }, [data]);
 
   const countdown = useCountdown(data?.responseDeadline);
   const isExpired = countdown !== null && countdown <= 0;
@@ -153,12 +194,53 @@ export default function VendorFormPage() {
     }
   }
 
+  const allItems = data?.orderItems ?? [];
+  const hasItemPricing = allItems.length > 0;
+
+  // Build itemOffers array from per-item price state
+  function buildItemOffers() {
+    return allItems.map(item => {
+      const key = item.id != null ? String(item.id) : item.serviceName;
+      const priceVal = itemPrices[key];
+      return {
+        orderItemId: item.id ?? null,
+        serviceName: item.serviceName,
+        offeredPrice: priceVal ? Number(priceVal) : null,
+        currency: globalCurrency,
+        scheduleEta: eta || null,
+        leadTimeDays: null,
+        validityDate: validityDate || null,
+        terms: termsInput || null,
+        notes: notes || null,
+        attachmentUrl: attachmentUrl || null,
+      };
+    });
+  }
+
+  // Total from per-item prices (subtotal before PPN)
+  const itemPricesTotal = allItems.reduce((sum, item) => {
+    const key = item.id != null ? String(item.id) : item.serviceName;
+    const p = Number(itemPrices[key] || 0);
+    return sum + (p * (item.qty || 1));
+  }, 0);
+  const itemPricesPpn = Math.round(itemPricesTotal * 0.11);
+  const itemPricesGrandTotal = itemPricesTotal + itemPricesPpn;
+
   async function handleSubmit() {
     if (!mode || mode === "select" || mode === "done") return;
     if (isExpired) { setError("Batas waktu RFQ sudah berakhir."); return; }
     if (mode === "counter") {
-      if (!unitPrice) { setError("Harga penawaran harus diisi"); return; }
-      if (isNaN(unitPriceNum) || unitPriceNum <= 0) { setError("Harga penawaran harus lebih dari Rp 0"); return; }
+      // When per-item pricing is available, require at least one item price
+      if (hasItemPricing) {
+        const hasAnyPrice = allItems.some(item => {
+          const key = item.id != null ? String(item.id) : item.serviceName;
+          return !!itemPrices[key];
+        });
+        if (!hasAnyPrice) { setError("Masukkan harga minimal untuk satu item"); return; }
+      } else {
+        if (!unitPrice) { setError("Harga penawaran harus diisi"); return; }
+        if (isNaN(unitPriceNum) || unitPriceNum <= 0) { setError("Harga penawaran harus lebih dari Rp 0"); return; }
+      }
       if (!eta) { setError("Estimasi waktu harus diisi"); return; }
     }
     setSubmitting(true);
@@ -166,15 +248,25 @@ export default function VendorFormPage() {
     try {
       const body: Record<string, unknown> = { action: mode };
       if (mode === "counter") {
-        body.offeredPrice = isProductOrder && totalQty > 1
-          ? previewGrandTotal
-          : unitPriceNum;
+        if (hasItemPricing) {
+          body.itemOffers = buildItemOffers();
+          body.offeredPrice = itemPricesGrandTotal > 0 ? itemPricesGrandTotal : undefined;
+        } else {
+          body.offeredPrice = isProductOrder && totalQty > 1 ? previewGrandTotal : unitPriceNum;
+        }
         body.eta = eta;
         body.notes = notes;
+        body.currency = globalCurrency;
+        body.validityDate = validityDate || undefined;
+        body.terms = termsInput || undefined;
         if (attachmentUrl) body.attachmentUrl = attachmentUrl;
       } else if (mode === "accept") {
         body.eta = eta;
         body.notes = notes;
+        body.currency = globalCurrency;
+        body.validityDate = validityDate || undefined;
+        body.terms = termsInput || undefined;
+        if (hasItemPricing) body.itemOffers = buildItemOffers();
       } else {
         body.notes = notes;
       }
@@ -546,7 +638,65 @@ export default function VendorFormPage() {
             </div>
             <h3 className="font-semibold text-gray-800 mb-4">💬 Ajukan Harga Baru</h3>
 
-            {isProductOrder ? (
+            {/* Per-item pricing table (Step 11) */}
+            {hasItemPricing ? (
+              <>
+                <div className="mb-4">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Mata Uang</p>
+                  <select
+                    value={globalCurrency}
+                    onChange={e => setGlobalCurrency(e.target.value)}
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                  >
+                    <option value="IDR">IDR — Rupiah</option>
+                    <option value="USD">USD — Dollar AS</option>
+                    <option value="SGD">SGD — Dollar Singapura</option>
+                    <option value="MYR">MYR — Ringgit Malaysia</option>
+                    <option value="EUR">EUR — Euro</option>
+                  </select>
+                </div>
+                <div className="mb-4">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Harga Per Item *</p>
+                  <div className="space-y-3">
+                    {allItems.map((item) => {
+                      const key = item.id != null ? String(item.id) : item.serviceName;
+                      return (
+                        <div key={key} className="bg-gray-50 border border-gray-200 rounded-xl p-3">
+                          <p className="text-sm font-medium text-gray-800 mb-1">{item.serviceName || item.category}</p>
+                          <p className="text-xs text-gray-500 mb-2">Qty: {item.qty} {item.unit}</p>
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder={`Harga satuan (${globalCurrency})`}
+                            value={itemPrices[key] ?? ""}
+                            onChange={e => setItemPrices(prev => ({ ...prev, [key]: e.target.value }))}
+                            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                          />
+                          {itemPrices[key] && Number(itemPrices[key]) > 0 && (
+                            <p className="text-xs text-blue-600 mt-1">
+                              Subtotal: {idr(Number(itemPrices[key]) * (item.qty || 1))}
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {itemPricesTotal > 0 && (
+                    <div className="mt-3 bg-blue-50 border border-blue-200 rounded-xl p-3 text-sm space-y-1">
+                      <div className="flex justify-between text-blue-700">
+                        <span>Subtotal</span><span>{idr(itemPricesTotal)}</span>
+                      </div>
+                      <div className="flex justify-between text-blue-600 text-xs">
+                        <span>PPN 11%</span><span>{idr(itemPricesPpn)}</span>
+                      </div>
+                      <div className="flex justify-between font-bold text-blue-800 pt-1 border-t border-blue-200">
+                        <span>Grand Total</span><span>{idr(itemPricesGrandTotal)}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : isProductOrder ? (
               <>
                 <FormField
                   label={`Harga Satuan Baru per Unit (IDR) *`}
@@ -563,12 +713,10 @@ export default function VendorFormPage() {
                       <span>{idr(previewSubtotal)}</span>
                     </div>
                     <div className="flex justify-between text-blue-600 text-xs">
-                      <span>PPN 11%</span>
-                      <span>{idr(previewPpn)}</span>
+                      <span>PPN 11%</span><span>{idr(previewPpn)}</span>
                     </div>
                     <div className="flex justify-between font-bold text-blue-800 pt-1 border-t border-blue-200">
-                      <span>Grand Total Penawaran</span>
-                      <span>{idr(previewGrandTotal)}</span>
+                      <span>Grand Total Penawaran</span><span>{idr(previewGrandTotal)}</span>
                     </div>
                   </div>
                 )}
@@ -588,6 +736,19 @@ export default function VendorFormPage() {
               placeholder="Contoh: 3-5 hari"
               value={eta}
               onChange={setEta}
+            />
+            <FormField
+              label="Berlaku Sampai (opsional)"
+              placeholder="Contoh: 2025-12-31"
+              value={validityDate}
+              onChange={setValidityDate}
+            />
+            <FormField
+              label="Syarat & Ketentuan (opsional)"
+              placeholder="Contoh: DP 50%, sisa sebelum pengiriman"
+              value={termsInput}
+              onChange={setTermsInput}
+              textarea
             />
             <FormField label="Catatan (opsional)" placeholder="Catatan untuk admin..." value={notes} onChange={setNotes} textarea />
             <div className="mb-4">

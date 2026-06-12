@@ -16,7 +16,7 @@ import { requireAdmin } from "../lib/requireAdmin.js";
 import { auditFromReq } from "../lib/auditLog.js";
 import { streamInvoicePdf, buildInvoicePdfBuffer } from "../lib/pdfInvoice.js";
 import { loadDocTemplate } from "../lib/docTemplateLoader.js";
-import { postSalesInvoice, postSalesCogs, postSalesCogsReturn, postSalesInvoiceReversal } from "../lib/accounting.js";
+import { postSalesInvoice, postSalesCogs, postSalesCogsReturn, postSalesInvoiceReversal, postSalesReturn } from "../lib/accounting.js";
 import { sendMail, isSmtpConfigured } from "../lib/mailer.js";
 import { ensureAccountingSettings } from "../lib/accountingSeed.js";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
@@ -583,7 +583,8 @@ router.delete("/documents/:id", async (req, res) => {
 router.post("/documents/:id/action", async (req, res) => {
   const id = Number(req.params.id);
   if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
-  const { action } = req.body ?? {};
+  const { action, cancelReason, editReason, reversalReason } = req.body ?? {};
+  const actorId = (req.user as { id: string } | undefined)?.id ?? null;
   const [doc] = await db.select().from(salesDocumentsTable).where(eq(salesDocumentsTable.id, id));
   if (!doc) return res.status(404).json({ message: "Document not found" });
 
@@ -596,13 +597,19 @@ router.post("/documents/:id/action", async (req, res) => {
       patch["status"] = "confirmed" satisfies SalesDocStatus;
       patch["kind"] = "order";
       patch["confirmedAt"] = new Date();
+      patch["approvedBy"] = actorId;
+      patch["approvedAt"] = new Date();
       patch["deliveryStatus"] = "to_deliver";
       break;
     case "cancel":
       patch["status"] = "cancelled" satisfies SalesDocStatus;
+      patch["cancelledAt"] = new Date();
+      patch["cancelledBy"] = actorId;
+      patch["cancelReason"] = cancelReason ?? null;
       break;
     case "draft":
       patch["status"] = "draft" satisfies SalesDocStatus;
+      if (editReason) patch["editReason"] = editReason;
       break;
     case "mark_invoiced": {
       // Idempotency guard via service
@@ -637,6 +644,9 @@ router.post("/documents/:id/action", async (req, res) => {
         return res.status(400).json({ message: "Hanya invoice yang sudah diposting yang bisa dibatalkan" });
       }
       patch["cancelledAt"] = new Date();
+      patch["cancelledBy"] = actorId;
+      patch["cancelReason"] = cancelReason ?? null;
+      if (reversalReason) patch["reversalReason"] = reversalReason;
       break;
     }
     case "send_reminder":
@@ -1153,6 +1163,42 @@ router.post("/documents/:id/return", async (req, res) => {
       lines: returnedLines,
       companyId: doc.companyId ?? null,
     }).catch((e) => console.error("[accounting] postSalesCogsReturn error:", e));
+  }
+
+  // ── Credit Note: DR Pendapatan (+ DR PPN Keluaran) / CR Piutang ───────────
+  // Hanya jika SO sudah diinvoice
+  if (doc.invoiceStatus === "invoiced" && returnedLines.length > 0) {
+    // Hitung nilai retur berdasarkan harga jual dari baris yang diretur
+    let returnNetAmount = 0;
+    for (const l of productLines) {
+      const rQty = returnQtyMap.get(l.productId!) ?? 0;
+      if (rQty > 0) {
+        // Fallback: jika unitPrice null/0, hitung dari subtotal/qty
+        const qty = Math.max(Number(l.quantity ?? 1), 1);
+        const unitPriceN =
+          Number(l.unitPrice ?? 0) ||
+          (Number((l as any).subtotal ?? 0) / qty);
+        returnNetAmount += rQty * unitPriceN;
+      }
+    }
+    // Hitung PPN proporsional
+    const docNet = Number(doc.totalAmount ?? 0);
+    const docTax = Number(doc.taxAmount ?? 0);
+    const returnTaxAmount =
+      docNet > 0 && docTax > 0 && returnNetAmount > 0
+        ? Math.round((returnNetAmount * docTax / docNet) * 100) / 100
+        : 0;
+
+    if (returnNetAmount > 0) {
+      void postSalesReturn({
+        returnId: id,
+        returnNumber: returnNo,
+        customerName: String(doc.customerName ?? ""),
+        netAmount: returnNetAmount,
+        taxAmount: returnTaxAmount,
+        companyId: doc.companyId ?? null,
+      }).catch((e) => console.error("[accounting] postSalesReturn error:", e));
+    }
   }
 
   return res.json({

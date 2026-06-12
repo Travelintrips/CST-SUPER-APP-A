@@ -1,5 +1,7 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
-import WebSocket from "ws";
+import { createRequire as _cr } from "module";
+const _ws = (() => { try { return _cr(import.meta.url)("ws"); } catch { return globalThis.WebSocket; } })();
+type WsType = typeof globalThis.WebSocket;
 
 function normalizeSupabaseUrl(raw: string): string {
   if (!raw) return "";
@@ -28,7 +30,7 @@ function getClient(): SupabaseClient | null {
   if (!_client) {
     _client = createClient(url, key, {
       auth: { autoRefreshToken: false, persistSession: false },
-      realtime: { transport: WebSocket as unknown as typeof globalThis.WebSocket },
+      realtime: { transport: _ws as unknown as WsType },
     });
   }
   return _client;

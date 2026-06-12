@@ -6,7 +6,8 @@ import { Separator } from "@/components/ui/separator";
 import {
   CheckCircle2, Search, LayoutDashboard, Boxes, Upload,
   FileCheck, AlertCircle, Loader2, CreditCard, ExternalLink,
-  RefreshCw, Clock, ShieldCheck,
+  RefreshCw, Clock, ShieldCheck, Copy, Check, Truck, Ship,
+  Wind, Package, MapPin, ArrowRight, Bell,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import type { LogisticOrderDetail } from "@workspace/api-client-react";
@@ -24,6 +25,100 @@ function fmtIdr(n: number) {
   return "Rp " + Math.round(n).toLocaleString("id-ID");
 }
 
+// ── ETA estimation per shipment type ─────────────────────────────────────────
+function getEta(shipmentType: string | null | undefined): { label: string; icon: React.ReactNode; color: string } {
+  const t = (shipmentType ?? "").toLowerCase();
+  if (t.includes("truck") || t.includes("truk") || t.includes("darat")) {
+    return { label: "1 – 3 hari kerja", icon: <Truck className="w-4 h-4" />, color: "text-sky-600 bg-sky-50 border-sky-200" };
+  }
+  if (t.includes("air") || t.includes("udara") || t.includes("pesawat")) {
+    return { label: "1 – 5 hari kerja", icon: <Wind className="w-4 h-4" />, color: "text-violet-600 bg-violet-50 border-violet-200" };
+  }
+  if (t.includes("sea") || t.includes("laut") || t.includes("ocean") || t.includes("fcl") || t.includes("lcl")) {
+    return { label: "7 – 21 hari (tergantung rute)", icon: <Ship className="w-4 h-4" />, color: "text-blue-600 bg-blue-50 border-blue-200" };
+  }
+  if (t.includes("ppjk") || t.includes("custom") || t.includes("pabean")) {
+    return { label: "2 – 7 hari kerja", icon: <FileCheck className="w-4 h-4" />, color: "text-amber-600 bg-amber-50 border-amber-200" };
+  }
+  return { label: "3 – 7 hari kerja", icon: <Package className="w-4 h-4" />, color: "text-slate-600 bg-slate-50 border-slate-200" };
+}
+
+// ── Order progress timeline ───────────────────────────────────────────────────
+const ORDER_STEPS = [
+  { key: "received",  label: "Pesanan Diterima",   desc: "Sistem telah mencatat pesanan Anda" },
+  { key: "review",    label: "Review Admin",        desc: "Tim kami sedang memverifikasi detail" },
+  { key: "vendor",    label: "Penawaran Vendor",    desc: "Vendor menyiapkan penawaran harga" },
+  { key: "shipping",  label: "Dalam Pengiriman",    desc: "Barang dalam perjalanan" },
+  { key: "done",      label: "Selesai",             desc: "Pesanan terselesaikan" },
+];
+
+function OrderTimeline() {
+  return (
+    <div className="bg-card border border-border rounded-xl p-5">
+      <h3 className="font-semibold text-foreground text-sm mb-4 flex items-center gap-2">
+        <Clock className="w-4 h-4 text-primary" /> Alur Pemrosesan Pesanan
+      </h3>
+      <div className="relative">
+        {ORDER_STEPS.map((step, idx) => {
+          const isDone = idx === 0;
+          const isCurrent = idx === 1;
+          return (
+            <div key={step.key} className="flex gap-3 pb-4 last:pb-0">
+              {/* Line + dot */}
+              <div className="flex flex-col items-center">
+                <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 border-2 ${
+                  isDone
+                    ? "bg-emerald-500 border-emerald-500 text-white"
+                    : isCurrent
+                    ? "bg-primary border-primary text-primary-foreground animate-pulse"
+                    : "bg-muted border-border text-muted-foreground"
+                }`}>
+                  {isDone
+                    ? <Check className="w-3.5 h-3.5" />
+                    : <span className="text-[10px] font-bold">{idx + 1}</span>
+                  }
+                </div>
+                {idx < ORDER_STEPS.length - 1 && (
+                  <div className={`w-px flex-1 mt-1 mb-0 ${isDone ? "bg-emerald-300" : "bg-border"}`} />
+                )}
+              </div>
+              {/* Content */}
+              <div className="pb-1 min-w-0 flex-1">
+                <p className={`text-sm font-semibold leading-tight ${
+                  isDone ? "text-emerald-700" : isCurrent ? "text-primary" : "text-muted-foreground"
+                }`}>
+                  {step.label}
+                  {isCurrent && (
+                    <Badge className="ml-2 text-[9px] bg-primary/10 text-primary border-primary/20 py-0">Sekarang</Badge>
+                  )}
+                </p>
+                <p className={`text-xs mt-0.5 leading-relaxed ${
+                  isDone || isCurrent ? "text-muted-foreground" : "text-muted-foreground/50"
+                }`}>
+                  {step.desc}
+                </p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── Copy-to-clipboard hook ────────────────────────────────────────────────────
+function useCopy(timeout = 1800) {
+  const [copied, setCopied] = useState(false);
+  const copy = useCallback((text: string) => {
+    void navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), timeout);
+    });
+  }, [timeout]);
+  return { copied, copy };
+}
+
+// ── Paylabs payment section ───────────────────────────────────────────────────
 function PaylabsPaymentSection({ order }: { order: LogisticOrderDetail }) {
   const [state, setState] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [result, setResult] = useState<PaylabsLinkResult | null>(null);
@@ -49,10 +144,7 @@ function PaylabsPaymentSection({ order }: { order: LogisticOrderDetail }) {
   }, [order.orderNumber]);
 
   useEffect(() => {
-    if (!calledRef.current) {
-      calledRef.current = true;
-      void generate();
-    }
+    if (!calledRef.current) { calledRef.current = true; void generate(); }
   }, [generate]);
 
   return (
@@ -62,7 +154,6 @@ function PaylabsPaymentSection({ order }: { order: LogisticOrderDetail }) {
         <p className="text-sm font-semibold text-emerald-900">Bayar via Payment Gateway</p>
         <Badge className="ml-auto bg-emerald-100 text-emerald-700 border-emerald-300 text-[10px]">Paylabs</Badge>
       </div>
-
       <div className="p-5 space-y-4">
         {state === "loading" && (
           <div className="flex flex-col items-center py-6 gap-3">
@@ -70,7 +161,6 @@ function PaylabsPaymentSection({ order }: { order: LogisticOrderDetail }) {
             <p className="text-sm text-muted-foreground">Menyiapkan link pembayaran…</p>
           </div>
         )}
-
         {state === "error" && (
           <div className="space-y-3">
             <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -85,7 +175,6 @@ function PaylabsPaymentSection({ order }: { order: LogisticOrderDetail }) {
             </Button>
           </div>
         )}
-
         {state === "ready" && result && (
           <>
             {result.paymentUrl ? (
@@ -113,12 +202,10 @@ function PaylabsPaymentSection({ order }: { order: LogisticOrderDetail }) {
                     </div>
                   )}
                 </div>
-
                 <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   <ShieldCheck className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
                   Pembayaran diamankan oleh Paylabs — mendukung transfer bank, QRIS, e-wallet, dan kartu.
                 </div>
-
                 <Button
                   className="w-full bg-emerald-600 hover:bg-emerald-700 text-white gap-2 h-12 text-base font-bold shadow-md"
                   onClick={() => window.open(result.paymentUrl!, "_blank")}
@@ -127,7 +214,6 @@ function PaylabsPaymentSection({ order }: { order: LogisticOrderDetail }) {
                   Bayar Sekarang
                   <ExternalLink className="w-4 h-4 ml-auto opacity-70" />
                 </Button>
-
                 {result.reused && (
                   <p className="text-xs text-center text-muted-foreground">
                     Link pembayaran sebelumnya masih aktif dan digunakan kembali.
@@ -149,6 +235,7 @@ function PaylabsPaymentSection({ order }: { order: LogisticOrderDetail }) {
   );
 }
 
+// ── Main page ─────────────────────────────────────────────────────────────────
 export default function OrderSuccessPage() {
   const [order, setOrder] = useState<LogisticOrderDetail | null>(null);
   const [, setLocation] = useLocation();
@@ -156,15 +243,14 @@ export default function OrderSuccessPage() {
   const [proofUploaded, setProofUploaded] = useState(false);
   const [proofError, setProofError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { copied: copiedOrder, copy: copyOrder } = useCopy();
 
   useEffect(() => {
     try {
       const stored = localStorage.getItem("last_order");
       if (stored) setOrder(JSON.parse(stored));
       if (localStorage.getItem("last_order_proof_uploaded") === "1") setProofUploaded(true);
-    } catch {
-      // ignore
-    }
+    } catch { /* ignore */ }
   }, []);
 
   async function handleProofUpload(file: File) {
@@ -216,14 +302,21 @@ export default function OrderSuccessPage() {
     order.paymentMethod === "payment_gateway" ||
     (order.paymentType ?? "").startsWith("payment_gateway");
 
+  const eta = getEta(order.shipmentType);
+
+  const trackingUrl = `/track?order=${encodeURIComponent(order.orderNumber)}`;
+
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
+
+      {/* ── Hero ── */}
       <div className="bg-primary text-primary-foreground">
-        <div className="max-w-2xl mx-auto px-4 py-10 text-center">
-          <CheckCircle2 className="w-14 h-14 text-accent mx-auto mb-4" />
-          <h1 className="text-2xl font-bold mb-2">Pesanan Berhasil Dikirim!</h1>
-          <p className="text-primary-foreground/70 text-sm">
+        <div className="max-w-2xl mx-auto px-4 pt-10 pb-8 text-center">
+          <div className="w-16 h-16 rounded-full bg-white/15 flex items-center justify-center mx-auto mb-4">
+            <CheckCircle2 className="w-9 h-9 text-white" />
+          </div>
+          <h1 className="text-2xl font-bold mb-1">Pesanan Berhasil Dibuat!</h1>
+          <p className="text-primary-foreground/75 text-sm max-w-sm mx-auto">
             {isGateway
               ? "Selesaikan pembayaran di bawah untuk mengkonfirmasi pesanan Anda."
               : "Tim kami akan menghubungi Anda segera untuk konfirmasi dan penawaran final."}
@@ -231,43 +324,140 @@ export default function OrderSuccessPage() {
         </div>
       </div>
 
-      <div className="max-w-2xl mx-auto px-4 py-8 space-y-6">
-        {/* Order Number */}
-        <div className="bg-card border border-border rounded-xl p-5 text-center">
-          <p className="text-xs text-muted-foreground mb-1 uppercase tracking-wider">Nomor Pesanan</p>
-          <p className="text-2xl font-bold text-foreground tracking-wider">{order.orderNumber}</p>
-          <p className="text-xs text-muted-foreground mt-2">
+      <div className="max-w-2xl mx-auto px-4 -mt-4 pb-10 space-y-5">
+
+        {/* ── Order Number + Copy ── */}
+        <div className="bg-card border border-border rounded-2xl p-5 shadow-sm">
+          <p className="text-[11px] text-muted-foreground mb-1.5 uppercase tracking-widest text-center">
+            Nomor Pesanan
+          </p>
+          <div className="flex items-center justify-center gap-3">
+            <p className="text-2xl font-bold text-foreground tracking-widest font-mono">
+              {order.orderNumber}
+            </p>
+            <button
+              onClick={() => copyOrder(order.orderNumber)}
+              className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-border hover:bg-muted transition-colors"
+              title="Salin nomor pesanan"
+            >
+              {copiedOrder
+                ? <><Check className="w-3.5 h-3.5 text-emerald-500" /> Disalin</>
+                : <><Copy className="w-3.5 h-3.5" /> Salin</>
+              }
+            </button>
+          </div>
+          <p className="text-xs text-muted-foreground mt-2 text-center">
             Simpan nomor ini untuk melacak status pesanan Anda
           </p>
         </div>
 
-        {/* ── Payment Gateway Section ── */}
-        {isGateway && <PaylabsPaymentSection order={order} />}
-
-        {/* Customer Info */}
-        <div className="bg-card border border-border rounded-xl p-5">
-          <h3 className="font-semibold text-foreground text-sm mb-3">Data Pemesan</h3>
-          <div className="grid grid-cols-2 gap-y-2 text-sm">
-            <span className="text-muted-foreground">Perusahaan</span><span className="font-medium text-foreground text-right">{order.companyName}</span>
-            <span className="text-muted-foreground">PIC</span><span className="font-medium text-foreground text-right">{order.customerName}</span>
-            <span className="text-muted-foreground">Email</span><span className="font-medium text-foreground text-right truncate">{order.email}</span>
-            <span className="text-muted-foreground">Tipe</span><span className="font-medium text-foreground text-right">{order.shipmentType}</span>
-            <span className="text-muted-foreground">Origin</span><span className="font-medium text-foreground text-right">{order.origin}</span>
-            <span className="text-muted-foreground">Destination</span><span className="font-medium text-foreground text-right">{order.destination}</span>
-            {order.jumlahKoli != null && order.jumlahKoli > 0 && (<>
-              <span className="text-muted-foreground">Jumlah Koli</span>
-              <span className="font-semibold text-foreground text-right">
-                <span className="inline-flex items-center gap-1 bg-primary/10 text-primary px-2 py-0.5 rounded-full text-xs font-bold">
-                  📦 {order.jumlahKoli} koli
-                </span>
-              </span>
-            </>)}
+        {/* ── ETA Card ── */}
+        <div className={`rounded-2xl border p-4 flex items-start gap-4 ${eta.color}`}>
+          <div className={`w-9 h-9 rounded-xl flex items-center justify-center border ${eta.color} shrink-0`}>
+            {eta.icon}
           </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-wider opacity-70 mb-0.5">
+              Estimasi Waktu Pengiriman
+            </p>
+            <p className="text-base font-bold leading-tight">{eta.label}</p>
+            <p className="text-xs opacity-70 mt-0.5">
+              {order.shipmentType
+                ? `Berdasarkan tipe layanan: ${order.shipmentType}`
+                : "Estimasi aktual dikonfirmasi oleh tim setelah review"}
+            </p>
+          </div>
+          {order.requiredDate && (
+            <div className="text-right shrink-0">
+              <p className="text-[10px] opacity-60 uppercase tracking-wide">Tgl. Dibutuhkan</p>
+              <p className="text-sm font-bold">
+                {new Date(order.requiredDate).toLocaleDateString("id-ID", {
+                  day: "numeric", month: "short", year: "numeric",
+                })}
+              </p>
+            </div>
+          )}
         </div>
 
-        {/* Order Items */}
-        <div className="bg-card border border-border rounded-xl p-5">
-          <h3 className="font-semibold text-foreground text-sm mb-3">Rincian Pesanan</h3>
+        {/* ── Tracking CTA ── */}
+        <div className="bg-card border-2 border-primary/20 rounded-2xl p-4 flex flex-col sm:flex-row items-center gap-4">
+          <div className="flex items-center gap-3 flex-1 min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+              <MapPin className="w-5 h-5 text-primary" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-foreground">Lacak Pesanan Real-time</p>
+              <p className="text-xs text-muted-foreground truncate">
+                Status diperbarui secara otomatis — gunakan nomor <span className="font-mono font-bold">{order.orderNumber}</span>
+              </p>
+            </div>
+          </div>
+          <Button
+            className="shrink-0 bg-primary hover:bg-primary/90 text-primary-foreground gap-2 font-semibold"
+            onClick={() => setLocation(trackingUrl)}
+          >
+            <Search className="w-4 h-4" /> Lacak Sekarang
+            <ArrowRight className="w-4 h-4" />
+          </Button>
+        </div>
+
+        {/* ── Notification banner ── */}
+        <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+          <Bell className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+          <p className="text-xs text-amber-800">
+            <span className="font-semibold">Notifikasi otomatis </span>
+            akan dikirim ke <span className="font-semibold">{order.email}</span>
+            {order.phone ? ` dan WhatsApp ${order.phone}` : ""} saat status pesanan berubah.
+          </p>
+        </div>
+
+        {/* ── Payment Gateway ── */}
+        {isGateway && <PaylabsPaymentSection order={order} />}
+
+        {/* ── Route summary ── */}
+        {(order.origin || order.destination) && (
+          <div className="bg-card border border-border rounded-2xl p-4">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+              Detail Pengiriman
+            </p>
+            <div className="flex items-center gap-3">
+              <div className="flex-1 rounded-lg border border-border bg-muted/30 px-3 py-2 text-center">
+                <p className="text-[10px] text-muted-foreground mb-0.5">Asal</p>
+                <p className="text-sm font-bold text-foreground">{order.origin ?? "—"}</p>
+              </div>
+              <ArrowRight className="w-4 h-4 text-muted-foreground shrink-0" />
+              <div className="flex-1 rounded-lg border border-border bg-muted/30 px-3 py-2 text-center">
+                <p className="text-[10px] text-muted-foreground mb-0.5">Tujuan</p>
+                <p className="text-sm font-bold text-foreground">{order.destination ?? "—"}</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-y-2 text-sm mt-3 pt-3 border-t border-border">
+              <span className="text-muted-foreground">Perusahaan</span>
+              <span className="font-medium text-foreground text-right">{order.companyName}</span>
+              <span className="text-muted-foreground">PIC</span>
+              <span className="font-medium text-foreground text-right">{order.customerName}</span>
+              <span className="text-muted-foreground">Tipe Layanan</span>
+              <span className="font-medium text-foreground text-right">{order.shipmentType}</span>
+              {order.jumlahKoli != null && order.jumlahKoli > 0 && (
+                <>
+                  <span className="text-muted-foreground">Jumlah Koli</span>
+                  <span className="font-semibold text-foreground text-right">
+                    <span className="inline-flex items-center gap-1 bg-primary/10 text-primary px-2 py-0.5 rounded-full text-xs font-bold">
+                      📦 {order.jumlahKoli} koli
+                    </span>
+                  </span>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── Order progress timeline ── */}
+        <OrderTimeline />
+
+        {/* ── Order Items ── */}
+        <div className="bg-card border border-border rounded-2xl p-5">
+          <h3 className="font-semibold text-foreground text-sm mb-3">Rincian Layanan</h3>
 
           {(order.commodity || order.cargoDescription) && (
             <div className="mb-3 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2.5 space-y-0.5">
@@ -287,8 +477,8 @@ export default function OrderSuccessPage() {
                 {item.subtotal > 0
                   ? <span className="text-sm font-bold text-accent flex-shrink-0">{formatCurrency(item.subtotal)}</span>
                   : item.calculatorType === "trucking"
-                    ? <span className="text-xs font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded px-2 py-0.5 flex-shrink-0">Harga menyusul</span>
-                    : <span className="text-xs font-semibold text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-0.5 flex-shrink-0">Harga nego</span>
+                  ? <span className="text-xs font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded px-2 py-0.5 flex-shrink-0">Harga menyusul</span>
+                  : <span className="text-xs font-semibold text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-0.5 flex-shrink-0">Harga nego</span>
                 }
               </div>
             ))}
@@ -304,7 +494,9 @@ export default function OrderSuccessPage() {
                   <span>{formatCurrency(order.subtotal)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">PPN {order.subtotal > 0 && Math.round(order.tax / order.subtotal * 1000) === 11 ? "1,1%" : "11%"}</span>
+                  <span className="text-muted-foreground">
+                    PPN {order.subtotal > 0 && Math.round(order.tax / order.subtotal * 1000) === 11 ? "1,1%" : "11%"}
+                  </span>
                   <span>{formatCurrency(order.tax)}</span>
                 </div>
                 <div className="flex justify-between font-bold">
@@ -324,9 +516,9 @@ export default function OrderSuccessPage() {
           )}
         </div>
 
-        {/* Upload Bukti Pembayaran — hanya tampil jika transfer bank */}
+        {/* ── Upload Bukti Transfer ── */}
         {(order.paymentMethod === "transfer" || (order.paymentType ?? "").startsWith("transfer")) && (
-          <div className="bg-card border border-border rounded-xl overflow-hidden">
+          <div className="bg-card border border-border rounded-2xl overflow-hidden">
             <div className="px-5 py-3 bg-blue-50 border-b border-blue-200 flex items-center gap-2">
               <Upload className="w-4 h-4 text-blue-600 shrink-0" />
               <p className="text-sm font-semibold text-blue-900">Upload Bukti Transfer</p>
@@ -377,12 +569,12 @@ export default function OrderSuccessPage() {
           </div>
         )}
 
-        {/* Actions */}
-        <div className="flex flex-col sm:flex-row gap-3">
+        {/* ── Actions ── */}
+        <div className="flex flex-col sm:flex-row gap-3 pt-1">
           <Button
             variant="outline"
             className="flex-1"
-            onClick={() => setLocation(`/track?order=${order.orderNumber}`)}
+            onClick={() => setLocation(trackingUrl)}
           >
             <Search className="w-4 h-4 mr-2" /> Lacak Pesanan
           </Button>
@@ -397,9 +589,10 @@ export default function OrderSuccessPage() {
             className="flex-1 bg-accent hover:bg-accent/90 text-accent-foreground"
             onClick={() => setLocation("/dashboard")}
           >
-            <LayoutDashboard className="w-4 h-4 mr-2" /> Ke Dashboard Saya
+            <LayoutDashboard className="w-4 h-4 mr-2" /> Ke Dashboard
           </Button>
         </div>
+
       </div>
     </div>
   );

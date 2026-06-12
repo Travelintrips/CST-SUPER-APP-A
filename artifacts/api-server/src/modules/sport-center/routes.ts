@@ -138,13 +138,17 @@ async function ensurePaymentForPaidBooking(
     RETURNING *
   `);
 
+  const sportPaymentId = Number((payR.rows[0] as Record<string, unknown>)?.id ?? 0);
+  const bookingDateStr = String(row.booking_date ?? new Date().toISOString().slice(0, 10));
+  const bookingCodeStr = String(row.booking_number ?? paymentNumber);
+
   if (bTaxAmount > 0) {
     postSportCenterBookingWithTax({
       bookingId: id,
-      bookingCode: String(row.booking_number ?? paymentNumber),
+      bookingCode: bookingCodeStr,
       customerName: String(row.customer_name ?? ""),
       facilityName: String(row.facility_name ?? ""),
-      date: String(row.booking_date ?? new Date().toISOString().slice(0, 10)),
+      date: bookingDateStr,
       baseAmount: bTotalAmount,
       taxAmount: bTaxAmount,
       createdById,
@@ -153,15 +157,41 @@ async function ensurePaymentForPaidBooking(
   } else {
     postSportCenterBooking({
       bookingId: id,
-      bookingCode: String(row.booking_number ?? paymentNumber),
+      bookingCode: bookingCodeStr,
       customerName: String(row.customer_name ?? ""),
       facilityName: String(row.facility_name ?? ""),
-      date: String(row.booking_date ?? new Date().toISOString().slice(0, 10)),
+      date: bookingDateStr,
       totalPrice: bTotalAmount,
       createdById,
       companyId: bCompanyId,
     }).catch((err: unknown) => console.error('[sport-center] postSportCenterBooking (ensurePayment) failed:', err));
   }
+
+  if (sportPaymentId) {
+    insertAccountingPaymentForSportCenter({
+      companyId: bCompanyId ?? 1,
+      paymentNumber,
+      amount: bTotalAmount,
+      method: 'cash',
+      partnerName: String(row.customer_name ?? ""),
+      ref: bookingCodeStr,
+      memo: 'Auto-created (paid booking)',
+      sourceDocId: sportPaymentId,
+      date: bookingDateStr,
+      createdById,
+    }).catch((err: unknown) => console.error('[sport-center] insertAccountingPayment (ensurePayment) failed:', err));
+  }
+
+  import("../../../lib/taxAutoService.js").then(({ recordTransactionTax }) => {
+    void recordTransactionTax({
+      companyId: bCompanyId ?? 1,
+      transactionType: "sport_center",
+      transactionId: id,
+      transactionRef: String(row.booking_number ?? id),
+      baseAmount: bTaxAmount > 0 ? bTotalAmount - bTaxAmount : bTotalAmount,
+      ...(bTaxAmount > 0 ? { taxAmount: bTaxAmount } : {}),
+    });
+  }).catch(() => {/* ignore */});
 
   await db.execute(sql`
     INSERT INTO sport_audit_logs (company_id, entity_type, entity_id, action, actor, new_data)
@@ -1656,7 +1686,19 @@ router.post("/payments", async (req, res) => {
       }).catch((err: unknown) => console.error('[sport-center] postSportCenterBooking failed:', err));
     }
 
-    // 7. Accounting Payments — agar muncul di Finance BizPortal → Payments
+    // 7. Tax Engine hook — selalu catat PPN Keluaran untuk semua booking sport center
+    import("../../../lib/taxAutoService.js").then(({ recordTransactionTax }) => {
+      void recordTransactionTax({
+        companyId: bCompanyId ?? 1,
+        transactionType: "sport_center",
+        transactionId: Number(booking_id),
+        transactionRef: bCode,
+        baseAmount: bTaxAmount > 0 ? bTotalAmount - bTaxAmount : bTotalAmount,
+        ...(bTaxAmount > 0 ? { taxAmount: bTaxAmount } : {}),
+      });
+    }).catch(() => {/* ignore */});
+
+    // 8. Accounting Payments — agar muncul di Finance BizPortal → Payments
     insertAccountingPaymentForSportCenter({
       companyId: bCompanyId,
       paymentNumber,

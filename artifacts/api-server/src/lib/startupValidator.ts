@@ -108,8 +108,53 @@ async function checkNodemailer(): Promise<DepCheckResult> {
   }
 }
 
+const REQUIRED_SECRETS: Array<{ name: string; minLen?: number }> = [
+  { name: "SESSION_SECRET", minLen: 32 },
+  { name: "PORTAL_ADMIN_KEY", minLen: 16 },
+  { name: "CASHIER_TOKEN_SECRET", minLen: 16 },
+];
+
+function checkRequiredSecrets(): { missing: string[]; weak: string[] } {
+  const missing: string[] = [];
+  const weak: string[] = [];
+  for (const { name, minLen = 1 } of REQUIRED_SECRETS) {
+    const val = process.env[name] ?? "";
+    if (!val) {
+      missing.push(name);
+    } else if (val.length < minLen) {
+      weak.push(`${name} (panjang ${val.length} < ${minLen})`);
+    } else if (
+      val === "admin123" ||
+      val === "secret" ||
+      val === "changeme" ||
+      val === "password" ||
+      val === "1234" ||
+      val === "test"
+    ) {
+      weak.push(`${name} (nilai default tidak aman)`);
+    }
+  }
+  return { missing, weak };
+}
+
 export async function runStartupValidation(): Promise<RuntimeCheckState> {
   logger.info("[startupValidator] Memeriksa runtime dependencies...");
+
+  const { missing: missingSecrets, weak: weakSecrets } = checkRequiredSecrets();
+  if (missingSecrets.length > 0) {
+    logger.error({ missingSecrets }, "[startupValidator] SECRET WAJIB TIDAK DIKONFIGURASI — set di Replit Secrets");
+    throw new Error(
+      `Secret wajib tidak dikonfigurasi: ${missingSecrets.join(", ")}. ` +
+      "Set di Replit Secrets sebelum menjalankan server."
+    );
+  }
+  if (weakSecrets.length > 0) {
+    logger.error({ weakSecrets }, "[startupValidator] SECRET LEMAH TERDETEKSI — ganti sekarang");
+    throw new Error(
+      `Secret tidak aman: ${weakSecrets.join(", ")}. ` +
+      "Ganti dengan nilai acak yang kuat di Replit Secrets."
+    );
+  }
 
   const [googleapis, openai, drizzle, pg, nodemailer] = await Promise.allSettled([
     checkGoogleapis(),

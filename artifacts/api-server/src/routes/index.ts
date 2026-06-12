@@ -32,6 +32,12 @@ import geocodeRouter from "./geocode";
 import { whatsappRouter } from "./whatsapp";
 import { vendorResponseRouter } from "./vendorResponse";
 import mediaRouter from "./media";
+import taxRouter from "./tax.js";
+import { customerServiceRequestsRouter } from "./customerServiceRequests.js";
+import { servicePackagesRouter } from "./servicePackages.js";
+import { portalCustomerProfileRouter } from "./portalCustomerProfile.js";
+import { customerVerificationRouter, customerVerificationAdminRouter } from "./customerVerification.js";
+import { adminServiceRequestsRouter } from "./adminServiceRequests.js";
 
 import warehouseRouter from "./warehouse";
 import inventoryReceiveRouter from "./inventoryReceive";
@@ -66,10 +72,12 @@ import { podOcrRouter } from "./podOcr";
 import { marginRulesRouter } from "./marginRules";
 import { adminActionPublicRouter, adminActionAdminRouter } from "./adminAction";
 import { vendorFulfillmentPublicRouter } from "./vendorFulfillment";
+import { logisticVendorFulfillmentAdminRouter } from "./logisticVendorFulfillmentAdmin.js";
 import { driverProgressPublicRouter } from "./driverProgress.js";
 import { fulfillmentAdminRouter, fulfillmentPublicRouter } from "./orderFulfillment.js";
 import { vendorJobAdminRouter, vendorJobPublicRouter, orderTrackingPublicRouter } from "./vendorJobOrder.js";
 import { resolveShortLink } from "../lib/shortLink.js";
+import { bankReconciliationRouter } from "./bankReconciliation.js";
 import { commodityTemplatesRouter } from "./commodityTemplates.js";
 import pushRouter from "./push.js";
 import { intelligenceAlertsRouter } from "./intelligenceAlerts.js";
@@ -79,6 +87,7 @@ import { aiDecisionMemoryRouter } from "./aiDecisionMemory.js";
 import { productTemplatesRouter } from "./productTemplates.js";
 import logisticsUnitsRouter from "./logisticsUnits.js";
 import truckingRatesRouter from "./truckingRates.js";
+import truckingBookingsRouter from "./truckingBookings.js";
 import { enterpriseWorkflowRouter } from "./enterpriseWorkflow.js";
 import { customerFeedbackPublicRouter, customerFeedbackAdminRouter } from "./customerFeedback.js";
 import { purchaseMiniPublicRouter, purchaseMiniAdminRouter } from "./purchaseMiniFormRoute.js";
@@ -86,6 +95,8 @@ import { paymentProofPublicRouter, paymentProofAdminRouter } from "./paymentProo
 
 import { orderAuditTrailRouter } from "./orderAuditTrail.js";
 import { serviceTemplatesRouter } from "./serviceTemplates.js";
+import { vendorTrackingAdminRouter, vendorTrackingPublicRouter } from "./vendorTracking.js";
+import { customerDataFormPublicRouter, customerDataFormAdminRouter } from "./customerDataForm.js";
 import { paymentProofRouter } from "./paymentProof.js";
 
 import { exceptionsRouter } from "./exceptions.js";
@@ -104,6 +115,13 @@ import { handleAlertSse } from "../lib/alertsBroadcast.js";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import sportCenterRouter from "../modules/sport-center/routes.js";
 import tenantRouter from "../modules/tenant/routes.js";
+import airFreightNewRouter from "./airFreight.js";
+import airFreightRatesRouter from "./airFreightRates.js";
+import airFreightPublicRouter from "./airFreightPublic.js";
+import oceanFreightRouter from "./oceanFreight.js";
+import oceanFreightRatesRouter from "./oceanFreightRates.js";
+import { oceanFreightPublicRouter } from "./oceanFreightPublic.js";
+import { oceanFreightVendorFormRouter } from "./oceanFreightVendorForm.js";
 import executiveRouter from "./executive.js";
 import cashAdvancesRouter from "./cashAdvances.js";
 import vendorPaymentsRouter from "./vendorPayments.js";
@@ -114,11 +132,21 @@ import expenseApprovalsRouter from "./expenseApprovals.js";
 import expenseDashboardRouter from "./expenseDashboard.js";
 import expenseTemplatesRouter from "./expenseTemplates.js";
 import expenseBudgetsRouter from "./expenseBudgets.js";
+// ⛔ DEAD IMPORT — airFreightRouter (named export) diimport tapi TIDAK pernah di-mount.
+// Hanya default export (airFreightNewRouter) yang dipakai via router.use("/air-freight", airFreightNewRouter).
+// Jangan hapus file airFreight.js, hanya import ini yang di-freeze.
+// import { airFreightRouter } from "./airFreight.js"; // FROZEN 2026-06-11
+import { airFreightVendorFormRouter } from "./airFreightVendorForm.js";
 import { watiRouter } from "./wati.js";
+import logisticsRatesRouter from "./logisticsRates.js";
 import { marketplaceRouter } from "./marketplace.js";
 import { escrowAdminRouter, escrowPublicRouter } from "./escrow.js";
+import { vendorCatalogEnginePublicRouter, vendorCatalogEngineAdminRouter } from "./vendorCatalogEngine.js";
 import orderCostsRouter from "./orderCosts.js";
+import vendorTruckingPricingRouter from "./vendorTruckingPricing.js";
 import productMediaRouter from "./productMedia.js";
+import oceanFreightMasterRouter from "./oceanFreightMaster.js";
+import ppjkRouter from "./ppjk.js";
 
 import type { Request, Response } from "express";
 
@@ -148,6 +176,8 @@ router.use("/scan-document", scanDocumentRouter);
 router.use("/expenses", expensesRouter);
 router.use("/portal", portalRouter);
 router.use("/marketplace", marketplaceRouter);
+router.use("/vendor-catalog-engine", vendorCatalogEnginePublicRouter);
+router.use("/trading/catalog-engine", vendorCatalogEngineAdminRouter);
 // PERHATIAN: logisticRfqRouter dan logisticOrdersRouter keduanya di-mount di /logistic/orders.
 // Express akan mencoba logisticRfqRouter dulu; jika tidak ada handler yang cocok, baru logisticOrdersRouter.
 // Risiko: jika keduanya mendefinisikan path yang sama (misal GET /), hanya yang pertama yang merespons.
@@ -216,6 +246,7 @@ router.use("/margin-rules", marginRulesRouter);
 router.use("/admin-action", adminActionAdminRouter);
 router.use("/admin-action", adminActionPublicRouter);
 router.use("/vendor-fulfillment", vendorFulfillmentPublicRouter);
+router.use("/logistic/vendor-fulfillments", logisticVendorFulfillmentAdminRouter);
 router.use("/driver-progress", driverProgressPublicRouter);
 router.use("/commodity-templates", commodityTemplatesRouter);
 router.use("/logistic", fulfillmentAdminRouter);
@@ -231,6 +262,8 @@ router.use("/ai/decision-memory", aiDecisionMemoryRouter);
 router.use("/product-templates", productTemplatesRouter);
 router.use("/logistics-units", logisticsUnitsRouter);
 router.use("/trucking-rates", truckingRatesRouter);
+router.use("/logistics-rates", logisticsRatesRouter);
+router.use("/trucking/bookings", truckingBookingsRouter);
 router.use("/enterprise-workflow", enterpriseWorkflowRouter);
 router.use("/customer-feedback", customerFeedbackAdminRouter);
 router.use("/customer-feedback", customerFeedbackPublicRouter);
@@ -245,6 +278,10 @@ router.use("/payment-proof", paymentProofRouter);
 
 router.use("/logistic", orderAuditTrailRouter);
 router.use("/logistic", orderExceptionsRouter);
+router.use("/logistic", vendorTrackingAdminRouter);
+router.use("/vendor-tracking", vendorTrackingPublicRouter);
+router.use("/customer-data", customerDataFormPublicRouter);
+router.use("/logistic", customerDataFormAdminRouter);
 router.use("/logistic/orders", productFirstOverrideRouter);
 router.use("/logistic/product-first/analytics", productFirstAnalyticsRouter);
 router.use("/logistic/product-first/audit", productFirstAuditDashboardRouter);
@@ -260,19 +297,40 @@ router.use("/rbac", rbacRouter);
 router.use("/import-advisor", importAdvisorRouter);
 router.use("/sport-center", sportCenterRouter);
 router.use("/tenant", tenantRouter);
+router.use("/air-freight", airFreightNewRouter);
+router.use("/air-freight", airFreightRatesRouter);
+router.use("/air-freight", airFreightPublicRouter);
+// Public/rates mounts FIRST — oceanFreightRouter has GET /:id catch-all
+// that would intercept /options, /rates, /calculate, /inquiry, etc. if mounted first.
+router.use("/ocean-freight", oceanFreightPublicRouter);
+router.use("/ocean-freight", oceanFreightRatesRouter);
+router.use("/ocean-freight", oceanFreightRouter);
+router.use("/ocean-freight/vendor-form", oceanFreightVendorFormRouter);
 router.use("/executive", executiveRouter);
 router.use("/cash-advances", cashAdvancesRouter);
 router.use("/vendor-payments", vendorPaymentsRouter);
 router.use("/vendor-installments", vendorInstallmentsRouter);
 router.use("/bank-loans", bankLoansRouter);
+router.use("/bank-reconciliation", bankReconciliationRouter);
 router.use("/fixed-assets", fixedAssetsRouter);
 router.use("/expense-approvals", expenseApprovalsRouter);
 router.use("/expense-dashboard", expenseDashboardRouter);
 router.use("/expense-templates", expenseTemplatesRouter);
 router.use("/expense-config", expenseBudgetsRouter);
+router.use("/air-freight-form", airFreightVendorFormRouter);
+router.use("/ocean-freight-master", oceanFreightMasterRouter);
+router.use("/ppjk", ppjkRouter);
 router.use("/wati", watiRouter);
 router.use("/sales/escrow", escrowPublicRouter);
 router.use("/sales/escrow", escrowAdminRouter);
+router.use("/vendor-trucking-pricing", vendorTruckingPricingRouter);
+router.use("/tax", taxRouter);
+router.use("/customer-service-requests", customerServiceRequestsRouter);
+router.use("/service-packages", servicePackagesRouter);
+router.use("/portal/customer-profile", portalCustomerProfileRouter);
+router.use("/customer-verification", customerVerificationRouter);
+router.use("/customer-verification/admin", customerVerificationAdminRouter);
+router.use("/admin/service-requests", adminServiceRequestsRouter);
 
 router.get("/alerts/stream", async (req: Request, res: Response) => {
   const ok = await requireAdmin(req, res);

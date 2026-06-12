@@ -189,19 +189,37 @@ export default function Home() {
         </button>
       </section>
 
+      {/* ── Quick Actions Bar (mobile-first) ─────────────────────── */}
+      <section className="bg-white border-b border-slate-100 py-4 md:py-0 md:hidden">
+        <div className="px-4 grid grid-cols-3 gap-2.5">
+          <a href="/track" className="flex flex-col items-center gap-1.5 py-3.5 px-2 rounded-2xl bg-sky-50 border border-sky-100 text-sky-700 text-center active:scale-95 transition-transform">
+            <MapPin className="h-5 w-5" />
+            <span className="text-[11px] font-bold leading-tight">Lacak Pesanan</span>
+          </a>
+          <a href="/calculator" className="flex flex-col items-center gap-1.5 py-3.5 px-2 rounded-2xl bg-emerald-50 border border-emerald-100 text-emerald-700 text-center active:scale-95 transition-transform">
+            <Calculator className="h-5 w-5" />
+            <span className="text-[11px] font-bold leading-tight">Hitung Biaya</span>
+          </a>
+          <a href="/book" className="flex flex-col items-center gap-1.5 py-3.5 px-2 rounded-2xl bg-violet-50 border border-violet-100 text-violet-700 text-center active:scale-95 transition-transform">
+            <ShoppingCart className="h-5 w-5" />
+            <span className="text-[11px] font-bold leading-tight">Pesan Sekarang</span>
+          </a>
+        </div>
+      </section>
+
       {/* ── Trust Signals ────────────────────────────────────────── */}
-      <section className="py-16 bg-gradient-to-b from-slate-50 to-white">
+      <section className="py-12 md:py-16 bg-gradient-to-b from-slate-50 to-white">
         <div className="container px-4 md:px-6">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-5">
             {stats.map(({ icon: Icon, valueKey, defaultVal, labelKey, defaultLabel, color, bg, border }) => (
-              <div key={valueKey} className={`text-center p-7 rounded-2xl bg-white border ${border} shadow-sm hover:shadow-md transition-all duration-200`}>
-                <div className={`w-14 h-14 rounded-2xl ${bg} flex items-center justify-center mx-auto mb-4`}>
-                  <Icon className={`h-7 w-7 ${color}`} />
+              <div key={valueKey} className={`text-center p-5 md:p-7 rounded-2xl bg-white border ${border} shadow-sm hover:shadow-md transition-all duration-200`}>
+                <div className={`w-11 h-11 md:w-14 md:h-14 rounded-2xl ${bg} flex items-center justify-center mx-auto mb-3 md:mb-4`}>
+                  <Icon className={`h-5 w-5 md:h-7 md:w-7 ${color}`} />
                 </div>
-                <div className={`font-display font-bold text-4xl ${color} mb-1`}>
+                <div className={`font-display font-bold text-3xl md:text-4xl ${color} mb-1`}>
                   <EditableText contentKey={valueKey} defaultValue={defaultVal} />
                 </div>
-                <p className="text-sm font-medium text-slate-500 mt-1">
+                <p className="text-xs md:text-sm font-medium text-slate-500 mt-1">
                   <EditableText contentKey={labelKey} defaultValue={defaultLabel} />
                 </p>
               </div>
@@ -401,8 +419,9 @@ export default function Home() {
               </Link>
             </div>
 
-            <div className="relative pb-12">
-              <div className="relative aspect-[4/5] rounded-2xl overflow-hidden shadow-2xl">
+            {/* Images — stacked on mobile, overlapping on desktop */}
+            <div className="relative pb-0 lg:pb-12">
+              <div className="relative aspect-[4/3] lg:aspect-[4/5] rounded-2xl overflow-hidden shadow-2xl">
                 <EditableImage
                   contentKey="about_img1"
                   defaultSrc={assetUrl("/images/port-operations.png")}
@@ -410,7 +429,16 @@ export default function Home() {
                   className="w-full h-full object-cover"
                 />
               </div>
-              <div className="absolute -bottom-4 -left-6 aspect-square w-2/3 rounded-2xl overflow-hidden shadow-2xl border-4 border-white">
+              <div className="hidden lg:block absolute -bottom-4 -left-6 aspect-square w-2/3 rounded-2xl overflow-hidden shadow-2xl border-4 border-white">
+                <EditableImage
+                  contentKey="about_img2"
+                  defaultSrc={assetUrl("/images/customs.png")}
+                  alt="Dokumen Kepabeanan"
+                  className="w-full h-full object-cover"
+                />
+              </div>
+              {/* Mobile second image — inline below */}
+              <div className="lg:hidden mt-3 aspect-video rounded-2xl overflow-hidden shadow-lg">
                 <EditableImage
                   contentKey="about_img2"
                   defaultSrc={assetUrl("/images/customs.png")}
@@ -474,22 +502,23 @@ export default function Home() {
             </p>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-7">
+          {/* Horizontal scroll on mobile, grid on md+ */}
+          <div className="flex gap-5 overflow-x-auto pb-3 md:pb-0 md:grid md:grid-cols-3 snap-x snap-mandatory scrollbar-none -mx-4 px-4 md:mx-0 md:px-0">
             {testimonials.map(({ nameKey, roleKey, textKey, photoKey, defaultImg }) => (
               <div
                 key={nameKey}
-                className="bg-white/5 hover:bg-white/8 border border-white/10 hover:border-white/20 rounded-2xl p-8 flex flex-col transition-all duration-300 hover:-translate-y-1"
+                className="bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 rounded-2xl p-6 md:p-8 flex flex-col transition-all duration-300 hover:-translate-y-1 shrink-0 w-[82vw] sm:w-[60vw] md:w-auto snap-center"
               >
-                <div className="flex gap-0.5 mb-5">
+                <div className="flex gap-0.5 mb-4">
                   {[...Array(5)].map((_, i) => (
                     <Star key={i} className="h-4 w-4 text-amber-400 fill-amber-400" />
                   ))}
                 </div>
-                <p className="text-slate-300 leading-relaxed italic flex-1 mb-7">
+                <p className="text-slate-300 leading-relaxed italic flex-1 mb-6 text-sm md:text-base">
                   &ldquo;<EditableText contentKey={textKey} defaultValue={t(textKey)} multiline />&rdquo;
                 </p>
-                <div className="flex items-center gap-4 pt-5 border-t border-white/10">
-                  <img src={content[photoKey] || defaultImg} alt={t(nameKey)} className="w-12 h-12 rounded-full object-cover ring-2 ring-sky-400/40" />
+                <div className="flex items-center gap-3 pt-4 border-t border-white/10">
+                  <img src={content[photoKey] || defaultImg} alt={t(nameKey)} className="w-10 h-10 md:w-12 md:h-12 rounded-full object-cover ring-2 ring-sky-400/40 shrink-0" />
                   <div>
                     <p className="font-semibold text-white text-sm">
                       <EditableText contentKey={nameKey} defaultValue={t(nameKey)} />
@@ -500,6 +529,12 @@ export default function Home() {
                   </div>
                 </div>
               </div>
+            ))}
+          </div>
+          {/* Dot indicators for mobile */}
+          <div className="flex justify-center gap-1.5 mt-5 md:hidden">
+            {testimonials.map((_, i) => (
+              <div key={i} className={`rounded-full transition-all ${i === 0 ? "w-5 h-1.5 bg-amber-400" : "w-1.5 h-1.5 bg-white/25"}`} />
             ))}
           </div>
         </div>

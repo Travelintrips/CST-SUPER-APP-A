@@ -39,6 +39,7 @@ import {
 } from "drizzle-orm";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { resolveCompanyId, resolveCompanyScope } from "../lib/resolveCompany.js";
+import { audit } from "../lib/unifiedAudit.js";
 import {
   ensureAccountingSettings,
   seedAccountingDefaults,
@@ -605,6 +606,22 @@ router.post("/entries", async (req, res) => {
       .select()
       .from(accountingEntryLinesTable)
       .where(eq(accountingEntryLinesTable.entryId, entry.id));
+    audit(req, {
+      action: "create",
+      module: "accounting",
+      resourceId: entry.entryNumber ?? String(entry.id),
+      after: {
+        id: entry.id,
+        entryNumber: entry.entryNumber,
+        journalId: journal.id,
+        journalCode: journal.code,
+        date: dateStr,
+        ref,
+        description,
+        lineCount: postingLines.length,
+      },
+      companyId,
+    });
     return res
       .status(201)
       .json({
@@ -700,7 +717,12 @@ router.get("/payments", async (req, res) => {
   if (range.error) return res.status(400).json({ message: range.error });
   const conds: SQL<unknown>[] = [];
   if (scope !== "all") {
-    conds.push(eq(accountingPaymentsTable.companyId, scope));
+    conds.push(
+      or(
+        eq(accountingPaymentsTable.companyId, scope),
+        isNull(accountingPaymentsTable.companyId),
+      )!,
+    );
   }
   if (range.from)
     conds.push(
@@ -4089,6 +4111,397 @@ router.post("/rekonsiliasi-gsheet", async (req, res) => {
   }
 });
 
+// ── WHT Payable Reconciliation ───────────────────────────────────────────────
+// GET /api/accounting/wht-reconciliation?period=YYYY-MM&companyId=N
+// Merangkum WHT yang dipotong dari vendor_payments vs jurnal WHT Payable (2-1030)
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/wht-reconciliation", async (req, res) => {
+  const { period, companyId: companyIdQ } = req.query as Record<string, string>;
+  const companyId = companyIdQ ? parseInt(companyIdQ, 10) : 1;
+
+  // Tentukan rentang tanggal dari period (YYYY-MM) atau bulan berjalan
+  const now = new Date();
+  const rawPeriod = period ?? `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const [yearStr, monthStr] = rawPeriod.split("-");
+  const year = parseInt(yearStr ?? String(now.getFullYear()), 10);
+  const month = parseInt(monthStr ?? String(now.getMonth() + 1), 10);
+  const startDate = new Date(year, month - 1, 1);
+  const endDate   = new Date(year, month, 1);
+
+  try {
+    // 1. WHT yang dipotong dari vendor_payments dalam periode ini
+    const whtRows = await db.execute(sql`
+      SELECT
+        vp.supplier_id,
+        s.name                            AS supplier_name,
+        COUNT(*)::int                     AS payment_count,
+        SUM(vp.amount)::numeric           AS total_gross,
+        SUM(vp.wht_amount)::numeric       AS total_wht,
+        SUM(vp.amount - vp.wht_amount)::numeric AS total_net_bank,
+        MAX(vp.wht_account_id)            AS wht_account_id
+      FROM vendor_payments vp
+      LEFT JOIN suppliers s ON s.id = vp.supplier_id
+      WHERE vp.wht_amount > 0
+        AND vp.company_id = ${companyId}
+        AND vp.created_at >= ${startDate.toISOString()}
+        AND vp.created_at <  ${endDate.toISOString()}
+      GROUP BY vp.supplier_id, s.name
+      ORDER BY SUM(vp.wht_amount) DESC
+    `);
+
+    // 2. WHT yang sudah di-jurnal ke akun 2-1030 (WHT Payable) dalam periode ini
+    const journalRows = await db.execute(sql`
+      SELECT
+        COALESCE(SUM(jel.credit), 0)::numeric AS total_journaled
+      FROM journal_entry_lines jel
+      JOIN journal_entries je ON je.id = jel.journal_entry_id
+      JOIN chart_of_accounts coa ON coa.id = jel.account_id
+      WHERE coa.code LIKE '2-1030%'
+        AND je.company_id = ${companyId}
+        AND je.date >= ${startDate.toISOString().slice(0, 10)}
+        AND je.date <  ${endDate.toISOString().slice(0, 10)}
+        AND (je.status IS NULL OR je.status != 'voided')
+    `);
+
+    // 3. Daftar vendor payments dengan WHT detail (untuk tabel detail)
+    const detailRows = await db.execute(sql`
+      SELECT
+        vp.id,
+        vp.payment_number,
+        vp.created_at,
+        s.name      AS supplier_name,
+        vp.amount   AS gross_amount,
+        vp.wht_amount,
+        vp.amount - vp.wht_amount AS net_bank,
+        vp.journal_entry_id,
+        coa.code    AS wht_account_code,
+        coa.name    AS wht_account_name
+      FROM vendor_payments vp
+      LEFT JOIN suppliers s ON s.id = vp.supplier_id
+      LEFT JOIN chart_of_accounts coa ON coa.id = vp.wht_account_id
+      WHERE vp.wht_amount > 0
+        AND vp.company_id = ${companyId}
+        AND vp.created_at >= ${startDate.toISOString()}
+        AND vp.created_at <  ${endDate.toISOString()}
+      ORDER BY vp.created_at DESC
+    `);
+
+    const summaryRows = whtRows as unknown as Array<{
+      supplier_id: number | null;
+      supplier_name: string | null;
+      payment_count: number;
+      total_gross: string;
+      total_wht: string;
+      total_net_bank: string;
+      wht_account_id: number | null;
+    }>;
+
+    const totalWhtPotongan = summaryRows.reduce((s, r) => s + Number(r.total_wht), 0);
+    const totalJournaled   = Number((journalRows as unknown as Array<{ total_journaled: string }>)[0]?.total_journaled ?? 0);
+    const selisih          = Math.round((totalWhtPotongan - totalJournaled) * 100) / 100;
+
+    return res.json({
+      period: rawPeriod,
+      companyId,
+      summary: {
+        totalWhtPotongan: Math.round(totalWhtPotongan * 100) / 100,
+        totalJournaled:   Math.round(totalJournaled   * 100) / 100,
+        selisih,
+        isBalanced: Math.abs(selisih) < 1,
+      },
+      bySupplier: summaryRows.map((r) => ({
+        supplierId:   r.supplier_id,
+        supplierName: r.supplier_name ?? "—",
+        paymentCount: r.payment_count,
+        totalGross:   Number(r.total_gross),
+        totalWht:     Number(r.total_wht),
+        totalNetBank: Number(r.total_net_bank),
+      })),
+      detail: (detailRows as unknown as Array<{
+        id: number;
+        payment_number: string;
+        created_at: string;
+        supplier_name: string | null;
+        gross_amount: string;
+        wht_amount: string;
+        net_bank: string;
+        journal_entry_id: number | null;
+        wht_account_code: string | null;
+        wht_account_name: string | null;
+      }>).map((r) => ({
+        id:             r.id,
+        paymentNumber:  r.payment_number,
+        createdAt:      r.created_at,
+        supplierName:   r.supplier_name ?? "—",
+        grossAmount:    Number(r.gross_amount),
+        whtAmount:      Number(r.wht_amount),
+        netBank:        Number(r.net_bank),
+        journalEntryId: r.journal_entry_id,
+        whtAccountCode: r.wht_account_code,
+        whtAccountName: r.wht_account_name,
+        isJournaled:    !!r.journal_entry_id,
+      })),
+    });
+  } catch (err) {
+    logger.error({ err }, "wht-reconciliation: query failed");
+    return res.status(500).json({ message: "Gagal memuat rekonsiliasi WHT" });
+  }
+});
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AUDIT ENDPOINTS — /api/accounting/audit/*
+// ─────────────────────────────────────────────────────────────────────────────
+
+// GET /api/accounting/audit/missing-journals?module=all|sales|purchase|logistic|expense|payment&companyId=N&limit=200
+router.get("/audit/missing-journals", async (req, res) => {
+  const { module: mod = "all", companyId: companyIdQ, limit: limitQ } = req.query as Record<string, string>;
+  const companyId = companyIdQ ? parseInt(companyIdQ, 10) : null;
+  const limit = Math.min(parseInt(limitQ ?? "200", 10), 500);
+  const companyFilter = companyId ? sql`AND company_id = ${companyId}` : sql``;
+
+  try {
+    const results: Record<string, unknown[]> = {};
+
+    if (mod === "all" || mod === "sales") {
+      const rows = await db.execute(sql`
+        SELECT
+          sd.id,
+          sd.doc_number,
+          sd.customer_name,
+          sd.grand_total::float,
+          sd.status,
+          sd.invoice_status,
+          sd.confirmed_at,
+          sd.company_id,
+          'sales' AS module
+        FROM sales_documents sd
+        WHERE sd.status = 'confirmed'
+          AND sd.invoice_status IN ('invoiced', 'to_invoice')
+          ${companyFilter}
+          AND NOT EXISTS (
+            SELECT 1 FROM accounting_entries ae
+            WHERE ae.source = 'sales_invoice'
+              AND ae.source_id = sd.id
+          )
+        ORDER BY sd.confirmed_at DESC
+        LIMIT ${limit}
+      `);
+      results.sales = rows.rows;
+    }
+
+    if (mod === "all" || mod === "purchase") {
+      const rows = await db.execute(sql`
+        SELECT
+          pd.id,
+          pd.doc_number,
+          pd.supplier_name,
+          pd.grand_total::float,
+          pd.status,
+          pd.bill_status,
+          pd.confirmed_at,
+          pd.company_id,
+          'purchase' AS module
+        FROM purchase_documents pd
+        WHERE pd.status = 'confirmed'
+          AND pd.bill_status = 'billed'
+          ${companyFilter}
+          AND NOT EXISTS (
+            SELECT 1 FROM accounting_entries ae
+            WHERE ae.source = 'purchase_bill'
+              AND ae.source_id = pd.id
+          )
+        ORDER BY pd.confirmed_at DESC
+        LIMIT ${limit}
+      `);
+      results.purchase = rows.rows;
+    }
+
+    if (mod === "all" || mod === "expense") {
+      const rows = await db.execute(sql`
+        SELECT
+          e.id,
+          e.title,
+          e.amount::float,
+          e.status,
+          e.date,
+          e.company_id,
+          'expense' AS module
+        FROM expenses e
+        WHERE e.status IN ('approved', 'paid')
+          ${companyFilter}
+          AND NOT EXISTS (
+            SELECT 1 FROM accounting_entries ae
+            WHERE ae.source_id = e.id
+              AND ae.source IN ('manual_payment', 'purchase_payment')
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM accounting_entry_lines ael
+            JOIN accounting_entries ae2 ON ae2.id = ael.entry_id
+            WHERE ae2.ref LIKE 'EXP-%'
+              AND ae2.source_id = e.id
+          )
+        ORDER BY e.date DESC
+        LIMIT ${limit}
+      `);
+      results.expense = rows.rows;
+    }
+
+    if (mod === "all" || mod === "logistic") {
+      const rows = await db.execute(sql`
+        SELECT
+          lo.id,
+          lo.order_number,
+          lo.customer_name,
+          lo.total_revenue::float,
+          lo.status,
+          lo.company_id,
+          'logistic' AS module
+        FROM logistic_orders lo
+        WHERE lo.status IN ('Done', 'Invoice Issued', 'Paid')
+          ${companyFilter}
+          AND NOT EXISTS (
+            SELECT 1 FROM accounting_entries ae
+            WHERE ae.source IN ('sales_invoice', 'ecommerce_order')
+              AND ae.source_id = lo.id
+          )
+        ORDER BY lo.created_at DESC
+        LIMIT ${limit}
+      `);
+      results.logistic = rows.rows;
+    }
+
+    const total = Object.values(results).reduce((s, arr) => s + arr.length, 0);
+    return res.json({ total, results });
+  } catch (err) {
+    logger.error({ err }, "audit/missing-journals: query failed");
+    return res.status(500).json({ message: "Gagal memuat audit missing journals" });
+  }
+});
+
+// GET /api/accounting/audit/unbalanced-entries?companyId=N&limit=100
+router.get("/audit/unbalanced-entries", async (req, res) => {
+  const { companyId: companyIdQ, limit: limitQ } = req.query as Record<string, string>;
+  const companyId = companyIdQ ? parseInt(companyIdQ, 10) : null;
+  const limit = Math.min(parseInt(limitQ ?? "100", 10), 500);
+  const companyFilter = companyId ? sql`AND ae.company_id = ${companyId}` : sql``;
+
+  try {
+    const rows = await db.execute(sql`
+      SELECT
+        ae.id,
+        ae.entry_number,
+        ae.date,
+        ae.source,
+        ae.source_id,
+        ae.description,
+        ae.company_id,
+        ae.total_debit::float,
+        ae.total_credit::float,
+        ABS(ae.total_debit - ae.total_credit)::float AS selisih
+      FROM accounting_entries ae
+      WHERE ABS(ae.total_debit::numeric - ae.total_credit::numeric) > 0.01
+        ${companyFilter}
+      ORDER BY selisih DESC
+      LIMIT ${limit}
+    `);
+    return res.json({ total: rows.rows.length, items: rows.rows });
+  } catch (err) {
+    logger.error({ err }, "audit/unbalanced-entries: query failed");
+    return res.status(500).json({ message: "Gagal memuat audit unbalanced entries" });
+  }
+});
+
+// GET /api/accounting/audit/cross-company?companyId=N&limit=100
+router.get("/audit/cross-company", async (req, res) => {
+  const { companyId: companyIdQ, limit: limitQ } = req.query as Record<string, string>;
+  const companyId = companyIdQ ? parseInt(companyIdQ, 10) : null;
+  const limit = Math.min(parseInt(limitQ ?? "100", 10), 500);
+  const companyFilter = companyId ? sql`WHERE ae.company_id = ${companyId}` : sql`WHERE true`;
+
+  try {
+    const rows = await db.execute(sql`
+      SELECT
+        ae.id           AS entry_id,
+        ae.entry_number,
+        ae.company_id   AS entry_company_id,
+        ae.source,
+        ae.date,
+        COUNT(ael.id)::int  AS line_count
+      FROM accounting_entries ae
+      JOIN accounting_entry_lines ael ON ael.entry_id = ae.id
+      ${companyFilter}
+      GROUP BY ae.id, ae.entry_number, ae.company_id, ae.source, ae.date
+      HAVING COUNT(DISTINCT ael.id) > 0
+      ORDER BY ae.date DESC
+      LIMIT ${limit}
+    `);
+    return res.json({ total: rows.rows.length, items: rows.rows });
+  } catch (err) {
+    logger.error({ err }, "audit/cross-company: query failed");
+    return res.status(500).json({ message: "Gagal memuat audit cross-company" });
+  }
+});
+
+// GET /api/accounting/audit/summary?companyId=N
+router.get("/audit/summary", async (req, res) => {
+  const { companyId: companyIdQ } = req.query as Record<string, string>;
+  const companyId = companyIdQ ? parseInt(companyIdQ, 10) : null;
+  const companyFilter = companyId ? sql`AND company_id = ${companyId}` : sql``;
+
+  try {
+    const [unbalanced] = await db.execute(sql`
+      SELECT COUNT(*)::int AS cnt
+      FROM accounting_entries
+      WHERE ABS(total_debit::numeric - total_credit::numeric) > 0.01
+        ${companyFilter}
+    `);
+    const [salesMissing] = await db.execute(sql`
+      SELECT COUNT(*)::int AS cnt
+      FROM sales_documents sd
+      WHERE sd.status = 'confirmed'
+        AND sd.invoice_status IN ('invoiced', 'to_invoice')
+        ${companyFilter}
+        AND NOT EXISTS (
+          SELECT 1 FROM accounting_entries ae
+          WHERE ae.source = 'sales_invoice' AND ae.source_id = sd.id
+        )
+    `);
+    const [purchaseMissing] = await db.execute(sql`
+      SELECT COUNT(*)::int AS cnt
+      FROM purchase_documents pd
+      WHERE pd.status = 'confirmed' AND pd.bill_status = 'billed'
+        ${companyFilter}
+        AND NOT EXISTS (
+          SELECT 1 FROM accounting_entries ae
+          WHERE ae.source = 'purchase_bill' AND ae.source_id = pd.id
+        )
+    `);
+    const [taxMissing] = await db.execute(sql`
+      SELECT COUNT(*)::int AS cnt
+      FROM transaction_taxes
+      WHERE npwp IS NULL OR npwp = ''
+        ${companyFilter}
+    `);
+    const [fakturMissing] = await db.execute(sql`
+      SELECT COUNT(*)::int AS cnt
+      FROM transaction_taxes
+      WHERE direction = 'output'
+        AND (faktur_pajak_number IS NULL OR faktur_pajak_number = '')
+        ${companyFilter}
+    `);
+
+    return res.json({
+      unbalancedEntries:       (unbalanced.rows[0] as { cnt: number }).cnt,
+      salesMissingJournals:    (salesMissing.rows[0] as { cnt: number }).cnt,
+      purchaseMissingJournals: (purchaseMissing.rows[0] as { cnt: number }).cnt,
+      taxMissingNpwp:          (taxMissing.rows[0] as { cnt: number }).cnt,
+      taxMissingFaktur:        (fakturMissing.rows[0] as { cnt: number }).cnt,
+    });
+  } catch (err) {
+    logger.error({ err }, "audit/summary: query failed");
+    return res.status(500).json({ message: "Gagal memuat audit summary" });
+  }
+});
+
 export default router;
-
-

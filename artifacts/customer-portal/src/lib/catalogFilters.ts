@@ -1,3 +1,153 @@
+// ── Service category normalisation (mirrors artifacts/api-server/src/routes/portal.ts) ──
+
+const SERVICE_CATEGORY_ALIASES: Record<string, string> = {
+  // trucking
+  trucking:           "trucking",
+  truck:              "trucking",
+  "land freight":     "trucking",
+  land_freight:       "trucking",
+  darat:              "trucking",
+  pengiriman_darat:   "trucking",
+  "pengiriman darat": "trucking",
+  // sea_freight
+  "sea freight":      "sea_freight",
+  sea_freight:        "sea_freight",
+  sea:                "sea_freight",
+  ocean:              "sea_freight",
+  ocean_freight:      "sea_freight",
+  "ocean freight":    "sea_freight",
+  fcl:                "sea_freight",
+  lcl:                "sea_freight",
+  laut:               "sea_freight",
+  pengiriman_laut:    "sea_freight",
+  "pengiriman laut":  "sea_freight",
+  // air_freight
+  "air freight":      "air_freight",
+  air_freight:        "air_freight",
+  air:                "air_freight",
+  udara:              "air_freight",
+  cargo_udara:        "air_freight",
+  "cargo udara":      "air_freight",
+  pengiriman_udara:   "air_freight",
+  "pengiriman udara": "air_freight",
+  // ppjk
+  ppjk:               "ppjk",
+  customs:            "ppjk",
+  custom:             "ppjk",
+  pabean:             "ppjk",
+  kepabeanan:         "ppjk",
+  pib:                "ppjk",
+  peb:                "ppjk",
+  // handling
+  handling:           "handling",
+  warehouse:          "handling",
+  warehousing:        "handling",
+  gudang:             "handling",
+  stuffing:           "handling",
+  stripping:          "handling",
+  loading:            "handling",
+  unloading:          "handling",
+  // document
+  document:           "document",
+  documents:          "document",
+  dokumen:            "document",
+  legal_doc:          "document",
+  "legal doc":        "document",
+  perizinan:          "document",
+};
+
+export const SERVICE_CATEGORY_LABELS: Record<string, string> = {
+  trucking:    "Trucking",
+  sea_freight: "Sea Freight",
+  air_freight: "Air Freight",
+  ppjk:        "PPJK / Customs",
+  handling:    "Handling",
+  document:    "Document",
+};
+
+const SERVICE_CATEGORY_ORDER = ["trucking", "sea_freight", "air_freight", "ppjk", "handling", "document"];
+
+/** Normalize a category value to its canonical key. Returns null for empty input. */
+export function normalizeServiceCategory(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const normalized = value.toLowerCase().trim().replace(/[\s-]+/g, "_");
+  const withSpaces = normalized.replace(/_/g, " ");
+  return (
+    SERVICE_CATEGORY_ALIASES[withSpaces] ??
+    SERVICE_CATEGORY_ALIASES[normalized] ??
+    normalized
+  );
+}
+
+function toTitleCase(str: string): string {
+  return str.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+export interface ServiceCategoryOption {
+  key: string;   // normalized canonical key — sent to API as ?category=
+  label: string; // display label
+}
+
+/**
+ * Extract unique normalized categories from actual service items.
+ * Reads: serviceType, kategori, categoryKey, templateSnapshot.serviceType, templateSnapshot.category.
+ * Filters out empty/null/duplicate values. Sorts by preferred canonical order.
+ */
+export function buildServiceCategories(items: MarketplaceItem[]): ServiceCategoryOption[] {
+  const seen = new Set<string>();
+  const result: ServiceCategoryOption[] = [];
+
+  for (const item of items) {
+    const snapshot =
+      item.templateSnapshot && typeof item.templateSnapshot === "object"
+        ? (item.templateSnapshot as Record<string, unknown>)
+        : {};
+
+    const candidates: Array<string | null | undefined> = [
+      item.serviceType,
+      item.kategori,
+      item.categoryKey,
+      typeof snapshot["serviceType"] === "string" ? snapshot["serviceType"] : null,
+      typeof snapshot["category"] === "string" ? snapshot["category"] : null,
+    ];
+
+    for (const raw of candidates) {
+      const key = normalizeServiceCategory(raw);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      result.push({ key, label: SERVICE_CATEGORY_LABELS[key] ?? toTitleCase(key) });
+    }
+  }
+
+  result.sort((a, b) => {
+    const ai = SERVICE_CATEGORY_ORDER.indexOf(a.key);
+    const bi = SERVICE_CATEGORY_ORDER.indexOf(b.key);
+    if (ai !== -1 && bi !== -1) return ai - bi;
+    if (ai !== -1) return -1;
+    if (bi !== -1) return 1;
+    return a.label.localeCompare(b.label);
+  });
+
+  return result;
+}
+
+// ── Province extraction ────────────────────────────────────────────────────────
+// Supports formats: "City, Province", "Province", "city - Province", "Province (code)"
+export function extractProvince(location: string | null | undefined): string | null {
+  if (!location) return null;
+  const cleaned = location.trim();
+  // "City, Province" — take everything after last comma
+  if (cleaned.includes(",")) {
+    return cleaned.split(",").pop()!.trim() || null;
+  }
+  // "City - Province" — take everything after last dash
+  if (cleaned.includes(" - ")) {
+    return cleaned.split(" - ").pop()!.trim() || null;
+  }
+  // Single token — treat the whole string as province
+  return cleaned || null;
+}
+
 export interface ProductMediaItem {
   id: number;
   vendorCatalogItemId: number | null;
@@ -37,6 +187,7 @@ export interface MarketplaceItem {
   location: string | null;
   origin: string | null;
   validityDate: string | null;
+  isFeatured?: boolean;
   documents: unknown;
   publishedAt: string | null;
   sortOrder: number;
@@ -92,12 +243,19 @@ export function buildCatalogFilters(items: MarketplaceItem[]): FilterFieldDef[] 
     filters.push({ key: "__stockStatus", label: "Status Stok", type: "select", options: stockStatuses, source: "standard" });
   }
 
-  const locations = [...new Set(items.map((i) => i.location).filter(Boolean) as string[])];
-  if (locations.length > 1) {
-    filters.push({ key: "__location", label: "Lokasi", type: "select", options: locations, source: "standard" });
+  // ── Provinsi filter: extracted from location field ("City, Province" pattern) ──
+  const provinces = [
+    ...new Set(
+      items
+        .map((i) => extractProvince(i.location))
+        .filter(Boolean) as string[]
+    ),
+  ].sort();
+  if (provinces.length > 1) {
+    filters.push({ key: "__province", label: "Provinsi", type: "select", options: provinces, source: "standard" });
   }
 
-  const origins = [...new Set(items.map((i) => i.origin).filter(Boolean) as string[])];
+  const origins = [...new Set(items.map((i) => i.origin).filter(Boolean) as string[])].sort();
   if (origins.length > 1) {
     filters.push({ key: "__origin", label: "Asal", type: "select", options: origins, source: "standard" });
   }
@@ -215,8 +373,9 @@ export function matchVendorCatalog(item: MarketplaceItem, active: ActiveFilters)
       if (item.stockStatus !== value) return false;
       continue;
     }
-    if (key === "__location") {
-      if (item.location !== value) return false;
+    if (key === "__province") {
+      const itemProvince = extractProvince(item.location);
+      if (!itemProvince || itemProvince.toLowerCase() !== String(value).toLowerCase()) return false;
       continue;
     }
     if (key === "__origin") {

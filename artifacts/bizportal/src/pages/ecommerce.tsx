@@ -289,47 +289,6 @@ export default function EcommercePage() {
   const [createImageUrl, setCreateImageUrl] = useState<string | null>(null);
   const [editImageUrl, setEditImageUrl] = useState<string | null>(null);
 
-  // Supabase sync
-  const [supabaseSyncOpen, setSupabaseSyncOpen] = useState(false);
-  const [supabaseSetupSql, setSupabaseSetupSql] = useState<string | null>(null);
-  const [supabaseSyncing, setSupabaseSyncing] = useState(false);
-  const [supabaseSyncResult, setSupabaseSyncResult] = useState<{ synced: number; errors: number; total: number } | null>(null);
-  const [sqlCopied, setSqlCopied] = useState(false);
-
-  const handleOpenSupabaseSync = async () => {
-    setSupabaseSyncOpen(true);
-    if (!supabaseSetupSql) {
-      try {
-        const res = await fetch("/api/ecommerce/products/supabase-setup-sql", { credentials: "include" });
-        const data = await res.json();
-        setSupabaseSetupSql(data.sql ?? null);
-      } catch { /* ignore */ }
-    }
-  };
-
-  const handleSupabaseSyncAll = async () => {
-    setSupabaseSyncing(true);
-    setSupabaseSyncResult(null);
-    try {
-      const res = await fetch("/api/ecommerce/products/supabase-sync-all", { method: "POST", credentials: "include" });
-      const data = await res.json();
-      setSupabaseSyncResult(data);
-      toast({ title: `Sync selesai: ${data.synced} produk berhasil`, description: data.errors > 0 ? `${data.errors} gagal` : undefined });
-    } catch (err) {
-      toast({ title: "Sync gagal", description: String(err), variant: "destructive" });
-    } finally {
-      setSupabaseSyncing(false);
-    }
-  };
-
-  const handleCopySql = () => {
-    if (!supabaseSetupSql) return;
-    navigator.clipboard.writeText(supabaseSetupSql).then(() => {
-      setSqlCopied(true);
-      setTimeout(() => setSqlCopied(false), 2000);
-    });
-  };
-
   const newLineItem = (): LineItemRow => ({ id: crypto.randomUUID(), name: "", qty: 1, unitPrice: 0 });
 
   const [createLineItems, setCreateLineItems] = useState<LineItemRow[]>([newLineItem()]);
@@ -760,11 +719,6 @@ export default function EcommercePage() {
           <TabsContent value="products" className="space-y-4">
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
               <h2 className="text-lg sm:text-xl font-semibold tracking-tight">Katalog Produk</h2>
-              <div className="flex items-center gap-2 flex-wrap">
-                <Button variant="outline" size="sm" onClick={handleOpenSupabaseSync} className="gap-1.5">
-                  <Database className="h-4 w-4 text-emerald-600" />
-                  Supabase Sync
-                </Button>
               <Dialog open={isProductDialogOpen} onOpenChange={setIsProductDialogOpen}>
                 <DialogTrigger asChild>
                   <Button data-testid="button-add-product"><Plus className="mr-2 h-4 w-4" /> Tambah Produk</Button>
@@ -876,51 +830,7 @@ export default function EcommercePage() {
                   </form>
                 </DialogContent>
               </Dialog>
-              </div>{/* end flex toolbar */}
             </div>
-
-            {/* Supabase Sync Dialog */}
-            <Dialog open={supabaseSyncOpen} onOpenChange={setSupabaseSyncOpen}>
-              <DialogContent className="max-w-2xl">
-                <DialogHeader>
-                  <DialogTitle className="flex items-center gap-2">
-                    <Database className="h-5 w-5 text-emerald-600" />
-                    Supabase Product Sync
-                  </DialogTitle>
-                  <DialogDescription>
-                    Sinkronkan data produk ke tabel <code className="bg-muted px-1 rounded text-xs">bizportal_products</code> di Supabase. Setiap perubahan produk (tambah/edit/hapus/gambar) akan otomatis disync setelah ini disetup.
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-4 py-2">
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm font-medium">Langkah 1 — Jalankan SQL ini sekali di Supabase Dashboard → SQL Editor:</p>
-                      <Button variant="ghost" size="sm" onClick={handleCopySql} disabled={!supabaseSetupSql} className="gap-1.5 h-7 text-xs">
-                        {sqlCopied ? <><CheckCheck className="h-3 w-3 text-green-600" /> Tersalin</> : <><Copy className="h-3 w-3" /> Salin SQL</>}
-                      </Button>
-                    </div>
-                    <pre className="bg-muted rounded-md p-3 text-xs overflow-auto max-h-48 select-all">
-                      {supabaseSetupSql ?? "Memuat SQL..."}
-                    </pre>
-                  </div>
-                  <div className="space-y-2">
-                    <p className="text-sm font-medium">Langkah 2 — Bulk sync semua produk yang sudah ada:</p>
-                    {supabaseSyncResult && (
-                      <div className={`rounded-md px-3 py-2 text-sm ${supabaseSyncResult.errors === 0 ? "bg-green-50 text-green-800 border border-green-200" : "bg-amber-50 text-amber-800 border border-amber-200"}`}>
-                        {supabaseSyncResult.synced}/{supabaseSyncResult.total} produk berhasil disync
-                        {supabaseSyncResult.errors > 0 && ` — ${supabaseSyncResult.errors} gagal (cek pastikan SQL sudah dijalankan)`}
-                      </div>
-                    )}
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button variant="outline" onClick={() => setSupabaseSyncOpen(false)}>Tutup</Button>
-                  <Button onClick={handleSupabaseSyncAll} disabled={supabaseSyncing} className="gap-1.5">
-                    {supabaseSyncing ? <><Loader2 className="h-4 w-4 animate-spin" /> Syncing…</> : <><RefreshCw className="h-4 w-4" /> Sync Semua Produk</>}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
 
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />

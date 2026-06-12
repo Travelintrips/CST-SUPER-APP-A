@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useEffect, useRef, useState } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -6,10 +7,11 @@ import { Button } from "@/components/ui/button";
 import {
   RefreshCw, Package, ClipboardList, Clock, Users, Truck,
   CheckCircle2, MessageSquareX, AlertTriangle, ArrowRight,
-  Ship, Plane, Container,
+  Ship, Plane, Container, Wifi, WifiOff, Volume2, VolumeX, Bell, BellOff,
 } from "lucide-react";
 import { useCompany } from "@/contexts/CompanyContext";
 import { Link } from "wouter";
+import { subscribeToInvalidation, subscribeToConnection } from "@/hooks/useAlertWebSocket";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -126,6 +128,34 @@ function StatCard({ label, value, icon, colorClass, href, urgent }: StatCardProp
   return inner;
 }
 
+// ── Live Indicator ─────────────────────────────────────────────────────────────
+
+function LiveIndicator({ isLive }: { isLive: boolean }) {
+  return (
+    <div className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border transition-colors ${
+      isLive
+        ? "bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-950/30 dark:border-emerald-800 dark:text-emerald-400"
+        : "bg-muted border-border text-muted-foreground"
+    }`}>
+      {isLive ? (
+        <>
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+          </span>
+          <Wifi className="h-3 w-3" />
+          Live
+        </>
+      ) : (
+        <>
+          <WifiOff className="h-3 w-3" />
+          Offline
+        </>
+      )}
+    </div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function OperationalDashboardPage() {
@@ -144,6 +174,103 @@ export default function OperationalDashboardPage() {
     refetchInterval: 60_000,
   });
 
+  // ── Real-time state ──────────────────────────────────────────────────────────
+  const [isLive, setIsLive] = useState(false);
+  const [newOrderNums, setNewOrderNums] = useState<Set<string>>(new Set());
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [notifPermission, setNotifPermission] = useState<NotificationPermission>(
+    () => (typeof Notification !== "undefined" ? Notification.permission : "denied")
+  );
+  const seenRef = useRef<Set<string>>(new Set());
+  const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+
+  async function requestNotifPermission() {
+    if (typeof Notification === "undefined") return;
+    const result = await Notification.requestPermission();
+    setNotifPermission(result);
+  }
+
+  function sendPushNotification(count: number, orderNums: string[]) {
+    if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
+    const label = count === 1 ? orderNums[0] : `${count} order baru`;
+    new Notification("📦 Order Baru Masuk", {
+      body: label,
+      icon: "/bizportal/favicon.svg",
+      tag: "new-logistic-order",
+      renotify: true,
+    });
+  }
+
+  function playOrderAlert() {
+    try {
+      if (!audioCtxRef.current || audioCtxRef.current.state === "closed") {
+        audioCtxRef.current = new AudioContext();
+      }
+      const ctx = audioCtxRef.current;
+      if (ctx.state === "suspended") ctx.resume();
+      // Two-tone notification beep
+      [[880, 0, 0.12], [1100, 0.15, 0.12]].forEach(([freq, delay, dur]) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = "sine";
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0, ctx.currentTime + delay);
+        gain.gain.linearRampToValueAtTime(0.25, ctx.currentTime + delay + 0.02);
+        gain.gain.linearRampToValueAtTime(0, ctx.currentTime + delay + dur);
+        osc.start(ctx.currentTime + delay);
+        osc.stop(ctx.currentTime + delay + dur + 0.01);
+      });
+    } catch {
+      // AudioContext not available — silently ignore
+    }
+  }
+
+  // Subscribe to SSE connection status
+  useEffect(() => {
+    return subscribeToConnection(setIsLive);
+  }, []);
+
+  // Subscribe to logistic_orders invalidation → force refetch
+  useEffect(() => {
+    return subscribeToInvalidation((scope) => {
+      if (scope === "logistic_orders") {
+        void refetch();
+      }
+    });
+  }, [refetch]);
+
+  // Detect newly appeared orders when data updates
+  useEffect(() => {
+    if (!data?.recentOrders) return;
+    const currentNums = data.recentOrders.map((o) => o.orderNumber);
+
+    if (seenRef.current.size === 0) {
+      // First load — just populate seenRef, no highlight
+      currentNums.forEach((n) => seenRef.current.add(n));
+      return;
+    }
+
+    const brandNew = currentNums.filter((n) => !seenRef.current.has(n));
+    currentNums.forEach((n) => seenRef.current.add(n));
+
+    if (brandNew.length > 0) {
+      setNewOrderNums(new Set(brandNew));
+      if (soundEnabled) playOrderAlert();
+      sendPushNotification(brandNew.length, brandNew);
+      if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+      flashTimerRef.current = setTimeout(() => {
+        setNewOrderNums(new Set());
+      }, 12_000);
+    }
+  }, [dataUpdatedAt, soundEnabled]);
+
+  useEffect(() => () => {
+    if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+  }, []);
+
   const lastUpdated = dataUpdatedAt
     ? new Date(dataUpdatedAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
     : null;
@@ -153,7 +280,7 @@ export default function OperationalDashboardPage() {
       <div className="p-6 space-y-6 max-w-7xl mx-auto">
 
         {/* ── Header ─────────────────────────────────────────────────── */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
           <div>
             <h1 className="text-2xl font-bold">Operational Dashboard</h1>
             <p className="text-sm text-muted-foreground mt-0.5">
@@ -161,10 +288,42 @@ export default function OperationalDashboardPage() {
               {lastUpdated && <span className="ml-2 text-xs">• diperbarui {lastUpdated}</span>}
             </p>
           </div>
-          <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
-            <RefreshCw className={`h-4 w-4 mr-1.5 ${isFetching ? "animate-spin" : ""}`} />
-            Refresh
-          </Button>
+          <div className="flex items-center gap-2">
+            <LiveIndicator isLive={isLive} />
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSoundEnabled((v) => !v)}
+              title={soundEnabled ? "Matikan suara notifikasi" : "Aktifkan suara notifikasi"}
+            >
+              {soundEnabled
+                ? <Volume2 className="h-4 w-4 text-emerald-600" />
+                : <VolumeX className="h-4 w-4 text-muted-foreground" />}
+            </Button>
+            {typeof Notification !== "undefined" && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={notifPermission === "granted" ? undefined : requestNotifPermission}
+                title={
+                  notifPermission === "granted"
+                    ? "Notifikasi browser aktif"
+                    : notifPermission === "denied"
+                    ? "Notifikasi diblokir browser — ubah di pengaturan browser"
+                    : "Aktifkan notifikasi browser"
+                }
+                className={notifPermission === "denied" ? "opacity-40 cursor-not-allowed" : ""}
+              >
+                {notifPermission === "granted"
+                  ? <Bell className="h-4 w-4 text-emerald-600" />
+                  : <BellOff className="h-4 w-4 text-muted-foreground" />}
+              </Button>
+            )}
+            <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
+              <RefreshCw className={`h-4 w-4 mr-1.5 ${isFetching ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
+          </div>
         </div>
 
         {/* ── KPI Cards ──────────────────────────────────────────────── */}
@@ -244,8 +403,15 @@ export default function OperationalDashboardPage() {
         {/* ── Active Orders Table ─────────────────────────────────────── */}
         <Card>
           <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base">Order Aktif Terkini</CardTitle>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <CardTitle className="text-base">Order Aktif Terkini</CardTitle>
+                {newOrderNums.size > 0 && (
+                  <Badge className="bg-emerald-500 hover:bg-emerald-500 text-white text-[10px] px-1.5 py-0 animate-pulse">
+                    +{newOrderNums.size} baru
+                  </Badge>
+                )}
+              </div>
               <Link href="/logistics/portal-orders">
                 <Button variant="ghost" size="sm" className="text-xs gap-1">
                   Lihat Semua <ArrowRight className="h-3.5 w-3.5" />
@@ -278,35 +444,52 @@ export default function OperationalDashboardPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {data.recentOrders.map((order, i) => (
-                      <tr
-                        key={order.orderNumber}
-                        className={`border-b last:border-0 hover:bg-muted/30 transition-colors ${i % 2 === 0 ? "" : "bg-muted/10"}`}
-                      >
-                        <td className="px-4 py-2.5 font-mono text-xs font-medium">
-                          <Link href={`/logistics/${order.orderNumber}`} className="text-blue-600 hover:underline">
-                            {order.orderNumber}
-                          </Link>
-                        </td>
-                        <td className="px-4 py-2.5">
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLOR[order.status] ?? "bg-gray-100 text-gray-700"}`}>
-                            {STATUS_LABEL_ID[order.status] ?? order.status}
-                          </span>
-                        </td>
-                        <td className="px-4 py-2.5 max-w-[160px] truncate text-sm">
-                          {order.customerName}
-                        </td>
-                        <td className="px-4 py-2.5 text-xs text-muted-foreground hidden md:table-cell max-w-[200px] truncate">
-                          {order.origin} → {order.destination}
-                        </td>
-                        <td className="px-4 py-2.5 text-xs text-muted-foreground hidden lg:table-cell whitespace-nowrap">
-                          {order.createdAt}
-                        </td>
-                        <td className="px-4 py-2.5 text-center hidden sm:table-cell">
-                          <ModeIcon mode={order.transportMode} />
-                        </td>
-                      </tr>
-                    ))}
+                    {data.recentOrders.map((order, i) => {
+                      const isNew = newOrderNums.has(order.orderNumber);
+                      return (
+                        <tr
+                          key={order.orderNumber}
+                          className={`border-b last:border-0 transition-colors ${
+                            isNew
+                              ? "bg-emerald-50/80 dark:bg-emerald-950/30 ring-1 ring-inset ring-emerald-200 dark:ring-emerald-800"
+                              : i % 2 === 0
+                                ? "hover:bg-muted/30"
+                                : "bg-muted/10 hover:bg-muted/30"
+                          }`}
+                        >
+                          <td className="px-4 py-2.5 font-mono text-xs font-medium">
+                            <div className="flex items-center gap-1.5">
+                              {isNew && (
+                                <span className="relative flex h-2 w-2 shrink-0">
+                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+                                </span>
+                              )}
+                              <Link href={`/logistics/${order.orderNumber}`} className="text-blue-600 hover:underline">
+                                {order.orderNumber}
+                              </Link>
+                            </div>
+                          </td>
+                          <td className="px-4 py-2.5">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLOR[order.status] ?? "bg-gray-100 text-gray-700"}`}>
+                              {STATUS_LABEL_ID[order.status] ?? order.status}
+                            </span>
+                          </td>
+                          <td className="px-4 py-2.5 max-w-[160px] truncate text-sm">
+                            {order.customerName}
+                          </td>
+                          <td className="px-4 py-2.5 text-xs text-muted-foreground hidden md:table-cell max-w-[200px] truncate">
+                            {order.origin} → {order.destination}
+                          </td>
+                          <td className="px-4 py-2.5 text-xs text-muted-foreground hidden lg:table-cell whitespace-nowrap">
+                            {order.createdAt}
+                          </td>
+                          <td className="px-4 py-2.5 text-center hidden sm:table-cell">
+                            <ModeIcon mode={order.transportMode} />
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

@@ -1,699 +1,620 @@
 import { useState, useEffect, useCallback } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { Link, useLocation } from "wouter";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import {
-  Search, ArrowRight, ChevronRight, Calculator, ArrowLeft,
+  Plane, Ship, Layers, ClipboardList, FileText, Truck,
+  MapPin, Package, Building2, Globe, Search, ChevronRight,
+  ArrowRight, Clock, Users, Warehouse, Plus, X,
+  MessageSquare, PhoneCall,
 } from "lucide-react";
 import { useListPortalServices } from "@workspace/api-client-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { resolveImageUrl } from "@/lib/utils";
 import { getServiceFallbackImage } from "@/lib/categoryImages";
 import { useLanguage } from "@/i18n/LanguageContext";
-import { translateServiceName, translateCategory } from "@/i18n/serviceData";
-import { GROUPED_DISPLAY_CATEGORIES as GROUPED_CATEGORIES } from "@workspace/logistics-constants";
+import { translateServiceName } from "@/i18n/serviceData";
 
-const COLOR_BY_CATEGORY: Record<string, { bg: string; text: string; badge: string }> = {
-  "Udara":             { bg: "bg-blue-50",    text: "text-blue-700",   badge: "bg-blue-100 text-blue-700" },
-  "Laut":              { bg: "bg-indigo-50",  text: "text-indigo-700", badge: "bg-indigo-100 text-indigo-700" },
-  "Trucking":          { bg: "bg-amber-50",   text: "text-amber-700",  badge: "bg-amber-100 text-amber-700" },
-  "Container":         { bg: "bg-violet-50",  text: "text-violet-700", badge: "bg-violet-100 text-violet-700" },
-  "Pabean":            { bg: "bg-orange-50",  text: "text-orange-700", badge: "bg-orange-100 text-orange-700" },
-  "Handling":          { bg: "bg-purple-50",  text: "text-purple-700", badge: "bg-purple-100 text-purple-700" },
-  "Storage":           { bg: "bg-teal-50",    text: "text-teal-700",   badge: "bg-teal-100 text-teal-700" },
-  "Document":          { bg: "bg-slate-50",   text: "text-slate-700",  badge: "bg-slate-100 text-slate-700" },
-  "Additional":        { bg: "bg-pink-50",    text: "text-pink-700",   badge: "bg-pink-100 text-pink-700" },
-  "Freight Forwarding":{ bg: "bg-cyan-50",    text: "text-cyan-700",   badge: "bg-cyan-100 text-cyan-700" },
-  "Lainnya":           { bg: "bg-gray-50",    text: "text-gray-700",   badge: "bg-gray-100 text-gray-700" },
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+interface ServiceHubItem {
+  source: "vendor_catalog_item" | "product";
+  id: number;
+  title: string;
+  category: string;
+  serviceType: string | null;
+  price: number | null;
+  unit: string | null;
+  targetUrl: string;
+  description?: string | null;
+  imageUrl?: string | null;
+  vendorName?: string | null;
+  location?: string | null;
+  leadTime?: string | null;
+  currency?: string;
+  categories?: string[];
+  primaryImageUrl?: string | null;
+  categoryKey?: string | null;
+}
+
+// ── Category definition ───────────────────────────────────────────────────────
+
+const CATEGORY_PLACEHOLDER: Record<string, { emoji: string; from: string; to: string }> = {
+  trucking:    { emoji: "🚛", from: "#1a3a6c", to: "#2a5aaa" },
+  sea_freight: { emoji: "🚢", from: "#0c3057", to: "#1a5080" },
+  air_freight: { emoji: "✈️", from: "#1a4060", to: "#2a6090" },
+  ppjk:        { emoji: "📋", from: "#3a3060", to: "#5a4a90" },
+  handling:    { emoji: "🏭", from: "#2a4a2a", to: "#4a7a4a" },
+  document:    { emoji: "📄", from: "#3a4a5a", to: "#5a6a7a" },
+  exim_service:{ emoji: "🌍", from: "#1a4a4a", to: "#2a7070" },
 };
 
-const DEFAULT_COLOR = { bg: "bg-blue-50", text: "text-blue-700", badge: "bg-blue-100 text-blue-700" };
+interface SubService {
+  title: string;
+  titleId: string;
+  desc: string;
+  href: string;
+  icon: React.ElementType;
+  eta: string;
+  categoryKeys: string[];
+}
 
-const CARD_ACCENT: Record<string, { overlay: string; hoverShadow: string; hoverBorder: string; iconBg: string }> = {
-  "Udara":              { overlay: "rgba(59,130,246,0.22)",  hoverShadow: "0 10px 36px rgba(59,130,246,0.18)",  hoverBorder: "rgba(59,130,246,0.28)",  iconBg: "linear-gradient(135deg,#EFF6FF,#DBEAFE)" },
-  "Laut":               { overlay: "rgba(67,56,202,0.22)",   hoverShadow: "0 10px 36px rgba(67,56,202,0.16)",   hoverBorder: "rgba(67,56,202,0.26)",   iconBg: "linear-gradient(135deg,#EEF2FF,#C7D2FE)" },
-  "Trucking":           { overlay: "rgba(71,85,105,0.24)",   hoverShadow: "0 10px 36px rgba(71,85,105,0.16)",   hoverBorder: "rgba(71,85,105,0.26)",   iconBg: "linear-gradient(135deg,#F1F5F9,#E2E8F0)" },
-  "Container":          { overlay: "rgba(109,40,217,0.20)",  hoverShadow: "0 10px 36px rgba(109,40,217,0.16)",  hoverBorder: "rgba(109,40,217,0.26)",  iconBg: "linear-gradient(135deg,#F5F3FF,#DDD6FE)" },
-  "Pabean":             { overlay: "rgba(194,65,12,0.22)",   hoverShadow: "0 10px 36px rgba(194,65,12,0.16)",   hoverBorder: "rgba(194,65,12,0.26)",   iconBg: "linear-gradient(135deg,#FFF7ED,#FED7AA)" },
-  "Handling":           { overlay: "rgba(126,34,206,0.20)",  hoverShadow: "0 10px 36px rgba(126,34,206,0.16)",  hoverBorder: "rgba(126,34,206,0.24)",  iconBg: "linear-gradient(135deg,#FAF5FF,#E9D5FF)" },
-  "Storage":            { overlay: "rgba(15,118,110,0.20)",  hoverShadow: "0 10px 36px rgba(15,118,110,0.16)",  hoverBorder: "rgba(15,118,110,0.24)",  iconBg: "linear-gradient(135deg,#F0FDFA,#CCFBF1)" },
-  "Document":           { overlay: "rgba(71,85,105,0.18)",   hoverShadow: "0 10px 36px rgba(71,85,105,0.14)",   hoverBorder: "rgba(71,85,105,0.22)",   iconBg: "linear-gradient(135deg,#F8FAFC,#E2E8F0)" },
-  "Additional":         { overlay: "rgba(190,24,93,0.20)",   hoverShadow: "0 10px 36px rgba(190,24,93,0.16)",   hoverBorder: "rgba(190,24,93,0.24)",   iconBg: "linear-gradient(135deg,#FDF2F8,#FBCFE8)" },
-  "Freight Forwarding": { overlay: "rgba(8,145,178,0.22)",   hoverShadow: "0 10px 36px rgba(8,145,178,0.18)",   hoverBorder: "rgba(8,145,178,0.28)",   iconBg: "linear-gradient(135deg,#ECFEFF,#CFFAFE)" },
-  "Lainnya":            { overlay: "rgba(75,85,99,0.18)",    hoverShadow: "0 10px 36px rgba(75,85,99,0.14)",    hoverBorder: "rgba(75,85,99,0.22)",    iconBg: "linear-gradient(135deg,#F9FAFB,#E5E7EB)" },
-};
-const DEFAULT_ACCENT = { overlay: "rgba(59,130,246,0.20)", hoverShadow: "0 10px 36px rgba(59,130,246,0.16)", hoverBorder: "rgba(59,130,246,0.26)", iconBg: "linear-gradient(135deg,#EFF6FF,#DBEAFE)" };
+interface MainCategory {
+  id: string;
+  title: string;
+  icon: React.ElementType;
+  gradient: string;
+  lightBg: string;
+  textColor: string;
+  badgeCls: string;
+  services: SubService[];
+}
+
+const MAIN_CATEGORIES: MainCategory[] = [
+  {
+    id: "international",
+    title: "Kirim Barang Internasional",
+    icon: Globe,
+    gradient: "from-blue-600 to-sky-500",
+    lightBg: "bg-blue-50",
+    textColor: "text-blue-700",
+    badgeCls: "bg-blue-100 text-blue-700 border-blue-200",
+    services: [
+      {
+        title: "Air Freight",
+        titleId: "Kargo Udara",
+        desc: "Pengiriman ekspres via udara ke seluruh dunia",
+        href: "/air-freight-booking",
+        icon: Plane,
+        eta: "1–3 hari",
+        categoryKeys: ["air_freight"],
+      },
+      {
+        title: "Ocean Freight",
+        titleId: "Kargo Laut",
+        desc: "FCL & LCL untuk pengiriman internasional volume besar",
+        href: "/ocean-freight-booking",
+        icon: Ship,
+        eta: "7–30 hari",
+        categoryKeys: ["sea_freight"],
+      },
+      {
+        title: "Freight Forwarding",
+        titleId: "Multimodal",
+        desc: "Door-to-door lintas moda transportasi internasional",
+        href: "/freight-forwarding",
+        icon: Layers,
+        eta: "Fleksibel",
+        categoryKeys: ["exim_service"],
+      },
+    ],
+  },
+  {
+    id: "customs",
+    title: "Customs & PPJK",
+    icon: ClipboardList,
+    gradient: "from-orange-600 to-amber-500",
+    lightBg: "bg-orange-50",
+    textColor: "text-orange-700",
+    badgeCls: "bg-orange-100 text-orange-700 border-orange-200",
+    services: [
+      {
+        title: "Customs Clearance",
+        titleId: "Bea Cukai",
+        desc: "Pengurusan kepabeanan impor & ekspor",
+        href: "/pabean",
+        icon: FileText,
+        eta: "1–3 hari kerja",
+        categoryKeys: ["ppjk"],
+      },
+      {
+        title: "PIB / PEB",
+        titleId: "Dokumen Impor-Ekspor",
+        desc: "Penyusunan dokumen impor (PIB) dan ekspor (PEB)",
+        href: "/pabean",
+        icon: ClipboardList,
+        eta: "Sesuai kebutuhan",
+        categoryKeys: ["ppjk"],
+      },
+      {
+        title: "Undername",
+        titleId: "Impor Undername",
+        desc: "Layanan impor atas nama vendor terpercaya & berlisensi",
+        href: "/pabean",
+        icon: Users,
+        eta: "Fleksibel",
+        categoryKeys: ["ppjk"],
+      },
+    ],
+  },
+  {
+    id: "domestic",
+    title: "Transportasi Domestik",
+    icon: Truck,
+    gradient: "from-amber-600 to-yellow-500",
+    lightBg: "bg-amber-50",
+    textColor: "text-amber-700",
+    badgeCls: "bg-amber-100 text-amber-700 border-amber-200",
+    services: [
+      {
+        title: "Trucking",
+        titleId: "Angkutan Truk",
+        desc: "Angkutan darat dalam kota & antar kota",
+        href: "/trucking",
+        icon: Truck,
+        eta: "1–3 hari",
+        categoryKeys: ["trucking"],
+      },
+      {
+        title: "Last Mile Delivery",
+        titleId: "Pengiriman Akhir",
+        desc: "Pengiriman ke tujuan akhir pelanggan",
+        href: "/jasa?category=last_mile",
+        icon: MapPin,
+        eta: "Hari yang sama",
+        categoryKeys: ["trucking"],
+      },
+    ],
+  },
+  {
+    id: "warehouse",
+    title: "Gudang & Distribusi",
+    icon: Warehouse,
+    gradient: "from-teal-600 to-emerald-500",
+    lightBg: "bg-teal-50",
+    textColor: "text-teal-700",
+    badgeCls: "bg-teal-100 text-teal-700 border-teal-200",
+    services: [
+      {
+        title: "Warehousing",
+        titleId: "Pergudangan",
+        desc: "Penyimpanan barang terkelola dengan sistem WMS",
+        href: "/jasa?category=handling",
+        icon: Warehouse,
+        eta: "Fleksibel",
+        categoryKeys: ["handling"],
+      },
+      {
+        title: "Distribution",
+        titleId: "Distribusi",
+        desc: "Distribusi produk ke seluruh jaringan & outlet",
+        href: "/jasa?category=handling",
+        icon: Package,
+        eta: "Fleksibel",
+        categoryKeys: ["handling"],
+      },
+    ],
+  },
+];
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 const stripJasa = (name: string) => name.replace(/^Jasa\s+/i, "");
 
 const formatIDR = (v: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(v);
 
+// ── Realtime hook ─────────────────────────────────────────────────────────────
+
 function useServicesRealtime(queryKey: string) {
   const qc = useQueryClient();
-  const [connected, setConnected] = useState(false);
-  const [justUpdated, setJustUpdated] = useState(false);
 
   const handleChange = useCallback(() => {
     qc.invalidateQueries({ queryKey: [queryKey] });
-    setJustUpdated(true);
-    setTimeout(() => setJustUpdated(false), 3000);
+  }, [qc, queryKey]);
+
+  const handleCatalogChange = useCallback((payload: { new: Record<string, unknown>; old: Record<string, unknown> }) => {
+    const row = (payload.new ?? payload.old ?? {}) as Record<string, unknown>;
+    const isService = row["template_kind"] === "service" || row["kind"] === "service" || !!row["service_type"] || !!row["serviceType"];
+    if (!isService) return;
+    qc.invalidateQueries({ queryKey: [queryKey] });
   }, [qc, queryKey]);
 
   useEffect(() => {
     if (!supabase) return;
-    const channel = supabase
-      .channel("portal-services-jasa-realtime")
+    const ch1 = supabase.channel("portal-services-jasa-rt")
       .on("postgres_changes", { event: "*", schema: "public", table: "products" }, handleChange)
-      .subscribe((status) => {
-        setConnected(status === "SUBSCRIBED");
-      });
+      .subscribe();
+    const ch2 = supabase.channel("portal-services-jasa-catalog-rt")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "vendor_catalog_items" }, handleCatalogChange)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "vendor_catalog_items" }, handleCatalogChange)
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "vendor_catalog_items" }, handleCatalogChange)
+      .subscribe();
     return () => {
-      supabase!.removeChannel(channel);
-      setConnected(false);
+      supabase!.removeChannel(ch1);
+      supabase!.removeChannel(ch2);
     };
-  }, [handleChange]);
-
-  return { connected, justUpdated };
+  }, [handleChange, handleCatalogChange]);
 }
+
+// ── Vendor item card ──────────────────────────────────────────────────────────
+
+function VendorItemCard({ item }: { item: ServiceHubItem }) {
+  const [imgFailed, setImgFailed] = useState(false);
+  const catKey = item.categoryKey ?? item.serviceType ?? "";
+  const cat = catKey ? CATEGORY_PLACEHOLDER[catKey] : undefined;
+  const src = item.primaryImageUrl ?? (item.imageUrl ? resolveImageUrl(item.imageUrl) : null);
+  const fallback = getServiceFallbackImage(item.categories ?? (item.category ? [item.category] : []), item.title);
+  const imgSrc = (src && !imgFailed) ? src : fallback;
+
+  return (
+    <Link href={item.targetUrl} className="block group">
+      <div
+        className="bg-white rounded-2xl border border-slate-200 overflow-hidden flex flex-col h-full transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:border-sky-200"
+        style={{ boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}
+      >
+        <div className="relative h-28 overflow-hidden bg-slate-100">
+          {(src && !imgFailed) ? (
+            <img src={imgSrc} alt={item.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" onError={() => setImgFailed(true)} loading="lazy" />
+          ) : cat ? (
+            <div className="w-full h-full flex items-center justify-center" style={{ background: `linear-gradient(135deg, ${cat.from}, ${cat.to})` }}>
+              <span className="text-4xl drop-shadow">{cat.emoji}</span>
+            </div>
+          ) : (
+            <img src={fallback} alt={item.title} className="w-full h-full object-cover" loading="lazy" />
+          )}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
+          <span className="absolute top-2 left-2 text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/90 text-sky-700">
+            {item.source === "vendor_catalog_item" ? "Vendor" : "Internal"}
+          </span>
+        </div>
+        <div className="p-3.5 flex flex-col flex-1 gap-1.5">
+          {item.vendorName && (
+            <p className="text-[11px] text-slate-400 flex items-center gap-1 truncate">
+              <Building2 className="h-3 w-3 shrink-0" />{item.vendorName}
+            </p>
+          )}
+          <h3 className="text-[13px] font-bold text-slate-800 leading-snug line-clamp-2">{item.title}</h3>
+          {item.description && <p className="text-[11px] text-slate-500 line-clamp-2 leading-relaxed">{item.description}</p>}
+          <div className="mt-auto pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
+            <div>
+              {item.price != null
+                ? <span className="text-[13px] font-extrabold text-sky-700">{item.currency === "USD" ? `$${item.price.toLocaleString("en-US")}` : formatIDR(item.price)}</span>
+                : <span className="text-[11px] text-slate-400 italic">Harga nego</span>
+              }
+              {item.unit && <span className="text-[10px] text-slate-400 ml-1">/ {item.unit}</span>}
+            </div>
+            <span className="text-[11px] font-semibold text-sky-600 flex items-center gap-0.5">Detail <ChevronRight className="h-3 w-3" /></span>
+          </div>
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+// ── Main Page ─────────────────────────────────────────────────────────────────
+
+type Mode = "mandiri" | "borongan";
 
 export default function Jasa() {
   const [, setLocation] = useLocation();
+  const [mode, setMode] = useState<Mode>("mandiri");
   const [searchQuery, setSearchQuery] = useState("");
-  const { t, locale } = useLanguage();
-  const [activeCategory, setActiveCategory] = useState<string>("__all__");
-  const [failedImages, setFailedImages] = useState<Set<number>>(new Set());
+  const [activeCatId, setActiveCatId] = useState<string | null>(null);
+  const { locale } = useLanguage();
   const qc = useQueryClient();
-  const { connected: realtimeConnected, justUpdated: realtimeUpdated } = useServicesRealtime("listPortalServicesJasa");
+
+  useServicesRealtime("listPortalServicesJasa");
 
   useEffect(() => {
     const es = new EventSource("/api/ecommerce/events");
     es.addEventListener("price_sync", () => {
       qc.invalidateQueries({ queryKey: ["listPortalServicesJasa"] });
+      qc.invalidateQueries({ queryKey: ["jasaMarketplace"] });
     });
     return () => es.close();
   }, [qc]);
 
-  const { data: servicesRaw, isLoading } = useListPortalServices({
+  const { data: marketplaceRaw, isLoading: mktLoading } = useQuery<unknown[]>({
+    queryKey: ["jasaMarketplace"],
+    queryFn: async () => {
+      const res = await fetch("/api/portal/marketplace?kind=service");
+      if (!res.ok) throw new Error("Gagal memuat marketplace");
+      return res.json();
+    },
+    staleTime: 30_000,
+  });
+
+  const { data: servicesRaw, isLoading: svcLoading } = useListPortalServices({
     query: { queryKey: ["listPortalServicesJasa"], staleTime: 0, gcTime: 0, refetchOnWindowFocus: true },
   });
 
-  const services = Array.isArray(servicesRaw) ? servicesRaw : [];
+  const isLoading = mktLoading || svcLoading;
 
-  const allCategories = Array.from(
-    new Set(services.flatMap((s) => s.categories ?? []))
-  ).sort();
-
-  const filtered = services.filter((s) => {
-    const q = searchQuery.toLowerCase();
-    const matchSearch =
-      !q ||
-      s.name.toLowerCase().includes(q) ||
-      translateServiceName(s.name, locale).toLowerCase().includes(q) ||
-      (s.description ?? "").toLowerCase().includes(q) ||
-      (s.categories ?? []).some((c) =>
-        c.toLowerCase().includes(q) || translateCategory(c, locale).toLowerCase().includes(q)
-      );
-    const cats = s.categories ?? [];
-    const matchCat =
-      activeCategory === "__all__"
-        ? !cats.some((c) => (GROUPED_CATEGORIES as unknown as string[]).includes(c))
-        : cats.includes(activeCategory);
-    return matchSearch && matchCat;
+  const vendorItems: ServiceHubItem[] = (Array.isArray(marketplaceRaw) ? marketplaceRaw : []).map((raw: unknown) => {
+    const r = raw as Record<string, unknown>;
+    const resolvedLabel = (r["resolvedCategoryLabel"] as string | null) ?? (r["kategori"] as string | null) ?? (r["categoryKey"] as string | null) ?? "";
+    return {
+      source:         "vendor_catalog_item",
+      id:             r["id"] as number,
+      title:          r["name"] as string,
+      category:       resolvedLabel,
+      serviceType:    (r["serviceType"] as string | null) ?? null,
+      price:          (r["priceSell"] as number | null) ?? null,
+      unit:           (r["unit"] as string | null) ?? null,
+      targetUrl:      `/jasa/vendor/${r["id"]}`,
+      description:    (r["description"] as string | null) ?? null,
+      vendorName:     (r["vendorName"] as string | null) ?? null,
+      location:       (r["location"] as string | null) ?? null,
+      leadTime:       (r["leadTime"] as string | null) ?? null,
+      currency:       (r["currency"] as string) ?? "IDR",
+      categoryKey:    (r["categoryKey"] as string | null) ?? null,
+      primaryImageUrl:(r["primaryImageUrl"] as string | null) ?? null,
+    };
   });
 
+  const legacyItems: ServiceHubItem[] = (Array.isArray(servicesRaw) ? servicesRaw : []).map((s: unknown) => {
+    const svc = s as Record<string, unknown>;
+    const cats = (svc["categories"] as string[] | null) ?? [];
+    return {
+      source:      "product",
+      id:          svc["id"] as number,
+      title:       svc["name"] as string,
+      category:    cats[0] ?? "",
+      serviceType: null,
+      price:       (svc["price"] as number) ?? null,
+      unit:        (svc["unit"] as string | null) ?? null,
+      targetUrl:   `/jasa/${svc["id"]}`,
+      description: (svc["description"] as string | null) ?? null,
+      imageUrl:    (svc["imageUrl"] as string | null) ?? null,
+      categories:  cats,
+      currency:    "IDR",
+    };
+  });
+
+  const dedupById = (items: ServiceHubItem[]) => {
+    const seen = new Set<number>();
+    return items.filter((i) => { if (seen.has(i.id)) return false; seen.add(i.id); return true; });
+  };
+
+  const allItems = [...dedupById(vendorItems), ...dedupById(legacyItems)];
+
+  const matchSearch = (item: ServiceHubItem) => {
+    const q = searchQuery.toLowerCase();
+    if (!q) return true;
+    return (
+      item.title.toLowerCase().includes(q) ||
+      translateServiceName(item.title, locale).toLowerCase().includes(q) ||
+      (item.description ?? "").toLowerCase().includes(q) ||
+      item.category.toLowerCase().includes(q)
+    );
+  };
+
+  function getItemsForCategory(cat: MainCategory): ServiceHubItem[] {
+    return allItems.filter((item) => {
+      if (!matchSearch(item)) return false;
+      const itemKeys = [item.categoryKey, item.serviceType, ...(item.categories ?? [item.category])].filter(Boolean) as string[];
+      return cat.services.some((s) => s.categoryKeys.some((ck) => itemKeys.some((ik) => ik.toLowerCase().includes(ck.toLowerCase()) || ck.toLowerCase().includes(ik.toLowerCase()))));
+    });
+  }
+
+  const totalVendorItems = allItems.filter(matchSearch).length;
+
   return (
-    <div className="min-h-screen pb-24" style={{ background: "#F8FAFC" }}>
+    <div className="min-h-screen pb-24 bg-slate-50">
 
-      {/* ── Hero Banner ────────────────────────────────────────────── */}
-      <div
-        className="relative overflow-hidden"
-        style={{
-          background: "linear-gradient(135deg, #0B3D6B 0%, #0D6EBF 55%, #1E9FE8 100%)",
-          padding: "clamp(24px, 3.5vw, 36px) 0 clamp(18px, 2.5vw, 26px)",
-        }}
-      >
-        {/* Dot pattern */}
-        <div
-          aria-hidden="true"
-          style={{
-            position: "absolute", inset: 0, pointerEvents: "none",
-            backgroundImage: "radial-gradient(rgba(255,255,255,0.12) 1px, transparent 1px)",
-            backgroundSize: "36px 36px",
-          }}
-        />
-        {/* Left vignette */}
-        <div
-          aria-hidden="true"
-          style={{
-            position: "absolute", inset: 0, pointerEvents: "none",
-            background: "linear-gradient(100deg, rgba(5,20,50,0.50) 0%, rgba(5,20,50,0.20) 45%, transparent 70%)",
-          }}
-        />
-        {/* Decorative glow orbs */}
-        <div
-          aria-hidden="true"
-          className="jasa-glow-layer"
-          style={{
-            position: "absolute", right: "-2%", top: "50%", transform: "translateY(-50%)",
-            width: "55%", height: "90%",
-            background: [
-              "radial-gradient(circle at 20% 42%, rgba(255,255,255,0.90) 0 3.5px, transparent 6px)",
-              "radial-gradient(circle at 40% 30%, rgba(255,255,255,0.85) 0 3px, transparent 5px)",
-              "radial-gradient(circle at 63% 50%, rgba(255,255,255,0.85) 0 3px, transparent 5px)",
-              "radial-gradient(circle at 79% 33%, rgba(255,255,255,0.80) 0 2.5px, transparent 5px)",
-              "radial-gradient(circle at 73% 70%, rgba(255,255,255,0.80) 0 2.5px, transparent 5px)",
-              "radial-gradient(circle at 20% 42%, rgba(255,255,255,0.18) 0 18px, transparent 40px)",
-              "radial-gradient(circle at 40% 30%, rgba(255,255,255,0.14) 0 15px, transparent 36px)",
-              "radial-gradient(circle at 63% 50%, rgba(255,255,255,0.14) 0 15px, transparent 36px)",
-              "linear-gradient(28deg, transparent 18%, rgba(255,255,255,0.12) 19%, transparent 21%)",
-              "linear-gradient(148deg, transparent 34%, rgba(255,255,255,0.10) 35%, transparent 37%)",
-              "radial-gradient(ellipse at center, rgba(255,255,255,0.10) 0%, transparent 65%)",
-            ].join(", "),
-            borderRadius: "999px",
-            opacity: 0.9,
-            filter: "drop-shadow(0 0 36px rgba(255,255,255,0.15))",
-            pointerEvents: "none",
-            zIndex: 1,
-          }}
-        />
-        {/* Route SVG overlay */}
-        <div
-          aria-hidden="true"
-          className="jasa-routes-layer"
-          style={{
-            position: "absolute", right: "4%", top: "20%",
-            width: "46%", height: "60%",
-            backgroundImage: "url(/images/logistics-routes.svg)",
-            backgroundRepeat: "no-repeat",
-            backgroundSize: "contain",
-            backgroundPosition: "center right",
-            opacity: 0.40,
-            filter: "drop-shadow(0 0 20px rgba(255,255,255,0.18))",
-            pointerEvents: "none",
-            zIndex: 1,
-          }}
-        />
-        <style>{`
-          @media (max-width: 768px) {
-            .jasa-glow-layer { width: 95% !important; height: 75% !important; right: -38% !important; opacity: 0.40 !important; }
-            .jasa-routes-layer { width: 90% !important; right: -42% !important; opacity: 0.18 !important; filter: none !important; }
-          }
-        `}</style>
-
-        <div className="max-w-6xl mx-auto px-4 md:px-8" style={{ position: "relative", zIndex: 2 }}>
-          {/* Back button */}
+      {/* ── Header ─────────────────────────────────────────────────────────── */}
+      <div className="bg-gradient-to-br from-slate-900 via-blue-950 to-sky-900 pt-8 pb-10 px-4">
+        <div className="max-w-5xl mx-auto">
           <button
             onClick={() => window.history.length > 1 ? window.history.back() : setLocation("/")}
-            className="inline-flex items-center gap-1.5 mb-3 text-[12px] font-semibold rounded-lg px-3 py-1.5 select-none"
-            style={{
-              color: "rgba(255,255,255,0.85)",
-              background: "rgba(255,255,255,0.10)",
-              border: "1.5px solid rgba(255,255,255,0.20)",
-              transition: "all 0.16s ease",
-            }}
-            onMouseEnter={e => {
-              const el = e.currentTarget as HTMLElement;
-              el.style.background = "rgba(255,255,255,0.18)";
-              el.style.color = "white";
-              el.style.transform = "translateY(-1px)";
-            }}
-            onMouseLeave={e => {
-              const el = e.currentTarget as HTMLElement;
-              el.style.background = "rgba(255,255,255,0.10)";
-              el.style.color = "rgba(255,255,255,0.85)";
-              el.style.transform = "translateY(0)";
-            }}
+            className="inline-flex items-center gap-1.5 mb-5 text-[12px] font-semibold px-3 py-1.5 rounded-lg text-white/70 hover:text-white bg-white/10 hover:bg-white/20 border border-white/15 transition-all"
           >
-            <ArrowLeft className="h-3.5 w-3.5" />
-            Kembali
+            ← Kembali
           </button>
 
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div>
-              <p
-                className="font-semibold uppercase tracking-widest mb-1.5"
-                style={{ fontSize: "10px", letterSpacing: "0.18em", color: "rgba(255,255,255,0.72)" }}
-              >
-                {t("jasa.catalogLabel")}
-              </p>
-              <h1
-                className="font-display text-white"
-                style={{
-                  fontSize: "clamp(20px, 2.8vw, 34px)",
-                  fontWeight: 800,
-                  lineHeight: 1.08,
-                  letterSpacing: "-0.01em",
-                  textShadow: "0 4px 24px rgba(0,0,0,0.22)",
-                }}
-              >
-                {t("jasa.title")}
-              </h1>
-              <p
-                className="mt-1.5 hidden md:block"
-                style={{ fontSize: "13px", color: "rgba(255,255,255,0.62)", maxWidth: "340px", lineHeight: 1.55 }}
-              >
-                Temukan layanan logistik terpercaya sesuai kebutuhan bisnis Anda
-              </p>
-            </div>
+          <h1 className="text-2xl md:text-3xl font-bold text-white mb-1.5">Buat Permintaan Layanan</h1>
+          <p className="text-white/60 text-sm mb-6">Pilih layanan logistik yang Anda butuhkan</p>
 
-            {/* Search */}
-            <div className="relative w-full md:w-72 shrink-0">
-              <Search
-                className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none"
-                style={{ width: "15px", height: "15px", color: "rgba(255,255,255,0.80)" }}
-              />
-              <input
-                id="jasa-hero-search"
-                type="text"
-                placeholder={t("jasa.search")}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full focus:outline-none"
-                style={{
-                  paddingLeft: "42px", paddingRight: "16px",
-                  paddingTop: "12px", paddingBottom: "12px",
-                  background: "rgba(255,255,255,0.13)",
-                  border: "1.5px solid rgba(255,255,255,0.30)",
-                  backdropFilter: "blur(16px)",
-                  WebkitBackdropFilter: "blur(16px)",
-                  borderRadius: "12px",
-                  fontSize: "13.5px",
-                  color: "white",
-                  boxShadow: "0 8px 32px rgba(0,0,0,0.18)",
-                }}
-                onFocus={(e) => {
-                  e.currentTarget.style.boxShadow = "0 0 0 2.5px rgba(255,255,255,0.40), 0 8px 32px rgba(0,0,0,0.18)";
-                  e.currentTarget.style.borderColor = "rgba(255,255,255,0.60)";
-                }}
-                onBlur={(e) => {
-                  e.currentTarget.style.boxShadow = "0 8px 32px rgba(0,0,0,0.18)";
-                  e.currentTarget.style.borderColor = "rgba(255,255,255,0.30)";
-                }}
-              />
-              <style>{`#jasa-hero-search::placeholder { color: rgba(255,255,255,0.60); }`}</style>
-            </div>
+          {/* Mode selector */}
+          <div className="inline-flex bg-white/10 border border-white/20 rounded-2xl p-1 gap-1">
+            {([ ["mandiri", "Item Mandiri", "Pilih per layanan"], ["borongan", "Paket Borongan", "Bundled solution"] ] as const).map(([id, label, sub]) => (
+              <button
+                key={id}
+                onClick={() => setMode(id)}
+                className={`flex flex-col items-start px-5 py-2.5 rounded-xl transition-all duration-200 text-left ${
+                  mode === id
+                    ? "bg-white text-slate-900 shadow-md"
+                    : "text-white/70 hover:text-white hover:bg-white/10"
+                }`}
+              >
+                <span className="text-[13px] font-bold">{label}</span>
+                <span className={`text-[11px] ${mode === id ? "text-slate-500" : "text-white/50"}`}>{sub}</span>
+              </button>
+            ))}
           </div>
         </div>
       </div>
 
-      {/* ── Page Body ──────────────────────────────────────────────── */}
-      <div className="max-w-6xl mx-auto px-4 md:px-8 mt-7">
+      <div className="max-w-5xl mx-auto px-4 md:px-6 -mt-4">
 
-        {/* Category filter chips — premium */}
-        <style>{`
-          .cat-chip {
-            transition: all 0.20s cubic-bezier(0.4,0,0.2,1);
-            position: relative;
-            overflow: hidden;
-          }
-          .cat-chip::after {
-            content: '';
-            position: absolute;
-            inset: 0;
-            border-radius: inherit;
-            background: linear-gradient(135deg, rgba(255,255,255,0.18) 0%, transparent 60%);
-            pointer-events: none;
-          }
-          .cat-chip:not(.active):hover {
-            background: linear-gradient(135deg, #EEF4FF 0%, #F5F8FF 100%) !important;
-            border-color: rgba(11,92,173,0.35) !important;
-            color: #0B5CAD !important;
-            transform: translateY(-1px);
-            box-shadow: 0 4px 14px rgba(11,92,173,0.12), 0 1px 4px rgba(11,92,173,0.06) !important;
-          }
-          .cat-chip.active {
-            background: linear-gradient(135deg, #0B5CAD 0%, #1A73D4 100%) !important;
-            border-color: #0B5CAD !important;
-            color: white !important;
-            box-shadow: 0 4px 16px rgba(11,92,173,0.30), 0 1px 4px rgba(11,92,173,0.15), inset 0 1px 0 rgba(255,255,255,0.18) !important;
-            transform: translateY(-1px);
-          }
-          .cat-chip.active:hover { box-shadow: 0 6px 22px rgba(11,92,173,0.38), 0 2px 6px rgba(11,92,173,0.18), inset 0 1px 0 rgba(255,255,255,0.18) !important; }
-        `}</style>
-        <div className="flex items-center justify-between mb-4">
-          <span className="text-[13px] text-slate-500 font-medium">
-            {services.length} layanan
-          </span>
-          {realtimeConnected && (
-            <span
-              className="inline-flex items-center gap-1.5 text-[11px] font-semibold rounded-full px-2.5 py-1"
-              style={{
-                background: realtimeUpdated ? "rgba(245,158,11,0.10)" : "rgba(34,197,94,0.10)",
-                color: realtimeUpdated ? "#B45309" : "#15803D",
-                border: `1px solid ${realtimeUpdated ? "rgba(245,158,11,0.25)" : "rgba(34,197,94,0.25)"}`,
-              }}
-            >
-              <span
-                className="w-1.5 h-1.5 rounded-full"
-                style={{
-                  background: realtimeUpdated ? "#F59E0B" : "#22C55E",
-                  animation: "pulse 1.5s ease-in-out infinite",
-                }}
-              />
-              {realtimeUpdated ? "Diperbarui" : "Live"}
-            </span>
-          )}
-        </div>
-
-        <div className="flex flex-wrap gap-2 mb-7">
-          <button
-            key="__all__"
-            onClick={() => setActiveCategory("__all__")}
-            className={`cat-chip px-4 py-2 rounded-full text-[13px] font-semibold border ${activeCategory === "__all__" ? "active" : ""}`}
-            style={{
-              background: activeCategory === "__all__" ? undefined : "rgba(255,255,255,0.95)",
-              borderColor: activeCategory === "__all__" ? undefined : "rgba(203,213,225,0.8)",
-              color: activeCategory === "__all__" ? undefined : "#64748B",
-              backdropFilter: "blur(8px)",
-              WebkitBackdropFilter: "blur(8px)",
-              boxShadow: activeCategory === "__all__" ? undefined : "0 1px 3px rgba(0,0,0,0.05), inset 0 1px 0 rgba(255,255,255,0.9)",
-            }}
-          >
-            {t("jasa.all")}
-          </button>
-          {allCategories.map((cat) => (
-            <button
-              key={cat}
-              onClick={() => setActiveCategory(cat)}
-              className={`cat-chip px-4 py-2 rounded-full text-[13px] font-semibold border ${activeCategory === cat ? "active" : ""}`}
-              style={{
-                background: activeCategory === cat ? undefined : "rgba(255,255,255,0.95)",
-                borderColor: activeCategory === cat ? undefined : "rgba(203,213,225,0.8)",
-                color: activeCategory === cat ? undefined : "#64748B",
-                backdropFilter: "blur(8px)",
-                WebkitBackdropFilter: "blur(8px)",
-                boxShadow: activeCategory === cat ? undefined : "0 1px 3px rgba(0,0,0,0.05), inset 0 1px 0 rgba(255,255,255,0.9)",
-              }}
-            >
-              {translateCategory(cat, locale)}
-            </button>
-          ))}
-        </div>
-
-        {/* ── Featured service banners ── */}
-        <div className="mb-8 space-y-4">
-
-          {/* Freight Forwarding */}
-          <div
-            className="rounded-2xl p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center gap-5 jasa-ff-card"
-            style={{
-              background: [
-                "radial-gradient(ellipse at 7% 50%, rgba(59,130,246,0.13) 0%, transparent 52%)",
-                "repeating-linear-gradient(-52deg, transparent 0px, transparent 26px, rgba(96,165,250,0.065) 26px, rgba(96,165,250,0.065) 27px)",
-                "linear-gradient(130deg, #EBF5FF 0%, #DBEAFE 50%, #BAE6FD 82%, #DDFAFF 100%)",
-              ].join(", "),
-              border: "1.5px solid rgba(59,130,246,0.22)",
-              boxShadow: "0 6px 28px rgba(59,130,246,0.11), 0 1px 4px rgba(59,130,246,0.06), inset 0 1px 0 rgba(255,255,255,0.88)",
-            }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = "0 10px 38px rgba(59,130,246,0.18), 0 2px 8px rgba(59,130,246,0.08), inset 0 1px 0 rgba(255,255,255,0.88)"; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = "0 6px 28px rgba(59,130,246,0.11), 0 1px 4px rgba(59,130,246,0.06), inset 0 1px 0 rgba(255,255,255,0.88)"; }}
-          >
-            <div className="flex items-start gap-4 flex-1 min-w-0">
-              {/* Icon cluster — premium images */}
-              <div className="flex gap-2 shrink-0">
-                <div
-                  className="w-11 h-11 rounded-xl overflow-hidden"
-                  style={{ boxShadow: "0 0 0 3px rgba(37,99,235,0.18), 0 2px 8px rgba(37,99,235,0.22)" }}
-                >
-                  <img
-                    src={`${import.meta.env.BASE_URL}images/sea-freight.png`}
-                    alt="Sea Freight"
-                    className="w-full h-full object-cover"
-                    onError={(e) => {
-                      const el = e.currentTarget as HTMLImageElement;
-                      el.style.display = "none";
-                      const parent = el.parentElement as HTMLElement | null;
-                      if (parent) {
-                        parent.style.background = "rgba(37,99,235,0.13)";
-                        parent.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-blue-700 m-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>';
-                      }
-                    }}
-                  />
-                </div>
-                <div
-                  className="w-11 h-11 rounded-xl overflow-hidden"
-                  style={{ boxShadow: "0 0 0 3px rgba(14,165,233,0.18), 0 2px 8px rgba(14,165,233,0.22)" }}
-                >
-                  <img
-                    src={`${import.meta.env.BASE_URL}images/air-freight.png`}
-                    alt="Air Freight"
-                    className="w-full h-full object-cover"
-                    onError={(e) => {
-                      const el = e.currentTarget as HTMLImageElement;
-                      el.style.display = "none";
-                      const parent = el.parentElement as HTMLElement | null;
-                      if (parent) {
-                        parent.style.background = "rgba(14,165,233,0.13)";
-                      }
-                    }}
-                  />
-                </div>
+        {mode === "mandiri" ? (
+          <>
+            {/* Search */}
+            <div className="bg-white rounded-2xl shadow-lg border border-slate-100 p-4 mb-8">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+                <Input
+                  placeholder="Cari layanan, misal: air freight, trucking, pabean..."
+                  className="pl-9 pr-9 border-0 bg-slate-50 focus-visible:ring-1 focus-visible:ring-sky-300 rounded-xl"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+                {searchQuery && (
+                  <button onClick={() => setSearchQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
               </div>
-              <div className="min-w-0">
-                <p className="font-bold text-slate-800 text-[15px] leading-tight">Freight Forwarding</p>
-                <div className="flex flex-wrap gap-1.5 mt-2">
-                  {([
-                    { label: t("jasa.importLabel"), dir: "Impor" },
-                    { label: t("jasa.exportLabel"), dir: "Ekspor" },
-                    { label: t("jasa.domesticLabel"), dir: "Domestic" },
-                  ] as Array<{ label: string; dir: string }>).map(({ label, dir }) => (
-                    <Badge key={label} variant="secondary" className="text-[10px] px-1.5 py-0" onClick={() => setLocation(`/freight-forwarding?direction=${dir}`)} style={{cursor:"pointer"}}>{label}</Badge>
-                  ))}
-                  <span className="text-[10px] text-slate-400 self-center">×</span>
-                  {[translateCategory("Laut", locale), translateCategory("Udara", locale)].map((m) => (
-                    <Badge key={m} variant="outline" className="text-[10px] px-1.5 py-0 border-blue-200 text-blue-600">{m}</Badge>
-                  ))}
-                  <span className="text-[10px] text-slate-400 self-center">×</span>
-                  {["D2D", "D2P", "P2D", "P2P"].map((v) => (
-                    <Badge key={v} className="text-[10px] px-1.5 py-0 bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-100">{v}</Badge>
-                  ))}
-                </div>
-              </div>
+              {searchQuery && (
+                <p className="text-xs text-slate-400 mt-2 px-1">
+                  {totalVendorItems} layanan vendor ditemukan untuk "<span className="font-medium text-slate-600">{searchQuery}</span>"
+                </p>
+              )}
             </div>
-            <Button
-              onClick={() => setLocation("/freight-forwarding")}
-              className="gap-2 shrink-0 bg-blue-700 hover:bg-blue-800 text-white shadow-md shadow-blue-200 px-5"
-            >
-              {t("jasa.createOrder")} <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
 
-          {/* Pengurusan Pabean / PPJK */}
-          <div
-            className="rounded-2xl p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center gap-5"
-            style={{
-              background: [
-                "radial-gradient(ellipse at 50% 44%, rgba(255,255,255,0.64) 0%, transparent 56%)",
-                `url("data:image/svg+xml,%3Csvg width='20' height='20' xmlns='http://www.w3.org/2000/svg'%3E%3Ccircle cx='2' cy='2' r='1.2' fill='%23D97706' fill-opacity='0.11'/%3E%3C/svg%3E")`,
-                "linear-gradient(130deg, #FFFBEB 0%, #FEF3C7 40%, #FFEDD5 78%, #FFF7EE 100%)",
-              ].join(", "),
-              border: "1.5px solid rgba(217,119,6,0.22)",
-              boxShadow: "0 6px 28px rgba(217,119,6,0.10), 0 1px 4px rgba(217,119,6,0.05), inset 0 1px 0 rgba(255,255,255,0.95)",
-            }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = "0 10px 38px rgba(217,119,6,0.17), 0 2px 8px rgba(217,119,6,0.07), inset 0 1px 0 rgba(255,255,255,0.95)"; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = "0 6px 28px rgba(217,119,6,0.10), 0 1px 4px rgba(217,119,6,0.05), inset 0 1px 0 rgba(255,255,255,0.95)"; }}
-          >
-            <div className="flex items-start gap-4 flex-1 min-w-0">
-              <div className="flex gap-2 shrink-0">
-                <div
-                  className="w-11 h-11 rounded-xl overflow-hidden"
-                  style={{ boxShadow: "0 0 0 3px rgba(234,88,12,0.18), 0 2px 8px rgba(234,88,12,0.22)" }}
-                >
-                  <img
-                    src={`${import.meta.env.BASE_URL}images/customs-document.png`}
-                    alt="Dokumen Resmi"
-                    className="w-full h-full object-cover"
-                    onError={(e) => {
-                      const el = e.currentTarget as HTMLImageElement;
-                      el.style.display = "none";
-                      const parent = el.parentElement as HTMLElement | null;
-                      if (parent) {
-                        parent.style.background = "rgba(234,88,12,0.13)";
-                        parent.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 m-auto" fill="none" viewBox="0 0 24 24" stroke="#c2410c"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>';
-                      }
-                    }}
-                  />
-                </div>
-                <div
-                  className="w-11 h-11 rounded-xl overflow-hidden"
-                  style={{ boxShadow: "0 0 0 3px rgba(217,119,6,0.18), 0 2px 8px rgba(217,119,6,0.22)" }}
-                >
-                  <img
-                    src={`${import.meta.env.BASE_URL}images/customs-gavel.png`}
-                    alt="Palu Hakim"
-                    className="w-full h-full object-cover"
-                    onError={(e) => {
-                      const el = e.currentTarget as HTMLImageElement;
-                      el.style.display = "none";
-                      const parent = el.parentElement as HTMLElement | null;
-                      if (parent) {
-                        parent.style.background = "rgba(217,119,6,0.13)";
-                        parent.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 m-auto" fill="none" viewBox="0 0 24 24" stroke="#b45309"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3"/></svg>';
-                      }
-                    }}
-                  />
-                </div>
-              </div>
-              <div className="min-w-0">
-                <p className="font-bold text-slate-800 text-[15px] leading-tight">{t("jasa.customsTitle")}</p>
-                <div className="flex flex-wrap gap-1.5 mt-2">
-                  {([
-                    { label: "PIB/PEB", svc: "pib_peb" },
-                    { label: "Handling Clearance", svc: "handling" },
-                    { label: "Undername", svc: "undername" },
-                  ] as Array<{ label: string; svc: string }>).map(({ label, svc }) => (
-                    <Badge key={label} className="text-[10px] px-1.5 py-0 bg-orange-100 text-orange-700 border-orange-200 hover:bg-orange-100" onClick={() => setLocation(`/pabean?service=${svc}`)} style={{cursor:"pointer"}}>{label}</Badge>
-                  ))}
-                  <span className="text-[10px] text-slate-400 self-center">×</span>
-                  {[t("jasa.importLabel"), t("jasa.exportLabel")].map((d) => (
-                    <Badge key={d} variant="secondary" className="text-[10px] px-1.5 py-0">{d}</Badge>
-                  ))}
-                </div>
-              </div>
-            </div>
-            <Button
-              onClick={() => setLocation("/pabean")}
-              className="gap-2 shrink-0 bg-orange-600 hover:bg-orange-700 text-white shadow-md shadow-orange-200 px-5"
-            >
-              {t("jasa.submitService")} <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
+            {/* 4 Category Sections */}
+            <div className="space-y-10">
+              {MAIN_CATEGORIES.map((cat) => {
+                const CatIcon = cat.icon;
+                const isActive = activeCatId === cat.id;
+                const vendorMatches = getItemsForCategory(cat);
 
-        </div>
-
-        {/* ── Service grid ── */}
-        {isLoading ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-            {Array.from({ length: 8 }).map((_, i) => (
-              <Skeleton key={i} className="h-52 rounded-2xl" />
-            ))}
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="text-center py-24 text-muted-foreground">
-            <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto mb-4">
-              <img src={`${import.meta.env.BASE_URL}images/logo.png`} alt="CST Logistics" className="h-8 w-auto object-contain opacity-60" />
-            </div>
-            <p className="text-sm">{t("jasa.noMatches")}</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-            {filtered.map((service) => {
-              const primaryCat = (service.categories ?? [])[0] ?? "";
-              const accent = CARD_ACCENT[primaryCat] ?? DEFAULT_ACCENT;
-              const apiImgUrl = resolveImageUrl(service.imageUrl);
-              const fallbackImg = getServiceFallbackImage(service.categories ?? [], service.name);
-              const bannerSrc = (apiImgUrl && !failedImages.has(service.id)) ? apiImgUrl : fallbackImg;
-              return (
-                <Link key={service.id} href={`/jasa/${service.id}`} className="block group">
-                  <Card
-                    className="h-full overflow-hidden transition-all duration-200 group-hover:-translate-y-0.5"
-                    style={{
-                      border: "1.5px solid #E8EDF3",
-                      borderRadius: "16px",
-                      boxShadow: "0 2px 12px rgba(0,0,0,0.06)",
-                    }}
-                    onMouseEnter={(e) => {
-                      (e.currentTarget as HTMLElement).style.boxShadow = accent.hoverShadow;
-                      (e.currentTarget as HTMLElement).style.borderColor = accent.hoverBorder;
-                    }}
-                    onMouseLeave={(e) => {
-                      (e.currentTarget as HTMLElement).style.boxShadow = "0 2px 12px rgba(0,0,0,0.06)";
-                      (e.currentTarget as HTMLElement).style.borderColor = "#E8EDF3";
-                    }}
-                  >
-                    {/* Banner image — always shown, API upload takes priority over local fallback */}
-                    <div className="h-36 overflow-hidden relative">
-                      <img
-                        src={bannerSrc}
-                        alt={stripJasa(service.name)}
-                        loading="lazy"
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                        onError={() => {
-                          setFailedImages((prev) => new Set([...prev, service.id]));
-                          // If fallback also fails, try a neutral placeholder
-                        }}
-                      />
-                      {/* Cinematic gradient overlay — darkens bottom for text readability */}
-                      <div
-                        aria-hidden="true"
-                        style={{
-                          position: "absolute", inset: 0, pointerEvents: "none",
-                          background: "linear-gradient(to bottom, rgba(0,0,0,0.04) 0%, rgba(0,0,0,0.22) 75%, rgba(0,0,0,0.38) 100%)",
-                        }}
-                      />
-                      {/* Category badges overlaid on image bottom-left */}
-                      <div className="absolute bottom-2.5 left-3 flex flex-wrap gap-1">
-                        {(service.categories ?? []).map((cat) => (
-                          <span
-                            key={cat}
-                            className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full"
-                            style={{
-                              background: "rgba(255,255,255,0.18)",
-                              backdropFilter: "blur(8px)",
-                              WebkitBackdropFilter: "blur(8px)",
-                              color: "rgba(255,255,255,0.95)",
-                              border: "1px solid rgba(255,255,255,0.25)",
-                            }}
-                          >
-                            {translateCategory(cat, locale)}
-                          </span>
-                        ))}
+                return (
+                  <section key={cat.id}>
+                    {/* Category header */}
+                    <div className="flex items-center gap-3 mb-5">
+                      <div className={`w-10 h-10 rounded-2xl bg-gradient-to-br ${cat.gradient} flex items-center justify-center shrink-0 shadow-sm`}>
+                        <CatIcon className="h-5 w-5 text-white" />
+                      </div>
+                      <div>
+                        <h2 className="text-[17px] font-bold text-slate-800">{cat.title}</h2>
+                        <p className="text-xs text-slate-400">{cat.services.length} layanan tersedia</p>
                       </div>
                     </div>
 
-                    <CardHeader className="pb-1.5 pt-3 px-4">
-                      <CardTitle className="text-[13.5px] font-bold leading-snug text-slate-800">
-                        {translateServiceName(stripJasa(service.name), locale)}
-                      </CardTitle>
-                    </CardHeader>
+                    {/* Subcategory cards */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
+                      {cat.services.map((svc) => {
+                        const SvcIcon = svc.icon;
+                        return (
+                          <Link key={svc.href + svc.title} href={svc.href}>
+                            <div className={`group bg-white rounded-2xl border border-slate-200 p-5 flex flex-col gap-3 cursor-pointer transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md hover:border-${cat.lightBg.replace("bg-", "")}`}
+                              style={{ boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
+                              <div className="flex items-start justify-between gap-2">
+                                <div className={`w-10 h-10 rounded-xl ${cat.lightBg} flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform`}>
+                                  <SvcIcon className={`h-5 w-5 ${cat.textColor}`} />
+                                </div>
+                                <Badge variant="outline" className={`text-[10px] font-semibold border ${cat.badgeCls} shrink-0`}>
+                                  <Clock className="h-2.5 w-2.5 mr-1" />{svc.eta}
+                                </Badge>
+                              </div>
+                              <div>
+                                <h3 className="font-bold text-slate-800 text-[14px] leading-snug">{svc.title}</h3>
+                                <p className="text-[12px] text-slate-500 leading-relaxed mt-0.5">{svc.desc}</p>
+                              </div>
+                              <div className={`flex items-center gap-1 text-[12px] font-semibold ${cat.textColor} group-hover:gap-2 transition-all`}>
+                                Mulai Request <ChevronRight className="h-3.5 w-3.5" />
+                              </div>
+                            </div>
+                          </Link>
+                        );
+                      })}
+                    </div>
 
-                    {service.description && (
-                      <CardContent className="px-4 pb-2 pt-0">
-                        <CardDescription className="text-[11.5px] leading-relaxed line-clamp-2 text-slate-500">
-                          {service.description}
-                        </CardDescription>
-                      </CardContent>
-                    )}
-
-                    {/* Harga Jual from BizPortal */}
-                    <CardContent className="px-4 pb-2 pt-0">
-                      <div
-                        className="flex items-center justify-between rounded-lg px-3 py-1.5"
-                        style={{ background: "rgba(11,92,173,0.05)", border: "1px solid rgba(11,92,173,0.10)" }}
-                      >
-                        <span className="text-[9.5px] font-semibold text-slate-400 uppercase tracking-wide">Harga Jual</span>
-                        {service.price > 0 ? (
-                          <span className="text-[13px] font-bold text-[#0B5CAD]">{formatIDR(service.price)}</span>
-                        ) : (
-                          <span className="text-[11px] font-semibold text-amber-600">Harga Negosiasi</span>
+                    {/* Vendor catalog items for this category */}
+                    {!isLoading && vendorMatches.length > 0 && (
+                      <div>
+                        <button
+                          onClick={() => setActiveCatId(isActive ? null : cat.id)}
+                          className="flex items-center gap-2 text-[13px] font-semibold text-slate-600 hover:text-slate-800 mb-3 group"
+                        >
+                          <span className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-slate-600 group-hover:border-slate-300 transition-colors">
+                            {isActive ? "▲" : "▼"} {vendorMatches.length} penawaran vendor tersedia
+                          </span>
+                        </button>
+                        {isActive && (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                            {vendorMatches.map((item) => (
+                              <VendorItemCard key={`${item.source}-${item.id}`} item={item} />
+                            ))}
+                          </div>
                         )}
                       </div>
-                    </CardContent>
+                    )}
+                    {isLoading && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {[1,2,3].map((i) => (
+                          <div key={i} className="h-52 bg-white rounded-2xl border border-slate-200 animate-pulse" />
+                        ))}
+                      </div>
+                    )}
 
-                    <CardContent className="px-4 pb-4 pt-1">
-                      <Button
-                        size="sm"
-                        className="w-full gap-1.5 text-[12px] h-8 font-semibold"
-                        style={{
-                          background: "linear-gradient(135deg, #1565C0 0%, #0B5CAD 100%)",
-                          boxShadow: "0 2px 8px rgba(11,92,173,0.28)",
-                        }}
-                      >
-                        <Calculator className="h-3 w-3" />
-                        {t("jasa.calcButton")}
-                        <ArrowRight className="h-3 w-3" />
-                      </Button>
-                    </CardContent>
-                  </Card>
+                    <div className="border-b border-slate-100 mt-8" />
+                  </section>
+                );
+              })}
+            </div>
+
+            {/* All vendor items when searching */}
+            {searchQuery && totalVendorItems > 0 && (
+              <div className="mt-10">
+                <h2 className="text-[16px] font-bold text-slate-800 mb-4">Semua Hasil Pencarian ({totalVendorItems})</h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                  {allItems.filter(matchSearch).map((item) => (
+                    <VendorItemCard key={`${item.source}-${item.id}`} item={item} />
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+          /* ── Paket Borongan ──────────────────────────────────────────── */
+          <div className="mt-6">
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 text-center max-w-2xl mx-auto">
+              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-600 to-sky-500 flex items-center justify-center mx-auto mb-5 shadow-md">
+                <Layers className="h-8 w-8 text-white" />
+              </div>
+              <h2 className="text-xl font-bold text-slate-800 mb-2">Paket Borongan Logistik</h2>
+              <p className="text-slate-500 text-sm leading-relaxed mb-6">
+                Dapatkan solusi logistik end-to-end dengan harga kontrak yang kompetitif. Cocok untuk bisnis dengan volume pengiriman rutin.
+              </p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-7 text-left">
+                {[
+                  { icon: Globe, title: "Full Forwarding", desc: "Kargo udara + bea cukai + trucking dalam satu paket" },
+                  { icon: Ship, title: "Sea Freight Bundle", desc: "FCL/LCL + customs clearance + last mile delivery" },
+                  { icon: Package, title: "Warehousing+Distribusi", desc: "Gudang, inventory management, dan distribusi nasional" },
+                ].map(({ icon: Icon, title, desc }) => (
+                  <div key={title} className="bg-slate-50 rounded-xl p-4 border border-slate-100">
+                    <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center mb-2.5">
+                      <Icon className="h-4 w-4 text-blue-600" />
+                    </div>
+                    <p className="text-[13px] font-semibold text-slate-800 mb-1">{title}</p>
+                    <p className="text-[11px] text-slate-500 leading-relaxed">{desc}</p>
+                  </div>
+                ))}
+              </div>
+
+              <p className="text-xs text-slate-400 mb-5">Tim kami akan menghubungi Anda dalam 1 hari kerja untuk diskusi kebutuhan</p>
+              <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                <Link href="/service-cart">
+                  <Button className="gap-2 bg-sky-600 hover:bg-sky-700 shadow-sm">
+                    <Plus className="h-4 w-4" /> Ajukan Permintaan
+                  </Button>
                 </Link>
-              );
-            })}
+                <Link href="/contact">
+                  <Button variant="outline" className="gap-2">
+                    <MessageSquare className="h-4 w-4" /> Konsultasi Gratis
+                  </Button>
+                </Link>
+              </div>
+            </div>
           </div>
         )}
+
       </div>
     </div>
   );

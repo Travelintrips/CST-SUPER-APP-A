@@ -38,9 +38,11 @@ const RETRYABLE_CODES = new Set(["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "ENO
 const API_PORT            = Number(process.env.API_PORT            ?? 8080);
 const BIZPORTAL_PORT      = Number(process.env.BIZPORTAL_PORT      ?? 18442);
 const CUSTOMER_PORT       = Number(process.env.CUSTOMER_PORT       ?? 3001);
-const LOGISTIC_ORDER_PORT = Number(process.env.LOGISTIC_ORDER_PORT ?? 19368);
+const LOGISTIC_ORDER_PORT = Number(process.env.LOGISTIC_ORDER_PORT ?? 6000);
+const WA_GATEWAY_PORT     = Number(process.env.WA_GATEWAY_PORT     ?? 8000);
 
 const ROUTES = [
+  { prefix: "/wa-gateway",      upstream: { host: "localhost", port: WA_GATEWAY_PORT } },
   { prefix: "/api",             upstream: { host: "localhost", port: API_PORT } },
   { prefix: "/pos-images",      upstream: { host: "localhost", port: API_PORT } },
   { prefix: "/q",               upstream: { host: "localhost", port: API_PORT } },
@@ -78,6 +80,10 @@ const ROUTES = [
   { prefix: "/vendors",              upstream: null, redirectMapTo: "/bizportal/vendors",               redirectDefaultSuffix: "/" },
   { prefix: "/ecommerce",            upstream: null, redirectMapTo: "/bizportal/ecommerce",             redirectDefaultSuffix: "/" },
   { prefix: "/trading",              upstream: null, redirectMapTo: "/bizportal/trading",               redirectDefaultSuffix: "/" },
+  // NOTE: /air-freight/orders and /air-freight/rates are BizPortal admin pages
+  // /air-freight/approval and /air-freight/track are public pages served by BizPortal (no redirect needed, already pass-through)
+  { prefix: "/air-freight/orders",   upstream: null, redirectMapTo: "/bizportal/air-freight/orders",    redirectDefaultSuffix: "" },
+  { prefix: "/air-freight/rates",    upstream: null, redirectMapTo: "/bizportal/air-freight/rates",     redirectDefaultSuffix: "" },
   { prefix: "/audit",                upstream: null, redirectMapTo: "/bizportal/audit",                 redirectDefaultSuffix: "/" },
   { prefix: "/intelligence-alerts",  upstream: null, redirectMapTo: "/bizportal/intelligence-alerts",   redirectDefaultSuffix: "/" },
   { prefix: "/ai-approvals",         upstream: null, redirectMapTo: "/bizportal/ai-approvals",          redirectDefaultSuffix: "/" },
@@ -94,6 +100,7 @@ const SERVICE_NAMES = {
   [BIZPORTAL_PORT]:      "BizPortal",
   [CUSTOMER_PORT]:       "Customer Portal",
   [LOGISTIC_ORDER_PORT]: "Logistic Order",
+  [WA_GATEWAY_PORT]:     "WA Gateway",
 };
 
 function resolve(url) {
@@ -343,6 +350,7 @@ async function startGateway() {
       });
       srv.listen(PORT, () => {
         console.log(`Gateway listening on port ${PORT}`);
+        console.log(`  /wa-gateway/*      → :${WA_GATEWAY_PORT} (WA Gateway)`);
         console.log(`  /api/*             → :${API_PORT} (API Server)`);
         console.log(`  /bizportal/*       → :${BIZPORTAL_PORT} (BizPortal)`);
         console.log(`  /logistic-order/*  → :${LOGISTIC_ORDER_PORT} (Logistic Order)`);

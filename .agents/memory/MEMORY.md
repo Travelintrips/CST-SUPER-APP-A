@@ -5,3 +5,12 @@
 - [Paylabs integration quirks](paylabs-integration.md) — Paylabs "Conflict" usually = wrong X-TIMESTAMP (UTC mislabeled +07:00, 7h off), NOT id length; body needs productName+payer, no expire/goodsInfo.
 - [API Server rebuild gotcha](api-server-rebuild-gotcha.md) — before manual `node build.mjs`, always run `pnpm install` inside artifacts/api-server first; googleapis is an external dep that must be present in node_modules.
 - [Portal product order template validation](portal-product-template-validation.md) — POST /api/portal-product/orders defaults to "general" template which requires customFieldValues.description + customFieldValues.quantity; tests must include both.
+- [ESM external lazy import pattern](esm-external-lazy-import.md) — esbuild externals leave static imports as top-level ESM → runtime _link fails if package absent; use createRequire for true call-time resolution.
+- [Workspace package symlinks](workspace-package-symlinks.md) — @workspace/product-templates, service-templates, logistics-constants live in lib/; if missing from node_modules/@workspace run pnpm install at root.
+- [Accounting gap fixes — Fase 3](accounting-fase3.md) — audit trail + NPWP/faktur validators: 3 new lib files; audit hooks in tax/vendorPayments/accounting routes.
+- [CompanyContext field name](company-context-field.md) — use `activeCompanyId` (type CompanyScope = number | "all"), NOT `selectedCompanyId`; can be "all" for consolidated view.
+- [DB URL priority in dev mode](db-url-priority-dev.md) — SUPABASE_PG_URL (wrong Supabase project) must come AFTER SUPABASE_DATABASE_URL in dev candidates or all Drizzle queries fail.
+- [DB connection string order (lib/db)](db-connection-order.md) — SUPABASE_PG_URL may have stale creds; in dev mode always prefer SUPABASE_DATABASE_URL before SUPABASE_PG_URL.
+- [Logistics module audit map](logistics-audit-map.md) — 6 route namespaces, 3-router collision at /logistic/orders, dead airFreightRouter import, Air/Ocean use raw SQL (not Drizzle); unified fields added to freight_shipments.
+- [Logistics governance doc](logistics-governance.md) — docs/LOGISTICS_MODULE_MAP.md is the single source of truth; guardrails, naming rules, checklist, decision tree, and known tech debt all live there.
+- [Dynamic Service Calculator](dynamic-service-calculator.md) — redesigned calculator.tsx (v2): 6 service types with per-service fields/formulas; backend rates at GET /api/portal/calculator-rates-v2 stored as portal_content key "calculator_rates_v2".

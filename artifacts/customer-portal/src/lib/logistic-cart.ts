@@ -15,8 +15,9 @@ export interface CartItem {
   vendorName?: string | null;
   serviceType?: string | null;
   templateKind?: string | null;
-  priceSnapshot?: { priceSell: number; currency: string; unit: string } | null;
+  priceSnapshot?: { priceSell: number; currency: string; unit: string; vendorName?: string | null; subtotal?: number; tax?: number; total?: number } | null;
   calculationInput?: Record<string, unknown> | null;
+  templateSnapshot?: Record<string, unknown> | null;
   tax?: number;
   total?: number;
 }

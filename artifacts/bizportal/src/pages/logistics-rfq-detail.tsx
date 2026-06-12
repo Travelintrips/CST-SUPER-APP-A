@@ -19,6 +19,7 @@ import {
   Store, ChevronDown, ChevronUp, RefreshCw,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { Step1416Panel } from "./logistics-rfq-step14-16";
 
 const idr = (n: number | null | undefined) =>
   n == null ? "—" : new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
@@ -519,6 +520,9 @@ export default function LogisticsRfqDetailPage() {
             </CardContent>
           </Card>
         )}
+
+        {/* Step 14-16: Operasional pasca-approval */}
+        <Step1416Panel rfqId={rfqNumId} rfqStatus={rfqStatus} />
 
         {/* Confirm Dialog — blast selektif */}
         <Dialog open={showBlastConfirm} onOpenChange={setShowBlastConfirm}>

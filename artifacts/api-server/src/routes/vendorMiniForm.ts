@@ -3,8 +3,8 @@ import { rateLimit, ipKeyGenerator } from "express-rate-limit";
 import { broadcastInvalidation } from "../lib/alertsBroadcast.js";
 import { eq, desc, inArray, and, count, isNull, ne, sql } from "drizzle-orm";
 import { randomBytes } from "crypto";
-import multer from "multer";
 import { ObjectStorageService } from "../lib/objectStorage.js";
+import { documentUpload, mediaUpload } from "../lib/uploadMiddleware.js";
 import { db } from "@workspace/db";
 import {
   vendorMiniFormLinksTable,
@@ -737,22 +737,7 @@ const UNIVERSAL_OP_FIELDS: {
   { key: "pod_doc",            label: "Proof of Delivery (POD)", type: "text",                      placeholder: "Upload bukti pengiriman / POD",                              section: "operational", isUpload: true },
 ];
 
-// ── PUBLIC: GET /api/vendor-form/local-file/:filename ─────────────────────────
-vendorMiniFormRouter.get("/local-file/:filename", async (req: Request, res: Response) => {
-  const { filename } = req.params as { filename: string };
-  if (!/^[a-zA-Z0-9_\-]+\.[a-z0-9]+$/i.test(filename)) return res.status(400).send("Invalid");
-  try {
-    const { promises: fs } = await import("fs");
-    const path = await import("path");
-    const data = await fs.readFile(path.join("/tmp/vmf-uploads", filename));
-    const ext = filename.split(".").pop()?.toLowerCase() ?? "";
-    const mimeMap: Record<string, string> = { pdf: "application/pdf", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp" };
-    res.setHeader("Content-Type", mimeMap[ext] ?? "application/octet-stream");
-    return res.send(data);
-  } catch {
-    return res.status(404).send("Not found");
-  }
-});
+// ── /local-file removed — uploads go directly to object storage (no /tmp fallback) ──
 
 // ── PUBLIC: GET /api/vendor-form/:token/drivers ───────────────────────────────
 vendorMiniFormRouter.get("/:token/drivers", async (req: Request, res: Response) => {
@@ -1133,7 +1118,7 @@ vendorMiniFormRouter.get("/:token", async (req: Request, res: Response) => {
 });
 
 // ── PUBLIC: POST /api/vendor-form/upload/:token ───────────────────────────────
-const _vmfUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+const _vmfUpload = documentUpload(10);
 const _vmfStorage = new ObjectStorageService();
 const _vmfUploadRateLimit = rateLimit({ windowMs: 60 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false });
 
@@ -1179,7 +1164,7 @@ vendorMiniFormRouter.post("/upload/:token", _vmfUploadRateLimit, _vmfUpload.sing
 });
 
 // ── PUBLIC: POST /api/vendor-form/upload-media/:token ────────────────────────
-const _vmfMediaUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
+const _vmfMediaUpload = mediaUpload(50);
 const _vmfMediaRateLimit = rateLimit({ windowMs: 60 * 60 * 1000, max: 40, standardHeaders: true, legacyHeaders: false });
 
 const MEDIA_ALLOWED_TYPES: Record<string, string[]> = {

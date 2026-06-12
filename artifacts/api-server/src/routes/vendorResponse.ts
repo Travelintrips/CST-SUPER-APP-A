@@ -1,7 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { eq, and, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
-import multer from "multer";
 import { db } from "@workspace/db";
 import {
   vendorResponsesTable,
@@ -14,9 +13,10 @@ import { ObjectStorageService } from "../lib/objectStorage";
 import { verifyVendorResponseToken } from "../lib/vendorResponseToken";
 import { getAdminGroupWa } from "../lib/adminWa";
 import { getPreferredDomain } from "../lib/domain";
+import { imageUpload } from "../lib/uploadMiddleware.js";
 
 const router: IRouter = Router();
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+const upload = imageUpload(10);
 const objectStorage = new ObjectStorageService();
 
 const VENDOR_PHOTO_ALLOWED_MIME = new Set([

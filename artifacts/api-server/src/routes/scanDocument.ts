@@ -1,11 +1,11 @@
 import { Router } from "express";
-import multer from "multer";
 import { getOpenAI } from "../lib/openaiClient.js";
 import { createRequire } from "node:module";
 import { logger } from "../lib/logger";
 import { db, aiAgentSettingsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { requireClerkUser, requireAdmin } from "../lib/requireAdmin.js";
+import { imagePdfUpload } from "../lib/uploadMiddleware.js";
 
 const require_ = createRequire(import.meta.url);
 type PdfParseFn = (buffer: Buffer) => Promise<{ text: string; numpages: number }>;
@@ -15,7 +15,7 @@ const pdfParse = require_("pdf-parse/lib/pdf-parse.js") as PdfParseFn;
 
 
 const router = Router();
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
+const upload = imagePdfUpload(20);
 
 // Minimum extracted text length to consider a PDF "text-based" (vs scanned image).
 // Below this we fall back to vision OCR.

@@ -36,6 +36,7 @@ minimumReleaseAgeExclude:
 
 packages:
   - artifacts/*
+  - artifacts/wa-gateway/client
   - lib/*
   - lib/integrations/*
   - scripts
@@ -69,8 +70,10 @@ autoInstallPeers: false
 
 onlyBuiltDependencies:
   - '@swc/core'
+  - '@whiskeysockets/baileys'
   - esbuild
   - msw
+  - protobufjs
   - unrs-resolver
 
 overrides:

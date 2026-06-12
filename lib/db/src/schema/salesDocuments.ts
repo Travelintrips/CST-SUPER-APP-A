@@ -63,6 +63,12 @@ export const salesDocumentsTable = pgTable("sales_documents", {
   dueDate: date("due_date"),
   paymentTermDays: integer("payment_term_days").default(30),
   cancelledAt: timestamp("cancelled_at"),
+  cancelledBy: text("cancelled_by"),
+  cancelReason: text("cancel_reason"),
+  approvedBy: text("approved_by"),
+  approvedAt: timestamp("approved_at"),
+  editReason: text("edit_reason"),
+  reversalReason: text("reversal_reason"),
   createdById: text("created_by_id"),
   aiGenerated: boolean("ai_generated").notNull().default(false),
   aiSourceCorrespondenceId: integer("ai_source_correspondence_id"),
@@ -103,6 +109,11 @@ export const salesDocumentLinesTable = pgTable("sales_document_lines", {
   baseQty: numeric("base_qty", { precision: 12, scale: 4 }),
   unitPrice: numeric("unit_price", { precision: 14, scale: 2 }).notNull().default("0"),
   subtotal: numeric("subtotal", { precision: 14, scale: 2 }).notNull().default("0"),
+  meta: jsonb("meta").$type<{
+    orderItemId?: number;
+    vendorCatalogItemId?: number | null;
+    vendorFulfillmentId?: number | null;
+  } | null>(),
 });
 
 export const insertSalesDocumentSchema = createInsertSchema(salesDocumentsTable).omit({

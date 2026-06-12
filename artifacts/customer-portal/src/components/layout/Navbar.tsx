@@ -4,10 +4,12 @@ import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import {
   Menu, X, LogOut, LayoutDashboard, ShoppingCart, Shield,
-  ChevronDown, Ship, FileCheck, Truck,
+  ChevronDown, Ship, Anchor, FileCheck, Truck,
   Search, Calculator, ChevronRight, MapPin, Phone, Info,
   ImagePlus, Loader2, ClipboardList,
   Package, Wind, Globe, FileText, Factory, Coffee, Flame,
+  Droplets, Fish, Feather, Plane,
+  Plus, Receipt, Building2, FolderOpen,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { isAuthenticated, removeAuthToken, isPortalAdmin } from "@/lib/auth";
@@ -18,11 +20,12 @@ import { useLanguage } from "@/i18n/LanguageContext";
 import { useEditMode } from "@/contexts/EditModeContext";
 
 const SERVICES_ITEMS = [
-  { icon: Ship,      titleKey: "servicesMenu.freight.title",   descKey: "servicesMenu.freight.desc",   href: "/marketplace?type=service&category=sea_freight" },
-  { icon: FileCheck, titleKey: "servicesMenu.customs.title",   descKey: "servicesMenu.customs.desc",   href: "/marketplace?type=service&category=ppjk" },
-  { icon: Truck,     titleKey: "servicesMenu.domestic.title",  descKey: "servicesMenu.domestic.desc",  href: "/marketplace?type=service&category=trucking" },
-  { icon: Truck,     titleKey: "servicesMenu.trucking.title",  descKey: "servicesMenu.trucking.desc",  href: "/marketplace?type=service&category=trucking" },
-  { icon: Search,    titleKey: "servicesMenu.tracking.title",  descKey: "servicesMenu.tracking.desc",  href: "/track" },
+  { icon: Ship,      titleKey: "servicesMenu.freight.title",      descKey: "servicesMenu.freight.desc",      href: "/freight-forwarding" },
+  { icon: Plane,     titleKey: "servicesMenu.airFreight.title",   descKey: "servicesMenu.airFreight.desc",   href: "/air-freight-booking" },
+  { icon: Anchor,    titleKey: "servicesMenu.ocean.title",        descKey: "servicesMenu.ocean.desc",        href: "/ocean-freight" },
+  { icon: FileCheck, titleKey: "servicesMenu.customs.title",      descKey: "servicesMenu.customs.desc",      href: "/pabean" },
+  { icon: Truck,     titleKey: "servicesMenu.trucking.title",     descKey: "servicesMenu.trucking.desc",     href: "/trucking" },
+  { icon: Search,    titleKey: "servicesMenu.tracking.title",     descKey: "servicesMenu.tracking.desc",     href: "/track" },
 ];
 
 type AutocompleteEntry = {
@@ -49,25 +52,31 @@ const AUTOCOMPLETE_MAP: AutocompleteEntry[] = [
     icon: Truck, label: "Trucking Domestik",
     description: "Angkutan darat dalam kota & antar kota",
     kind: "Layanan", terms: ["truck", "truk", "angkut", "darat", "trucking"],
-    href: "/marketplace?type=service&category=trucking&q=trucking",
+    href: "/trucking",
   },
   {
-    icon: Ship, label: "Sea Freight",
-    description: "Pengiriman laut internasional FCL / LCL",
-    kind: "Layanan", terms: ["sea", "freight", "fcl", "lcl", "kapal", "laut", "forwarding", "ekspedisi"],
-    href: "/marketplace?type=service&category=sea_freight&q=sea+freight",
+    icon: Ship, label: "Freight Forwarding",
+    description: "Pengiriman udara & laut internasional ke seluruh dunia",
+    kind: "Layanan", terms: ["sea", "freight", "fcl", "lcl", "forwarding", "ekspedisi", "ekspor", "impor", "international"],
+    href: "/freight-forwarding",
   },
   {
-    icon: Wind, label: "Air Freight",
-    description: "Pengiriman udara cepat domestik & internasional",
-    kind: "Layanan", terms: ["air", "udara", "pesawat", "fly"],
-    href: "/marketplace?type=service&category=air_freight&q=air+freight",
+    icon: Anchor, label: "Ocean Freight",
+    description: "Pengiriman laut FCL / LCL internasional",
+    kind: "Layanan", terms: ["ocean", "laut", "kapal", "fcl", "lcl", "sea freight"],
+    href: "/ocean-freight",
+  },
+  {
+    icon: Plane, label: "Air Freight Booking",
+    description: "Booking pengiriman udara langsung — kalkulasi & pilih rate",
+    kind: "Layanan", terms: ["air", "udara", "pesawat", "fly", "airfreight", "air freight", "booking udara"],
+    href: "/air-freight-booking",
   },
   {
     icon: FileCheck, label: "PPJK / Customs Clearance",
     description: "Pengurusan kepabeanan, bea cukai & dokumen",
-    kind: "Layanan", terms: ["ppjk", "custom", "kepabeanan", "bea", "cukai", "pabean", "customs"],
-    href: "/marketplace?type=service&category=ppjk&q=ppjk",
+    kind: "Layanan", terms: ["ppjk", "custom", "kepabeanan", "bea", "cukai", "pabean", "customs", "clearance"],
+    href: "/pabean",
   },
   {
     icon: Factory, label: "Cargo Handling",
@@ -130,17 +139,72 @@ const AUTOCOMPLETE_MAP: AutocompleteEntry[] = [
     kind: "Produk", terms: ["besi", "baja", "iron", "steel", "beton"],
     href: "/marketplace?type=product&category=iron_steel&q=besi",
   },
+  {
+    icon: Droplets, label: "Karet Alam",
+    description: "SIR, RSS, lateks pekat & crumb rubber",
+    kind: "Produk", terms: ["karet", "rubber", "lateks", "latex", "sir20", "rss"],
+    href: "/marketplace?type=product&category=rubber&q=karet",
+  },
+  {
+    icon: Fish, label: "Ikan Hidup",
+    description: "Ikan hias, kerapu, arwana & biota laut hidup",
+    kind: "Produk", terms: ["ikan hidup", "live fish", "arwana", "kerapu", "ikan hias", "biota laut"],
+    href: "/marketplace?type=product&category=live_fish&q=ikan+hidup",
+  },
+  {
+    icon: Feather, label: "Sarang Walet",
+    description: "Sarang burung walet putih, merah & emas",
+    kind: "Produk", terms: ["sarang walet", "bird nest", "walet", "sarang burung", "edible bird nest"],
+    href: "/marketplace?type=product&category=bird_nest&q=sarang+walet",
+  },
 ];
 
 // Default popular suggestions shown before user types
 const DEFAULT_SUGGESTIONS: AutocompleteEntry[] = [
-  AUTOCOMPLETE_MAP.find(e => e.label === "Trucking Domestik")!,
-  AUTOCOMPLETE_MAP.find(e => e.label === "Sea Freight")!,
-  AUTOCOMPLETE_MAP.find(e => e.label === "PPJK / Customs Clearance")!,
-  AUTOCOMPLETE_MAP.find(e => e.label === "Kopi / Coffee")!,
-  AUTOCOMPLETE_MAP.find(e => e.label === "Batubara")!,
-  AUTOCOMPLETE_MAP.find(e => e.label === "Minyak Sawit / CPO")!,
-];
+  AUTOCOMPLETE_MAP.find(e => e.label === "Trucking Domestik"),
+  AUTOCOMPLETE_MAP.find(e => e.label === "Ocean Freight"),
+  AUTOCOMPLETE_MAP.find(e => e.label === "PPJK / Customs Clearance"),
+  AUTOCOMPLETE_MAP.find(e => e.label === "Kopi / Coffee"),
+  AUTOCOMPLETE_MAP.find(e => e.label === "Batubara"),
+  AUTOCOMPLETE_MAP.find(e => e.label === "Minyak Sawit / CPO"),
+].filter((e): e is AutocompleteEntry => e !== undefined);
+
+function getAutocompleteSuggestions(
+  q: string,
+  liveItems: MarketplaceResult[],
+): AutocompleteEntry[] {
+  if (q.length < 2) return DEFAULT_SUGGESTIONS;
+
+  const liveResults: AutocompleteEntry[] = liveItems
+    .filter((item) =>
+      item.name.toLowerCase().includes(q) ||
+      (item.description ?? "").toLowerCase().includes(q),
+    )
+    .slice(0, 5)
+    .map((item) => {
+      const isSvc = item.templateKind === "service";
+      const cat = isSvc ? item.serviceType : item.categoryKey;
+      return {
+        icon: isSvc ? Truck : Package,
+        label: item.name,
+        description: item.description ?? (isSvc ? "Layanan" : "Produk"),
+        kind: isSvc ? ("Layanan" as const) : ("Produk" as const),
+        href: `/marketplace?type=${isSvc ? "service" : "product"}${cat ? `&category=${cat}` : ""}&q=${encodeURIComponent(item.name)}`,
+        terms: [],
+      };
+    });
+
+  const liveLabels = new Set(liveResults.map((r) => r.label.toLowerCase()));
+  const staticResults = AUTOCOMPLETE_MAP.filter(
+    (e) =>
+      !liveLabels.has(e.label.toLowerCase()) &&
+      (e.label.toLowerCase().includes(q) ||
+        e.description.toLowerCase().includes(q) ||
+        e.terms.some((t) => t.includes(q) || q.includes(t))),
+  ).slice(0, 3);
+
+  return [...liveResults, ...staticResults].slice(0, 8);
+}
 
 const NAV_BASE: React.CSSProperties = {
   background: "rgba(255,255,255,0.95)",
@@ -290,8 +354,16 @@ export function Navbar() {
 
   function handleSearchSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!searchQuery.trim()) return;
-    setLocation(`/marketplace?q=${encodeURIComponent(searchQuery.trim())}`);
+    const q = searchQuery.trim();
+    if (!q) return;
+
+    // Use top autocomplete suggestion's href if available, else fall back to marketplace
+    const suggestions = getAutocompleteSuggestions(q.toLowerCase(), liveItems);
+    const target = suggestions.length > 0
+      ? suggestions[0].href
+      : `/marketplace?q=${encodeURIComponent(q)}`;
+
+    setLocation(target);
     setSearchOpen(false);
     setSearchQuery("");
   }
@@ -316,48 +388,17 @@ export function Navbar() {
   });
 
   // Smart autocomplete: ≥2 chars → search live items + static, else show defaults
-  const autocompleteSuggestions: AutocompleteEntry[] = (() => {
-    const q = searchQuery.trim().toLowerCase();
-    if (q.length < 2) return DEFAULT_SUGGESTIONS;
-
-    // Search live items first
-    const liveResults: AutocompleteEntry[] = liveItems
-      .filter((item) =>
-        item.name.toLowerCase().includes(q) ||
-        (item.description ?? "").toLowerCase().includes(q),
-      )
-      .slice(0, 5)
-      .map((item) => {
-        const isSvc = item.templateKind === "service";
-        const cat = isSvc ? item.serviceType : item.categoryKey;
-        return {
-          icon: isSvc ? Truck : Package,
-          label: item.name,
-          description: item.description ?? (isSvc ? "Layanan" : "Produk"),
-          kind: isSvc ? ("Layanan" as const) : ("Produk" as const),
-          href: `/marketplace?type=${isSvc ? "service" : "product"}${cat ? `&category=${cat}` : ""}&q=${encodeURIComponent(item.name)}`,
-          terms: [],
-        };
-      });
-
-    // Supplement with static suggestions (deduplicate by label)
-    const liveLabels = new Set(liveResults.map((r) => r.label.toLowerCase()));
-    const staticResults = AUTOCOMPLETE_MAP.filter(
-      (e) =>
-        !liveLabels.has(e.label.toLowerCase()) &&
-        (e.label.toLowerCase().includes(q) ||
-          e.description.toLowerCase().includes(q) ||
-          e.terms.some((t) => t.includes(q) || q.includes(t))),
-    ).slice(0, 3);
-
-    return [...liveResults, ...staticResults].slice(0, 8);
-  })();
+  const autocompleteSuggestions = getAutocompleteSuggestions(
+    searchQuery.trim().toLowerCase(),
+    liveItems,
+  );
 
   const isServicesActive =
     location.startsWith("/jasa") ||
     location.startsWith("/services") ||
     location === "/freight-forwarding" ||
     location === "/pabean" ||
+    location === "/trucking" ||
     (location.startsWith("/marketplace") && location.includes("type=service"));
 
   const brandName = company?.name
@@ -416,136 +457,161 @@ export function Navbar() {
           {/* ── Desktop Nav — center ─────────────────────── */}
           <div className="hidden lg:flex items-center gap-0.5 flex-1">
 
-            <Link href="/" className={navItemCls(location === "/")}>
-              {t("nav.home")}
-            </Link>
+            {isAuth ? (
+              /* ── Portal Nav (logged-in customer) ──────── */
+              <>
+                <Link href="/dashboard" className={navItemCls(location === "/dashboard")}>
+                  Dashboard
+                </Link>
+                <Link href="/jasa" className={navItemCls(
+                  location.startsWith("/jasa") || location === "/book" ||
+                  location === "/air-freight-booking" || location === "/ocean-freight-booking" ||
+                  location === "/trucking" || location === "/freight-forwarding" || location === "/pabean"
+                )}>
+                  Buat Permintaan
+                </Link>
+                <Link href="/orders" className={navItemCls(location === "/orders")}>
+                  Shipment Saya
+                </Link>
+                <Link href="/portal-dokumen" className={navItemCls(location === "/portal-dokumen")}>
+                  Dokumen
+                </Link>
+                <Link href="/portal-invoice" className={navItemCls(location === "/portal-invoice")}>
+                  Invoice &amp; Pembayaran
+                </Link>
+                <Link href="/company-profile" className={navItemCls(
+                  location === "/company-profile" || location === "/account-security"
+                )}>
+                  Profil Perusahaan
+                </Link>
+              </>
+            ) : (
+              /* ── Public Nav (not logged in) ────────────── */
+              <>
+                <Link href="/" className={navItemCls(location === "/")}>
+                  {t("nav.home")}
+                </Link>
 
-            <Link href="/marketplace" className={navItemCls(location.startsWith("/marketplace"))}>
-              Marketplace
-            </Link>
+                <Link href="/marketplace" className={navItemCls(location.startsWith("/marketplace"))}>
+                  Marketplace
+                </Link>
 
-            {/* Services dropdown */}
-            <div className="relative" ref={servicesRef}>
-              <button
-                className={navItemCls(isServicesActive)}
-                onClick={() => setServicesOpen((v) => !v)}
-                onMouseEnter={() => setServicesOpen(true)}
-                aria-expanded={servicesOpen}
-              >
-                {t("nav.services")}
-                <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-200 ${servicesOpen ? "rotate-180" : ""}`} />
-              </button>
-
-              {servicesOpen && (
-                <div
-                  className="absolute top-full left-1/2 -translate-x-1/2 mt-2 z-50"
-                  style={{ width: "680px" }}
-                  onMouseLeave={() => setServicesOpen(false)}
-                >
-                  <div
-                    className="rounded-2xl overflow-hidden"
-                    style={{
-                      background: "rgba(255,255,255,0.99)",
-                      border: "1px solid #E2E8F0",
-                      boxShadow: "0 20px 60px rgba(15,23,42,0.12)",
-                    }}
+                {/* Services dropdown */}
+                <div className="relative" ref={servicesRef}>
+                  <button
+                    className={navItemCls(isServicesActive)}
+                    onClick={() => setServicesOpen((v) => !v)}
+                    onMouseEnter={() => setServicesOpen(true)}
+                    aria-expanded={servicesOpen}
                   >
-                    <div className="px-5 py-3 border-b border-slate-100">
-                      <p className="text-[11px] font-semibold text-sky-600 uppercase tracking-widest">
-                        {t("servicesMenu.tagline")}
-                      </p>
+                    {t("nav.services")}
+                    <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-200 ${servicesOpen ? "rotate-180" : ""}`} />
+                  </button>
+
+                  {servicesOpen && (
+                    <div
+                      className="absolute top-full left-1/2 -translate-x-1/2 mt-2 z-50"
+                      style={{ width: "680px" }}
+                      onMouseLeave={() => setServicesOpen(false)}
+                    >
+                      <div
+                        className="rounded-2xl overflow-hidden"
+                        style={{
+                          background: "rgba(255,255,255,0.99)",
+                          border: "1px solid #E2E8F0",
+                          boxShadow: "0 20px 60px rgba(15,23,42,0.12)",
+                        }}
+                      >
+                        <div className="px-5 py-3 border-b border-slate-100">
+                          <p className="text-[11px] font-semibold text-sky-600 uppercase tracking-widest">
+                            {t("servicesMenu.tagline")}
+                          </p>
+                        </div>
+                        <div className="grid grid-cols-3 gap-0.5 p-3">
+                          {SERVICES_ITEMS.map(({ icon: Icon, titleKey, descKey, href }) => (
+                            <Link key={titleKey} href={href} onClick={() => setServicesOpen(false)}>
+                              <div className="flex items-start gap-3 p-3 rounded-xl hover:bg-sky-50 transition-colors duration-150 group cursor-pointer">
+                                <div className="w-8 h-8 rounded-lg bg-sky-50 flex items-center justify-center shrink-0 group-hover:bg-sky-100 transition-colors">
+                                  <Icon className="h-4 w-4 text-sky-600" />
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="text-[13px] font-semibold text-slate-800 group-hover:text-sky-700 transition-colors leading-tight">
+                                    {t(titleKey)}
+                                  </p>
+                                  <p className="text-[11px] text-slate-500 leading-relaxed mt-0.5 line-clamp-2">
+                                    {t(descKey)}
+                                  </p>
+                                </div>
+                              </div>
+                            </Link>
+                          ))}
+                        </div>
+                        <div className="px-3 pb-3">
+                          <Link href="/services" onClick={() => setServicesOpen(false)}>
+                            <div className="flex items-center justify-between px-4 py-2.5 rounded-xl bg-sky-600 text-white hover:bg-sky-700 transition-all cursor-pointer">
+                              <span className="text-[13px] font-semibold">{t("servicesMenu.viewAll")}</span>
+                              <ChevronRight className="h-4 w-4" />
+                            </div>
+                          </Link>
+                        </div>
+                      </div>
                     </div>
-                    <div className="grid grid-cols-3 gap-0.5 p-3">
-                      {SERVICES_ITEMS.map(({ icon: Icon, titleKey, descKey, href }) => (
-                        <Link key={titleKey} href={href} onClick={() => setServicesOpen(false)}>
-                          <div className="flex items-start gap-3 p-3 rounded-xl hover:bg-sky-50 transition-colors duration-150 group cursor-pointer">
-                            <div className="w-8 h-8 rounded-lg bg-sky-50 flex items-center justify-center shrink-0 group-hover:bg-sky-100 transition-colors">
-                              <Icon className="h-4 w-4 text-sky-600" />
-                            </div>
-                            <div className="min-w-0">
-                              <p className="text-[13px] font-semibold text-slate-800 group-hover:text-sky-700 transition-colors leading-tight">
-                                {t(titleKey)}
-                              </p>
-                              <p className="text-[11px] text-slate-500 leading-relaxed mt-0.5 line-clamp-2">
-                                {t(descKey)}
-                              </p>
-                            </div>
+                  )}
+                </div>
+
+                {/* More dropdown */}
+                <div className="relative" ref={moreRef}>
+                  <button
+                    className={navItemCls(location === "/calculator")}
+                    onClick={() => setMoreOpen((v) => !v)}
+                    onMouseEnter={() => setMoreOpen(true)}
+                    aria-expanded={moreOpen}
+                  >
+                    {t("nav.more")}
+                    <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-200 ${moreOpen ? "rotate-180" : ""}`} />
+                  </button>
+
+                  {moreOpen && (
+                    <div
+                      className="absolute top-full left-0 mt-2 z-50 w-52"
+                      onMouseLeave={() => setMoreOpen(false)}
+                    >
+                      <div
+                        className="rounded-2xl overflow-hidden py-1.5"
+                        style={{
+                          background: "rgba(255,255,255,0.99)",
+                          border: "1px solid #E2E8F0",
+                          boxShadow: "0 16px 40px rgba(15,23,42,0.10)",
+                        }}
+                      >
+                        <Link href="/calculator" onClick={() => setMoreOpen(false)}>
+                          <div className={`flex items-center gap-3 px-4 py-2.5 text-[13.5px] font-medium cursor-pointer transition-colors ${
+                            location === "/calculator" ? "text-sky-700 bg-sky-50" : "text-slate-700 hover:bg-slate-50 hover:text-sky-700"
+                          }`}>
+                            <Calculator className="h-4 w-4 text-slate-400 shrink-0" />
+                            {t("nav.calculator")}
                           </div>
                         </Link>
-                      ))}
-                    </div>
-                    <div className="px-3 pb-3">
-                      <Link href="/services" onClick={() => setServicesOpen(false)}>
-                        <div className="flex items-center justify-between px-4 py-2.5 rounded-xl bg-sky-600 text-white hover:bg-sky-700 transition-all cursor-pointer">
-                          <span className="text-[13px] font-semibold">{t("servicesMenu.viewAll")}</span>
-                          <ChevronRight className="h-4 w-4" />
-                        </div>
-                      </Link>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* More dropdown */}
-            <div className="relative" ref={moreRef}>
-              <button
-                className={navItemCls(location === "/track" || location === "/calculator")}
-                onClick={() => setMoreOpen((v) => !v)}
-                onMouseEnter={() => setMoreOpen(true)}
-                aria-expanded={moreOpen}
-              >
-                {t("nav.more")}
-                <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-200 ${moreOpen ? "rotate-180" : ""}`} />
-              </button>
-
-              {moreOpen && (
-                <div
-                  className="absolute top-full left-0 mt-2 z-50 w-52"
-                  onMouseLeave={() => setMoreOpen(false)}
-                >
-                  <div
-                    className="rounded-2xl overflow-hidden py-1.5"
-                    style={{
-                      background: "rgba(255,255,255,0.99)",
-                      border: "1px solid #E2E8F0",
-                      boxShadow: "0 16px 40px rgba(15,23,42,0.10)",
-                    }}
-                  >
-                    <Link href="/calculator" onClick={() => setMoreOpen(false)}>
-                      <div className={`flex items-center gap-3 px-4 py-2.5 text-[13.5px] font-medium cursor-pointer transition-colors ${
-                        location === "/calculator" ? "text-sky-700 bg-sky-50" : "text-slate-700 hover:bg-slate-50 hover:text-sky-700"
-                      }`}>
-                        <Calculator className="h-4 w-4 text-slate-400 shrink-0" />
-                        {t("nav.calculator")}
+                        <button
+                          onClick={() => { setMoreOpen(false); scrollToSection("tentang"); }}
+                          className="w-full flex items-center gap-3 px-4 py-2.5 text-[13.5px] font-medium text-slate-700 hover:bg-slate-50 hover:text-sky-700 transition-colors"
+                        >
+                          <Info className="h-4 w-4 text-slate-400 shrink-0" />
+                          {t("nav.about")}
+                        </button>
+                        <button
+                          onClick={() => { setMoreOpen(false); scrollToSection("kontak"); }}
+                          className="w-full flex items-center gap-3 px-4 py-2.5 text-[13.5px] font-medium text-slate-700 hover:bg-slate-50 hover:text-sky-700 transition-colors"
+                        >
+                          <Phone className="h-4 w-4 text-slate-400 shrink-0" />
+                          {t("nav.contact")}
+                        </button>
                       </div>
-                    </Link>
-                    <Link href="/track" onClick={() => setMoreOpen(false)}>
-                      <div className={`flex items-center gap-3 px-4 py-2.5 text-[13.5px] font-medium cursor-pointer transition-colors ${
-                        location === "/track" ? "text-sky-700 bg-sky-50" : "text-slate-700 hover:bg-slate-50 hover:text-sky-700"
-                      }`}>
-                        <MapPin className="h-4 w-4 text-slate-400 shrink-0" />
-                        {t("nav.trackOrder")}
-                      </div>
-                    </Link>
-                    <button
-                      onClick={() => { setMoreOpen(false); scrollToSection("tentang"); }}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 text-[13.5px] font-medium text-slate-700 hover:bg-slate-50 hover:text-sky-700 transition-colors"
-                    >
-                      <Info className="h-4 w-4 text-slate-400 shrink-0" />
-                      {t("nav.about")}
-                    </button>
-                    <button
-                      onClick={() => { setMoreOpen(false); scrollToSection("kontak"); }}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 text-[13.5px] font-medium text-slate-700 hover:bg-slate-50 hover:text-sky-700 transition-colors"
-                    >
-                      <Phone className="h-4 w-4 text-slate-400 shrink-0" />
-                      {t("nav.contact")}
-                    </button>
-                  </div>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
+              </>
+            )}
           </div>
 
           {/* ── Right Actions ──────────────────────────────── */}
@@ -683,20 +749,6 @@ export function Navbar() {
                     </button>
                   </Link>
                 )}
-                <Link href="/dashboard">
-                  <button className="flex items-center gap-1.5 px-3 py-2 text-[13.5px] font-medium rounded-xl text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-all duration-200 whitespace-nowrap">
-                    <LayoutDashboard className="h-3.5 w-3.5" />
-                    {t("nav.dashboard")}
-                  </button>
-                </Link>
-                <Link href="/orders">
-                  <button className={`flex items-center gap-1.5 px-3 py-2 text-[13.5px] font-medium rounded-xl transition-all duration-200 whitespace-nowrap ${
-                    location === "/orders" ? "bg-sky-50 text-sky-700" : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                  }`}>
-                    <ClipboardList className="h-3.5 w-3.5" />
-                    Pesanan Saya
-                  </button>
-                </Link>
                 <button
                   onClick={handleLogout}
                   className="flex items-center gap-1.5 px-3 py-2 text-[13.5px] font-medium rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-800 transition-all duration-200 whitespace-nowrap"
@@ -788,188 +840,245 @@ export function Navbar() {
               </button>
             </form>
             {autocompleteSuggestions.length > 0 && (
-              <div className="mt-2 rounded-xl border border-slate-100 overflow-hidden bg-white">
-                {autocompleteSuggestions.map((s) => (
-                  <button
-                    key={s.href}
-                    type="button"
-                    onClick={() => handleSuggestionClick(s.href)}
-                    className="w-full flex items-center gap-2.5 px-4 py-2.5 text-[13px] text-slate-700 hover:bg-sky-50 hover:text-sky-700 transition-colors text-left border-b border-slate-50 last:border-0"
-                  >
-                    <Search className="h-3 w-3 text-slate-400 shrink-0" />
-                    {s.label}
-                  </button>
-                ))}
+              <div className="mt-2 rounded-2xl border border-slate-100 overflow-hidden bg-white shadow-lg">
+                <div className="px-3 py-2 border-b border-slate-50">
+                  <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">
+                    {searchQuery.trim().length >= 2 ? "Saran pencarian" : "Populer"}
+                  </span>
+                </div>
+                {autocompleteSuggestions.map((s) => {
+                  const Icon = s.icon;
+                  const isService = s.kind === "Layanan";
+                  return (
+                    <button
+                      key={s.href}
+                      type="button"
+                      onClick={() => handleSuggestionClick(s.href)}
+                      className="w-full flex items-center gap-3 px-3 py-3 hover:bg-sky-50 transition-colors text-left border-b border-slate-50 last:border-0 active:bg-sky-100"
+                    >
+                      <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${isService ? "bg-sky-50" : "bg-emerald-50"}`}>
+                        <Icon className={`h-4 w-4 ${isService ? "text-sky-600" : "text-emerald-600"}`} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[13px] font-semibold text-slate-800 truncate">{s.label}</span>
+                          <span className={`shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded-full ${isService ? "bg-sky-100 text-sky-600" : "bg-emerald-100 text-emerald-600"}`}>
+                            {s.kind}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 truncate mt-0.5">{s.description}</p>
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>
         )}
       </div>
 
-      {/* ── Mobile Drawer ──────────────────────────────────── */}
-      {isOpen && (
-        <div
-          className="lg:hidden max-h-[85vh] overflow-y-auto"
-          style={{
-            background: "rgba(255,255,255,0.99)",
-            borderTop: "1px solid #F1F5F9",
-          }}
-        >
-          <div className="max-w-[1440px] mx-auto px-5 pb-6 pt-3 space-y-0.5">
+      {/* ── Mobile Slide Drawer (portal) ───────────────────────── */}
+      {/* Backdrop */}
+      <div
+        className={`lg:hidden fixed inset-0 z-40 transition-opacity duration-300 ${isOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}
+        style={{ background: "rgba(15,23,42,0.55)", backdropFilter: "blur(2px)" }}
+        onClick={() => setIsOpen(false)}
+        aria-hidden="true"
+      />
 
-            <Link href="/" onClick={() => setIsOpen(false)}>
-              <div className={`flex items-center px-3 py-2.5 rounded-xl text-[15px] font-medium cursor-pointer ${
-                location === "/" ? "bg-sky-50 text-sky-700" : "text-slate-600 hover:bg-slate-50"
-              }`}>
-                {t("nav.home")}
+      {/* Slide panel — right side */}
+      <div
+        className={`lg:hidden fixed top-0 right-0 h-full z-50 flex flex-col transition-transform duration-300 ease-out ${isOpen ? "translate-x-0" : "translate-x-full"}`}
+        style={{ width: "min(85vw, 340px)", background: "#fff", boxShadow: "-8px 0 40px rgba(15,23,42,0.16)" }}
+      >
+        {/* Panel header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+          <span className="text-[15px] font-bold text-slate-800">Menu</span>
+          <button
+            onClick={() => setIsOpen(false)}
+            className="w-9 h-9 flex items-center justify-center rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-all"
+            aria-label="Tutup menu"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Scrollable content */}
+        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-0.5">
+
+          {/* Quick actions — most used on mobile */}
+          <div className="grid grid-cols-2 gap-2 mb-4">
+            <Link href="/track" onClick={() => setIsOpen(false)}>
+              <div className="flex flex-col items-center justify-center gap-1.5 py-3 px-2 rounded-2xl bg-sky-50 border border-sky-100 text-sky-700 text-center cursor-pointer hover:bg-sky-100 transition-colors active:scale-95">
+                <MapPin className="h-5 w-5" />
+                <span className="text-[12px] font-semibold leading-tight">Lacak Pesanan</span>
               </div>
             </Link>
-
-            <Link href="/marketplace" onClick={() => setIsOpen(false)}>
-              <div className={`flex items-center px-3 py-2.5 rounded-xl text-[15px] font-medium cursor-pointer ${
-                location.startsWith("/marketplace") ? "bg-sky-50 text-sky-700" : "text-slate-600 hover:bg-slate-50"
-              }`}>
-                Marketplace
+            <Link href="/calculator" onClick={() => setIsOpen(false)}>
+              <div className="flex flex-col items-center justify-center gap-1.5 py-3 px-2 rounded-2xl bg-emerald-50 border border-emerald-100 text-emerald-700 text-center cursor-pointer hover:bg-emerald-100 transition-colors active:scale-95">
+                <Calculator className="h-5 w-5" />
+                <span className="text-[12px] font-semibold leading-tight">Hitung Biaya</span>
               </div>
             </Link>
+          </div>
 
-            {/* Services Accordion */}
-            <div>
-              <button
-                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-[15px] font-medium transition-colors ${
-                  isServicesActive ? "bg-sky-50 text-sky-700" : "text-slate-600 hover:bg-slate-50"
-                }`}
-                onClick={() => setMobileServicesOpen((v) => !v)}
-              >
-                {t("nav.services")}
-                <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${mobileServicesOpen ? "rotate-180" : ""}`} />
-              </button>
+          {/* Nav links */}
+          {isAuth ? (
+            /* ── Portal Nav mobile (logged-in) ───────── */
+            <>
+              {[
+                { href: "/dashboard",      icon: LayoutDashboard, label: "Dashboard" },
+                { href: "/jasa",           icon: Plus,            label: "Buat Permintaan" },
+                { href: "/orders",         icon: ClipboardList,   label: "Shipment Saya" },
+                { href: "/portal-dokumen", icon: FolderOpen,      label: "Dokumen" },
+                { href: "/portal-invoice", icon: Receipt,         label: "Invoice & Pembayaran" },
+                { href: "/company-profile",icon: Building2,       label: "Profil Perusahaan" },
+              ].map(({ href, icon: Icon, label }) => (
+                <Link key={href} href={href} onClick={() => setIsOpen(false)}>
+                  <div className={`flex items-center gap-3 px-3 py-3 rounded-xl text-[15px] font-medium cursor-pointer transition-colors ${
+                    location === href || (href === "/jasa" && (location.startsWith("/jasa") || location === "/book"))
+                      ? "bg-sky-50 text-sky-700"
+                      : "text-slate-700 hover:bg-slate-50"
+                  }`}>
+                    <Icon className="h-4 w-4 shrink-0" />
+                    {label}
+                  </div>
+                </Link>
+              ))}
+            </>
+          ) : (
+            /* ── Public Nav mobile (not logged in) ────── */
+            <>
+              <Link href="/" onClick={() => setIsOpen(false)}>
+                <div className={`flex items-center gap-3 px-3 py-3 rounded-xl text-[15px] font-medium cursor-pointer transition-colors ${
+                  location === "/" ? "bg-sky-50 text-sky-700" : "text-slate-700 hover:bg-slate-50"
+                }`}>
+                  {t("nav.home")}
+                </div>
+              </Link>
 
-              {mobileServicesOpen && (
-                <div className="mt-1 ml-3 pl-3 border-l-2 border-sky-100 space-y-0.5">
-                  {SERVICES_ITEMS.map(({ icon: Icon, titleKey, href }) => (
-                    <Link key={titleKey} href={href} onClick={() => setIsOpen(false)}>
-                      <div className="flex items-center gap-3 px-3 py-2 rounded-xl text-[14px] text-slate-600 hover:bg-slate-50 cursor-pointer">
-                        <Icon className="h-4 w-4 text-sky-500 shrink-0" />
-                        {t(titleKey)}
+              <Link href="/marketplace" onClick={() => setIsOpen(false)}>
+                <div className={`flex items-center gap-3 px-3 py-3 rounded-xl text-[15px] font-medium cursor-pointer transition-colors ${
+                  location.startsWith("/marketplace") ? "bg-sky-50 text-sky-700" : "text-slate-700 hover:bg-slate-50"
+                }`}>
+                  Marketplace
+                </div>
+              </Link>
+
+              {/* Services Accordion */}
+              <div>
+                <button
+                  className={`w-full flex items-center justify-between px-3 py-3 rounded-xl text-[15px] font-medium transition-colors ${
+                    isServicesActive ? "bg-sky-50 text-sky-700" : "text-slate-700 hover:bg-slate-50"
+                  }`}
+                  onClick={() => setMobileServicesOpen((v) => !v)}
+                >
+                  {t("nav.services")}
+                  <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${mobileServicesOpen ? "rotate-180" : ""}`} />
+                </button>
+                {mobileServicesOpen && (
+                  <div className="mt-1 ml-3 pl-3 border-l-2 border-sky-100 space-y-0.5">
+                    {SERVICES_ITEMS.map(({ icon: Icon, titleKey, href }) => (
+                      <Link key={titleKey} href={href} onClick={() => setIsOpen(false)}>
+                        <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[14px] text-slate-600 hover:bg-slate-50 cursor-pointer transition-colors">
+                          <Icon className="h-4 w-4 text-sky-500 shrink-0" />
+                          {t(titleKey)}
+                        </div>
+                      </Link>
+                    ))}
+                    <Link href="/services" onClick={() => setIsOpen(false)}>
+                      <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-[14px] font-semibold text-sky-600 hover:bg-sky-50 cursor-pointer">
+                        <ChevronRight className="h-3.5 w-3.5" />
+                        {t("servicesMenu.viewAll")}
                       </div>
                     </Link>
-                  ))}
-                  <Link href="/services" onClick={() => setIsOpen(false)}>
-                    <div className="flex items-center gap-2 px-3 py-2 rounded-xl text-[14px] font-semibold text-sky-600 hover:bg-sky-50 cursor-pointer">
-                      <ChevronRight className="h-3.5 w-3.5" />
-                      {t("servicesMenu.viewAll")}
-                    </div>
-                  </Link>
-                </div>
-              )}
-            </div>
+                  </div>
+                )}
+              </div>
 
-            {/* More Accordion */}
-            <div>
-              <button
-                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-[15px] font-medium transition-colors ${
-                  location === "/track" || location === "/calculator" ? "bg-sky-50 text-sky-700" : "text-slate-600 hover:bg-slate-50"
-                }`}
-                onClick={() => setMobileMoreOpen((v) => !v)}
-              >
-                {t("nav.more")}
-                <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${mobileMoreOpen ? "rotate-180" : ""}`} />
-              </button>
-
-              {mobileMoreOpen && (
-                <div className="mt-1 ml-3 pl-3 border-l-2 border-slate-100 space-y-0.5">
-                  <Link href="/calculator" onClick={() => setIsOpen(false)}>
-                    <div className={`flex items-center gap-3 px-3 py-2 rounded-xl text-[14px] cursor-pointer ${
-                      location === "/calculator" ? "text-sky-700 font-semibold" : "text-slate-600 hover:bg-slate-50"
-                    }`}>
-                      <Calculator className="h-4 w-4 text-slate-400 shrink-0" />
-                      {t("nav.calculator")}
-                    </div>
-                  </Link>
-                  <Link href="/track" onClick={() => setIsOpen(false)}>
-                    <div className={`flex items-center gap-3 px-3 py-2 rounded-xl text-[14px] cursor-pointer ${
-                      location === "/track" ? "text-sky-700 font-semibold" : "text-slate-600 hover:bg-slate-50"
-                    }`}>
-                      <MapPin className="h-4 w-4 text-slate-400 shrink-0" />
-                      {t("nav.trackOrder")}
-                    </div>
-                  </Link>
-                  <button
-                    onClick={() => scrollToSection("tentang")}
-                    className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-[14px] text-slate-600 hover:bg-slate-50 cursor-pointer"
-                  >
-                    <Info className="h-4 w-4 text-slate-400 shrink-0" />
-                    {t("nav.about")}
-                  </button>
-                  <button
-                    onClick={() => scrollToSection("kontak")}
-                    className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-[14px] text-slate-600 hover:bg-slate-50 cursor-pointer"
-                  >
-                    <Phone className="h-4 w-4 text-slate-400 shrink-0" />
-                    {t("nav.contact")}
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Language */}
-            <div className="pt-2 border-t border-slate-100">
-              <LanguageSelector />
-            </div>
-
-            {/* Auth */}
-            <div className="pt-2 border-t border-slate-100">
-              {isAuth ? (
-                <div className="space-y-1.5">
-                  {isAdmin && (
-                    <Link href="/admin" onClick={() => setIsOpen(false)}>
-                      <Button variant="outline" className="w-full justify-start gap-2 text-amber-600 border-amber-200 rounded-xl">
-                        <Shield className="h-4 w-4" />
-                        {t("nav.admin")}
-                      </Button>
+              {/* More Accordion */}
+              <div>
+                <button
+                  className={`w-full flex items-center justify-between px-3 py-3 rounded-xl text-[15px] font-medium transition-colors ${
+                    location === "/calculator" ? "bg-sky-50 text-sky-700" : "text-slate-700 hover:bg-slate-50"
+                  }`}
+                  onClick={() => setMobileMoreOpen((v) => !v)}
+                >
+                  {t("nav.more")}
+                  <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${mobileMoreOpen ? "rotate-180" : ""}`} />
+                </button>
+                {mobileMoreOpen && (
+                  <div className="mt-1 ml-3 pl-3 border-l-2 border-slate-100 space-y-0.5">
+                    <Link href="/calculator" onClick={() => setIsOpen(false)}>
+                      <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[14px] text-slate-600 hover:bg-slate-50 cursor-pointer transition-colors">
+                        <Calculator className="h-4 w-4 text-slate-400 shrink-0" />
+                        {t("nav.calculator")}
+                      </div>
                     </Link>
-                  )}
-                  <Link href="/dashboard" onClick={() => setIsOpen(false)}>
-                    <Button variant="outline" className="w-full justify-start gap-2 rounded-xl">
-                      <LayoutDashboard className="h-4 w-4" />
-                      {t("nav.dashboard")}
-                    </Button>
-                  </Link>
-                  <Link href="/orders" onClick={() => setIsOpen(false)}>
-                    <Button variant="outline" className="w-full justify-start gap-2 rounded-xl">
-                      <ClipboardList className="h-4 w-4" />
-                      Pesanan Saya
-                    </Button>
-                  </Link>
-                  <Button
-                    variant="ghost"
-                    className="w-full justify-start gap-2 rounded-xl"
-                    onClick={() => { handleLogout(); setIsOpen(false); }}
-                  >
-                    <LogOut className="h-4 w-4" />
-                    {t("nav.logout")}
-                  </Button>
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-2">
-                  <Link href="/login" onClick={() => setIsOpen(false)}>
-                    <button className="w-full py-2.5 text-sm font-medium text-slate-600 rounded-xl border border-slate-200 hover:bg-slate-50 transition-all">
-                      {t("nav.login")}
+                    <button
+                      onClick={() => scrollToSection("tentang")}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-[14px] text-slate-600 hover:bg-slate-50 cursor-pointer transition-colors"
+                    >
+                      <Info className="h-4 w-4 text-slate-400 shrink-0" />
+                      {t("nav.about")}
                     </button>
-                  </Link>
-                  <Link href="/register" onClick={() => setIsOpen(false)}>
-                    <button className="w-full py-2.5 text-sm font-semibold rounded-xl text-white transition-all"
-                      style={{ background: "linear-gradient(135deg,#0ea5e9,#0284c7)" }}>
-                      {t("nav.register")}
+                    <button
+                      onClick={() => scrollToSection("kontak")}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-[14px] text-slate-600 hover:bg-slate-50 cursor-pointer transition-colors"
+                    >
+                      <Phone className="h-4 w-4 text-slate-400 shrink-0" />
+                      {t("nav.contact")}
                     </button>
-                  </Link>
-                </div>
-              )}
-            </div>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+
+          {/* Language */}
+          <div className="pt-3 border-t border-slate-100">
+            <LanguageSelector />
           </div>
         </div>
-      )}
+
+        {/* Auth — pinned at bottom */}
+        <div className="px-4 py-4 border-t border-slate-100 bg-slate-50/80">
+          {isAuth ? (
+            <div className="space-y-2">
+              {isAdmin && (
+                <Link href="/admin" onClick={() => setIsOpen(false)}>
+                  <Button variant="outline" className="w-full justify-start gap-2 h-11 text-amber-600 border-amber-200 rounded-xl">
+                    <Shield className="h-4 w-4" /> {t("nav.admin")}
+                  </Button>
+                </Link>
+              )}
+              <Button
+                variant="ghost"
+                className="w-full justify-start gap-2 h-11 rounded-xl text-red-500 hover:text-red-700 hover:bg-red-50"
+                onClick={() => { handleLogout(); setIsOpen(false); }}
+              >
+                <LogOut className="h-4 w-4" /> {t("nav.logout")}
+              </Button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-2.5">
+              <Link href="/login" onClick={() => setIsOpen(false)}>
+                <button className="w-full h-11 text-sm font-semibold text-slate-700 rounded-xl border border-slate-200 hover:bg-slate-100 transition-all active:scale-95">
+                  {t("nav.login")}
+                </button>
+              </Link>
+              <Link href="/register" onClick={() => setIsOpen(false)}>
+                <button
+                  className="w-full h-11 text-sm font-bold rounded-xl text-white transition-all active:scale-95"
+                  style={{ background: "linear-gradient(135deg,#0ea5e9,#0284c7)", boxShadow: "0 2px 12px rgba(14,165,233,0.35)" }}
+                >
+                  {t("nav.register")}
+                </button>
+              </Link>
+            </div>
+          )}
+        </div>
+      </div>
     </nav>
   );
 }

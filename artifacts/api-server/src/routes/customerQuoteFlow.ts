@@ -44,6 +44,7 @@ db.execute(sql.raw(`
   ALTER TABLE customer_quote_links ADD COLUMN IF NOT EXISTS template_id TEXT;
   ALTER TABLE customer_quote_links ADD COLUMN IF NOT EXISTS template_version TEXT;
   ALTER TABLE customer_quote_links ADD COLUMN IF NOT EXISTS template_snapshot JSONB;
+  ALTER TABLE customer_quote_links ADD COLUMN IF NOT EXISTS price_items JSONB;
 `)).catch((e: unknown) => logger.warn({ e }, "customer_quote_links migration warn"));
 
 // POST /api/logistic/rfq/:rfqId/send-customer-quote
@@ -54,10 +55,11 @@ customerQuoteAdminRouter.post("/rfq/:rfqId/send-customer-quote", async (req: Req
 
   const {
     etaFinal, termsConditions, quoteNotes, finalCustomerPrice,
-    validInDays,
+    validInDays, priceItems,
   } = req.body as {
     etaFinal?: string; termsConditions?: string; quoteNotes?: string;
     finalCustomerPrice?: number; validInDays?: number;
+    priceItems?: Array<{ name: string; qty?: number | null; unit?: string | null; unitPrice?: number | null; subtotal: number }>;
   };
 
   try {
@@ -158,6 +160,14 @@ customerQuoteAdminRouter.post("/rfq/:rfqId/send-customer-quote", async (req: Req
       templateVersion: rfqTemplateVersion,
       templateSnapshot: templateSnapshot ?? undefined,
     } as any).returning();
+
+    // Save per-item price breakdown if provided (Step 12/13)
+    if (Array.isArray(priceItems) && priceItems.length > 0 && link?.id) {
+      await db.execute(sql`
+        UPDATE customer_quote_links SET price_items = ${JSON.stringify(priceItems)}::jsonb
+        WHERE id = ${link.id}
+      `).catch(() => {});
+    }
 
     // Update logistic_order with new status + columns (raw SQL for added columns not in Drizzle schema)
     await db.execute(sql`
@@ -624,23 +634,27 @@ customerQuotePublicRouter.get("/:token", async (req: Request, res: Response) => 
       displayTotal = finalCustomerPrice + displayTax;
     }
 
-    // Bangun priceItems: gunakan harga catalog (productPrice dari inputData, sebelum PPN)
-    const priceItems = orderItems.map((i) => {
-      const qty = extractQty(i.inputData);
-      const unitPrice = extractUnitPrice(i.inputData); // harga catalog (sebelum PPN)
-      const dbSubtotal = i.subtotal ? Number(i.subtotal) : 0;
-      const subtotal = unitPrice != null && qty != null
-        ? unitPrice * qty
-        : dbSubtotal;
-      return {
-        name: i.serviceName,
-        category: i.category,
-        subtotal,
-        unitPrice,
-        qty,
-        unit: extractUnit(i.inputData),
-      };
-    });
+    // Bangun priceItems: gunakan stored price_items jika ada (dari Step 12), otherwise computed
+    const storedPriceItems = (link as any).price_items ?? null;
+    const priceItems: Array<{ name: string; category?: string; subtotal: number; unitPrice: number | null; qty: number | null; unit: string | null }> =
+      Array.isArray(storedPriceItems) && storedPriceItems.length > 0
+        ? storedPriceItems
+        : orderItems.map((i) => {
+            const qty = extractQty(i.inputData);
+            const unitPrice = extractUnitPrice(i.inputData); // harga catalog (sebelum PPN)
+            const dbSubtotal = i.subtotal ? Number(i.subtotal) : 0;
+            const subtotal = unitPrice != null && qty != null
+              ? unitPrice * qty
+              : dbSubtotal;
+            return {
+              name: i.serviceName,
+              category: i.category,
+              subtotal,
+              unitPrice,
+              qty,
+              unit: extractUnit(i.inputData),
+            };
+          });
 
     return res.json({
       token,

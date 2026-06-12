@@ -1127,6 +1127,65 @@ function SimilarItemsSection({ itemId, onNavigate }: { itemId: number; onNavigat
   );
 }
 
+// ── Same Province Section ─────────────────────────────────────────────────────
+function SameProvinceSection({
+  itemId,
+  province,
+  onNavigate,
+}: {
+  itemId: number;
+  province: string | null;
+  onNavigate: (id: number) => void;
+}) {
+  const { data: items = [], isLoading } = useQuery<CatalogItemSummary[]>({
+    queryKey: ["marketplace-same-province", itemId],
+    queryFn: () =>
+      fetch(`/api/portal/marketplace/${itemId}/same-province`)
+        .then((r) => r.json())
+        .then((d) => (Array.isArray(d) ? d : [])),
+    staleTime: 120_000,
+    enabled: !!itemId && !!province,
+  });
+
+  if (!province) return null;
+  if (isLoading) {
+    return (
+      <div className="bg-white rounded-2xl border border-slate-200 p-5">
+        <div className="h-4 w-56 bg-slate-200 rounded animate-pulse mb-4" />
+        <div className="flex gap-3 overflow-hidden">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="w-[200px] h-52 bg-slate-100 rounded-2xl shrink-0 animate-pulse" />
+          ))}
+        </div>
+      </div>
+    );
+  }
+  if (items.length === 0) return null;
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+      <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between">
+        <div>
+          <p className="text-[15px] font-extrabold text-slate-800 flex items-center gap-2">
+            <MapPin className="h-4 w-4 text-emerald-500" />
+            Produk dari {province}
+          </p>
+          <p className="text-[12px] text-slate-400 mt-0.5">
+            {items.length} produk dari vendor lain di provinsi yang sama
+          </p>
+        </div>
+      </div>
+      <div className="px-5 py-4 overflow-x-auto">
+        <div className="flex gap-3 min-w-max">
+          {items.map((item) => (
+            <ItemMiniCard key={item.id} item={item} onNavigate={onNavigate} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Detail Page ──────────────────────────────────────────────────────────
 export default function MarketplaceDetailPage() {
   const [, params] = useRoute<{ id: string }>("/marketplace/:id");
@@ -1319,21 +1378,32 @@ export default function MarketplaceDetailPage() {
 
             {/* CTA Buttons */}
             <div className="space-y-2">
-              <Button
-                className="w-full h-11 rounded-xl font-semibold text-[14px] gap-2 bg-sky-600 hover:bg-sky-700"
-                onClick={() => setDialog("quote")}
-              >
-                <MessageSquare className="h-4 w-4" />
-                Inquiry / Request Quote
-              </Button>
-              <Button
-                variant="outline"
-                className="w-full h-11 rounded-xl font-semibold text-[14px] gap-2 border-slate-300 text-slate-700 hover:bg-slate-50"
-                onClick={() => setDialog("order")}
-              >
-                <ShoppingCart className="h-4 w-4" />
-                Order Sekarang
-              </Button>
+              {!item.id ? (
+                <Button
+                  className="w-full h-11 rounded-xl font-semibold text-[14px]"
+                  disabled
+                >
+                  Item belum siap dipesan
+                </Button>
+              ) : (
+                <>
+                  <Button
+                    className="w-full h-11 rounded-xl font-semibold text-[14px] gap-2 bg-sky-600 hover:bg-sky-700"
+                    onClick={() => setDialog("quote")}
+                  >
+                    <MessageSquare className="h-4 w-4" />
+                    {isProduct ? "Inquiry / Request Quote" : "Minta Penawaran"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="w-full h-11 rounded-xl font-semibold text-[14px] gap-2 border-slate-300 text-slate-700 hover:bg-slate-50"
+                    onClick={() => setDialog("order")}
+                  >
+                    <ShoppingCart className="h-4 w-4" />
+                    Order Sekarang
+                  </Button>
+                </>
+              )}
             </div>
 
             {/* Estimasi total */}
@@ -1369,9 +1439,31 @@ export default function MarketplaceDetailPage() {
               window.scrollTo({ top: 0, behavior: "smooth" });
             }}
           />
+          <SameProvinceSection
+            itemId={item.id}
+            province={
+              item.location?.includes(",")
+                ? item.location.split(",").pop()!.trim()
+                : item.location ?? null
+            }
+            onNavigate={(id) => {
+              setLocation(`/marketplace/${id}`);
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }}
+          />
         </div>
       </div>
 
+      {/* Related Items */}
+      <RelatedItems
+        currentId={item.id}
+        onNavigate={(id) => {
+          window.scrollTo({ top: 0, behavior: "smooth" });
+          setLocation(`/marketplace/${id}`);
+        }}
+      />
+
+      {/* Submit dialogs */}
       {/* Dialogs */}
       {dialog && (
         <SubmitDialog
@@ -1381,6 +1473,93 @@ export default function MarketplaceDetailPage() {
           onClose={() => setDialog(null)}
         />
       )}
+    </div>
+  );
+}
+
+// ── Related Items ─────────────────────────────────────────────────────────────
+type RelatedItemData = {
+  id: number;
+  name: string;
+  vendorName?: string | null;
+  templateKind?: string | null;
+  priceSell?: number | null;
+  unit?: string | null;
+  stockStatus?: string | null;
+  location?: string | null;
+  leadTime?: string | null;
+};
+
+function RelatedItemCard({ item, onNavigate }: { item: RelatedItemData; onNavigate: (id: number) => void }) {
+  const isProduct = item.templateKind === "product";
+  return (
+    <button
+      onClick={() => onNavigate(item.id)}
+      className="group text-left w-full bg-white border border-slate-200 rounded-xl p-4 hover:border-sky-300 hover:shadow-md transition-all duration-200 flex flex-col gap-2"
+    >
+      <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isProduct ? "bg-emerald-50" : "bg-sky-50"}`}>
+        {isProduct
+          ? <Package className={`h-4 w-4 ${isProduct ? "text-emerald-600" : "text-sky-600"}`} />
+          : <Truck className="h-4 w-4 text-sky-600" />}
+      </div>
+      <p className="text-[13px] font-semibold text-slate-800 leading-snug line-clamp-2 group-hover:text-sky-700 transition-colors">
+        {item.name}
+      </p>
+      {item.vendorName && (
+        <p className="text-[11px] text-slate-400 truncate">{item.vendorName}</p>
+      )}
+      {item.priceSell != null && (
+        <p className="text-[13px] font-bold text-sky-600">
+          {new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(item.priceSell)}
+          {item.unit ? <span className="text-[11px] font-normal text-slate-400"> /{item.unit}</span> : null}
+        </p>
+      )}
+      {item.leadTime && (
+        <div className="flex items-center gap-1 text-[11px] text-slate-400">
+          <Clock className="h-3 w-3 shrink-0" />
+          {item.leadTime}
+        </div>
+      )}
+    </button>
+  );
+}
+
+function RelatedItems({ currentId, onNavigate }: { currentId: number; onNavigate: (id: number) => void }) {
+  const { data, isLoading } = useQuery<RelatedItemData[]>({
+    queryKey: ["marketplace-related", currentId],
+    queryFn: async () => {
+      const res = await fetch(`/api/marketplace/products/${currentId}/related`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    staleTime: 120_000,
+  });
+
+  if (!isLoading && (!data || data.length === 0)) return null;
+
+  return (
+    <div className="bg-slate-50 border-t border-slate-200 mt-4 py-8">
+      <div className="max-w-6xl mx-auto px-4">
+        <h2 className="text-[16px] font-bold text-slate-800 mb-4">Item Terkait</h2>
+        {isLoading ? (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="bg-white rounded-xl p-4 border border-slate-200 animate-pulse space-y-3">
+                <div className="w-8 h-8 bg-slate-100 rounded-lg" />
+                <div className="h-3 bg-slate-100 rounded w-3/4" />
+                <div className="h-3 bg-slate-100 rounded w-1/2" />
+                <div className="h-4 bg-slate-100 rounded w-2/3" />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            {data!.map((r) => (
+              <RelatedItemCard key={r.id} item={r} onNavigate={onNavigate} />
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
