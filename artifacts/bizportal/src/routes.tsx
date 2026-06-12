@@ -105,6 +105,7 @@ import AccountingProfitLossPage from "@/pages/accounting/reports/profit-loss";
 import AccountingBalanceSheetPage from "@/pages/accounting/reports/balance-sheet";
 import AccountingFreightProfitabilityPage from "@/pages/accounting/reports/freight-profitability";
 import AccountingReconciliationPage from "@/pages/accounting/reconciliation";
+import BankReconciliationPage from "@/pages/accounting/bank-reconciliation";
 import AccountingGSheetPage from "@/pages/accounting/gsheet";
 import WhtReconciliationPage from "@/pages/accounting/wht-reconciliation";
 import TaxReportPage from "@/pages/accounting/tax-report";
@@ -220,6 +221,7 @@ import SportCenterCustomers from "@/pages/sport-center/customers";
 import SportCenterMembers from "@/pages/sport-center/members";
 import SportCenterPricingRules from "@/pages/sport-center/pricing-rules";
 import SportCenterPayments from "@/pages/sport-center/payments";
+import SportCenterCompanyInvoices from "@/pages/sport-center/company-invoices";
 import SportCenterReports from "@/pages/sport-center/reports";
 import SportCenterSettings from "@/pages/sport-center/settings";
 import SportCenterProfitability from "@/pages/sport-center/profitability";
@@ -228,6 +230,8 @@ import TenantList from "@/pages/tenant/tenants";
 import TenantUnits from "@/pages/tenant/units";
 import TenantBookings from "@/pages/tenant/bookings";
 import TenantPayments from "@/pages/tenant/payments";
+import TenantUnits from "@/pages/tenant/units";
+import TenantInvoices from "@/pages/tenant/invoices";
 import TenantInvoices from "@/pages/tenant/invoices";
 import AirFreightNewOrdersPage from "@/pages/air-freight/orders";
 import AirFreightRatesPage from "@/pages/air-freight/rates";
@@ -403,6 +407,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/accounting/settings" component={PR(AccountingSettingsPage)} />
       <Route path="/accounting/cost-centers" component={PR(CostCentersPage)} />
       <Route path="/accounting/reconciliation" component={PR(AccountingReconciliationPage)} />
+      <Route path="/accounting/bank-reconciliation" component={PR(BankReconciliationPage)} />
       <Route path="/accounting/wht-reconciliation" component={PR(WhtReconciliationPage)} />
       <Route path="/accounting/gsheet" component={PR(AccountingGSheetPage)} />
       <Route path="/accounting/tax-report" component={PR(TaxReportPage)} />
@@ -518,6 +523,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/sport-center/members" component={PR(SportCenterMembers)} />
       <Route path="/sport-center/pricing-rules" component={PR(SportCenterPricingRules)} />
       <Route path="/sport-center/payments" component={PR(SportCenterPayments)} />
+      <Route path="/sport-center/company-invoices" component={PR(SportCenterCompanyInvoices)} />
       <Route path="/sport-center/reports" component={PR(SportCenterReports)} />
       <Route path="/sport-center/profitability" component={PR(SportCenterProfitability)} />
       <Route path="/sport-center/settings" component={PR(SportCenterSettings)} />

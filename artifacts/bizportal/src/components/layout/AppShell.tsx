@@ -301,6 +301,43 @@ export function AppShell({ children, noPadding }: AppShellProps) {
       type: "group",
       titleKey: "Sport Center",
       basePath: "/sport-center",
+      icon: Trophy,
+      roles: ["admin", "owner", "manager"],
+      children: [
+        { titleKey: "Dashboard", href: "/sport-center/dashboard", icon: LayoutDashboard },
+        { titleKey: "Bookings", href: "/sport-center/bookings", icon: CalendarDays },
+        { titleKey: "Fasilitas", href: "/sport-center/facilities", icon: Building2 },
+        { titleKey: "Customers", href: "/sport-center/customers", icon: UserCircle },
+        { titleKey: "Members", href: "/sport-center/members", icon: Users },
+        { titleKey: "Pricing Rules", href: "/sport-center/pricing-rules", icon: Tags },
+        { titleKey: "Pembayaran", href: "/sport-center/payments", icon: DollarSign },
+        { titleKey: "Pengaturan", href: "/sport-center/settings", icon: Settings },
+      ],
+    },
+
+    // ── TENANT / PENYEWA ──────────────────────────────────────────────
+    {
+      type: "group",
+      titleKey: "Tenant / Penyewa",
+      basePath: "/tenant",
+      icon: Store,
+      roles: ["admin", "owner", "manager"],
+      children: [
+        { titleKey: "Dashboard", href: "/tenant/dashboard", icon: LayoutDashboard },
+        { titleKey: "Data Tenant", href: "/tenant/tenants", icon: Store },
+        { titleKey: "Unit Kantin", href: "/tenant/units", icon: Building2 },
+        { titleKey: "Booking Tenant", href: "/tenant/bookings", icon: FileText },
+        { titleKey: "Invoice Tenant", href: "/tenant/invoices", icon: Receipt },
+        { titleKey: "Pembayaran Sewa", href: "/tenant/payments", icon: DollarSign },
+      ],
+    },
+
+    // ── NOTIFICATIONS ─────────────────────────────────────────────────
+    {
+      type: "group",
+      titleKey: "Notifications",
+      basePath: "/notifications",
+      icon: Bell,
       icon: CalendarDays,
       roles: ["admin", "owner"],
       children: [
@@ -310,9 +347,10 @@ export function AppShell({ children, noPadding }: AppShellProps) {
         { titleKey: "Members",       href: "/sport-center/members",         icon: Users },
         { titleKey: "Customers",     href: "/sport-center/customers",       icon: UserCircle },
         { titleKey: "Pricing Rules", href: "/sport-center/pricing-rules",   icon: Tags },
-        { titleKey: "Pembayaran",    href: "/sport-center/payments",        icon: CreditCard },
-        { titleKey: "Laporan",       href: "/sport-center/reports",         icon: BarChart2 },
-        { titleKey: "Settings",      href: "/sport-center/settings",        icon: Settings },
+        { titleKey: "Pembayaran",        href: "/sport-center/payments",          icon: CreditCard },
+        { titleKey: "Tagihan Perusahaan", href: "/sport-center/company-invoices", icon: FileText },
+        { titleKey: "Laporan",           href: "/sport-center/reports",           icon: BarChart2 },
+        { titleKey: "Settings",          href: "/sport-center/settings",          icon: Settings },
       ],
     },
 

@@ -67,7 +67,7 @@ import { expireStaleApprovals } from "./lib/aiGovernance.js";
 import { startDbBackupScheduler } from "./lib/dbBackup.js";
 import { initAlertsBroadcast } from "./lib/alertsBroadcast.js";
 import { warmupMailer } from "./lib/mailer.js";
-import { runSportCenterMigration, runSportCenterAccountCorrection } from "./modules/sport-center/migration.js";
+import { runSportCenterMigration, runSportCenterAccountCorrection, runSportCenterCompanyInvoiceMigration } from "./modules/sport-center/migration.js";
 import { runTenantMigration } from "./modules/tenant/migration.js";
 import { startRecurringExpenseWorker } from "./modules/sport-center/recurringExpenseWorker.js";
 import { startMemberReminderWorker } from "./modules/sport-center/memberReminderWorker.js";
@@ -707,6 +707,7 @@ async function startServer() {
     .then(() => runWithRetry("Cost Center migration", runCostCenterMigration))
     .then(() => runWithRetry("Sport Center migration", runSportCenterMigration))
     .then(() => runWithRetry("Sport Center account correction", runSportCenterAccountCorrection))
+    .then(() => runWithRetry("Sport Center company invoice migration", runSportCenterCompanyInvoiceMigration))
     .then(() => runWithRetry("Tenant migration", runTenantMigration))
     .then(() => runWithRetry("Driver POD migration", runDriverPodMigration))
     .then(() => runWithRetry("Driver assignment migration", runDriverAssignmentMigration))

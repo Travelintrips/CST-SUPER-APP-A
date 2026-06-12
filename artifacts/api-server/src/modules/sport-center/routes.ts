@@ -3096,4 +3096,343 @@ router.get("/member-reminders/upcoming", async (req, res) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// TAGIHAN PERUSAHAAN — Company Clients & Invoices
+// ═══════════════════════════════════════════════════════════════════════════
+
+async function nextCompanyInvoiceNumber(companyId: number, year: number, month: number): Promise<string> {
+  const yy = String(year).slice(-2);
+  const mm = String(month).padStart(2, "0");
+  const res = await db.execute(sql`
+    SELECT COUNT(*) AS cnt FROM sport_company_invoices
+    WHERE company_id = ${companyId}
+      AND period_year = ${year}
+      AND period_month = ${month}
+  `);
+  const seq = Number((res.rows[0] as any).cnt) + 1;
+  return `INV-${year}${mm}-${String(seq).padStart(4, "0")}`;
+}
+
+// ── Company Clients ──────────────────────────────────────────────────────────
+
+router.get("/company-clients", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  try {
+    const cId = req.query.companyId ? Number(req.query.companyId) : 1;
+    const rows = await db.execute(sql`
+      SELECT * FROM sport_company_clients
+      WHERE company_id = ${cId} AND is_active = TRUE
+      ORDER BY name ASC
+    `);
+    res.json(rows.rows);
+  } catch (err) {
+    console.error("[sport-center] GET /company-clients error:", err);
+    res.status(500).json({ error: "Gagal memuat data" });
+  }
+});
+
+router.post("/company-clients", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  try {
+    const { name, pic_name, pic_phone, pic_email, address, notes, company_id } = req.body;
+    if (!name) return res.status(400).json({ error: "Nama perusahaan wajib diisi" });
+    const cId = company_id ? Number(company_id) : 1;
+    const r = await db.execute(sql`
+      INSERT INTO sport_company_clients (company_id, name, pic_name, pic_phone, pic_email, address, notes)
+      VALUES (${cId}, ${name}, ${pic_name ?? null}, ${pic_phone ?? null}, ${pic_email ?? null}, ${address ?? null}, ${notes ?? null})
+      RETURNING *
+    `);
+    res.status(201).json(r.rows[0]);
+  } catch (err) {
+    console.error("[sport-center] POST /company-clients error:", err);
+    res.status(500).json({ error: "Gagal menyimpan data" });
+  }
+});
+
+router.put("/company-clients/:id", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  try {
+    const id = Number(req.params.id);
+    const { name, pic_name, pic_phone, pic_email, address, notes } = req.body;
+    const r = await db.execute(sql`
+      UPDATE sport_company_clients
+      SET name      = ${name ?? null},
+          pic_name  = ${pic_name ?? null},
+          pic_phone = ${pic_phone ?? null},
+          pic_email = ${pic_email ?? null},
+          address   = ${address ?? null},
+          notes     = ${notes ?? null},
+          updated_at = NOW()
+      WHERE id = ${id}
+      RETURNING *
+    `);
+    if (!r.rows.length) return res.status(404).json({ error: "Tidak ditemukan" });
+    res.json(r.rows[0]);
+  } catch (err) {
+    console.error("[sport-center] PUT /company-clients/:id error:", err);
+    res.status(500).json({ error: "Gagal memperbarui data" });
+  }
+});
+
+router.delete("/company-clients/:id", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  try {
+    const id = Number(req.params.id);
+    await db.execute(sql`UPDATE sport_company_clients SET is_active = FALSE, updated_at = NOW() WHERE id = ${id}`);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("[sport-center] DELETE /company-clients/:id error:", err);
+    res.status(500).json({ error: "Gagal menghapus data" });
+  }
+});
+
+// ── Company Invoices ─────────────────────────────────────────────────────────
+
+router.get("/company-invoices", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  try {
+    const cId = req.query.companyId ? Number(req.query.companyId) : 1;
+    const statusFilter = req.query.status ? String(req.query.status) : null;
+    const clientId = req.query.clientId ? Number(req.query.clientId) : null;
+    const search = req.query.search ? `%${String(req.query.search).trim()}%` : null;
+    const page = Math.max(1, Number(req.query.page ?? 1));
+    const limit = 50;
+    const offset = (page - 1) * limit;
+
+    const [dataRes, countRes] = await Promise.all([
+      db.execute(sql`
+        SELECT i.*, c.name AS client_name, c.pic_name, c.pic_phone, c.pic_email,
+               (SELECT COUNT(*) FROM sport_company_invoice_items WHERE invoice_id = i.id) AS item_count
+        FROM sport_company_invoices i
+        JOIN sport_company_clients c ON c.id = i.client_id
+        WHERE i.company_id = ${cId}
+          AND (${statusFilter}::text IS NULL OR i.status = ${statusFilter})
+          AND (${clientId}::int IS NULL OR i.client_id = ${clientId})
+          AND (${search}::text IS NULL OR i.invoice_number ILIKE ${search} OR c.name ILIKE ${search})
+        ORDER BY i.created_at DESC
+        LIMIT ${limit} OFFSET ${offset}
+      `),
+      db.execute(sql`
+        SELECT COUNT(*) AS cnt
+        FROM sport_company_invoices i
+        JOIN sport_company_clients c ON c.id = i.client_id
+        WHERE i.company_id = ${cId}
+          AND (${statusFilter}::text IS NULL OR i.status = ${statusFilter})
+          AND (${clientId}::int IS NULL OR i.client_id = ${clientId})
+          AND (${search}::text IS NULL OR i.invoice_number ILIKE ${search} OR c.name ILIKE ${search})
+      `),
+    ]);
+    res.json({ data: dataRes.rows, total: Number((countRes.rows[0] as any).cnt) });
+  } catch (err) {
+    console.error("[sport-center] GET /company-invoices error:", err);
+    res.status(500).json({ error: "Gagal memuat data" });
+  }
+});
+
+router.get("/company-invoices/:id", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  try {
+    const id = Number(req.params.id);
+    const [invRes, itemsRes] = await Promise.all([
+      db.execute(sql`
+        SELECT i.*, c.name AS client_name, c.pic_name, c.pic_phone, c.pic_email, c.address AS client_address
+        FROM sport_company_invoices i
+        JOIN sport_company_clients c ON c.id = i.client_id
+        WHERE i.id = ${id}
+      `),
+      db.execute(sql`
+        SELECT * FROM sport_company_invoice_items WHERE invoice_id = ${id} ORDER BY booking_date ASC, id ASC
+      `),
+    ]);
+    if (!invRes.rows.length) return res.status(404).json({ error: "Invoice tidak ditemukan" });
+    res.json({ invoice: invRes.rows[0], items: itemsRes.rows });
+  } catch (err) {
+    console.error("[sport-center] GET /company-invoices/:id error:", err);
+    res.status(500).json({ error: "Gagal memuat detail invoice" });
+  }
+});
+
+/**
+ * POST /api/sport-center/company-invoices/generate
+ * Generate invoice dari booking yang belum ditagih untuk satu klien perusahaan dalam periode tertentu.
+ */
+router.post("/company-invoices/generate", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  try {
+    const { client_id, period_month, period_year, tax_rate, notes, company_id, booking_ids } = req.body;
+    if (!client_id || !period_month || !period_year) {
+      return res.status(400).json({ error: "client_id, period_month, period_year wajib diisi" });
+    }
+    const cId = company_id ? Number(company_id) : 1;
+    const month = Number(period_month);
+    const year = Number(period_year);
+    const taxRate = Number(tax_rate ?? 11);
+
+    // Cek klien
+    const clientRes = await db.execute(sql`SELECT * FROM sport_company_clients WHERE id = ${Number(client_id)} AND company_id = ${cId}`);
+    if (!clientRes.rows.length) return res.status(404).json({ error: "Klien tidak ditemukan" });
+    const client = clientRes.rows[0] as any;
+
+    // Ambil bookings yang akan ditagih
+    let bookingsRes;
+    if (booking_ids && Array.isArray(booking_ids) && booking_ids.length > 0) {
+      const ids = booking_ids.map(Number);
+      bookingsRes = await db.execute(sql`
+        SELECT sb.*, COALESCE(sf.name, sb.facility_name) AS facility_name_resolved
+        FROM sport_bookings sb
+        LEFT JOIN sport_facilities sf ON sf.id = sb.facility_id
+        WHERE sb.id = ANY(${ids}::int[])
+          AND (sb.company_id = ${cId} OR sb.company_id IS NULL)
+      `);
+    } else {
+      // Ambil semua booking bulan tersebut yang belum ditagih, atas nama klien
+      bookingsRes = await db.execute(sql`
+        SELECT sb.*, COALESCE(sf.name, sb.facility_name) AS facility_name_resolved
+        FROM sport_bookings sb
+        LEFT JOIN sport_facilities sf ON sf.id = sb.facility_id
+        WHERE (sb.company_id = ${cId} OR sb.company_id IS NULL)
+          AND EXTRACT(MONTH FROM sb.booking_date) = ${month}
+          AND EXTRACT(YEAR  FROM sb.booking_date) = ${year}
+          AND sb.status NOT IN ('cancelled')
+          AND NOT EXISTS (
+            SELECT 1 FROM sport_company_invoice_items scii
+            JOIN sport_company_invoices sci ON sci.id = scii.invoice_id
+            WHERE scii.booking_id = sb.id AND sci.status != 'cancelled'
+          )
+          AND (
+            LOWER(sb.customer_name) = LOWER(${client.name})
+            OR sb.customer_phone = ${client.pic_phone ?? ''}
+          )
+        ORDER BY sb.booking_date ASC
+      `);
+    }
+
+    const bookings = bookingsRes.rows as any[];
+    if (!bookings.length) {
+      return res.status(400).json({ error: "Tidak ada booking yang bisa ditagih untuk periode ini" });
+    }
+
+    const invoiceNumber = await nextCompanyInvoiceNumber(cId, year, month);
+
+    // Hitung total
+    let subtotal = 0;
+    for (const b of bookings) {
+      subtotal += Number(b.total_amount ?? b.base_amount ?? 0);
+    }
+    const taxAmount = Math.round(subtotal * (taxRate / 100));
+    const grandTotal = subtotal + taxAmount;
+
+    // Insert invoice
+    const invR = await db.execute(sql`
+      INSERT INTO sport_company_invoices
+        (company_id, client_id, invoice_number, period_month, period_year, subtotal, tax_rate, tax_amount, grand_total, notes, status)
+      VALUES
+        (${cId}, ${Number(client_id)}, ${invoiceNumber}, ${month}, ${year}, ${subtotal}, ${taxRate}, ${taxAmount}, ${grandTotal}, ${notes ?? null}, 'unpaid')
+      RETURNING *
+    `);
+    const invoice = invR.rows[0] as any;
+
+    // Insert items
+    for (const b of bookings) {
+      const bSubtotal = Number(b.total_amount ?? b.base_amount ?? 0);
+      const bTax = Math.round(bSubtotal * (taxRate / 100));
+      await db.execute(sql`
+        INSERT INTO sport_company_invoice_items
+          (invoice_id, booking_id, booking_number, customer_name, facility_name, booking_date, duration_hours, subtotal, tax_amount, total)
+        VALUES
+          (${invoice.id}, ${b.id}, ${b.booking_number}, ${b.customer_name}, ${(b.facility_name_resolved ?? b.facility_name)}, ${b.booking_date}, ${Number(b.duration_hours ?? 1)}, ${bSubtotal}, ${bTax}, ${bSubtotal + bTax})
+      `);
+    }
+
+    res.status(201).json({ invoice, itemCount: bookings.length });
+  } catch (err) {
+    console.error("[sport-center] POST /company-invoices/generate error:", err);
+    res.status(500).json({ error: "Gagal membuat invoice" });
+  }
+});
+
+router.post("/company-invoices/:id/mark-paid", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  try {
+    const id = Number(req.params.id);
+    const r = await db.execute(sql`
+      UPDATE sport_company_invoices
+      SET status = 'paid', paid_at = NOW(), updated_at = NOW()
+      WHERE id = ${id}
+      RETURNING *
+    `);
+    if (!r.rows.length) return res.status(404).json({ error: "Invoice tidak ditemukan" });
+    res.json(r.rows[0]);
+  } catch (err) {
+    console.error("[sport-center] POST /company-invoices/:id/mark-paid error:", err);
+    res.status(500).json({ error: "Gagal memperbarui status" });
+  }
+});
+
+router.post("/company-invoices/:id/cancel", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  try {
+    const id = Number(req.params.id);
+    const r = await db.execute(sql`
+      UPDATE sport_company_invoices
+      SET status = 'cancelled', updated_at = NOW()
+      WHERE id = ${id} AND status != 'paid'
+      RETURNING *
+    `);
+    if (!r.rows.length) return res.status(404).json({ error: "Invoice tidak ditemukan atau sudah lunas" });
+    res.json(r.rows[0]);
+  } catch (err) {
+    console.error("[sport-center] POST /company-invoices/:id/cancel error:", err);
+    res.status(500).json({ error: "Gagal membatalkan invoice" });
+  }
+});
+
+/**
+ * GET /api/sport-center/company-invoices/bookings-unbilled
+ * Daftar booking yang belum ditagih untuk klien tertentu dalam periode tertentu.
+ */
+router.get("/company-invoices/bookings-unbilled", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  try {
+    const cId = req.query.companyId ? Number(req.query.companyId) : 1;
+    const clientId = req.query.clientId ? Number(req.query.clientId) : null;
+    const month = req.query.month ? Number(req.query.month) : null;
+    const year = req.query.year ? Number(req.query.year) : null;
+
+    if (!clientId) return res.status(400).json({ error: "clientId wajib" });
+
+    // Cari nama klien
+    const clientRes = await db.execute(sql`SELECT name, pic_phone FROM sport_company_clients WHERE id = ${clientId}`);
+    if (!clientRes.rows.length) return res.status(404).json({ error: "Klien tidak ditemukan" });
+    const client = clientRes.rows[0] as any;
+
+    const rows = await db.execute(sql`
+      SELECT sb.id, sb.booking_number, sb.customer_name, sb.facility_name,
+             sb.booking_date, sb.start_time, sb.end_time, sb.duration_hours,
+             sb.total_amount, sb.status, sb.payment_status,
+             COALESCE(sf.name, sb.facility_name) AS facility_name_resolved
+      FROM sport_bookings sb
+      LEFT JOIN sport_facilities sf ON sf.id = sb.facility_id
+      WHERE (sb.company_id = ${cId} OR sb.company_id IS NULL)
+        AND sb.status NOT IN ('cancelled')
+        AND (${month}::int IS NULL OR EXTRACT(MONTH FROM sb.booking_date) = ${month})
+        AND (${year}::int  IS NULL OR EXTRACT(YEAR  FROM sb.booking_date) = ${year})
+        AND NOT EXISTS (
+          SELECT 1 FROM sport_company_invoice_items scii
+          JOIN sport_company_invoices sci ON sci.id = scii.invoice_id
+          WHERE scii.booking_id = sb.id AND sci.status != 'cancelled'
+        )
+        AND (
+          LOWER(sb.customer_name) = LOWER(${client.name})
+          OR (${client.pic_phone}::text IS NOT NULL AND sb.customer_phone = ${client.pic_phone ?? ''})
+        )
+      ORDER BY sb.booking_date ASC
+    `);
+    res.json(rows.rows);
+  } catch (err) {
+    console.error("[sport-center] GET /company-invoices/bookings-unbilled error:", err);
+    res.status(500).json({ error: "Gagal memuat data" });
+  }
+});
+
 export default router;
