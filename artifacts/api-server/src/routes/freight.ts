@@ -1254,6 +1254,8 @@ router.delete("/customs-docs/:docId", async (req, res) => {
     .returning();
   if (!deleted) return res.status(404).json({ message: "Dokumen tidak ditemukan" });
   return res.json({ message: "Deleted" });
+});
+
 // ─── FASE 10: Accounting Linkage ────────────────────────────────────────────
 
 // PATCH /api/logistics/freight-shipments/:id/financial — update estimated/actual financial fields
