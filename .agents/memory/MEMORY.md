@@ -13,3 +13,4 @@
 - [DB connection string order (lib/db)](db-connection-order.md) — SUPABASE_PG_URL may have stale creds; in dev mode always prefer SUPABASE_DATABASE_URL before SUPABASE_PG_URL.
 - [Logistics module audit map](logistics-audit-map.md) — 6 route namespaces, 3-router collision at /logistic/orders, dead airFreightRouter import, Air/Ocean use raw SQL (not Drizzle); unified fields added to freight_shipments.
 - [Logistics governance doc](logistics-governance.md) — docs/LOGISTICS_MODULE_MAP.md is the single source of truth; guardrails, naming rules, checklist, decision tree, and known tech debt all live there.
+- [Dynamic Service Calculator](dynamic-service-calculator.md) — redesigned calculator.tsx (v2): 6 service types with per-service fields/formulas; backend rates at GET /api/portal/calculator-rates-v2 stored as portal_content key "calculator_rates_v2".

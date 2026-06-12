@@ -3550,7 +3550,7 @@ router.get("/admin/erp-stats", requirePortalAdmin, async (_req, res) => {
 
 // ════════════════════════════════════════════════════════════════════════════
 
-// GET /api/portal/calculator-rates — public, returns current calculator rates
+// GET /api/portal/calculator-rates — public, returns current calculator rates (legacy)
 router.get("/calculator-rates", async (_req, res) => {
   try {
     const [row] = await db.select().from(portalContentTable).where(eq(portalContentTable.key, "calculator_rates"));
@@ -3570,6 +3570,80 @@ router.get("/calculator-rates", async (_req, res) => {
       domestic:    { baseCost: 500000,  ratePerKg: 8500,     handlingPct: 5 },
       warehousing: { baseCost: 5000000, ratePerCbm: 2500000, handlingFee: 500000 },
     });
+  }
+});
+
+// GET /api/portal/calculator-rates-v2 — public, returns extended service-specific rates
+const DEFAULT_SERVICE_RATES_V2 = {
+  airFreight: {
+    ratePerKg: 90000,
+    fuelSurchargePct: 25,
+    securityFeePerKg: 2000,
+    handlingFee: 350000,
+    awbFee: 250000,
+    documentationFee: 200000,
+    insurancePct: 0.15,
+    ppnPct: 11,
+  },
+  seaFreight: {
+    ratePerCbmLcl: 2500000,
+    ratePerContainer: {
+      "20GP": 12000000,
+      "40GP": 18000000,
+      "40HC": 20000000,
+      "Reefer": 35000000,
+      "Open Top": 25000000,
+      "Flat Rack": 28000000,
+    },
+    thc: 1500000,
+    documentationFee: 750000,
+    customsClearance: 1500000,
+    truckingFee: 1200000,
+    insurancePct: 0.10,
+    ppnPct: 11,
+  },
+  customs: {
+    jasaPpjk: 2500000,
+    customsHandling: 750000,
+    documentProcessing: 500000,
+    pibSubmission: 350000,
+    courierFee: 150000,
+    additionalServiceFee: 500000,
+  },
+  domestic: {
+    vehicleRates: {
+      pickup: 500000,
+      blindVan: 600000,
+      CDE: 750000,
+      CDD: 1000000,
+      Fuso: 1500000,
+      Wingbox: 2000000,
+      "Trailer 20FT": 3500000,
+      "Trailer 40FT": 5000000,
+    },
+    distanceRatePerKm: 8500,
+    loadingFee: 350000,
+    unloadingFee: 350000,
+    overnightFee: 500000,
+    helperFeePerDay: 200000,
+  },
+  warehousing: {
+    palletRatePerDay: 15000,
+    cbmRatePerDay: 25000,
+    sqmRatePerDay: 8000,
+    inboundFee: 25000,
+    outboundFeePerPallet: 25000,
+    inventoryFeePerMonth: 500000,
+  },
+};
+
+router.get("/calculator-rates-v2", async (_req, res) => {
+  try {
+    const [row] = await db.select().from(portalContentTable).where(eq(portalContentTable.key, "calculator_rates_v2"));
+    const rates = row ? JSON.parse(row.value) : DEFAULT_SERVICE_RATES_V2;
+    return res.json(rates);
+  } catch {
+    return res.json(DEFAULT_SERVICE_RATES_V2);
   }
 });
 
