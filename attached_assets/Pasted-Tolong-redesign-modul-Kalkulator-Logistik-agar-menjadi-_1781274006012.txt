@@ -1,0 +1,335 @@
+Tolong redesign modul Kalkulator Logistik agar menjadi Dynamic Service Calculator dan tidak menggunakan satu form yang sama untuk semua layanan.
+
+TUJUAN:
+Setiap jenis layanan memiliki field, formula, validasi, dan hasil estimasi yang berbeda sesuai praktik freight forwarding profesional.
+
+====================================================
+FASE 1 — BUAT CORE CALCULATOR
+=============================
+
+Pertahankan field umum berikut untuk semua layanan:
+
+* Customer
+* Origin
+* Destination
+* Cargo Description
+* Cargo Value
+* Incoterms
+* Insurance
+* Notes
+* Attachment
+
+Buat Service Type Selector:
+
+* Sea Freight
+* Air Freight
+* PPJK / Customs Clearance
+* Trucking / Domestic
+* Warehousing
+* Project Cargo
+
+Saat user memilih layanan, tampilkan field yang sesuai secara dinamis.
+
+Jangan tampilkan field yang tidak relevan.
+
+====================================================
+FASE 2 — SEA FREIGHT CALCULATOR
+===============================
+
+Jika user memilih Sea Freight:
+
+Tampilkan:
+
+* Shipment Type
+
+  * FCL
+  * LCL
+
+* POL (Port of Loading)
+
+* POD (Port of Discharge)
+
+* Container Type
+
+  * 20GP
+  * 40GP
+  * 40HC
+  * Reefer
+  * Open Top
+  * Flat Rack
+
+* CBM
+
+* Gross Weight
+
+* Commodity
+
+* Dangerous Goods
+
+* Ready Date
+
+Formula:
+
+LCL:
+Total = CBM × Tariff per CBM
+
+FCL:
+Total = Container Rate + Surcharges
+
+Tambahkan:
+
+* THC
+* Documentation
+* Customs
+* Trucking
+* Insurance
+* PPN
+
+====================================================
+FASE 3 — AIR FREIGHT CALCULATOR
+===============================
+
+Jika user memilih Air Freight:
+
+Tampilkan:
+
+* Airport Origin
+* Airport Destination
+* Gross Weight
+* Pieces
+* Length
+* Width
+* Height
+
+Auto hitung:
+
+Volumetric Weight =
+(P × L × T) / 6000
+
+Chargeable Weight =
+MAX(Gross Weight, Volumetric Weight)
+
+Tampilkan:
+
+* Airline
+* Commodity
+* DG / Non DG
+* Temperature Controlled
+
+Formula:
+
+Chargeable Weight × Rate per KG
+
+Tambahkan:
+
+* Fuel Surcharge
+* Security Surcharge
+* Handling
+* AWB Fee
+* Documentation
+* Insurance
+* PPN
+
+====================================================
+FASE 4 — PPJK / CUSTOMS CALCULATOR
+==================================
+
+Jika user memilih PPJK:
+
+Tampilkan:
+
+* Import / Export
+* PIB / PEB
+* HS Code
+* Commodity
+* Nilai Pabean
+* Nomor Aju (opsional)
+* NPWP Importir
+
+Komponen biaya:
+
+* Jasa PPJK
+* Customs Handling
+* Document Processing
+* PIB/PEB Submission
+* Courier
+* Additional Services
+
+Tidak perlu:
+
+* Dimensi
+* Container
+* Chargeable Weight
+
+====================================================
+FASE 5 — TRUCKING CALCULATOR
+============================
+
+Jika user memilih Trucking:
+
+Tampilkan:
+
+* Pickup Address
+* Delivery Address
+* Vehicle Type
+
+Pilihan kendaraan:
+
+* Pickup
+* Blind Van
+* CDE
+* CDD
+* Fuso
+* Wingbox
+* Trailer 20FT
+* Trailer 40FT
+
+Tampilkan:
+
+* Distance (KM)
+* Tonase
+* Jumlah Koli
+
+Opsional:
+
+* Loading Service
+* Unloading Service
+* Overnight
+* Helper
+
+Formula:
+
+Base Rate + Distance Rate + Additional Charges
+
+====================================================
+FASE 6 — WAREHOUSING CALCULATOR
+===============================
+
+Jika user memilih Warehousing:
+
+Tampilkan:
+
+* Warehouse Location
+* Storage Type
+
+Pilihan:
+
+* Pallet
+* CBM
+* Square Meter
+
+Tampilkan:
+
+* Qty Pallet
+* CBM
+* Area
+* Duration (Days)
+
+Formula:
+
+Storage Rate × Duration
+
+Tambahkan:
+
+* Inbound Handling
+* Outbound Handling
+* Inventory Service
+
+====================================================
+FASE 7 — PROJECT CARGO CALCULATOR
+=================================
+
+Jika user memilih Project Cargo:
+
+Tampilkan:
+
+* Cargo Length
+* Cargo Width
+* Cargo Height
+* Single Piece Weight
+
+Checklist:
+
+* Heavy Lift
+* Oversize
+* Crane Required
+* Route Survey Required
+* Escort Required
+
+Tambahkan:
+
+* Mobilization
+* Survey Cost
+* Crane Cost
+* Escort Cost
+
+Karena Project Cargo bersifat custom, tampilkan:
+
+"Estimated Budget Range"
+
+bukan fixed quotation.
+
+====================================================
+FASE 8 — SMART RATE ENGINE
+==========================
+
+Semua kalkulator harus mengambil tarif dari database.
+
+Jangan hardcode tarif di frontend.
+
+Buat tabel master:
+
+* logistics_rate_cards
+* logistics_service_rates
+* logistics_surcharges
+
+Admin dapat mengubah tarif tanpa deploy ulang aplikasi.
+
+====================================================
+FASE 9 — CUSTOMER EXPERIENCE
+============================
+
+Saat hasil estimasi muncul:
+
+Tampilkan:
+
+* Breakdown biaya
+* Subtotal
+* Insurance
+* Surcharge
+* PPN
+* Grand Total
+
+Tambahkan tombol:
+
+* Request Official Quotation
+* Send to WhatsApp
+* Save Inquiry
+
+====================================================
+FASE 10 — CRM & RFQ INTEGRATION
+===============================
+
+Jika customer klik:
+
+"Request Official Quotation"
+
+maka otomatis:
+
+1. Buat inquiry.
+2. Masuk ke CRM.
+3. Masuk ke RFQ pipeline.
+4. Bisa di-blast ke vendor.
+5. Bisa dikonversi menjadi Shipment.
+6. Bisa dikonversi menjadi Sales Order.
+7. Bisa dikonversi menjadi Invoice.
+
+Output akhir yang saya inginkan:
+
+* Dynamic calculator per layanan.
+* Formula berbeda per layanan.
+* Tidak ada field yang tidak relevan.
+* Semua tarif dari database.
+* Terhubung ke CRM, RFQ, Shipment, dan Accounting.
+* Mobile responsive.
+* Audit seluruh halaman agar UI/UX lebih profesional seperti platform freight forwarder enterprise.
