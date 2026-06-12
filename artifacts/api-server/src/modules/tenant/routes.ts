@@ -481,14 +481,17 @@ router.post("/payments", async (req, res) => {
   const companyId = companyOf(req) ?? 1;
   try {
     const { rows: bRows } = (await db.execute(
-      sql`SELECT id FROM tenant_bookings WHERE id = ${Number(b.tenant_booking_id)} AND company_id = ${companyId} LIMIT 1`,
+      sql`SELECT id, site_id, tenant_id FROM tenant_bookings WHERE id = ${Number(b.tenant_booking_id)} AND company_id = ${companyId} LIMIT 1`,
     )) as unknown as { rows: any[] };
     if (!bRows[0]) return void res.status(400).json({ error: "Penyewaan tidak valid untuk perusahaan ini" });
+    const siteId = bRows[0].site_id ?? 1;
+    const tenantId = bRows[0].tenant_id ?? null;
     const paymentNumber = await nextPaymentNumber();
+    const invoiceId = b.invoice_id ? Number(b.invoice_id) : null;
     const { rows } = (await db.execute(sql`
-      INSERT INTO tenant_payments (company_id, tenant_booking_id, payment_number, proof_image_url, amount, method, notes, status)
-      VALUES (${companyId}, ${Number(b.tenant_booking_id)}, ${paymentNumber}, ${b.proof_image_url ?? null},
-              ${Number(b.amount)}, ${b.method ?? "transfer"}, ${b.notes ?? null}, ${b.status ?? "pending"})
+      INSERT INTO tenant_payments (company_id, site_id, tenant_id, tenant_booking_id, payment_number, proof_image_url, amount, method, notes, status, invoice_id)
+      VALUES (${companyId}, ${siteId}, ${tenantId}, ${Number(b.tenant_booking_id)}, ${paymentNumber}, ${b.proof_image_url ?? null},
+              ${Number(b.amount)}, ${b.method ?? "transfer"}, ${b.notes ?? null}, ${b.status ?? "pending"}, ${invoiceId})
       RETURNING *`)) as unknown as { rows: any[] };
     const payment = rows[0];
     if (payment.status === "confirmed") await confirmPaymentInternal(payment.id, req, companyId);
@@ -599,10 +602,10 @@ router.get("/invoices", async (req, res) => {
     const where = conds.length ? sql`WHERE ${sql.join(conds, sql` AND `)}` : sql``;
     const { rows } = (await db.execute(sql`
       SELECT i.*, t.business_name, t.owner_name, t.phone AS tenant_phone, t.email AS tenant_email,
-             b.order_number,
+             b.order_number, b.requested_area,
              COALESCE(u2.unit_code, u1.unit_code, i.unit_code) AS eff_unit_code,
              COALESCE(u2.name, u1.name) AS unit_name,
-             COALESCE(u2.area_name, u1.area_name) AS unit_area
+             COALESCE(u2.area_name, u1.area_name, b.requested_area) AS unit_area
       FROM tenant_invoices i
       JOIN tenants t ON t.id = i.tenant_id
       LEFT JOIN tenant_bookings b ON b.id = i.booking_id
@@ -625,10 +628,10 @@ router.get("/invoices/:id", async (req, res) => {
     const { rows } = (await db.execute(sql`
       SELECT i.*, t.business_name, t.owner_name, t.phone AS tenant_phone, t.email AS tenant_email,
              t.address AS tenant_address, t.business_category,
-             b.order_number, b.payment_period_type,
+             b.order_number, b.payment_period_type, b.requested_area,
              COALESCE(u2.unit_code, u1.unit_code, i.unit_code) AS eff_unit_code,
              COALESCE(u2.name, u1.name) AS unit_name,
-             COALESCE(u2.area_name, u1.area_name) AS unit_area,
+             COALESCE(u2.area_name, u1.area_name, b.requested_area) AS unit_area,
              COALESCE(u2.area_sqm, u1.area_sqm) AS area_sqm
       FROM tenant_invoices i
       JOIN tenants t ON t.id = i.tenant_id
