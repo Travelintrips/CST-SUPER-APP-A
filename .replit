@@ -74,6 +74,7 @@ VAPID_PUBLIC_KEY = "BEAKgZOdT9HxFJLxVNxgtY-Dh2XzGptrjQwQibP2obUjPlLkfk0WR1TyzqbJ
 VAPID_EMAIL = "mailto:admin@cstlogistics.co.id"
 SMTP_FROM = " info@cstlogistic.co.id"
 WATI_BASE_URL = "https://live-mt-server.wati.io/10176503"
+PORTAL_ADMIN_KEY = "f8ae2218d7f082b61d6ed8d41ff399ff08407251fbeeb5abab1fcfaac6e206cf"
 
 [userenv.development]
 ADMIN_EMAIL_DOMAINS = "example.com"
