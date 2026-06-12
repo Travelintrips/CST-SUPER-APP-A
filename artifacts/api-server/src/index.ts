@@ -78,6 +78,7 @@ import { startProductFirstExceptionWorker } from "./lib/productFirstExceptionWor
 import { startRekonsiliasiWorker } from "./lib/rekonsiliasiWorker.js";
 import { runCostCenterMigration } from "./lib/costCenterMigration.js";
 import { runDriverPodMigration, runDriverAssignmentMigration } from "./routes/driver.js";
+import { runLogisticsRatesMigration } from "./lib/logisticsRatesMigration.js";
 import { runProductVolumeCbmMigration } from "./routes/ecommerce.js";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
@@ -556,6 +557,9 @@ async function runCriticalPreStartMigrations() {
       END IF;
     END $$;
   `);
+
+  // Create logistics rate tables (needed before first request, not deferrable)
+  await runLogisticsRatesMigration();
 }
 
 // Flag set to true once the full migration + seed chain completes.
@@ -712,6 +716,7 @@ async function startServer() {
     .then(() => runWithRetry("Product media migration", runProductMediaMigration))
     .then(() => runWithRetry("Tax rules migration", runTaxRulesMigration))
     .then(() => runWithRetry("Freight accounting migration", runFreightAccountingMigration))
+    .then(() => runWithRetry("Logistics rates migration", runLogisticsRatesMigration))
     .then(() => enableRealtimeTables().catch((err) => {
       logger.warn({ err }, "Supabase Realtime table enable failed (non-fatal)");
     }))

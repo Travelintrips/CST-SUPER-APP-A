@@ -267,6 +267,7 @@ export function AppShell({ children, noPadding }: AppShellProps) {
         { titleKey: "Request Quote", href: "/logistics/quote-requests", icon: FileText, companyCodes: ["CST"] },
         { titleKey: "Balasan Quotation WA", href: "/logistics/quotation-reply", icon: MessageCircle, companyCodes: ["CST"] },
         { titleKey: "AI Import Advisor", href: "/logistics/import-assistant", icon: Bot, companyCodes: ["CST"] },
+        { titleKey: "Rate Management", href: "/logistics/rate-management", icon: DollarSign, roles: ["admin", "owner"] },
         { titleKey: "Margin Rules", href: "/logistics/margin-rules", icon: Calculator },
         { titleKey: "Internal Tasks", href: "/logistics/internal-tasks", icon: ClipboardCheck },
         { titleKey: "Vendor Recommendation", href: "/logistics/vendor-recommendation", icon: BarChart2, roles: ["admin", "owner"] },

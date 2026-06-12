@@ -137,6 +137,7 @@ import expenseBudgetsRouter from "./expenseBudgets.js";
 // import { airFreightRouter } from "./airFreight.js"; // FROZEN 2026-06-11
 import { airFreightVendorFormRouter } from "./airFreightVendorForm.js";
 import { watiRouter } from "./wati.js";
+import logisticsRatesRouter from "./logisticsRates.js";
 import { marketplaceRouter } from "./marketplace.js";
 import { escrowAdminRouter, escrowPublicRouter } from "./escrow.js";
 import { vendorCatalogEnginePublicRouter, vendorCatalogEngineAdminRouter } from "./vendorCatalogEngine.js";
@@ -260,6 +261,7 @@ router.use("/ai/decision-memory", aiDecisionMemoryRouter);
 router.use("/product-templates", productTemplatesRouter);
 router.use("/logistics-units", logisticsUnitsRouter);
 router.use("/trucking-rates", truckingRatesRouter);
+router.use("/logistics-rates", logisticsRatesRouter);
 router.use("/trucking/bookings", truckingBookingsRouter);
 router.use("/enterprise-workflow", enterpriseWorkflowRouter);
 router.use("/customer-feedback", customerFeedbackAdminRouter);

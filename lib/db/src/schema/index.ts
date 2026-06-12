@@ -105,3 +105,6 @@ export * from "./customerServiceRequests";
 export * from "./servicePackages";
 export * from "./portalCustomerProfiles";
 export * from "./customerVerificationDocuments";
+export * from "./logisticsRateCards";
+export * from "./logisticsServiceRates";
+export * from "./logisticsSurcharges";
