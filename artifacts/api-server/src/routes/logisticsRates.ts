@@ -7,7 +7,7 @@ import {
   logisticsSurchargesTable,
   portalContentTable,
 } from "@workspace/db";
-import { eq, and, asc } from "drizzle-orm";
+import { eq, and, asc, or, isNull, lte, gte, sql } from "drizzle-orm";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { broadcastToPortal } from "../lib/sseManager.js";
 
@@ -25,8 +25,14 @@ const SERVICE_TYPES = [
 ] as const;
 type ServiceType = (typeof SERVICE_TYPES)[number];
 
-/** Bangun object rates yang backward-compatible dengan DEFAULT_SERVICE_RATES_V2
- *  — termasuk alias `domestic` → trucking untuk backward compat. */
+/** Bangun object rates yang backward-compatible dengan DEFAULT_SERVICE_RATES_V2.
+ *
+ * Aturan rekonstruksi nested objects:
+ *  - Rate item dengan `containerType` dikelompokkan di bawah `ratePerContainer[containerType]`
+ *  - Rate item dengan `vehicleType` dikelompokkan di bawah `vehicleRates[vehicleType]`
+ *  - Rate item lain → flat key
+ *  - Alias `domestic` = trucking untuk backward compat.
+ */
 function buildRatesCompat(
   cards: (typeof logisticsRateCardsTable.$inferSelect)[],
   rateItems: (typeof logisticsServiceRatesTable.$inferSelect)[],
@@ -54,11 +60,29 @@ function buildRatesCompat(
       .sort((a, b) => a.sortOrder - b.sortOrder);
 
     const rateObj: Record<string, unknown> = {};
+    const containerMap: Record<string, number> = {};
+    const vehicleMap: Record<string, number> = {};
+
     for (const item of items) {
-      rateObj[item.rateKey] = item.valueType === "percentage"
-        ? Number(item.valueAmount)
-        : Number(item.valueAmount);
+      const val = Number(item.valueAmount);
+      if (item.containerType) {
+        // Rekonstruksi nested: ratePerContainer[containerType]
+        containerMap[item.containerType] = val;
+      } else if (item.vehicleType) {
+        // Rekonstruksi nested: vehicleRates[vehicleType]
+        vehicleMap[item.vehicleType] = val;
+      } else {
+        rateObj[item.rateKey] = val;
+      }
     }
+
+    if (Object.keys(containerMap).length > 0) {
+      rateObj.ratePerContainer = containerMap;
+    }
+    if (Object.keys(vehicleMap).length > 0) {
+      rateObj.vehicleRates = vehicleMap;
+    }
+
     rateObj._surcharges = surchs.map((s) => ({
       name: s.name,
       label: s.label,
@@ -640,7 +664,9 @@ router.get("/:serviceType", async (req, res) => {
       .where(
         and(
           eq(logisticsRateCardsTable.serviceType, resolved as ServiceType),
-          eq(logisticsRateCardsTable.isActive, true)
+          eq(logisticsRateCardsTable.isActive, true),
+          or(isNull(logisticsRateCardsTable.validFrom), lte(logisticsRateCardsTable.validFrom, now)),
+          or(isNull(logisticsRateCardsTable.validTo), gte(logisticsRateCardsTable.validTo, now))
         )
       )
       .limit(1);
