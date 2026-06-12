@@ -347,9 +347,10 @@ export function AppShell({ children, noPadding }: AppShellProps) {
         { titleKey: "Members",       href: "/sport-center/members",         icon: Users },
         { titleKey: "Customers",     href: "/sport-center/customers",       icon: UserCircle },
         { titleKey: "Pricing Rules", href: "/sport-center/pricing-rules",   icon: Tags },
-        { titleKey: "Pembayaran",    href: "/sport-center/payments",        icon: CreditCard },
-        { titleKey: "Laporan",       href: "/sport-center/reports",         icon: BarChart2 },
-        { titleKey: "Settings",      href: "/sport-center/settings",        icon: Settings },
+        { titleKey: "Pembayaran",        href: "/sport-center/payments",          icon: CreditCard },
+        { titleKey: "Tagihan Perusahaan", href: "/sport-center/company-invoices", icon: FileText },
+        { titleKey: "Laporan",           href: "/sport-center/reports",           icon: BarChart2 },
+        { titleKey: "Settings",          href: "/sport-center/settings",          icon: Settings },
       ],
     },
 

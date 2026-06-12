@@ -553,6 +553,78 @@ export async function runSportCenterMigration(): Promise<void> {
 }
 
 /**
+ * Tabel Tagihan Perusahaan (Company Invoice) untuk Sport Center.
+ * Idempoten — hanya dijalankan sekali.
+ */
+export async function runSportCenterCompanyInvoiceMigration(): Promise<void> {
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS sport_company_clients (
+        id           SERIAL PRIMARY KEY,
+        company_id   INTEGER NOT NULL DEFAULT 1,
+        name         TEXT NOT NULL,
+        pic_name     TEXT,
+        pic_phone    TEXT,
+        pic_email    TEXT,
+        address      TEXT,
+        notes        TEXT,
+        is_active    BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_scc_company ON sport_company_clients(company_id);
+    `);
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS sport_company_invoices (
+        id             SERIAL PRIMARY KEY,
+        company_id     INTEGER NOT NULL DEFAULT 1,
+        client_id      INTEGER NOT NULL REFERENCES sport_company_clients(id) ON DELETE CASCADE,
+        invoice_number TEXT NOT NULL UNIQUE,
+        period_month   INTEGER NOT NULL,
+        period_year    INTEGER NOT NULL,
+        subtotal       NUMERIC(14,2) NOT NULL DEFAULT 0,
+        tax_rate       NUMERIC(5,2)  NOT NULL DEFAULT 11,
+        tax_amount     NUMERIC(14,2) NOT NULL DEFAULT 0,
+        grand_total    NUMERIC(14,2) NOT NULL DEFAULT 0,
+        status         TEXT NOT NULL DEFAULT 'unpaid',
+        notes          TEXT,
+        paid_at        TIMESTAMPTZ,
+        created_by     TEXT,
+        created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_sci_company  ON sport_company_invoices(company_id);
+      CREATE INDEX IF NOT EXISTS idx_sci_client   ON sport_company_invoices(client_id);
+      CREATE INDEX IF NOT EXISTS idx_sci_status   ON sport_company_invoices(status);
+    `);
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS sport_company_invoice_items (
+        id             SERIAL PRIMARY KEY,
+        invoice_id     INTEGER NOT NULL REFERENCES sport_company_invoices(id) ON DELETE CASCADE,
+        booking_id     INTEGER REFERENCES sport_bookings(id) ON DELETE SET NULL,
+        booking_number TEXT,
+        customer_name  TEXT,
+        facility_name  TEXT,
+        booking_date   DATE,
+        duration_hours NUMERIC(5,2),
+        subtotal       NUMERIC(14,2) NOT NULL DEFAULT 0,
+        tax_amount     NUMERIC(14,2) NOT NULL DEFAULT 0,
+        total          NUMERIC(14,2) NOT NULL DEFAULT 0,
+        created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_scii_invoice ON sport_company_invoice_items(invoice_id);
+      CREATE INDEX IF NOT EXISTS idx_scii_booking ON sport_company_invoice_items(booking_id);
+    `);
+
+    logger.info("Sport Center company invoice migration: selesai");
+  } catch (err) {
+    logger.warn({ err }, "Sport Center company invoice migration: gagal (non-fatal)");
+  }
+}
+
+/**
  * Koreksi journal entry Sport Center yang salah masuk ke akun 4-1010
  * (Pendapatan Jasa Freight) — pindahkan ke 4-1017 (Pendapatan Booking Sport Center).
  * Idempoten: jika sudah tidak ada baris yang salah, skip.

@@ -221,6 +221,7 @@ import SportCenterCustomers from "@/pages/sport-center/customers";
 import SportCenterMembers from "@/pages/sport-center/members";
 import SportCenterPricingRules from "@/pages/sport-center/pricing-rules";
 import SportCenterPayments from "@/pages/sport-center/payments";
+import SportCenterCompanyInvoices from "@/pages/sport-center/company-invoices";
 import SportCenterReports from "@/pages/sport-center/reports";
 import SportCenterSettings from "@/pages/sport-center/settings";
 import SportCenterProfitability from "@/pages/sport-center/profitability";
@@ -522,6 +523,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/sport-center/members" component={PR(SportCenterMembers)} />
       <Route path="/sport-center/pricing-rules" component={PR(SportCenterPricingRules)} />
       <Route path="/sport-center/payments" component={PR(SportCenterPayments)} />
+      <Route path="/sport-center/company-invoices" component={PR(SportCenterCompanyInvoices)} />
       <Route path="/sport-center/reports" component={PR(SportCenterReports)} />
       <Route path="/sport-center/profitability" component={PR(SportCenterProfitability)} />
       <Route path="/sport-center/settings" component={PR(SportCenterSettings)} />
