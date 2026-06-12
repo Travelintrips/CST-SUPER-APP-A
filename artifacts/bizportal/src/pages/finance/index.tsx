@@ -5,7 +5,7 @@ import {
   FileSpreadsheet, Receipt, ArrowLeftRight, Layers, TrendingUp,
   CreditCard, Calculator, ShieldCheck, Shield, ShieldAlert,
   RotateCcw, DollarSign, CalendarDays, AlertTriangle, Send,
-  Building2,
+  Building2, ScanLine,
 } from "lucide-react";
 
 export default function FinanceHubPage() {
@@ -41,8 +41,15 @@ export default function FinanceHubPage() {
               {
                 href: "/accounting/reconciliation",
                 icon: GitMerge,
-                title: "Rekonsiliasi Bank",
-                desc: "Cocokkan mutasi bank vs sistem",
+                title: "Rekonsiliasi Bank (Manual)",
+                desc: "Cocokkan entri jurnal vs saldo bank",
+              },
+              {
+                href: "/accounting/bank-reconciliation",
+                icon: ScanLine,
+                title: "Rekonsiliasi Mutasi Bank",
+                desc: "Import mutasi rekening & auto-match ke order/payment/invoice",
+                accent: "bg-indigo-500/10 text-indigo-600 group-hover:bg-indigo-500/20",
               },
               {
                 href: "/accounting/accounts",
