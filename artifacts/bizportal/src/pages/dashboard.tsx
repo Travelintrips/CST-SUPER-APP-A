@@ -1,10 +1,10 @@
-import { useCallback, useState, useEffect } from "react";
+import { useCallback, useState, useEffect, type ElementType, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AppShell } from "@/components/layout/AppShell";
 import { getLastResponseTime, useListLogisticOrders } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ShoppingCart, DollarSign, Truck, Package, Activity, AlertTriangle, ChevronRight, Ship, ArrowRight, Clock, RefreshCw, TrendingUp, TrendingDown, Minus, PackageOpen, ChevronDown, ChevronUp, FilePlus, X, Users, CheckCircle2, CircleDot, FileText, BarChart2, ExternalLink, Globe, LayoutGrid } from "lucide-react";
+import { ShoppingCart, DollarSign, Truck, Package, Activity, AlertTriangle, ChevronRight, Ship, ArrowRight, Clock, RefreshCw, TrendingUp, TrendingDown, Minus, PackageOpen, ChevronDown, ChevronUp, FilePlus, X, Users, CheckCircle2, CircleDot, FileText, BarChart2, ExternalLink, Globe, LayoutGrid, Receipt } from "lucide-react";
 import { useCompany } from "@/contexts/CompanyContext";
 import { useQueryClient } from "@tanstack/react-query";
 import { useUpdateLogisticOrderStatus, useCreateSalesDocument, getListLogisticOrdersQueryKey } from "@workspace/api-client-react";
@@ -456,6 +456,9 @@ export default function DashboardPage() {
 
         {/* ── Geofence Alert Banner ── */}
         <GeofenceAlertBanner />
+
+        {/* ── Quick Nav ── */}
+        <DashboardQuickNav />
 
         {/* ── KPI Hero Section ── */}
         {(() => {
@@ -1219,7 +1222,7 @@ export default function DashboardPage() {
 interface StatCardProps {
   title: string;
   href: string;
-  icon: React.ReactNode;
+  icon: ReactNode;
   isLoading: boolean;
   value: string;
   valueClassName?: string;
@@ -1445,6 +1448,168 @@ function RevenueSparkline({ data }: { data: { month: string; revenue: number }[]
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+// ── Dashboard Quick Nav ────────────────────────────────────────────────────────
+
+interface DashNavItem { label: string; href: string; }
+interface DashNavCard { label: string; icon: ElementType; color: string; bg: string; items: DashNavItem[]; }
+
+const DASH_NAV_CARDS: DashNavCard[] = [
+  {
+    label: "Logistics",
+    icon: Truck,
+    color: "text-cyan-500",
+    bg: "bg-cyan-500/10",
+    items: [
+      { label: "Semua Shipment",  href: "/logistics/freight" },
+      { label: "Air Freight",     href: "/logistics/air-freight" },
+      { label: "Ocean Freight",   href: "/logistics/ocean-freight" },
+      { label: "Trucking",        href: "/logistics/trucking" },
+      { label: "Portal Orders",   href: "/logistics/portal-orders" },
+    ],
+  },
+  {
+    label: "Sales",
+    icon: ShoppingCart,
+    color: "text-emerald-500",
+    bg: "bg-emerald-500/10",
+    items: [
+      { label: "Sales Orders",   href: "/sales/orders" },
+      { label: "Quotations",     href: "/sales/quotations" },
+      { label: "Invoice",        href: "/sales/invoices" },
+      { label: "Customers",      href: "/sales/customers" },
+      { label: "Sales Items",    href: "/sales/items" },
+    ],
+  },
+  {
+    label: "Purchase",
+    icon: Package,
+    color: "text-amber-500",
+    bg: "bg-amber-500/10",
+    items: [
+      { label: "Purchase Orders", href: "/purchase/orders" },
+      { label: "Vendors",         href: "/purchase/vendors" },
+      { label: "Bills",           href: "/purchase/bills" },
+      { label: "RFQ",             href: "/purchase/rfq" },
+      { label: "Goods Receipt",   href: "/purchase/gr" },
+    ],
+  },
+  {
+    label: "Accounting",
+    icon: DollarSign,
+    color: "text-green-500",
+    bg: "bg-green-500/10",
+    items: [
+      { label: "Dashboard",      href: "/accounting/dashboard" },
+      { label: "Jurnal",         href: "/accounting/journals" },
+      { label: "Pembayaran",     href: "/accounting/payments" },
+      { label: "Profit & Loss",  href: "/accounting/reports/profit-loss" },
+      { label: "Trial Balance",  href: "/accounting/reports/trial-balance" },
+    ],
+  },
+  {
+    label: "Expense",
+    icon: Receipt,
+    color: "text-rose-500",
+    bg: "bg-rose-500/10",
+    items: [
+      { label: "Daftar Expense", href: "/expense" },
+      { label: "Kasbon",         href: "/expense/kasbon" },
+      { label: "Talangan",       href: "/expense/talangan" },
+      { label: "Anggaran",       href: "/expense/budget" },
+      { label: "Laporan",        href: "/expense/reports" },
+    ],
+  },
+  {
+    label: "Laporan",
+    icon: BarChart2,
+    color: "text-indigo-500",
+    bg: "bg-indigo-500/10",
+    items: [
+      { label: "Sales Report",    href: "/reports/sales" },
+      { label: "Purchase Report", href: "/reports/purchase" },
+      { label: "AR Aging",        href: "/reports/ar-aging" },
+      { label: "AP Aging",        href: "/reports/ap-aging" },
+      { label: "Audit Log",       href: "/reports/audit-log" },
+    ],
+  },
+  {
+    label: "Sport Center",
+    icon: Users,
+    color: "text-teal-500",
+    bg: "bg-teal-500/10",
+    items: [
+      { label: "Dashboard",     href: "/sport-center/dashboard" },
+      { label: "Bookings",      href: "/sport-center/bookings" },
+      { label: "Members",       href: "/sport-center/members" },
+      { label: "Pembayaran",    href: "/sport-center/payments" },
+      { label: "Laporan",       href: "/sport-center/reports" },
+    ],
+  },
+  {
+    label: "Tenant",
+    icon: FileText,
+    color: "text-orange-500",
+    bg: "bg-orange-500/10",
+    items: [
+      { label: "Dashboard",     href: "/tenant/dashboard" },
+      { label: "Daftar Tenant", href: "/tenant/tenants" },
+      { label: "Unit",          href: "/tenant/units" },
+      { label: "Pembayaran",    href: "/tenant/payments" },
+      { label: "Invoice",       href: "/tenant/invoices" },
+    ],
+  },
+];
+
+function DashboardQuickNav() {
+  const [open, setOpen] = useState(() => {
+    try { return localStorage.getItem("dashboard_quicknav_open") !== "false"; } catch { return true; }
+  });
+  const toggle = () => setOpen((v) => {
+    const next = !v;
+    try { localStorage.setItem("dashboard_quicknav_open", String(next)); } catch {}
+    return next;
+  });
+  return (
+    <div className="rounded-xl border bg-card">
+      <button
+        onClick={toggle}
+        className="w-full flex items-center justify-between px-4 py-3 hover:bg-muted/40 transition-colors rounded-xl"
+      >
+        <span className="text-sm font-semibold text-foreground">Navigasi Cepat</span>
+        <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && (
+        <div className="px-4 pb-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            {DASH_NAV_CARDS.map(({ label, icon: Icon, color, bg, items }) => (
+              <div key={label} className="rounded-xl border bg-background p-4 flex flex-col gap-3">
+                <div className="flex items-center gap-2">
+                  <div className={`rounded-lg p-2 ${bg} shrink-0`}>
+                    <Icon className={`h-4 w-4 ${color}`} />
+                  </div>
+                  <p className="text-sm font-semibold text-foreground leading-tight">{label}</p>
+                </div>
+                <div className="flex flex-col gap-0.5">
+                  {items.map((item) => (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      className="group flex items-center justify-between rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+                    >
+                      <span>{item.label}</span>
+                      <ArrowRight className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

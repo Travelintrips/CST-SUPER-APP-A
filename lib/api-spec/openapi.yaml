@@ -5433,6 +5433,11 @@ components:
         totalExpenses: { type: string, nullable: true }
         createdById: { type: string, nullable: true }
         createdAt: { type: string }
+        estimatedRevenue: { type: string, nullable: true }
+        estimatedCost: { type: string, nullable: true }
+        actualRevenue: { type: string, nullable: true }
+        invoiceStatus: { type: string, nullable: true }
+        vendorBillStatus: { type: string, nullable: true }
       required: [id, shipmentNumber, shipperName, consigneeName, commodity, origin, destination, status, createdAt]
 
     FreightShipmentProfitability:
@@ -5443,6 +5448,10 @@ components:
         profit: { type: number }
         margin: { type: number, nullable: true }
         invoiceStatus: { type: string }
+        vendorBillStatus: { type: string, nullable: true }
+        estimatedRevenue: { type: number, nullable: true }
+        estimatedCost: { type: number, nullable: true }
+        actualRevenue: { type: number, nullable: true }
       required: [revenue, totalCost, profit, invoiceStatus]
 
     FreightAttachment:

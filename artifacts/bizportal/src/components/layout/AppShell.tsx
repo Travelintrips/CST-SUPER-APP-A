@@ -138,6 +138,7 @@ interface FlatItem {
   icon: LucideIcon;
   roles: string[];
   companyCodes?: string[];
+  activePaths?: string[];
 }
 
 interface GroupItem {
@@ -191,114 +192,62 @@ export function AppShell({ children, noPadding }: AppShellProps) {
   const navItems: NavItem[] = [
     // ── 1. DASHBOARD ──────────────────────────────────────────────────
     {
-      type: "group",
+      type: "flat",
       titleKey: "Dashboard",
-      basePath: "/dashboard",
+      href: "/dashboard",
       icon: LayoutDashboard,
       roles: ALL_ROLES,
-      children: [
-        { titleKey: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-        { titleKey: "approvals", href: "/approvals", icon: ClipboardCheck },
-        { titleKey: "Analytics", href: "/analytics", icon: BarChart2, roles: ["admin", "owner"] },
-        { titleKey: "CEO / Director", href: "/ceo-dashboard", icon: Trophy, roles: ["admin", "owner"] },
-        { titleKey: "Profitabilitas", href: "/analytics/profitability", icon: TrendingUp, roles: ["admin", "owner"] },
-        { titleKey: "Route Profitability", href: "/analytics/route-profitability", icon: TrendingUp, roles: ["admin", "owner"] },
-        { titleKey: "Commodity Profitability", href: "/analytics/commodity-profitability", icon: TrendingUp, roles: ["admin", "owner"] },
-      ],
+      activePaths: ["/dashboard", "/approvals", "/analytics", "/ceo-dashboard", "/operational-dashboard", "/enterprise-dashboard", "/exceptions"],
     },
 
-    // ── ENTERPRISE DASHBOARD ──────────────────────────────────────────
+    // ── 2. EXECUTIVE ──────────────────────────────────────────────────
     {
       type: "flat",
-      titleKey: "Enterprise Dashboard",
-      href: "/enterprise-dashboard",
-      icon: BarChart2,
+      titleKey: "Executive",
+      href: "/executive",
+      icon: Trophy,
       roles: ["admin", "owner"],
+      activePaths: ["/executive", "/holding", "/analytics", "/ceo-dashboard"],
     },
 
-    // ── EXCEPTION MANAGEMENT ──────────────────────────────────────────
+    // ── 3. MASTER DATA ────────────────────────────────────────────────
     {
-      type: "group",
-      titleKey: "Exception Management",
-      basePath: "/exceptions",
-      icon: AlertTriangle,
-      roles: ["admin", "owner"],
-      children: [
-        { titleKey: "Semua Exception", href: "/exceptions", icon: AlertTriangle },
-      ],
-    },
-
-    // ── 2. MASTER DATA ────────────────────────────────────────────────
-    {
-      type: "group",
+      type: "flat",
       titleKey: "Master Data",
-      basePath: "/master-data",
+      href: "/master-data",
       icon: Database,
       roles: ["manager", "admin", "owner"],
-      children: [
-        { titleKey: "Produk / Bahan Baku", href: "/products/items", icon: PackageSearch },
-        { titleKey: "Recipe / BOM", href: "/products/recipes", icon: FlaskConical },
-        { titleKey: "Item Penjualan", href: "/sales/items", icon: Boxes },
-        { titleKey: "Katalog Terpadu", href: "/katalog-terpadu", icon: Layers, roles: ["admin", "owner"] },
-        { titleKey: "Satuan (UOM)", href: "/settings/uom", icon: Tags },
-        { titleKey: "Satuan Pengiriman", href: "/settings/logistics-units", icon: Package, roles: ["admin", "owner"] },
-      ],
+      activePaths: ["/master-data", "/products", "/katalog-terpadu"],
     },
 
-    // ── 3. CRM & SALES ────────────────────────────────────────────────
+    // ── 4. CRM & SALES ────────────────────────────────────────────────
     {
-      type: "group",
+      type: "flat",
       titleKey: "CRM & Sales",
-      basePath: "/sales",
+      href: "/sales",
       icon: TrendingUp,
       roles: ["admin", "owner"],
-      children: [
-        { titleKey: "salesDashboard", href: "/sales", icon: LayoutDashboard },
-        { titleKey: "customers", href: "/sales/customers", icon: UserCircle },
-        { titleKey: "quotations", href: "/sales/quotations", icon: FileText },
-        { titleKey: "salesOrders", href: "/sales/orders", icon: ShoppingBag },
-        { titleKey: "invoices", href: "/sales/invoices", icon: Receipt },
-        { titleKey: "aiDrafts", href: "/sales/ai-drafts", icon: Bot },
-        { titleKey: "Portal Product Orders", href: "/portal-product-orders", icon: ShoppingBag, companyCodes: ["CST"] },
-      ],
+      activePaths: ["/sales", "/portal-product-orders"],
     },
 
-    // ── 4. PROCUREMENT ────────────────────────────────────────────────
+    // ── 5. PROCUREMENT ────────────────────────────────────────────────
     {
-      type: "group",
+      type: "flat",
       titleKey: "Procurement",
-      basePath: "/purchase",
+      href: "/purchase",
       icon: ClipboardList,
       roles: ["admin", "owner"],
-      children: [
-        { titleKey: "purchaseDashboard", href: "/purchase", icon: LayoutDashboard },
-        { titleKey: "Purchase Request (PR)", href: "/purchase/pr", icon: ClipboardList },
-        { titleKey: "rfq", href: "/purchase/rfq", icon: FileText },
-        { titleKey: "purchaseOrders", href: "/purchase/orders", icon: ShoppingBag },
-        { titleKey: "vendors", href: "/purchase/vendors", icon: UserCircle },
-        { titleKey: "Vendor Catalog", href: "/purchase/vendor-catalog", icon: Store },
-        { titleKey: "Trucking Pricing", href: "/purchase/trucking-pricing", icon: Truck },
-        { titleKey: "AI Image Generator", href: "/marketplace/ai-images", icon: ImageIcon, roles: ["admin", "owner"] },
-        { titleKey: "Approvals Pembelian", href: "/purchase/payment-requests", icon: ClipboardCheck },
-        { titleKey: "Terima Barang (GRN)", href: "/purchase/gr", icon: PackageCheck },
-        { titleKey: "Terima Barang Cepat", href: "/purchase/receive", icon: PackageOpen },
-        { titleKey: "QC Inspection", href: "/purchase/qc", icon: ClipboardCheck },
-        { titleKey: "Purchase Return", href: "/purchase/returns", icon: RotateCcw },
-        { titleKey: "Vendor Invoice (AP)", href: "/purchase/vendor-invoices", icon: Receipt },
-        { titleKey: "Vendor Bills", href: "/purchase/bills", icon: FileText },
-        { titleKey: "Landed Cost", href: "/purchase/landed-costs", icon: Calculator },
-        { titleKey: "Vendor Forms", href: "/purchase/vendor-forms", icon: Send },
-        { titleKey: "Audit Trail VMF", href: "/purchase/vmf-audit-trail", icon: Activity },
-      ],
+      activePaths: ["/purchase", "/marketplace"],
     },
 
-    // ── 5. OPERATIONS / LOGISTICS ─────────────────────────────────────
+    // ── 6. LOGISTICS ──────────────────────────────────────────────────
     {
-      type: "group",
-      titleKey: "Operations / Logistics",
-      basePath: "/logistics",
+      type: "flat",
+      titleKey: "Logistics",
+      href: "/logistics",
       icon: Truck,
       roles: ["admin", "owner", "logistics", "trading"],
+      activePaths: ["/logistics", "/air-freight", "/operational-dashboard", "/ocean-freight-master-data", "/logistics/vendor-fulfillments"],
       children: [
         { titleKey: "trading", href: "/trading", icon: Package, roles: ["admin", "owner", "trading"] },
         { titleKey: "Operational Dashboard", href: "/operational-dashboard", icon: LayoutDashboard },
@@ -324,202 +273,112 @@ export function AppShell({ children, noPadding }: AppShellProps) {
         { titleKey: "Vendor × Komoditas", href: "/logistics/vendor-commodity-intelligence", icon: BarChart2, roles: ["admin", "owner"] },
         { titleKey: "Pelanggan Portal", href: "/portal/customers", icon: Users },
         { titleKey: "Persetujuan Onboarding", href: "/portal/onboarding-approvals", icon: Users },
+        { titleKey: "Dashboard Logistik",   href: "/logistics/dashboard",          icon: LayoutDashboard },
+        { titleKey: "Semua Shipment",        href: "/logistics/shipments",           icon: Truck },
+        { titleKey: "RFQ & Quote",           href: "/logistics/rfq",                icon: Send },
+        { titleKey: "Trucking",              href: "/logistics/trucking",           icon: Truck },
+        { titleKey: "Air Freight",           href: "/logistics/air-freight",        icon: Plane },
+        { titleKey: "Ocean Freight",         href: "/logistics/ocean-freight",      icon: Anchor },
+        { titleKey: "PPJK / Customs",        href: "/logistics/ppjk",              icon: ClipboardList },
+        { titleKey: "Vendor Fulfillment",    href: "/logistics/vendor-fulfillment", icon: PackageCheck },
+        { titleKey: "Profitability",         href: "/logistics/profitability",      icon: TrendingUp,  roles: ["admin", "owner"] },
+        { titleKey: "Settings Logistik",     href: "/logistics/settings",          icon: Settings },
       ],
     },
 
-    // ── 5.5. RATE MANAGEMENT ──────────────────────────────────────────
+    // ── 7. TRADING ────────────────────────────────────────────────────
     {
-      type: "group",
-      titleKey: "Rate Management",
-      basePath: "/rate-management",
-      icon: Tags,
-      roles: ["admin", "owner"],
-      children: [
-        { titleKey: "Trucking Rates", href: "/settings/trucking-rates", icon: Truck },
-        { titleKey: "Ocean Freight Rates", href: "/logistics/ocean-freight-rates", icon: Anchor },
-        { titleKey: "Air Freight Rates", href: "/air-freight/rates", icon: Plane },
-        { titleKey: "Freight Master Data", href: "/ocean-freight-master-data", icon: Database },
-      ],
+      type: "flat",
+      titleKey: "Trading",
+      href: "/trading",
+      icon: Boxes,
+      roles: ["admin", "owner", "trading"],
     },
 
-    // ── 6. EXPENSE MANAGEMENT ─────────────────────────────────────────
-    {
-      type: "group",
-      titleKey: "Expense Management",
-      basePath: "/expense",
-      icon: Receipt,
-      roles: ["admin", "owner", "manager"],
-      children: [
-        { titleKey: "Semua Pengeluaran", href: "/expense", icon: Receipt },
-        { titleKey: "Biaya Rutin", href: "/expense/routine", icon: RotateCcw },
-        { titleKey: "Kategori", href: "/expense/categories", icon: Tags },
-        { titleKey: "Dashboard & Monitor", href: "/expense/dashboard", icon: LayoutDashboard },
-        { titleKey: "Kasbon Karyawan", href: "/expense/kasbon", icon: Wallet },
-        { titleKey: "Dana Talangan", href: "/expense/talangan", icon: DollarSign },
-        { titleKey: "Vendor Installments", href: "/expense/vendor-installments", icon: CalendarDays },
-        { titleKey: "Approvals", href: "/expense/approvals", icon: ClipboardCheck },
-        { titleKey: "Vendor Payments", href: "/expense/vendor-payments", icon: Send },
-        { titleKey: "Templates Expense", href: "/expense/templates", icon: Layers },
-        { titleKey: "Budget & Kurs", href: "/expense/budget", icon: Calculator },
-        { titleKey: "Laporan Expense", href: "/expense/reports", icon: BarChart2 },
-      ],
-    },
-
-    // ── 6.5. ASSET MANAGEMENT ─────────────────────────────────────────
-    {
-      type: "group",
-      titleKey: "Asset Management",
-      basePath: "/assets",
-      icon: Landmark,
-      roles: ["admin", "owner", "manager"],
-      children: [
-        { titleKey: "Fixed Assets", href: "/expense/fixed-assets", icon: Landmark },
-        { titleKey: "Asset Depreciation", href: "/expense/asset-depreciation", icon: TrendingUp },
-        { titleKey: "Laporan Aset", href: "/expense/reports", icon: BarChart2 },
-      ],
-    },
-
-    // ── 7. FINANCE ────────────────────────────────────────────────────
-    {
-      type: "group",
-      titleKey: "Finance",
-      basePath: "/accounting",
-      icon: BookOpen,
-      roles: ["admin", "owner"],
-      children: [
-        { titleKey: "Dashboard Akuntansi", href: "/accounting/dashboard", icon: BarChart2 },
-        { titleKey: "chartOfAccounts", href: "/accounting/accounts", icon: Landmark },
-        { titleKey: "journals", href: "/accounting/journals", icon: BookOpen },
-        { titleKey: "journalEntry", href: "/accounting/entries", icon: FileText },
-        { titleKey: "payments", href: "/accounting/payments", icon: Wallet },
-        { titleKey: "Transaksi Paylabs", href: "/accounting/paylabs", icon: CreditCard },
-        { titleKey: "Penerimaan & Pengeluaran Lain", href: "/accounting/other-transactions", icon: ArrowLeftRight },
-        { titleKey: "taxes", href: "/accounting/taxes", icon: Receipt },
-        { titleKey: "Cost Center", href: "/accounting/cost-centers", icon: Layers },
-        { titleKey: "trialBalance", href: "/accounting/reports/trial-balance", icon: FileSpreadsheet },
-        { titleKey: "generalLedger", href: "/accounting/reports/general-ledger", icon: BookOpen },
-        { titleKey: "profitLoss", href: "/accounting/reports/profit-loss", icon: TrendingUp },
-        { titleKey: "balanceSheet", href: "/accounting/reports/balance-sheet", icon: Wallet },
-        { titleKey: "Profitabilitas Freight", href: "/accounting/reports/freight-profitability", icon: Ship },
-        { titleKey: "reconciliation", href: "/accounting/reconciliation", icon: GitMerge },
-        { titleKey: "Rekonsiliasi WHT Payable", href: "/accounting/wht-reconciliation", icon: ShieldCheck },
-        { titleKey: "Audit Akuntansi", href: "/accounting/audit-report", icon: AlertTriangle },
-        { titleKey: "accountingSettings", href: "/accounting/settings", icon: Settings },
-        { titleKey: "Google Sheets Sync", href: "/accounting/gsheet", icon: FileSpreadsheet },
-        { titleKey: "Overview Perusahaan", href: "/holding", icon: Building2 },
-        { titleKey: "Dashboard Holding", href: "/holding/dashboard", icon: BarChart2 },
-        { titleKey: "Laporan L/R Holding", href: "/holding/pl-report", icon: TrendingUp },
-        { titleKey: "Laporan Arus Kas", href: "/holding/cashflow-report", icon: Wallet },
-        { titleKey: "Executive Dashboard", href: "/executive", icon: Landmark, roles: ["admin", "owner"] },
-        { titleKey: "Logistics Dashboard", href: "/executive/logistics", icon: Truck, roles: ["admin", "owner"] },
-      ],
-    },
-
-    // ── 7.5 TAX MANAGEMENT ────────────────────────────────────────────
-    {
-      type: "group",
-      titleKey: "Manajemen Pajak",
-      basePath: "/tax",
-      icon: Calculator,
-      roles: ["admin", "owner"],
-      children: [
-        { titleKey: "Dashboard Pajak", href: "/tax/dashboard", icon: BarChart2 },
-        { titleKey: "PPN Masukan / Keluaran", href: "/tax/ppn", icon: Receipt },
-        { titleKey: "PPh Witholding", href: "/tax/pph", icon: FileText },
-        { titleKey: "SPT Masa", href: "/tax/spt", icon: FileSpreadsheet },
-        { titleKey: "Export DJP (e-Faktur / e-Bupot)", href: "/tax/export-djp", icon: FileSpreadsheet },
-        { titleKey: "Semua Transaksi Pajak", href: "/tax/transactions", icon: ClipboardList },
-        { titleKey: "Rekonsiliasi Pajak", href: "/tax/reconciliation", icon: GitMerge },
-        { titleKey: "Master Aturan Pajak", href: "/tax/rules", icon: Shield },
-        { titleKey: "Kepatuhan Pajak", href: "/tax/missing-compliance", icon: ShieldAlert },
-      ],
-    },
-
-    // ── 8. AI CENTER ──────────────────────────────────────────────────
-    {
-      type: "group",
-      titleKey: "AI Center",
-      basePath: "/ai-center",
-      icon: Bot,
-      roles: ["admin", "owner"],
-      children: [
-        { titleKey: "Intelligence Alerts", href: "/intelligence-alerts", icon: ShieldAlert },
-        { titleKey: "AI Approval Queue", href: "/ai-approvals", icon: ShieldCheck },
-        { titleKey: "Decision Memory", href: "/ai/decision-memory", icon: Brain },
-        { titleKey: "Operational Context", href: "/operational-context", icon: Layers },
-        { titleKey: "aiChatbot", href: "/settings/ai-chatbot", icon: Bot },
-        { titleKey: "aiKnowledgeBase", href: "/settings/ai-chatbot/knowledge", icon: BookOpen },
-        { titleKey: "aiScanSettings", href: "/settings/ai-scan", icon: ScanLine },
-      ],
-    },
-
-    // ── 9. REPORTS & DASHBOARD ────────────────────────────────────────
-    {
-      type: "group",
-      titleKey: "Reports & Dashboard",
-      basePath: "/reports",
-      icon: BarChart2,
-      roles: ["manager", "admin", "owner"],
-      children: [
-        // Finance Reports
-        { titleKey: "Laporan Penjualan B2B", href: "/reports/sales", icon: TrendingUp, roles: ["manager", "admin", "owner"] },
-        { titleKey: "Laporan Pembelian", href: "/reports/purchase", icon: ShoppingBag, roles: ["admin", "owner"] },
-        { titleKey: "AR Aging", href: "/reports/ar-aging", icon: Receipt, roles: ["admin", "owner"] },
-        { titleKey: "AP Aging", href: "/reports/ap-aging", icon: FileText, roles: ["admin", "owner"] },
-        { titleKey: "Valuasi Persediaan", href: "/reports/inventory-valuation", icon: PackageSearch, roles: ["admin", "owner"] },
-        // Operations Reports
-        { titleKey: "Audit ERP", href: "/audit", icon: ClipboardCheck, roles: ["admin", "owner"] },
-        { titleKey: "Audit Log Keamanan", href: "/reports/audit-log", icon: Shield, roles: ["admin", "owner"] },
-        { titleKey: "Vendor Leaderboard", href: "/vendors", icon: Trophy, roles: ["manager", "admin", "owner"] },
-        // Sport Center Reports
-        { titleKey: "Laporan Sport Center", href: "/sport-center/reports", icon: Trophy, roles: ["admin", "owner", "manager"] },
-        { titleKey: "Profitabilitas Sport Center", href: "/sport-center/profitability", icon: TrendingUp, roles: ["admin", "owner"] },
-      ],
-    },
-
-    // ── SPORT CENTER ──────────────────────────────────────────────────
+    // ── 7b. SPORT CENTER ──────────────────────────────────────────────
     {
       type: "group",
       titleKey: "Sport Center",
       basePath: "/sport-center",
-      icon: Trophy,
-      roles: ["admin", "owner", "manager"],
-      children: [
-        { titleKey: "Dashboard", href: "/sport-center/dashboard", icon: LayoutDashboard },
-        { titleKey: "Bookings", href: "/sport-center/bookings", icon: CalendarDays },
-        { titleKey: "Fasilitas", href: "/sport-center/facilities", icon: Building2 },
-        { titleKey: "Customers", href: "/sport-center/customers", icon: UserCircle },
-        { titleKey: "Members", href: "/sport-center/members", icon: Users },
-        { titleKey: "Pricing Rules", href: "/sport-center/pricing-rules", icon: Tags },
-        { titleKey: "Pembayaran", href: "/sport-center/payments", icon: DollarSign },
-        { titleKey: "Pengaturan", href: "/sport-center/settings", icon: Settings },
-      ],
-    },
-
-    // ── TENANT POS ──────────────────────────────────────────────────
-    {
-      type: "group",
-      titleKey: "Tenant POS",
-      basePath: "/tenant",
-      icon: Store,
-      roles: ["admin", "owner", "manager"],
-      children: [
-        { titleKey: "Dashboard", href: "/tenant/dashboard", icon: LayoutDashboard },
-        { titleKey: "Data Tenant", href: "/tenant/tenants", icon: Store },
-        { titleKey: "Unit Kantin", href: "/tenant/units", icon: LayoutGrid },
-        { titleKey: "Penyewaan", href: "/tenant/bookings", icon: FileText },
-        { titleKey: "Pembayaran Sewa", href: "/tenant/payments", icon: DollarSign },
-        { titleKey: "Invoice", href: "/tenant/invoices", icon: Receipt },
-      ],
-    },
-
-    // ── NOTIFICATIONS ─────────────────────────────────────────────────
-    {
-      type: "group",
-      titleKey: "Notifications",
-      basePath: "/notifications",
-      icon: Bell,
+      icon: CalendarDays,
       roles: ["admin", "owner"],
+      children: [
+        { titleKey: "Dashboard",     href: "/sport-center/dashboard",       icon: LayoutDashboard },
+        { titleKey: "Bookings",      href: "/sport-center/bookings",        icon: Calendar },
+        { titleKey: "Fasilitas",     href: "/sport-center/facilities",      icon: Layers },
+        { titleKey: "Members",       href: "/sport-center/members",         icon: Users },
+        { titleKey: "Customers",     href: "/sport-center/customers",       icon: UserCircle },
+        { titleKey: "Pricing Rules", href: "/sport-center/pricing-rules",   icon: Tags },
+        { titleKey: "Pembayaran",    href: "/sport-center/payments",        icon: CreditCard },
+        { titleKey: "Laporan",       href: "/sport-center/reports",         icon: BarChart2 },
+        { titleKey: "Settings",      href: "/sport-center/settings",        icon: Settings },
+      ],
+    },
+
+    // ── 7c. TENANT ────────────────────────────────────────────────────
+    {
+      type: "group",
+      titleKey: "Tenant",
+      basePath: "/tenant",
+      icon: Building2,
+      roles: ["admin", "owner"],
+      children: [
+        { titleKey: "Dashboard",     href: "/tenant/dashboard",   icon: LayoutDashboard },
+        { titleKey: "Daftar Tenant", href: "/tenant/tenants",     icon: Users },
+        { titleKey: "Unit",          href: "/tenant/units",        icon: Layers },
+        { titleKey: "Bookings",      href: "/tenant/bookings",     icon: Calendar },
+        { titleKey: "Pembayaran",    href: "/tenant/payments",     icon: CreditCard },
+        { titleKey: "Invoice",       href: "/tenant/invoices",     icon: FileText },
+      ],
+    },
+
+    // ── 8. FINANCE ────────────────────────────────────────────────────
+    {
+      type: "flat",
+      titleKey: "Finance",
+      href: "/finance",
+      icon: BookOpen,
+      roles: ["admin", "owner"],
+      activePaths: ["/finance", "/accounting", "/expense", "/tax", "/holding"],
+    },
+
+    // ── 9. HR & PAYROLL ───────────────────────────────────────────────
+    {
+      type: "flat",
+      titleKey: "HR & Payroll",
+      href: "/hr",
+      icon: Users,
+      roles: ["admin", "owner"],
+    },
+
+    // ── 10. AI CENTER ─────────────────────────────────────────────────
+    {
+      type: "flat",
+      titleKey: "AI Center",
+      href: "/ai-center",
+      icon: Bot,
+      roles: ["admin", "owner"],
+      activePaths: ["/ai-center", "/ai", "/ai-approvals", "/operational-context", "/intelligence-alerts"],
+    },
+
+    // ── 11. REPORTS ───────────────────────────────────────────────────
+    {
+      type: "flat",
+      titleKey: "Reports",
+      href: "/reports",
+      icon: BarChart2,
+      roles: ["manager", "admin", "owner"],
+      activePaths: ["/reports", "/audit", "/vendors"],
+    },
+
+    // ── 12. SETTINGS ──────────────────────────────────────────────────
+    {
+      type: "flat",
+      titleKey: "settings",
+      href: "/settings",
+      icon: Settings,
+      roles: ["admin", "owner"],
+      activePaths: ["/settings", "/users", "/org", "/correspondences", "/email-inbox", "/media", "/system-health", "/notifications", "/notification-history"],
       children: [
         { titleKey: "Inbox", href: "/notifications", icon: Bell },
         { titleKey: "History", href: "/notification-history", icon: MessageCircle },
@@ -552,6 +411,15 @@ export function AppShell({ children, noPadding }: AppShellProps) {
         { titleKey: "WA Templates Logistik", href: "/settings/wa-templates", icon: MessageCircle },
         { titleKey: "Enterprise WA Templates", href: "/settings/enterprise-wa-templates", icon: MessageSquare },
         { titleKey: "Monitor WA Driver", href: "/settings/wa-notification-logs", icon: Activity },
+        // Logistics ops (dipindah dari menu Logistics)
+        { titleKey: "Portal Orders", href: "/logistics/portal-orders", icon: ClipboardList, companyCodes: ["CST"] },
+        { titleKey: "Service Requests (CSR)", href: "/logistics/service-requests", icon: ClipboardCheck },
+        { titleKey: "Pelanggan Portal", href: "/portal/customers", icon: Users },
+        { titleKey: "Verifikasi Customer", href: "/portal/customer-verification", icon: Users },
+        { titleKey: "Persetujuan Onboarding", href: "/portal/onboarding-approvals", icon: Users },
+        { titleKey: "Balasan Quotation WA", href: "/logistics/quotation-reply", icon: MessageCircle },
+        { titleKey: "AI Import Advisor", href: "/logistics/import-assistant", icon: Bot },
+        { titleKey: "Internal Tasks", href: "/logistics/internal-tasks", icon: ClipboardCheck },
         { titleKey: "Image Manager", href: "/media", icon: ImageIcon },
         { titleKey: "Short Links", href: "/settings/short-links", icon: Link2 },
         { titleKey: "Konfigurasi Menu", href: "/settings/nav-company-config", icon: LayoutGrid },
@@ -559,6 +427,7 @@ export function AppShell({ children, noPadding }: AppShellProps) {
         { titleKey: "Secrets & Env Vars", href: "/settings/secrets", icon: KeyRound, roles: ["admin", "owner"] },
         { titleKey: "Status Sistem", href: "/system-health", icon: Activity, roles: ["admin", "owner"] },
       ],
+      activePaths: ["/settings", "/users", "/org", "/correspondences", "/email-inbox", "/media", "/system-health", "/notifications", "/notification-history", "/sport-center", "/tenant"],
     },
   ];
 
@@ -830,12 +699,18 @@ export function AppShell({ children, noPadding }: AppShellProps) {
 
     if (item.type === "flat") {
       const isNotif = item.href === "/notifications";
+      const isActive =
+        location === item.href ||
+        location.startsWith(`${item.href}/`) ||
+        (item.activePaths ?? []).some(
+          (p) => location === p || location.startsWith(`${p}/`)
+        );
       return (
         <SidebarMenuItem key={item.href} className={cn(customizeMode && isHidden && "opacity-40")}>
           <div className="flex items-center">
             <SidebarMenuButton
               asChild
-              isActive={location === item.href || location.startsWith(`${item.href}/`)}
+              isActive={isActive}
               tooltip={getNavTitle(item.titleKey)}
               className="flex-1"
             >

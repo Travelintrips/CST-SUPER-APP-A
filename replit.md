@@ -83,6 +83,18 @@ Commands:
 - Email functionality is dependent on `SMTP_HOST/USER/PASS` environment variables; if not configured, emails will not be sent.
 - Document numbering follows `PREFIX/YYYY/NNNNNN` format.
 
+## Logistics Module Governance
+
+> ⚠️ **WAJIB DIBACA** sebelum membuat route, tabel, menu, atau halaman logistik baru.
+
+- **Dokumen resmi:** `docs/LOGISTICS_MODULE_MAP.md`
+- Berisi: daftar modul aktif, route resmi, tabel resmi, halaman resmi, modul deprecated, decision tree kapan pakai moda apa, standar penamaan, dan checklist sebelum merge.
+- **Guardrail ringkas:**
+  - API logistik: wajib prefix `/api/logistics/...`, `/api/air-freight/...`, `/api/ocean-freight/...`, `/api/trucking/...`, atau `/api/logistic/...`
+  - Halaman BizPortal: wajib prefix `/logistics/...` atau `/air-freight/...`
+  - Tabel DB: wajib prefix `freight_`, `logistic_`, `air_freight_`, `ocean_freight_`, `trucking_`, atau `driver_`
+  - **Jangan** buat tabel/route/menu baru tanpa cek §7 (Guardrail) di dokumen di atas terlebih dahulu.
+
 ## Pointers
 
 - **Drizzle ORM Documentation**: For database schema definition and migrations.

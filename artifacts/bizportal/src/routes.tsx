@@ -4,6 +4,10 @@ import NotFound from "@/pages/not-found";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import AuthCallbackPage from "@/pages/auth-callback";
 import DashboardPage from "@/pages/dashboard";
+import MasterDataHubPage from "@/pages/master-data/index";
+import FinanceHubPage from "@/pages/finance/index";
+import AiCenterHubPage from "@/pages/ai-center/index";
+import HrHubPage from "@/pages/hr/index";
 import EcommercePage from "@/pages/ecommerce";
 import TradingPage from "@/pages/trading";
 import WelcomePage from "@/pages/welcome";
@@ -17,6 +21,8 @@ import LogisticsFreightDetailPage from "@/pages/logistics-freight-detail";
 import LogisticsFreightBLPage from "@/pages/logistics-freight-bl";
 import LogisticsPortalOrdersPage from "@/pages/logistics-portal-orders";
 import LogisticsPortalOrderDetailPage from "@/pages/logistics-portal-order-detail";
+import ServiceRequestsPage from "@/pages/service-requests";
+import ServiceRequestDetailPage from "@/pages/service-request-detail";
 import LogisticsDriversPage from "@/pages/logistics-drivers";
 import LogisticsDriverPerformancePage from "@/pages/logistics-driver-performance";
 import DriverAnalyticsDashboardPage from "@/pages/logistics/drivers-analytics";
@@ -165,6 +171,7 @@ import ProductRecipesPage from "@/pages/products/recipes";
 // Portal
 import PortalCustomersPage from "@/pages/portal-customers";
 import PortalOnboardingApprovalsPage from "@/pages/portal-onboarding-approvals";
+import PortalCustomerVerificationPage from "@/pages/portal-customer-verification";
 // Logistics RFQ + Order detail
 import LogisticsRfqListPage from "@/pages/logistics-rfq-list";
 import LogisticsRfqDetailPage from "@/pages/logistics-rfq-detail";
@@ -259,6 +266,8 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/logistics/freight/:id/edit" component={PR(LogisticsFreightEditorPage)} />
       <Route path="/logistics/freight/:id" component={PR(LogisticsFreightDetailPage)} />
       <Route path="/logistics/freight" component={PR(LogisticsFreightPage)} />
+      <Route path="/logistics/service-requests/:id" component={PR(ServiceRequestDetailPage)} />
+      <Route path="/logistics/service-requests" component={PR(ServiceRequestsPage)} />
       <Route path="/logistics/portal-orders/:id" component={PR(LogisticsPortalOrderDetailPage)} />
       <Route path="/logistics/portal-orders" component={PR(LogisticsPortalOrdersPage)} />
       <Route path="/logistics/trucking-orders" component={PR(TruckingOrdersPage)} />
@@ -286,9 +295,23 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/logistics/product-first/audit" component={PR(ProductFirstAuditPage)} />
       <Route path="/logistics/import-assistant" component={PR(LogisticsImportAssistantPage)} />
       <Route path="/air-freight-form/:token" component={AirFreightVendorFormPage} />
+
+      {/* ── Logistics clean-URL aliases ────────────────────────────────── */}
+      <Route path="/logistics/dashboard" component={PR(OperationalDashboardPage)} />
+      <Route path="/logistics/shipments" component={PR(LogisticsPage)} />
+      <Route path="/logistics/trucking" component={PR(TruckingOrdersPage)} />
+      <Route path="/logistics/air-freight" component={PR(AirFreightNewOrdersPage)} />
+      <Route path="/logistics/ocean-freight" component={PR(OceanFreightOrdersPage)} />
+      <Route path="/logistics/ppjk" component={PR(LogisticsFreightPage)} />
+      <Route path="/logistics/vendor-fulfillment" component={PR(LogisticsVendorFulfillmentsPage)} />
+      <Route path="/logistics/profitability" component={PR(AccountingFreightProfitabilityPage)} />
+      <Route path="/logistics/settings" component={PR(LogisticsMarginRulesPage)} />
+
       <Route path="/portal-product-orders" component={PR(PortalProductOrdersPage)} />
       <Route path="/portal/customers" component={PR(PortalCustomersPage)} />
       <Route path="/portal/onboarding-approvals" component={PR(PortalOnboardingApprovalsPage)} />
+      <Route path="/portal/customer-verification/:id" component={PR(PortalCustomerVerificationPage)} />
+      <Route path="/portal/customer-verification" component={PR(PortalCustomerVerificationPage)} />
 
       {/* ── Sales ──────────────────────────────────────────────────────── */}
       <Route path="/sales/documents/new" component={PR(SalesDocumentEditorPage)} />
@@ -545,6 +568,12 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/tax/reconciliation" component={PR(TaxReconciliationPage)} />
       <Route path="/tax/missing-compliance" component={PR(TaxMissingCompliancePage)} />
       <Route path="/tax" component={PR(TaxDashboardPage)} />
+
+      {/* ── Module Hub Pages ───────────────────────────────────────────── */}
+      <Route path="/master-data" component={PR(MasterDataHubPage)} />
+      <Route path="/finance" component={PR(FinanceHubPage)} />
+      <Route path="/ai-center" component={PR(AiCenterHubPage)} />
+      <Route path="/hr" component={PR(HrHubPage)} />
 
       {/* ── Legacy redirects ───────────────────────────────────────────── */}
       <Route path="/expenses/new" component={() => <Redirect to="/expense/new" />} />

@@ -14,6 +14,8 @@ import {
   freightShipmentsTable,
   vendorPerformanceTable,
   productTemplatesTable,
+  portalCustomerProfilesTable,
+  portalCustomersTable,
 } from "@workspace/db";
 import { resolveTemplate } from "@workspace/product-templates";
 import { requireClerkUser } from "../lib/requireAdmin.js";
@@ -244,6 +246,34 @@ db.execute(sql`
   ALTER TABLE logistic_order_rfqs
     ADD COLUMN IF NOT EXISTS freight_shipment_id INTEGER;
 `).catch((e: unknown) => logger.warn({ e }, "rfq freight_shipment_id migration warn"));
+
+// Migration: per-item vendor offers table (Step 11)
+db.execute(sql`
+  CREATE TABLE IF NOT EXISTS rfq_vendor_item_offers (
+    id SERIAL PRIMARY KEY,
+    rfq_vendor_link_id INTEGER NOT NULL REFERENCES rfq_vendor_links(id) ON DELETE CASCADE,
+    order_item_id INTEGER,
+    service_name TEXT NOT NULL,
+    offered_price NUMERIC(14,2),
+    currency TEXT DEFAULT 'IDR',
+    schedule_etd TEXT,
+    schedule_eta TEXT,
+    lead_time_days INTEGER,
+    validity_date TEXT,
+    terms TEXT,
+    notes TEXT,
+    attachment_url TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  )
+`).catch((e: unknown) => logger.warn({ e }, "rfq_vendor_item_offers migration warn"));
+
+// Migration: add currency, validity_date, terms to rfq_vendor_links (Step 11)
+db.execute(sql.raw(`
+  ALTER TABLE rfq_vendor_links
+    ADD COLUMN IF NOT EXISTS currency TEXT DEFAULT 'IDR',
+    ADD COLUMN IF NOT EXISTS validity_date TEXT,
+    ADD COLUMN IF NOT EXISTS terms TEXT
+`)).catch((e: unknown) => logger.warn({ e }, "rfq_vendor_links extra cols migration warn"));
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function getVendorFormUrl(token: string): string {
@@ -646,6 +676,7 @@ logisticRfqV2Router.get("/vendor-form/:token", async (req: Request, res: Respons
   // Fetch order items + vendor's own catalog items (for price reference per etalase)
   const [orderItems, vendorCatalog] = await Promise.all([
     db.select({
+      id: logisticOrderItemsTable.id,
       serviceName: logisticOrderItemsTable.serviceName,
       category: logisticOrderItemsTable.category,
       calculatorType: logisticOrderItemsTable.calculatorType,
@@ -693,6 +724,16 @@ logisticRfqV2Router.get("/vendor-form/:token", async (req: Request, res: Respons
       if (origin && destination) break;
     }
   }
+
+  // Fetch extra fields + existing item offers for this link (Step 11)
+  const [linkExtrasRes, existingItemOffersRes] = await Promise.all([
+    db.execute(sql`SELECT currency, validity_date, terms FROM rfq_vendor_links WHERE id = ${link.id}`)
+      .catch(() => ({ rows: [] as unknown[] })),
+    db.execute(sql`SELECT * FROM rfq_vendor_item_offers WHERE rfq_vendor_link_id = ${link.id} ORDER BY created_at ASC`)
+      .catch(() => ({ rows: [] as unknown[] })),
+  ]);
+  const linkExtras = (linkExtrasRes.rows[0] ?? {}) as Record<string, unknown>;
+  const existingItemOffers = existingItemOffersRes.rows as Record<string, unknown>[];
 
   // Hitung basicPrice dari katalog vendor (harga etalase vendor itu sendiri)
   const basicPrice: number | null = (() => {
@@ -798,6 +839,7 @@ logisticRfqV2Router.get("/vendor-form/:token", async (req: Request, res: Respons
         ? vendorSubtotal + ppnAmount : null;
 
       return {
+        id: i.id,
         serviceName: i.serviceName,
         category: i.category,
         calculatorType: i.calculatorType,
@@ -811,6 +853,23 @@ logisticRfqV2Router.get("/vendor-form/:token", async (req: Request, res: Respons
         vendorGrandTotal,
       };
     }),
+    currentCurrency: String(linkExtras.currency || "IDR"),
+    currentValidityDate: linkExtras.validity_date ? String(linkExtras.validity_date) : null,
+    currentTerms: linkExtras.terms ? String(linkExtras.terms) : null,
+    currentItemOffers: existingItemOffers.map(r => ({
+      id: Number(r.id),
+      orderItemId: r.order_item_id != null ? Number(r.order_item_id) : null,
+      serviceName: String(r.service_name ?? ""),
+      offeredPrice: r.offered_price != null ? Number(r.offered_price) : null,
+      currency: String(r.currency || "IDR"),
+      scheduleEtd: r.schedule_etd ? String(r.schedule_etd) : null,
+      scheduleEta: r.schedule_eta ? String(r.schedule_eta) : null,
+      leadTimeDays: r.lead_time_days != null ? Number(r.lead_time_days) : null,
+      validityDate: r.validity_date ? String(r.validity_date) : null,
+      terms: r.terms ? String(r.terms) : null,
+      notes: r.notes ? String(r.notes) : null,
+      attachmentUrl: r.attachment_url ? String(r.attachment_url) : null,
+    })),
   });
 });
 
@@ -890,7 +949,10 @@ logisticRfqV2Router.post("/vendor-form/:token", async (req: Request, res: Respon
     .where(eq(logisticOrderRfqsTable.id, link.rfqId));
   if (!rfq) return res.status(404).json({ message: "RFQ tidak ditemukan" });
 
-  const { action, offeredPrice, eta, notes, attachmentUrl, leadTimeDays, stockAvailability } = req.body as {
+  const {
+    action, offeredPrice, eta, notes, attachmentUrl, leadTimeDays, stockAvailability,
+    itemOffers, currency, validityDate, terms,
+  } = req.body as {
     action: "accept" | "counter" | "reject";
     offeredPrice?: number;
     eta?: string;
@@ -898,6 +960,22 @@ logisticRfqV2Router.post("/vendor-form/:token", async (req: Request, res: Respon
     attachmentUrl?: string;
     leadTimeDays?: number;
     stockAvailability?: string;
+    itemOffers?: Array<{
+      orderItemId?: number | null;
+      serviceName: string;
+      offeredPrice?: number | null;
+      currency?: string;
+      scheduleEtd?: string;
+      scheduleEta?: string;
+      leadTimeDays?: number;
+      validityDate?: string;
+      terms?: string;
+      notes?: string;
+      attachmentUrl?: string;
+    }>;
+    currency?: string;
+    validityDate?: string;
+    terms?: string;
   };
 
   if (!action || !["accept", "counter", "reject"].includes(action)) {
@@ -991,6 +1069,38 @@ logisticRfqV2Router.post("/vendor-form/:token", async (req: Request, res: Respon
     submittedAt: link.submittedAt ?? now,
     lastUpdatedAt: now,
   }).where(eq(rfqVendorLinksTable.id, link.id));
+
+  // Save extra fields (currency, validity_date, terms) added via migration
+  await db.execute(sql`
+    UPDATE rfq_vendor_links SET
+      currency      = ${(currency ?? "IDR")},
+      validity_date = ${(validityDate ?? null)},
+      terms         = ${(terms ?? null)}
+    WHERE id = ${link.id}
+  `).catch(() => {});
+
+  // Save per-item offers if vendor provided per-item pricing (Step 11)
+  if (Array.isArray(itemOffers) && itemOffers.length > 0) {
+    await db.execute(sql`DELETE FROM rfq_vendor_item_offers WHERE rfq_vendor_link_id = ${link.id}`).catch(() => {});
+    for (const offer of itemOffers) {
+      if (!offer.serviceName) continue;
+      await db.execute(sql`
+        INSERT INTO rfq_vendor_item_offers
+          (rfq_vendor_link_id, order_item_id, service_name, offered_price, currency,
+           schedule_etd, schedule_eta, lead_time_days, validity_date, terms, notes, attachment_url)
+        VALUES
+          (${link.id}, ${offer.orderItemId ?? null}, ${String(offer.serviceName)},
+           ${offer.offeredPrice != null ? Number(offer.offeredPrice) : null},
+           ${String(offer.currency || currency || "IDR")},
+           ${offer.scheduleEtd ?? null}, ${offer.scheduleEta ?? eta ?? null},
+           ${offer.leadTimeDays != null ? Number(offer.leadTimeDays) : (leadTimeDays != null ? Number(leadTimeDays) : null)},
+           ${offer.validityDate ?? validityDate ?? null},
+           ${offer.terms ?? terms ?? null}, ${offer.notes ?? notes ?? null},
+           ${offer.attachmentUrl ?? attachmentUrl ?? null})
+      `).catch(() => {});
+    }
+  }
+
   await transitionVendorLinkStatus(link.id, newStatus, { source: "logisticRfqV2:vendor_response", actorType: "vendor", force: true });
 
   const actionLabel = action === "accept" ? "Terima Harga Basic"
@@ -1062,6 +1172,46 @@ logisticRfqV2Router.post("/orders/:orderId/rfq-blast", async (req: Request, res:
     }
   }
   // ────────────────────────────────────────────────────────────────────────────
+
+  // ── Verification Guard: customer portal harus VERIFIED sebelum blast RFQ ──
+  {
+    const { forceBlast } = req.body as { forceBlast?: boolean };
+    if (!forceBlast) {
+      const orderEmail = (order as unknown as Record<string, unknown>).email as string | null | undefined;
+      const orderGuestEmail = (order as unknown as Record<string, unknown>).guestEmail as string | null | undefined;
+      const lookupEmail = orderEmail ?? orderGuestEmail;
+      if (lookupEmail) {
+        const [portalCustomer] = await db
+          .select({ id: portalCustomersTable.id })
+          .from(portalCustomersTable)
+          .where(eq(portalCustomersTable.email, lookupEmail))
+          .limit(1);
+        if (portalCustomer) {
+          const [profile] = await db
+            .select({ verificationStatus: portalCustomerProfilesTable.verificationStatus })
+            .from(portalCustomerProfilesTable)
+            .where(eq(portalCustomerProfilesTable.customerId, portalCustomer.id))
+            .limit(1);
+          const vStatus = profile?.verificationStatus ?? "DRAFT";
+          if (vStatus !== "VERIFIED") {
+            await transitionLogisticOrderStatus(orderId, "Waiting Verification", {
+              actorType: "admin",
+              actorName: "System",
+              source: "rfq-blast-verification-guard",
+              skipAudit: false,
+            }).catch(() => {}); // jika status tidak bisa transisi, abaikan
+            return res.status(422).json({
+              message: `Customer belum terverifikasi (status: ${vStatus}). Blast RFQ ditangguhkan sampai verifikasi dokumen selesai.`,
+              verificationStatus: vStatus,
+              customerEmail: lookupEmail,
+              waitingVerification: true,
+            });
+          }
+        }
+      }
+    }
+  }
+  // ─────────────────────────────────────────────────────────────────────────
 
   // Reuse existing RFQ or create new one
   const existingRfqs = await db.select().from(logisticOrderRfqsTable)
@@ -1623,12 +1773,28 @@ logisticRfqV2Router.get("/rfq/:rfqId/comparison", async (req: Request, res: Resp
     .orderBy(sql`created_at DESC`).limit(50);
 
   // Compute order items subtotal — fallback basicPrice ketika link.basic_price null
-  const orderItemsForComp = await db.select({ subtotal: logisticOrderItemsTable.subtotal })
-    .from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, rfq.orderId));
+  const orderItemsForComp = await db.select({
+    id: logisticOrderItemsTable.id,
+    serviceName: logisticOrderItemsTable.serviceName,
+    category: logisticOrderItemsTable.category,
+    inputData: logisticOrderItemsTable.inputData,
+    subtotal: logisticOrderItemsTable.subtotal,
+  }).from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, rfq.orderId));
   const orderItemsSubtotal = orderItemsForComp.reduce(
     (s, i) => s + (i.subtotal ? parseFloat(i.subtotal) : 0), 0
   );
   const fallbackBasicPrice = orderItemsSubtotal > 0 ? orderItemsSubtotal : null;
+
+  // Fetch per-item vendor offers (Step 12)
+  const vendorItemOffersRes = await db.execute(sql`
+    SELECT vio.id, vio.rfq_vendor_link_id, rvl.vendor_id, vio.order_item_id,
+           vio.service_name, vio.offered_price, vio.currency, vio.schedule_etd,
+           vio.schedule_eta, vio.lead_time_days, vio.validity_date, vio.terms, vio.notes
+    FROM rfq_vendor_item_offers vio
+    JOIN rfq_vendor_links rvl ON rvl.id = vio.rfq_vendor_link_id
+    WHERE rvl.rfq_id = ${rfqId}
+    ORDER BY vio.created_at ASC
+  `).catch(() => ({ rows: [] as unknown[] }));
 
   const vendorRows = links
     .sort((a, b) => {
@@ -1771,6 +1937,28 @@ logisticRfqV2Router.get("/rfq/:rfqId/comparison", async (req: Request, res: Resp
       phone: r.phone ?? null,
       hasInternalTruck: Boolean(r.has_internal_truck),
       internalTruckPrice: r.internal_truck_price ? Number(r.internal_truck_price) : null,
+    })),
+    // Step 12: per-item comparison data
+    orderItems: orderItemsForComp.map(i => {
+      const inp = (i.inputData as Record<string, unknown>) ?? {};
+      const qty = Number(inp.qty ?? inp.quantity ?? inp.jumlah ?? 1) || 1;
+      const unit = inp.unit ? String(inp.unit) : "unit";
+      return { id: i.id, serviceName: i.serviceName, category: i.category, qty, unit };
+    }),
+    vendorItemOffers: (vendorItemOffersRes.rows as any[]).map(r => ({
+      id: Number(r.id),
+      rfqVendorLinkId: Number(r.rfq_vendor_link_id),
+      vendorId: Number(r.vendor_id),
+      orderItemId: r.order_item_id != null ? Number(r.order_item_id) : null,
+      serviceName: String(r.service_name ?? ""),
+      offeredPrice: r.offered_price != null ? Number(r.offered_price) : null,
+      currency: String(r.currency || "IDR"),
+      scheduleEtd: r.schedule_etd ?? null,
+      scheduleEta: r.schedule_eta ?? null,
+      leadTimeDays: r.lead_time_days != null ? Number(r.lead_time_days) : null,
+      validityDate: r.validity_date ?? null,
+      terms: r.terms ?? null,
+      notes: r.notes ?? null,
     })),
   });
 });
@@ -2495,4 +2683,292 @@ logisticRfqV2Router.get("/rfq/by-order/:orderId", async (req: Request, res: Resp
   }));
 
   return res.json(result);
+});
+
+// ─── STEP 14: GET /rfq/:rfqId/customer-data-check ────────────────────────────
+// Cek kelengkapan data customer berdasarkan service type
+logisticRfqV2Router.get("/rfq/:rfqId/customer-data-check", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const rfqId = parseInt(req.params.rfqId as string, 10);
+  if (isNaN(rfqId)) return res.status(400).json({ message: "rfqId tidak valid" });
+
+  const [rfq] = await db.select().from(logisticOrderRfqsTable)
+    .where(eq(logisticOrderRfqsTable.id, rfqId));
+  if (!rfq) return res.status(404).json({ message: "RFQ tidak ditemukan" });
+
+  const [order] = await db.select().from(logisticOrdersTable)
+    .where(eq(logisticOrdersTable.id, rfq.orderId));
+  if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
+
+  const items = await db.select({
+    id: logisticOrderItemsTable.id,
+    serviceName: logisticOrderItemsTable.serviceName,
+    inputData: logisticOrderItemsTable.inputData,
+  }).from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, order.id));
+
+  const itemData = items[0]?.inputData as Record<string, unknown> | null ?? {};
+
+  const sType = (order.shipmentType ?? "").toLowerCase();
+  const isAir     = sType.includes("air") || sType.includes("udara") || sType.includes("ff_udara");
+  const isSea     = sType.includes("sea") || sType.includes("laut") || sType.includes("ocean") || sType.includes("ff_laut");
+  const isPpjk    = sType.includes("ppjk") || sType.includes("pabean");
+  const isTruck   = sType.includes("truck") || sType.includes("trucking");
+  const isWH      = sType.includes("warehouse") || sType.includes("gudang");
+
+  interface DataField {
+    key: string;
+    label: string;
+    value: string | null;
+    required: boolean;
+    complete: boolean;
+  }
+
+  const fields: DataField[] = [];
+
+  const chk = (key: string, label: string, val: unknown, required = true): DataField => ({
+    key, label,
+    value: val != null && String(val).trim() !== "" ? String(val) : null,
+    required,
+    complete: val != null && String(val).trim() !== "",
+  });
+
+  // Data umum (semua tipe)
+  fields.push(chk("customerName", "Nama Customer/Shipper", order.customerName));
+  fields.push(chk("phone", "Nomor WA Customer", order.phone));
+  fields.push(chk("origin", "Origin/Kota Asal", order.origin));
+  fields.push(chk("destination", "Destination/Kota Tujuan", order.destination));
+  fields.push(chk("commodity", "Komoditi", order.commodity, false));
+  fields.push(chk("grossWeight", "Berat (kg)", order.grossWeight, false));
+
+  // Data per tipe layanan
+  if (isAir || isSea) {
+    fields.push(chk("shipperName", "Nama Shipper", itemData.shipperName ?? itemData.shipper_name ?? order.customerName, false));
+    fields.push(chk("consigneeName", "Nama Consignee", itemData.consigneeName ?? itemData.consignee_name ?? order.namaPenerima, false));
+    fields.push(chk("hsCode", "HS Code", itemData.hsCode ?? itemData.hs_code ?? order.hsCode, false));
+    if (isAir) {
+      fields.push(chk("awbInstruction", "Instruksi AWB", itemData.awbInstruction ?? itemData.awb_instruction, false));
+    }
+    if (isSea) {
+      fields.push(chk("blInstruction", "Instruksi BL", itemData.blInstruction ?? itemData.bl_instruction, false));
+      fields.push(chk("containerType", "Tipe Container", itemData.containerType ?? itemData.container_type, false));
+    }
+  }
+
+  if (isPpjk) {
+    fields.push(chk("npwp", "NPWP Importir/Eksportir", itemData.npwp, true));
+    fields.push(chk("nib", "NIB", itemData.nib, false));
+    fields.push(chk("hsCode", "HS Code", itemData.hsCode ?? itemData.hs_code ?? order.hsCode, true));
+  }
+
+  if (isTruck) {
+    fields.push(chk("pickupAddress", "Alamat Pickup", itemData.pickupAddress ?? itemData.pickup_address ?? order.origin, false));
+    fields.push(chk("deliveryAddress", "Alamat Tujuan", itemData.deliveryAddress ?? itemData.delivery_address ?? order.destination, false));
+    fields.push(chk("picPickup", "PIC Pickup", itemData.picPickup ?? itemData.pic_pickup, false));
+    fields.push(chk("truckType", "Tipe Kendaraan", order.truckType, false));
+  }
+
+  if (isWH) {
+    fields.push(chk("skuList", "Daftar SKU", itemData.skuList ?? itemData.sku_list, false));
+    fields.push(chk("inboundQty", "Qty Inbound", itemData.inboundQty ?? itemData.inbound_qty, false));
+  }
+
+  // Notes umum
+  fields.push(chk("notes", "Catatan Tambahan", order.notes, false));
+
+  const requiredFields = fields.filter((f) => f.required);
+  const allComplete = requiredFields.every((f) => f.complete);
+  const missingRequired = requiredFields.filter((f) => !f.complete);
+
+  // Status pengiriman data dari DB
+  const rfqExtra = rfq as Record<string, unknown>;
+
+  return res.json({
+    rfqId,
+    orderId: order.id,
+    orderNumber: order.orderNumber,
+    customerName: order.customerName,
+    shipmentType: order.shipmentType,
+    fields,
+    allComplete,
+    missingRequired: missingRequired.map((f) => f.label),
+    customerDataSentAt: rfqExtra.customer_data_sent_at ?? null,
+    customerDataSentBy: rfqExtra.customer_data_sent_by ?? null,
+    customerDataRequestSentAt: rfqExtra.customer_data_request_sent_at ?? null,
+  });
+});
+
+// ─── STEP 14: POST /rfq/:rfqId/send-customer-data ────────────────────────────
+// Kirim data master customer ke vendor via WA
+logisticRfqV2Router.post("/rfq/:rfqId/send-customer-data", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const rfqId = parseInt(req.params.rfqId as string, 10);
+  if (isNaN(rfqId)) return res.status(400).json({ message: "rfqId tidak valid" });
+
+  const [rfq] = await db.select().from(logisticOrderRfqsTable)
+    .where(eq(logisticOrderRfqsTable.id, rfqId));
+  if (!rfq) return res.status(404).json({ message: "RFQ tidak ditemukan" });
+
+  const [order] = await db.select().from(logisticOrdersTable)
+    .where(eq(logisticOrdersTable.id, rfq.orderId));
+  if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
+
+  const [selectedLink] = await db.select().from(rfqVendorLinksTable)
+    .where(and(eq(rfqVendorLinksTable.rfqId, rfqId), eq(rfqVendorLinksTable.status, "selected")))
+    .limit(1);
+  if (!selectedLink) return res.status(400).json({ message: "Tidak ada vendor terpilih" });
+
+  const [vendor] = await db.select().from(suppliersTable)
+    .where(eq(suppliersTable.id, selectedLink.vendorId));
+  if (!vendor) return res.status(404).json({ message: "Vendor tidak ditemukan" });
+
+  const items = await db.select({
+    serviceName: logisticOrderItemsTable.serviceName,
+    inputData: logisticOrderItemsTable.inputData,
+    subtotal: logisticOrderItemsTable.subtotal,
+  }).from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, order.id));
+
+  const itemData = items[0]?.inputData as Record<string, unknown> | null ?? {};
+  const sType = (order.shipmentType ?? "").toLowerCase();
+  const isAir  = sType.includes("air") || sType.includes("udara");
+  const isSea  = sType.includes("sea") || sType.includes("laut") || sType.includes("ocean");
+  const isPpjk = sType.includes("ppjk");
+  const isTruck = sType.includes("truck");
+
+  const val = (v: unknown) => (v != null && String(v).trim() !== "" ? String(v) : "—");
+
+  const dataLines: string[] = [
+    `📋 *DATA MASTER CUSTOMER — ${order.orderNumber}*`,
+    `━━━━━━━━━━━━━━━━━━`,
+    `No. Order   : ${order.orderNumber}`,
+    `Customer    : ${order.customerName}`,
+    `No. WA      : ${val(order.phone)}`,
+    `Email       : ${val(order.email)}`,
+    `Layanan     : ${order.shipmentType}`,
+    `Origin      : ${val(order.origin)}`,
+    `Destination : ${val(order.destination)}`,
+    `Komoditi    : ${val(order.commodity)}`,
+    `Berat       : ${val(order.grossWeight)} kg`,
+    `Volume      : ${val(order.volumeCbm)} CBM`,
+    `Koli        : ${val(order.jumlahKoli)}`,
+    `━━━━━━━━━━━━━━━━━━`,
+  ];
+
+  if (isAir || isSea) {
+    dataLines.push(`Shipper     : ${val(itemData.shipperName ?? order.customerName)}`);
+    dataLines.push(`Consignee   : ${val(itemData.consigneeName ?? order.namaPenerima)}`);
+    dataLines.push(`HS Code     : ${val(itemData.hsCode ?? order.hsCode)}`);
+    if (isAir) dataLines.push(`AWB Instr.  : ${val(itemData.awbInstruction)}`);
+    if (isSea) {
+      dataLines.push(`BL Instr.   : ${val(itemData.blInstruction)}`);
+      dataLines.push(`Container   : ${val(itemData.containerType)}`);
+    }
+  }
+
+  if (isPpjk) {
+    dataLines.push(`NPWP        : ${val(itemData.npwp)}`);
+    dataLines.push(`NIB         : ${val(itemData.nib)}`);
+    dataLines.push(`HS Code     : ${val(itemData.hsCode ?? order.hsCode)}`);
+  }
+
+  if (isTruck) {
+    dataLines.push(`Pickup      : ${val(itemData.pickupAddress ?? order.origin)}`);
+    dataLines.push(`Tujuan      : ${val(itemData.deliveryAddress ?? order.destination)}`);
+    dataLines.push(`PIC Pickup  : ${val(itemData.picPickup)}`);
+    dataLines.push(`Kendaraan   : ${val(order.truckType)}`);
+  }
+
+  if (order.notes) dataLines.push(`Catatan     : ${order.notes}`);
+  dataLines.push(`━━━━━━━━━━━━━━━━━━`);
+  dataLines.push(`_Data ini dikirim dari sistem CST Logistics — ${new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })}_`);
+
+  const msg = dataLines.join("\n");
+
+  let waSent = false;
+  if (vendor.phone) {
+    await sendWhatsApp(vendor.phone, msg, { context: "customer-data-to-vendor" });
+    waSent = true;
+  }
+
+  await db.execute(sql`
+    UPDATE logistic_order_rfqs
+    SET customer_data_sent_at = NOW(), customer_data_sent_by = 'admin'
+    WHERE id = ${rfqId}
+  `);
+
+  await logActivity(rfqId, "admin", "Admin", "customer_data_sent",
+    `Data customer ${order.customerName} dikirim ke vendor ${vendor.name}`);
+
+  const adminGroupWa = await getAdminGroupWa().catch(() => null);
+  if (adminGroupWa) {
+    const adminMsg = `📋 *DATA CUSTOMER DIKIRIM — ${order.orderNumber}*\n\nData master customer telah dikirim ke vendor *${vendor.name ?? ""}*.\nOrder: ${order.orderNumber}\nCustomer: ${order.customerName}\n\n_${new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })}_`;
+    sendWhatsApp(adminGroupWa, adminMsg, { context: "customer-data-sent-admin" }).catch(() => {});
+  }
+
+  return res.json({
+    ok: true, waSent, vendorName: vendor.name,
+    message: waSent ? `Data customer berhasil dikirim ke ${vendor.name}` : "Data customer disimpan (vendor tidak punya nomor WA)",
+  });
+});
+
+// ─── STEP 14: POST /rfq/:rfqId/request-customer-data ─────────────────────────
+// Kirim WA ke customer untuk minta data yang belum lengkap
+logisticRfqV2Router.post("/rfq/:rfqId/request-customer-data", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const rfqId = parseInt(req.params.rfqId as string, 10);
+  if (isNaN(rfqId)) return res.status(400).json({ message: "rfqId tidak valid" });
+
+  const { missingFields, customMessage } = req.body as {
+    missingFields?: string[];
+    customMessage?: string;
+  };
+
+  const [rfq] = await db.select().from(logisticOrderRfqsTable)
+    .where(eq(logisticOrderRfqsTable.id, rfqId));
+  if (!rfq) return res.status(404).json({ message: "RFQ tidak ditemukan" });
+
+  const [order] = await db.select().from(logisticOrdersTable)
+    .where(eq(logisticOrdersTable.id, rfq.orderId));
+  if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
+
+  if (!order.phone) return res.status(400).json({ message: "Nomor WA customer tidak tersedia" });
+
+  const missing = missingFields && missingFields.length > 0
+    ? missingFields
+    : ["Data lengkap diperlukan untuk memproses pengiriman Anda"];
+
+  const msgLines = [
+    `📋 *KELENGKAPAN DATA PENGIRIMAN*`,
+    ``,
+    `Yth. ${order.customerName},`,
+    ``,
+    `Terima kasih telah mengkonfirmasi pesanan *${order.orderNumber}*.`,
+    ``,
+    `Untuk memproses pengiriman Anda, kami memerlukan kelengkapan data berikut:`,
+    ``,
+    ...missing.map((f, i) => `${i + 1}. ${f}`),
+    ``,
+    customMessage ? customMessage : "",
+    `Mohon segera membalas WhatsApp ini atau menghubungi tim CST Logistics.`,
+    ``,
+    `Terima kasih 🙏`,
+    `_${new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })}_`,
+  ].filter((l, i) => l !== "" || i !== 10);
+
+  const msg = msgLines.join("\n");
+
+  await sendWhatsApp(order.phone, msg, { context: "customer-data-request" });
+
+  await db.execute(sql`
+    UPDATE logistic_order_rfqs
+    SET customer_data_request_sent_at = NOW()
+    WHERE id = ${rfqId}
+  `);
+
+  await logActivity(rfqId, "admin", "Admin", "customer_data_requested",
+    `Permintaan data ke customer ${order.customerName}: ${missing.join(", ")}`);
+
+  return res.json({
+    ok: true,
+    message: `Permintaan data berhasil dikirim ke customer (${order.phone})`,
+  });
 });

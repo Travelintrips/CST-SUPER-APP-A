@@ -44,15 +44,16 @@ export default function OceanFreightOrdersPage() {
   const [search,     setSearch]     = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
 
-  const { data: orders = [], isLoading, refetch } = useQuery<any[]>({
+  const { data: orders = [], isLoading, isError, error, refetch } = useQuery<any[]>({
     queryKey: ["ocean-freight-orders", statusFilter],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (statusFilter !== "all") params.set("status", statusFilter);
-      const res = await fetch(`/api/ocean-freight?${params}`);
-      if (!res.ok) throw new Error("Gagal ambil data");
+      const res = await fetch(`/api/ocean-freight?${params}`, { credentials: "include" });
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
       return res.json();
     },
+    retry: 1,
   });
 
   const filtered = orders.filter(o => {
@@ -109,6 +110,14 @@ export default function OceanFreightOrdersPage() {
       {/* Table */}
       {isLoading ? (
         <div className="text-center py-12 text-gray-500">Memuat data...</div>
+      ) : isError ? (
+        <div className="text-center py-12 text-red-500 space-y-2">
+          <p className="font-medium">Gagal memuat data</p>
+          <p className="text-sm text-gray-400">{(error as Error)?.message}</p>
+          <Button size="sm" variant="outline" onClick={() => refetch()} className="mt-2">
+            <RefreshCw className="w-4 h-4 mr-1" /> Coba lagi
+          </Button>
+        </div>
       ) : filtered.length === 0 ? (
         <div className="text-center py-12 text-gray-500">
           <Ship className="w-10 h-10 mx-auto mb-2 text-gray-300" />

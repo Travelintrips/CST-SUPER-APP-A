@@ -85,6 +85,10 @@ const EscrowConfirmPage         = lazy(() => import("@/pages/escrow-confirm"));
 const ProductApprovePage        = lazy(() => import("@/pages/product-approve"));
 const ShipmentSelectionPage     = lazy(() => import("@/pages/shipment-selection"));
 const TruckingPage              = lazy(() => import("@/pages/trucking"));
+const PortalDokumenPage         = lazy(() => import("@/pages/portal-dokumen"));
+const PortalInvoicePage         = lazy(() => import("@/pages/portal-invoice"));
+const CompanyProfilePage        = lazy(() => import("@/pages/company-profile"));
+const CompanyVerificationPage   = lazy(() => import("@/pages/company-verification"));
 const AirFreightBookingPage     = lazy(() => import("@/pages/air-freight-booking"));
 const AirFreightApprovalPage    = lazy(() => import("@/pages/air-freight-approval"));
 const AirFreightTrackPage       = lazy(() => import("@/pages/air-freight-track"));
@@ -94,6 +98,9 @@ const OceanFreightTrackPage     = lazy(() => import("@/pages/ocean-freight-track
 const OceanFreightPage          = lazy(() => import("@/pages/ocean-freight"));
 const OceanFreightVendorForm    = lazy(() => import("@/pages/ocean-freight-vendor-form"));
 const OceanFreightQuotePage     = lazy(() => import("@/pages/ocean-freight-quote"));
+const VendorTrackingFormPage    = lazy(() => import("@/pages/vendor-tracking-form"));
+const CustomerDataFormPage      = lazy(() => import("@/pages/customer-data-form"));
+const ServiceCartPage           = lazy(() => import("@/pages/service-cart"));
 const NotFound                  = lazy(() => import("@/pages/not-found"));
 
 const queryClient = new QueryClient();
@@ -129,6 +136,8 @@ const NO_SHELL_PREFIXES = [
   "/ocean-freight-vendor-form",
   "/ocean-freight-quote",
   "/q/",
+  "/vendor-tracking",
+  "/customer-data-form",
 ];
 
 // Routes that should skip the Supabase auth check entirely (public/standalone pages)
@@ -153,6 +162,8 @@ const NO_AUTH_CHECK_PREFIXES = [
   "/ocean-freight/track",
   "/ocean-freight-vendor-form",
   "/ocean-freight-quote",
+  "/vendor-tracking",
+  "/customer-data-form",
 ];
 
 const BASE_PREFIX = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -304,6 +315,10 @@ function AppShell() {
         <Route path="/shipment-selection/:token" component={ShipmentSelectionPage} />
         <Route path="/marketplace/:id" component={MarketplaceDetail} />
         <Route path="/trucking" component={TruckingPage} />
+        <Route path="/portal-dokumen" component={PortalDokumenPage} />
+        <Route path="/portal-invoice" component={PortalInvoicePage} />
+        <Route path="/company-profile" component={CompanyProfilePage} />
+        <Route path="/profile/company-verification" component={CompanyVerificationPage} />
         <Route path="/air-freight-booking" component={AirFreightBookingPage} />
         <Route path="/air-freight/approval/:token" component={AirFreightApprovalPage} />
         <Route path="/air-freight/track/:orderNumber" component={AirFreightTrackPage} />
@@ -313,6 +328,10 @@ function AppShell() {
         <Route path="/ocean-freight" component={OceanFreightPage} />
         <Route path="/ocean-freight-vendor-form/:token" component={OceanFreightVendorForm} />
         <Route path="/ocean-freight-quote/:token" component={OceanFreightQuotePage} />
+        <Route path="/vendor-tracking/:token" component={VendorTrackingFormPage} />
+        <Route path="/customer-data-form/:token" component={CustomerDataFormPage} />
+        <Route path="/service-cart" component={ServiceCartPage} />
+        <Route path="/service-cart/:requestId" component={ServiceCartPage} />
         <Route component={NotFound} />
       </Switch>
     </Suspense>

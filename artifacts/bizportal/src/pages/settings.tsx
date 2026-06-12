@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useEffect, useRef, type ElementType } from "react";
+import { Link } from "wouter";
 import { AppShell } from "@/components/layout/AppShell";
 import { useGetCurrentUser, getGetCurrentUserQueryKey } from "@workspace/api-client-react";
 import { useSupabaseAuth } from "@/contexts/SupabaseAuthContext";
@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import { User, Mail, Briefcase, Shield, MessageCircle, Save, Loader2, CheckCircle, Calculator, ChevronDown, ChevronUp, Package, Plus, X, Bot, Link2, RotateCcw, History, RefreshCw, Download, Layers, ExternalLink, FileText, Truck, ShoppingCart, Users, Building2, Ship, ArrowRight, Send, XCircle } from "lucide-react";
+import { User, Mail, Briefcase, Shield, MessageCircle, Save, Loader2, CheckCircle, Calculator, ChevronDown, ChevronUp, Package, Plus, X, Bot, Link2, RotateCcw, History, RefreshCw, Download, Layers, ExternalLink, FileText, Truck, ShoppingCart, Users, Building2, Ship, ArrowRight, Send, XCircle, Key } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
@@ -2139,61 +2139,253 @@ function WaLogsCard() {
   );
 }
 
-// ── Settings Stats Bar ────────────────────────────────────────────────────────
+// ── Settings Quick Nav Cards ───────────────────────────────────────────────────
 
-interface QuickStats {
-  logisticOrders: number;
-  salesOrders: number;
-  customers: number;
-  vendors: number;
-  shipments: number;
-  staff: number;
+interface QuickNavItem {
+  label: string;
+  href: string;
 }
 
-const STAT_ITEMS = [
-  { key: "logisticOrders", label: "Logistic Orders", icon: Truck,         href: "/bizportal/logistic-orders",      color: "text-blue-500",   bg: "bg-blue-500/10" },
-  { key: "salesOrders",    label: "Sales Orders",    icon: ShoppingCart,   href: "/bizportal/sales/orders",         color: "text-emerald-500", bg: "bg-emerald-500/10" },
-  { key: "customers",      label: "Customers",       icon: Users,          href: "/bizportal/customers",            color: "text-violet-500",  bg: "bg-violet-500/10" },
-  { key: "vendors",        label: "Vendors",         icon: Building2,      href: "/bizportal/purchase/vendors",     color: "text-amber-500",   bg: "bg-amber-500/10" },
-  { key: "shipments",      label: "Shipments",       icon: Ship,           href: "/bizportal/freight/shipments",    color: "text-cyan-500",    bg: "bg-cyan-500/10" },
-  { key: "staff",          label: "Staff",           icon: User,           href: "/bizportal/org/users",            color: "text-rose-500",    bg: "bg-rose-500/10" },
-] as const;
+interface QuickNavCard {
+  label: string;
+  icon: ElementType;
+  color: string;
+  bg: string;
+  items: QuickNavItem[];
+}
+
+const QUICK_NAV_CARDS: QuickNavCard[] = [
+  {
+    label: "Logistic Orders",
+    icon: Truck,
+    color: "text-blue-500",
+    bg: "bg-blue-500/10",
+    items: [
+      { label: "Semua Order",     href: "/logistics" },
+      { label: "Buat Order Baru", href: "/logistics/freight/new" },
+      { label: "RFQ / Penawaran", href: "/logistics/rfq" },
+      { label: "Tracking",        href: "/logistics/portal-orders" },
+    ],
+  },
+  {
+    label: "Sales Orders",
+    icon: ShoppingCart,
+    color: "text-emerald-500",
+    bg: "bg-emerald-500/10",
+    items: [
+      { label: "Semua Order",   href: "/sales/orders" },
+      { label: "Quotation",     href: "/sales/quotations" },
+      { label: "Invoice",       href: "/sales/invoices" },
+      { label: "Sales Items",   href: "/sales/items" },
+    ],
+  },
+  {
+    label: "Customers",
+    icon: Users,
+    color: "text-violet-500",
+    bg: "bg-violet-500/10",
+    items: [
+      { label: "Semua Customer",    href: "/sales/customers" },
+      { label: "Customer Portal",   href: "/portal/customers" },
+      { label: "Quote Requests",    href: "/logistics/quote-requests" },
+      { label: "Portal Orders",     href: "/logistics/portal-orders" },
+    ],
+  },
+  {
+    label: "Vendors",
+    icon: Building2,
+    color: "text-amber-500",
+    bg: "bg-amber-500/10",
+    items: [
+      { label: "Semua Vendor",    href: "/purchase/vendors" },
+      { label: "Purchase Orders", href: "/purchase/orders" },
+      { label: "Bills",           href: "/purchase/bills" },
+      { label: "RFQ Vendor",      href: "/purchase/rfq" },
+    ],
+  },
+  {
+    label: "Shipments",
+    icon: Ship,
+    color: "text-cyan-500",
+    bg: "bg-cyan-500/10",
+    items: [
+      { label: "Semua Shipment",  href: "/logistics/freight" },
+      { label: "Air Freight",     href: "/logistics/air-freight" },
+      { label: "Ocean Freight",   href: "/logistics/ocean-freight" },
+      { label: "Trucking",        href: "/logistics/trucking" },
+    ],
+  },
+  {
+    label: "Staff",
+    icon: User,
+    color: "text-rose-500",
+    bg: "bg-rose-500/10",
+    items: [
+      { label: "Semua Staff",  href: "/users" },
+      { label: "Roles",        href: "/settings/roles" },
+      { label: "Org Chart",    href: "/org" },
+      { label: "Approval",     href: "/settings/approval-rules" },
+    ],
+  },
+];
 
 function SettingsStatsBar() {
-  const { data: stats, isLoading } = useQuery<QuickStats>({
-    queryKey: ["settings-quick-stats"],
-    queryFn: async () => {
-      const r = await fetch("/api/settings/quick-stats", { credentials: "include" });
-      if (!r.ok) throw new Error("Failed");
-      return r.json();
-    },
-    staleTime: 60_000,
-  });
-
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-      {STAT_ITEMS.map(({ key, label, icon: Icon, href, color, bg }) => (
-        <a
-          key={key}
-          href={href}
-          className="group rounded-xl border bg-card hover:border-primary/50 hover:shadow-md transition-all duration-150 p-4 flex flex-col gap-2 cursor-pointer"
+      {QUICK_NAV_CARDS.map(({ label, icon: Icon, color, bg, items }) => (
+        <div
+          key={label}
+          className="rounded-xl border bg-card p-4 flex flex-col gap-3"
         >
-          <div className="flex items-center justify-between">
-            <div className={`rounded-lg p-2 ${bg}`}>
+          <div className="flex items-center gap-2">
+            <div className={`rounded-lg p-2 ${bg} shrink-0`}>
               <Icon className={`h-4 w-4 ${color}`} />
             </div>
-            <ArrowRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+            <p className="text-sm font-semibold text-foreground leading-tight">{label}</p>
           </div>
-          {isLoading ? (
-            <Skeleton className="h-7 w-12" />
-          ) : (
-            <p className="text-2xl font-bold tracking-tight text-foreground">
-              {(stats?.[key] ?? 0).toLocaleString("id-ID")}
-            </p>
-          )}
-          <p className="text-xs text-muted-foreground leading-tight">{label}</p>
-        </a>
+          <div className="flex flex-col gap-0.5">
+            {items.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className="group flex items-center justify-between rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+              >
+                <span>{item.label}</span>
+                <ArrowRight className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+              </Link>
+            ))}
+          </div>
+        </div>
       ))}
+    </div>
+  );
+}
+
+// ── Settings Hub Grid ──────────────────────────────────────────────────────────
+
+const SETTINGS_HUB_CARDS: QuickNavCard[] = [
+  {
+    label: "WhatsApp & Notifikasi",
+    icon: MessageCircle,
+    color: "text-green-500",
+    bg: "bg-green-500/10",
+    items: [
+      { label: "WA Templates",            href: "/settings/wa-templates" },
+      { label: "Enterprise WA Templates", href: "/settings/enterprise-wa-templates" },
+      { label: "WA Gateway",              href: "/settings/wa-gateway" },
+      { label: "WA Notification Logs",    href: "/settings/wa-notification-logs" },
+      { label: "WATI Config",             href: "/settings/wati" },
+    ],
+  },
+  {
+    label: "AI & Otomasi",
+    icon: Bot,
+    color: "text-purple-500",
+    bg: "bg-purple-500/10",
+    items: [
+      { label: "AI Chatbot",      href: "/settings/ai-chatbot" },
+      { label: "Knowledge Base",  href: "/settings/ai-chatbot/knowledge" },
+      { label: "AI Scan / OCR",   href: "/settings/ai-scan" },
+    ],
+  },
+  {
+    label: "Template & Dokumen",
+    icon: FileText,
+    color: "text-indigo-500",
+    bg: "bg-indigo-500/10",
+    items: [
+      { label: "Document Templates", href: "/settings/document-templates" },
+      { label: "Product Templates",  href: "/settings/product-templates" },
+      { label: "Service Templates",  href: "/settings/service-templates" },
+    ],
+  },
+  {
+    label: "Konfigurasi Logistik",
+    icon: Truck,
+    color: "text-cyan-500",
+    bg: "bg-cyan-500/10",
+    items: [
+      { label: "Satuan Logistik",  href: "/settings/logistics-units" },
+      { label: "Trucking Rates",   href: "/settings/trucking-rates" },
+      { label: "Vehicle Images",   href: "/settings/vehicle-images" },
+      { label: "Unit of Measure",  href: "/settings/uom" },
+    ],
+  },
+  {
+    label: "Akun & Pengguna",
+    icon: Shield,
+    color: "text-rose-500",
+    bg: "bg-rose-500/10",
+    items: [
+      { label: "Roles",           href: "/settings/roles" },
+      { label: "Approval Rules",  href: "/settings/approval-rules" },
+      { label: "Users",           href: "/users" },
+      { label: "Org Chart",       href: "/org" },
+    ],
+  },
+  {
+    label: "Sistem & Keamanan",
+    icon: Key,
+    color: "text-amber-500",
+    bg: "bg-amber-500/10",
+    items: [
+      { label: "App Secrets",          href: "/settings/secrets" },
+      { label: "Short Links",          href: "/settings/short-links" },
+      { label: "Nav & Company Config", href: "/settings/nav-company-config" },
+      { label: "System Health",        href: "/system-health" },
+    ],
+  },
+];
+
+function SettingsHubGrid() {
+  const [open, setOpen] = useState(() => {
+    try { return localStorage.getItem("settings_hub_open") !== "false"; } catch { return true; }
+  });
+  const toggle = () => setOpen((v) => {
+    const next = !v;
+    try { localStorage.setItem("settings_hub_open", String(next)); } catch {}
+    return next;
+  });
+  return (
+    <div className="rounded-xl border bg-card">
+      <button
+        onClick={toggle}
+        className="w-full flex items-center justify-between px-4 py-3 hover:bg-muted/40 transition-colors rounded-xl"
+      >
+        <span className="text-sm font-semibold text-foreground">Modul Settings</span>
+        <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && (
+        <div className="px-4 pb-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            {SETTINGS_HUB_CARDS.map(({ label, icon: Icon, color, bg, items }) => (
+              <div
+                key={label}
+                className="rounded-xl border bg-background p-4 flex flex-col gap-3"
+              >
+                <div className="flex items-center gap-2">
+                  <div className={`rounded-lg p-2 ${bg} shrink-0`}>
+                    <Icon className={`h-4 w-4 ${color}`} />
+                  </div>
+                  <p className="text-sm font-semibold text-foreground leading-tight">{label}</p>
+                </div>
+                <div className="flex flex-col gap-0.5">
+                  {items.map((item) => (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      className="group flex items-center justify-between rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+                    >
+                      <span>{item.label}</span>
+                      <ArrowRight className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -2218,7 +2410,7 @@ export default function SettingsPage() {
           <p className="text-muted-foreground mt-2">Manage your account preferences and view your organizational role.</p>
         </div>
 
-        {isAdmin && <SettingsStatsBar />}
+        {isAdmin && <SettingsHubGrid />}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <Card className="col-span-1 md:col-span-2 bg-card border-border">

@@ -191,6 +191,30 @@ interface TruckVendor {
   internalTruckPrice: number | null;
 }
 
+interface OrderItemComp {
+  id: number;
+  serviceName: string;
+  category: string;
+  qty: number;
+  unit: string;
+}
+
+interface VendorItemOfferComp {
+  id: number;
+  rfqVendorLinkId: number;
+  vendorId: number;
+  orderItemId: number | null;
+  serviceName: string;
+  offeredPrice: number | null;
+  currency: string;
+  scheduleEtd: string | null;
+  scheduleEta: string | null;
+  leadTimeDays: number | null;
+  validityDate: string | null;
+  terms: string | null;
+  notes: string | null;
+}
+
 interface ComparisonData {
   rfqId: number;
   rfqNumber: string;
@@ -227,6 +251,9 @@ interface ComparisonData {
   };
   vendors: VendorRow[];
   activities: { id: number; actorType: string; actorName: string | null; action: string; description: string | null; createdAt: string }[];
+  // Step 12: per-item comparison
+  orderItems?: OrderItemComp[];
+  vendorItemOffers?: VendorItemOfferComp[];
 }
 
 export default function LogisticsRfqComparisonPage() {
@@ -246,6 +273,12 @@ export default function LogisticsRfqComparisonPage() {
   const [quotePrice, setQuotePrice] = useState("");
   const [quoteNotes, setQuoteNotes] = useState("");
   const [quoteSendWa, setQuoteSendWa] = useState(true);
+
+  // Per-item comparison state (Step 12)
+  const [perItemTab, setPerItemTab] = useState(false);
+  // itemSelections[orderItemId] = { vendorId, markup, ppnIncluded }
+  const [itemSelections, setItemSelections] = useState<Record<number, { vendorId: number; markup: string; ppnIncluded: boolean }>>({});
+  const [perItemQuoteDialog, setPerItemQuoteDialog] = useState(false);
 
   const [freightConfirmDialog, setFreightConfirmDialog] = useState(false);
   const [sortBy, setSortBy] = useState<"price" | "leadtime" | "stock" | "score" | "margin">("price");
@@ -306,13 +339,19 @@ export default function LogisticsRfqComparisonPage() {
   });
 
   const sendQuoteMut = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (extraPayload?: { priceItems?: Array<{ name: string; qty?: number | null; unit?: string | null; unitPrice?: number | null; subtotal: number }> }) => {
       const price = Number(quotePrice);
       if (!price || price <= 0) throw new Error("Harga jual tidak valid");
       const r = await fetch(`/api/logistic/rfq/${rfqId}/send-customer-quote`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sellingPrice: price, quoteNotes: quoteNotes || undefined, sendWhatsApp: quoteSendWa }),
+        body: JSON.stringify({
+          sellingPrice: price,
+          quoteNotes: quoteNotes || undefined,
+          sendWhatsApp: quoteSendWa,
+          finalCustomerPrice: price,
+          ...(extraPayload ?? {}),
+        }),
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.message ?? "Gagal kirim penawaran");
@@ -904,6 +943,155 @@ export default function LogisticsRfqComparisonPage() {
           </div>
         )}
 
+        {/* ── Per-Item Comparison (Step 12) ── */}
+        {data.orderItems && data.orderItems.length > 0 && (
+          <div className="border border-indigo-200 rounded-xl overflow-hidden">
+            <button
+              className="w-full flex items-center justify-between p-3 bg-indigo-50 hover:bg-indigo-100 transition-colors"
+              onClick={() => setPerItemTab(p => !p)}
+            >
+              <div className="flex items-center gap-2">
+                <Package className="w-4 h-4 text-indigo-600" />
+                <span className="font-semibold text-sm text-indigo-900">Perbandingan Per-Item & Markup</span>
+                {data.vendorItemOffers && data.vendorItemOffers.length > 0 && (
+                  <span className="ml-1 px-2 py-0.5 rounded-full text-xs bg-indigo-100 text-indigo-700">
+                    {data.vendorItemOffers.length} penawaran
+                  </span>
+                )}
+              </div>
+              <ChevronDown className={`w-4 h-4 text-indigo-500 transition-transform ${perItemTab ? "rotate-180" : ""}`} />
+            </button>
+
+            {perItemTab && (
+              <div className="p-4 border-t border-indigo-200 space-y-4 bg-white overflow-x-auto">
+                {data.orderItems.map(item => {
+                  const offers = (data.vendorItemOffers ?? []).filter(o =>
+                    o.orderItemId === item.id || o.serviceName === item.serviceName
+                  );
+
+                  const sel = itemSelections[item.id];
+                  const selectedOffer = sel ? offers.find(o => o.vendorId === sel.vendorId) : null;
+                  const markupPct = sel ? (parseFloat(sel.markup || "0") || 0) : 0;
+                  const basePrice = selectedOffer?.offeredPrice ?? null;
+                  const withMarkup = basePrice != null ? basePrice * (1 + markupPct / 100) : null;
+                  const withPpn = withMarkup != null && sel?.ppnIncluded
+                    ? Math.round(withMarkup * 1.11) : withMarkup;
+
+                  return (
+                    <div key={item.id} className="border border-gray-100 rounded-lg overflow-hidden">
+                      <div className="bg-gray-50 px-3 py-2 flex items-center gap-2">
+                        <span className="font-semibold text-sm text-gray-800">{item.serviceName || item.category}</span>
+                        <span className="text-xs text-gray-400">{item.qty} {item.unit}</span>
+                      </div>
+                      {offers.length === 0 ? (
+                        <p className="px-3 py-2 text-xs text-gray-400 italic">Belum ada penawaran per-item untuk item ini</p>
+                      ) : (
+                        <table className="w-full text-xs">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="text-left px-3 py-1.5 text-gray-500 font-medium">Vendor</th>
+                              <th className="text-right px-3 py-1.5 text-gray-500 font-medium">Harga/Unit</th>
+                              <th className="text-right px-3 py-1.5 text-gray-500 font-medium">Subtotal</th>
+                              <th className="text-center px-3 py-1.5 text-gray-500 font-medium">ETA</th>
+                              <th className="text-center px-3 py-1.5 text-gray-500 font-medium">Currency</th>
+                              <th className="text-center px-3 py-1.5 text-gray-500 font-medium">Pilih</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {offers.map(offer => {
+                              const vName = data.vendors.find(v => v.vendorId === offer.vendorId)?.vendorName ?? `Vendor ${offer.vendorId}`;
+                              const isSelected = sel?.vendorId === offer.vendorId;
+                              const subtotal = offer.offeredPrice != null ? offer.offeredPrice * item.qty : null;
+                              return (
+                                <tr key={offer.id} className={`border-t border-gray-50 ${isSelected ? "bg-indigo-50" : "hover:bg-gray-50"}`}>
+                                  <td className="px-3 py-2 font-medium text-gray-800">{vName}</td>
+                                  <td className="px-3 py-2 text-right text-green-700 font-semibold">{offer.offeredPrice != null ? idr(offer.offeredPrice) : "—"}</td>
+                                  <td className="px-3 py-2 text-right text-gray-700">{subtotal != null ? idr(subtotal) : "—"}</td>
+                                  <td className="px-3 py-2 text-center text-gray-500">{offer.scheduleEta ?? offer.scheduleEtd ?? "—"}</td>
+                                  <td className="px-3 py-2 text-center"><span className="px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">{offer.currency}</span></td>
+                                  <td className="px-3 py-2 text-center">
+                                    <input
+                                      type="radio"
+                                      checked={isSelected}
+                                      onChange={() => setItemSelections(prev => ({
+                                        ...prev,
+                                        [item.id]: { vendorId: offer.vendorId, markup: prev[item.id]?.markup ?? "0", ppnIncluded: prev[item.id]?.ppnIncluded ?? true },
+                                      }))}
+                                      className="accent-indigo-600"
+                                    />
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      )}
+                      {sel && selectedOffer && (
+                        <div className="px-3 py-2 bg-indigo-50 border-t border-indigo-100 flex flex-wrap gap-4 items-center text-xs">
+                          <span className="text-indigo-700 font-medium">Markup:</span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.5"
+                            value={sel.markup}
+                            onChange={e => setItemSelections(prev => ({ ...prev, [item.id]: { ...prev[item.id], markup: e.target.value } }))}
+                            className="w-16 border border-indigo-200 rounded px-2 py-0.5 text-xs"
+                            placeholder="0"
+                          />
+                          <span className="text-indigo-500">%</span>
+                          <label className="flex items-center gap-1 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={sel.ppnIncluded}
+                              onChange={e => setItemSelections(prev => ({ ...prev, [item.id]: { ...prev[item.id], ppnIncluded: e.target.checked } }))}
+                              className="accent-indigo-600"
+                            />
+                            <span className="text-indigo-700">+ PPN 11%</span>
+                          </label>
+                          <span className="text-gray-500">Harga Jual:</span>
+                          <span className="font-bold text-indigo-800">{withPpn != null ? idr(withPpn) : "—"}</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+
+                {/* Build Per-Item Quote button */}
+                {Object.keys(itemSelections).length > 0 && canSendQuote && (
+                  <div className="pt-2 border-t border-indigo-100">
+                    <Button
+                      size="sm"
+                      className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs"
+                      onClick={() => {
+                        // Compute total harga jual dari semua item yang dipilih
+                        let total = 0;
+                        data.orderItems!.forEach(item => {
+                          const sel = itemSelections[item.id];
+                          if (!sel) return;
+                          const offer = (data.vendorItemOffers ?? []).find(o =>
+                            o.vendorId === sel.vendorId && (o.orderItemId === item.id || o.serviceName === item.serviceName)
+                          );
+                          if (!offer?.offeredPrice) return;
+                          const markupPct = parseFloat(sel.markup || "0") || 0;
+                          const unitWithMarkup = offer.offeredPrice * (1 + markupPct / 100);
+                          const unitFinal = sel.ppnIncluded ? unitWithMarkup * 1.11 : unitWithMarkup;
+                          total += unitFinal * item.qty;
+                        });
+                        setQuotePrice(String(Math.round(total)));
+                        setQuoteNotes("");
+                        setQuoteSendWa(true);
+                        setPerItemQuoteDialog(true);
+                      }}
+                    >
+                      <Send className="w-3.5 h-3.5 mr-1.5" /> Buat Penawaran dari Pilihan Per-Item
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Vendor comparison table */}
           <div className="lg:col-span-2 space-y-3">
@@ -1296,6 +1484,121 @@ export default function LogisticsRfqComparisonPage() {
               {sendQuoteMut.isPending
                 ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Mengirim...</>
                 : <><Send className="w-4 h-4 mr-1.5" />{isCustomerQuoted ? "Kirim Ulang" : "Kirim Penawaran"}</>
+              }
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog: Per-Item Quote (Step 12) */}
+      <Dialog open={perItemQuoteDialog} onOpenChange={(o) => !o && setPerItemQuoteDialog(false)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Package className="w-4 h-4 text-indigo-600" />
+              Kirim Penawaran Per-Item ke Customer
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-1">
+            {/* Preview per-item breakdown */}
+            <div className="bg-indigo-50 border border-indigo-100 rounded-lg p-3 space-y-1.5 text-xs">
+              <p className="font-semibold text-indigo-800 text-sm mb-2">Rincian Harga Item</p>
+              {(data.orderItems ?? []).map(item => {
+                const sel = itemSelections[item.id];
+                if (!sel) return <div key={item.id} className="text-gray-400 italic">{item.serviceName}: tidak dipilih</div>;
+                const offer = (data.vendorItemOffers ?? []).find(o =>
+                  o.vendorId === sel.vendorId && (o.orderItemId === item.id || o.serviceName === item.serviceName)
+                );
+                const vName = data.vendors.find(v => v.vendorId === sel.vendorId)?.vendorName ?? "-";
+                const mp = parseFloat(sel.markup || "0") || 0;
+                const base = offer?.offeredPrice ?? 0;
+                const withMkp = base * (1 + mp / 100);
+                const final = sel.ppnIncluded ? Math.round(withMkp * 1.11) : Math.round(withMkp);
+                return (
+                  <div key={item.id} className="flex justify-between items-center">
+                    <span className="text-gray-700">{item.serviceName}</span>
+                    <span className="text-right text-indigo-800 font-medium">
+                      {item.qty} × {idr(final)} = <strong>{idr(final * item.qty)}</strong>
+                      <span className="text-gray-400 font-normal ml-1">via {vName}</span>
+                    </span>
+                  </div>
+                );
+              })}
+              <div className="pt-1.5 border-t border-indigo-200 flex justify-between font-bold text-indigo-900">
+                <span>Total</span>
+                <span>{idr(Number(quotePrice))}</span>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="flex items-center gap-1.5">
+                <DollarSign className="w-3.5 h-3.5 text-indigo-600" />
+                Total Harga Jual ke Customer <span className="text-red-500">*</span>
+              </Label>
+              <Input
+                type="number"
+                placeholder="Total harga jual..."
+                value={quotePrice}
+                onChange={(e) => setQuotePrice(e.target.value)}
+                className="font-mono"
+              />
+              {quotePrice && Number(quotePrice) > 0 && (
+                <p className="text-xs text-muted-foreground">{idr(Number(quotePrice))}</p>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <Label>Catatan (opsional)</Label>
+              <Textarea
+                placeholder="Catatan tambahan untuk customer..."
+                value={quoteNotes}
+                onChange={(e) => setQuoteNotes(e.target.value)}
+                rows={2}
+                className="text-sm"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="per-item-send-wa"
+                checked={quoteSendWa}
+                onCheckedChange={(v) => setQuoteSendWa(!!v)}
+              />
+              <label htmlFor="per-item-send-wa" className="text-sm cursor-pointer">
+                Kirim notifikasi via WhatsApp ke customer
+              </label>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPerItemQuoteDialog(false)}>Batal</Button>
+            <Button
+              onClick={() => {
+                // Build priceItems from selections
+                const priceItems = (data.orderItems ?? []).flatMap(item => {
+                  const sel = itemSelections[item.id];
+                  if (!sel) return [];
+                  const offer = (data.vendorItemOffers ?? []).find(o =>
+                    o.vendorId === sel.vendorId && (o.orderItemId === item.id || o.serviceName === item.serviceName)
+                  );
+                  const mp = parseFloat(sel.markup || "0") || 0;
+                  const base = offer?.offeredPrice ?? 0;
+                  const withMkp = base * (1 + mp / 100);
+                  const unitPrice = Math.round(sel.ppnIncluded ? withMkp * 1.11 : withMkp);
+                  return [{
+                    name: item.serviceName,
+                    qty: item.qty,
+                    unit: item.unit,
+                    unitPrice,
+                    subtotal: unitPrice * item.qty,
+                  }];
+                });
+                sendQuoteMut.mutate({ priceItems });
+                setPerItemQuoteDialog(false);
+              }}
+              disabled={!quotePrice || Number(quotePrice) <= 0 || sendQuoteMut.isPending}
+              className="bg-indigo-600 hover:bg-indigo-700"
+            >
+              {sendQuoteMut.isPending
+                ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Mengirim...</>
+                : <><Send className="w-4 h-4 mr-1.5" />Kirim Penawaran</>
               }
             </Button>
           </DialogFooter>

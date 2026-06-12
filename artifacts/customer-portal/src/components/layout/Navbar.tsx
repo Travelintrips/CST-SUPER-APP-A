@@ -9,6 +9,7 @@ import {
   ImagePlus, Loader2, ClipboardList,
   Package, Wind, Globe, FileText, Factory, Coffee, Flame,
   Droplets, Fish, Feather, Plane,
+  Plus, Receipt, Building2, FolderOpen,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { isAuthenticated, removeAuthToken, isPortalAdmin } from "@/lib/auth";
@@ -456,136 +457,161 @@ export function Navbar() {
           {/* ── Desktop Nav — center ─────────────────────── */}
           <div className="hidden lg:flex items-center gap-0.5 flex-1">
 
-            <Link href="/" className={navItemCls(location === "/")}>
-              {t("nav.home")}
-            </Link>
+            {isAuth ? (
+              /* ── Portal Nav (logged-in customer) ──────── */
+              <>
+                <Link href="/dashboard" className={navItemCls(location === "/dashboard")}>
+                  Dashboard
+                </Link>
+                <Link href="/jasa" className={navItemCls(
+                  location.startsWith("/jasa") || location === "/book" ||
+                  location === "/air-freight-booking" || location === "/ocean-freight-booking" ||
+                  location === "/trucking" || location === "/freight-forwarding" || location === "/pabean"
+                )}>
+                  Buat Permintaan
+                </Link>
+                <Link href="/orders" className={navItemCls(location === "/orders")}>
+                  Shipment Saya
+                </Link>
+                <Link href="/portal-dokumen" className={navItemCls(location === "/portal-dokumen")}>
+                  Dokumen
+                </Link>
+                <Link href="/portal-invoice" className={navItemCls(location === "/portal-invoice")}>
+                  Invoice &amp; Pembayaran
+                </Link>
+                <Link href="/company-profile" className={navItemCls(
+                  location === "/company-profile" || location === "/account-security"
+                )}>
+                  Profil Perusahaan
+                </Link>
+              </>
+            ) : (
+              /* ── Public Nav (not logged in) ────────────── */
+              <>
+                <Link href="/" className={navItemCls(location === "/")}>
+                  {t("nav.home")}
+                </Link>
 
-            <Link href="/marketplace" className={navItemCls(location.startsWith("/marketplace"))}>
-              Marketplace
-            </Link>
+                <Link href="/marketplace" className={navItemCls(location.startsWith("/marketplace"))}>
+                  Marketplace
+                </Link>
 
-            {/* Services dropdown */}
-            <div className="relative" ref={servicesRef}>
-              <button
-                className={navItemCls(isServicesActive)}
-                onClick={() => setServicesOpen((v) => !v)}
-                onMouseEnter={() => setServicesOpen(true)}
-                aria-expanded={servicesOpen}
-              >
-                {t("nav.services")}
-                <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-200 ${servicesOpen ? "rotate-180" : ""}`} />
-              </button>
-
-              {servicesOpen && (
-                <div
-                  className="absolute top-full left-1/2 -translate-x-1/2 mt-2 z-50"
-                  style={{ width: "680px" }}
-                  onMouseLeave={() => setServicesOpen(false)}
-                >
-                  <div
-                    className="rounded-2xl overflow-hidden"
-                    style={{
-                      background: "rgba(255,255,255,0.99)",
-                      border: "1px solid #E2E8F0",
-                      boxShadow: "0 20px 60px rgba(15,23,42,0.12)",
-                    }}
+                {/* Services dropdown */}
+                <div className="relative" ref={servicesRef}>
+                  <button
+                    className={navItemCls(isServicesActive)}
+                    onClick={() => setServicesOpen((v) => !v)}
+                    onMouseEnter={() => setServicesOpen(true)}
+                    aria-expanded={servicesOpen}
                   >
-                    <div className="px-5 py-3 border-b border-slate-100">
-                      <p className="text-[11px] font-semibold text-sky-600 uppercase tracking-widest">
-                        {t("servicesMenu.tagline")}
-                      </p>
+                    {t("nav.services")}
+                    <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-200 ${servicesOpen ? "rotate-180" : ""}`} />
+                  </button>
+
+                  {servicesOpen && (
+                    <div
+                      className="absolute top-full left-1/2 -translate-x-1/2 mt-2 z-50"
+                      style={{ width: "680px" }}
+                      onMouseLeave={() => setServicesOpen(false)}
+                    >
+                      <div
+                        className="rounded-2xl overflow-hidden"
+                        style={{
+                          background: "rgba(255,255,255,0.99)",
+                          border: "1px solid #E2E8F0",
+                          boxShadow: "0 20px 60px rgba(15,23,42,0.12)",
+                        }}
+                      >
+                        <div className="px-5 py-3 border-b border-slate-100">
+                          <p className="text-[11px] font-semibold text-sky-600 uppercase tracking-widest">
+                            {t("servicesMenu.tagline")}
+                          </p>
+                        </div>
+                        <div className="grid grid-cols-3 gap-0.5 p-3">
+                          {SERVICES_ITEMS.map(({ icon: Icon, titleKey, descKey, href }) => (
+                            <Link key={titleKey} href={href} onClick={() => setServicesOpen(false)}>
+                              <div className="flex items-start gap-3 p-3 rounded-xl hover:bg-sky-50 transition-colors duration-150 group cursor-pointer">
+                                <div className="w-8 h-8 rounded-lg bg-sky-50 flex items-center justify-center shrink-0 group-hover:bg-sky-100 transition-colors">
+                                  <Icon className="h-4 w-4 text-sky-600" />
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="text-[13px] font-semibold text-slate-800 group-hover:text-sky-700 transition-colors leading-tight">
+                                    {t(titleKey)}
+                                  </p>
+                                  <p className="text-[11px] text-slate-500 leading-relaxed mt-0.5 line-clamp-2">
+                                    {t(descKey)}
+                                  </p>
+                                </div>
+                              </div>
+                            </Link>
+                          ))}
+                        </div>
+                        <div className="px-3 pb-3">
+                          <Link href="/services" onClick={() => setServicesOpen(false)}>
+                            <div className="flex items-center justify-between px-4 py-2.5 rounded-xl bg-sky-600 text-white hover:bg-sky-700 transition-all cursor-pointer">
+                              <span className="text-[13px] font-semibold">{t("servicesMenu.viewAll")}</span>
+                              <ChevronRight className="h-4 w-4" />
+                            </div>
+                          </Link>
+                        </div>
+                      </div>
                     </div>
-                    <div className="grid grid-cols-3 gap-0.5 p-3">
-                      {SERVICES_ITEMS.map(({ icon: Icon, titleKey, descKey, href }) => (
-                        <Link key={titleKey} href={href} onClick={() => setServicesOpen(false)}>
-                          <div className="flex items-start gap-3 p-3 rounded-xl hover:bg-sky-50 transition-colors duration-150 group cursor-pointer">
-                            <div className="w-8 h-8 rounded-lg bg-sky-50 flex items-center justify-center shrink-0 group-hover:bg-sky-100 transition-colors">
-                              <Icon className="h-4 w-4 text-sky-600" />
-                            </div>
-                            <div className="min-w-0">
-                              <p className="text-[13px] font-semibold text-slate-800 group-hover:text-sky-700 transition-colors leading-tight">
-                                {t(titleKey)}
-                              </p>
-                              <p className="text-[11px] text-slate-500 leading-relaxed mt-0.5 line-clamp-2">
-                                {t(descKey)}
-                              </p>
-                            </div>
+                  )}
+                </div>
+
+                {/* More dropdown */}
+                <div className="relative" ref={moreRef}>
+                  <button
+                    className={navItemCls(location === "/calculator")}
+                    onClick={() => setMoreOpen((v) => !v)}
+                    onMouseEnter={() => setMoreOpen(true)}
+                    aria-expanded={moreOpen}
+                  >
+                    {t("nav.more")}
+                    <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-200 ${moreOpen ? "rotate-180" : ""}`} />
+                  </button>
+
+                  {moreOpen && (
+                    <div
+                      className="absolute top-full left-0 mt-2 z-50 w-52"
+                      onMouseLeave={() => setMoreOpen(false)}
+                    >
+                      <div
+                        className="rounded-2xl overflow-hidden py-1.5"
+                        style={{
+                          background: "rgba(255,255,255,0.99)",
+                          border: "1px solid #E2E8F0",
+                          boxShadow: "0 16px 40px rgba(15,23,42,0.10)",
+                        }}
+                      >
+                        <Link href="/calculator" onClick={() => setMoreOpen(false)}>
+                          <div className={`flex items-center gap-3 px-4 py-2.5 text-[13.5px] font-medium cursor-pointer transition-colors ${
+                            location === "/calculator" ? "text-sky-700 bg-sky-50" : "text-slate-700 hover:bg-slate-50 hover:text-sky-700"
+                          }`}>
+                            <Calculator className="h-4 w-4 text-slate-400 shrink-0" />
+                            {t("nav.calculator")}
                           </div>
                         </Link>
-                      ))}
-                    </div>
-                    <div className="px-3 pb-3">
-                      <Link href="/services" onClick={() => setServicesOpen(false)}>
-                        <div className="flex items-center justify-between px-4 py-2.5 rounded-xl bg-sky-600 text-white hover:bg-sky-700 transition-all cursor-pointer">
-                          <span className="text-[13px] font-semibold">{t("servicesMenu.viewAll")}</span>
-                          <ChevronRight className="h-4 w-4" />
-                        </div>
-                      </Link>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* More dropdown */}
-            <div className="relative" ref={moreRef}>
-              <button
-                className={navItemCls(location === "/track" || location === "/calculator")}
-                onClick={() => setMoreOpen((v) => !v)}
-                onMouseEnter={() => setMoreOpen(true)}
-                aria-expanded={moreOpen}
-              >
-                {t("nav.more")}
-                <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-200 ${moreOpen ? "rotate-180" : ""}`} />
-              </button>
-
-              {moreOpen && (
-                <div
-                  className="absolute top-full left-0 mt-2 z-50 w-52"
-                  onMouseLeave={() => setMoreOpen(false)}
-                >
-                  <div
-                    className="rounded-2xl overflow-hidden py-1.5"
-                    style={{
-                      background: "rgba(255,255,255,0.99)",
-                      border: "1px solid #E2E8F0",
-                      boxShadow: "0 16px 40px rgba(15,23,42,0.10)",
-                    }}
-                  >
-                    <Link href="/calculator" onClick={() => setMoreOpen(false)}>
-                      <div className={`flex items-center gap-3 px-4 py-2.5 text-[13.5px] font-medium cursor-pointer transition-colors ${
-                        location === "/calculator" ? "text-sky-700 bg-sky-50" : "text-slate-700 hover:bg-slate-50 hover:text-sky-700"
-                      }`}>
-                        <Calculator className="h-4 w-4 text-slate-400 shrink-0" />
-                        {t("nav.calculator")}
+                        <button
+                          onClick={() => { setMoreOpen(false); scrollToSection("tentang"); }}
+                          className="w-full flex items-center gap-3 px-4 py-2.5 text-[13.5px] font-medium text-slate-700 hover:bg-slate-50 hover:text-sky-700 transition-colors"
+                        >
+                          <Info className="h-4 w-4 text-slate-400 shrink-0" />
+                          {t("nav.about")}
+                        </button>
+                        <button
+                          onClick={() => { setMoreOpen(false); scrollToSection("kontak"); }}
+                          className="w-full flex items-center gap-3 px-4 py-2.5 text-[13.5px] font-medium text-slate-700 hover:bg-slate-50 hover:text-sky-700 transition-colors"
+                        >
+                          <Phone className="h-4 w-4 text-slate-400 shrink-0" />
+                          {t("nav.contact")}
+                        </button>
                       </div>
-                    </Link>
-                    <Link href="/track" onClick={() => setMoreOpen(false)}>
-                      <div className={`flex items-center gap-3 px-4 py-2.5 text-[13.5px] font-medium cursor-pointer transition-colors ${
-                        location === "/track" ? "text-sky-700 bg-sky-50" : "text-slate-700 hover:bg-slate-50 hover:text-sky-700"
-                      }`}>
-                        <MapPin className="h-4 w-4 text-slate-400 shrink-0" />
-                        {t("nav.trackOrder")}
-                      </div>
-                    </Link>
-                    <button
-                      onClick={() => { setMoreOpen(false); scrollToSection("tentang"); }}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 text-[13.5px] font-medium text-slate-700 hover:bg-slate-50 hover:text-sky-700 transition-colors"
-                    >
-                      <Info className="h-4 w-4 text-slate-400 shrink-0" />
-                      {t("nav.about")}
-                    </button>
-                    <button
-                      onClick={() => { setMoreOpen(false); scrollToSection("kontak"); }}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 text-[13.5px] font-medium text-slate-700 hover:bg-slate-50 hover:text-sky-700 transition-colors"
-                    >
-                      <Phone className="h-4 w-4 text-slate-400 shrink-0" />
-                      {t("nav.contact")}
-                    </button>
-                  </div>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
+              </>
+            )}
           </div>
 
           {/* ── Right Actions ──────────────────────────────── */}
@@ -723,20 +749,6 @@ export function Navbar() {
                     </button>
                   </Link>
                 )}
-                <Link href="/dashboard">
-                  <button className="flex items-center gap-1.5 px-3 py-2 text-[13.5px] font-medium rounded-xl text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-all duration-200 whitespace-nowrap">
-                    <LayoutDashboard className="h-3.5 w-3.5" />
-                    {t("nav.dashboard")}
-                  </button>
-                </Link>
-                <Link href="/orders">
-                  <button className={`flex items-center gap-1.5 px-3 py-2 text-[13.5px] font-medium rounded-xl transition-all duration-200 whitespace-nowrap ${
-                    location === "/orders" ? "bg-sky-50 text-sky-700" : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                  }`}>
-                    <ClipboardList className="h-3.5 w-3.5" />
-                    Pesanan Saya
-                  </button>
-                </Link>
                 <button
                   onClick={handleLogout}
                   className="flex items-center gap-1.5 px-3 py-2 text-[13.5px] font-medium rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-800 transition-all duration-200 whitespace-nowrap"
@@ -911,83 +923,117 @@ export function Navbar() {
           </div>
 
           {/* Nav links */}
-          <Link href="/" onClick={() => setIsOpen(false)}>
-            <div className={`flex items-center gap-3 px-3 py-3 rounded-xl text-[15px] font-medium cursor-pointer transition-colors ${
-              location === "/" ? "bg-sky-50 text-sky-700" : "text-slate-700 hover:bg-slate-50"
-            }`}>
-              {t("nav.home")}
-            </div>
-          </Link>
-
-          <Link href="/marketplace" onClick={() => setIsOpen(false)}>
-            <div className={`flex items-center gap-3 px-3 py-3 rounded-xl text-[15px] font-medium cursor-pointer transition-colors ${
-              location.startsWith("/marketplace") ? "bg-sky-50 text-sky-700" : "text-slate-700 hover:bg-slate-50"
-            }`}>
-              Marketplace
-            </div>
-          </Link>
-
-          {/* Services Accordion */}
-          <div>
-            <button
-              className={`w-full flex items-center justify-between px-3 py-3 rounded-xl text-[15px] font-medium transition-colors ${
-                isServicesActive ? "bg-sky-50 text-sky-700" : "text-slate-700 hover:bg-slate-50"
-              }`}
-              onClick={() => setMobileServicesOpen((v) => !v)}
-            >
-              {t("nav.services")}
-              <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${mobileServicesOpen ? "rotate-180" : ""}`} />
-            </button>
-            {mobileServicesOpen && (
-              <div className="mt-1 ml-3 pl-3 border-l-2 border-sky-100 space-y-0.5">
-                {SERVICES_ITEMS.map(({ icon: Icon, titleKey, href }) => (
-                  <Link key={titleKey} href={href} onClick={() => setIsOpen(false)}>
-                    <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[14px] text-slate-600 hover:bg-slate-50 cursor-pointer transition-colors">
-                      <Icon className="h-4 w-4 text-sky-500 shrink-0" />
-                      {t(titleKey)}
-                    </div>
-                  </Link>
-                ))}
-                <Link href="/services" onClick={() => setIsOpen(false)}>
-                  <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-[14px] font-semibold text-sky-600 hover:bg-sky-50 cursor-pointer">
-                    <ChevronRight className="h-3.5 w-3.5" />
-                    {t("servicesMenu.viewAll")}
+          {isAuth ? (
+            /* ── Portal Nav mobile (logged-in) ───────── */
+            <>
+              {[
+                { href: "/dashboard",      icon: LayoutDashboard, label: "Dashboard" },
+                { href: "/jasa",           icon: Plus,            label: "Buat Permintaan" },
+                { href: "/orders",         icon: ClipboardList,   label: "Shipment Saya" },
+                { href: "/portal-dokumen", icon: FolderOpen,      label: "Dokumen" },
+                { href: "/portal-invoice", icon: Receipt,         label: "Invoice & Pembayaran" },
+                { href: "/company-profile",icon: Building2,       label: "Profil Perusahaan" },
+              ].map(({ href, icon: Icon, label }) => (
+                <Link key={href} href={href} onClick={() => setIsOpen(false)}>
+                  <div className={`flex items-center gap-3 px-3 py-3 rounded-xl text-[15px] font-medium cursor-pointer transition-colors ${
+                    location === href || (href === "/jasa" && (location.startsWith("/jasa") || location === "/book"))
+                      ? "bg-sky-50 text-sky-700"
+                      : "text-slate-700 hover:bg-slate-50"
+                  }`}>
+                    <Icon className="h-4 w-4 shrink-0" />
+                    {label}
                   </div>
                 </Link>
-              </div>
-            )}
-          </div>
+              ))}
+            </>
+          ) : (
+            /* ── Public Nav mobile (not logged in) ────── */
+            <>
+              <Link href="/" onClick={() => setIsOpen(false)}>
+                <div className={`flex items-center gap-3 px-3 py-3 rounded-xl text-[15px] font-medium cursor-pointer transition-colors ${
+                  location === "/" ? "bg-sky-50 text-sky-700" : "text-slate-700 hover:bg-slate-50"
+                }`}>
+                  {t("nav.home")}
+                </div>
+              </Link>
 
-          {/* More Accordion */}
-          <div>
-            <button
-              className={`w-full flex items-center justify-between px-3 py-3 rounded-xl text-[15px] font-medium transition-colors ${
-                location === "/track" || location === "/calculator" ? "bg-sky-50 text-sky-700" : "text-slate-700 hover:bg-slate-50"
-              }`}
-              onClick={() => setMobileMoreOpen((v) => !v)}
-            >
-              {t("nav.more")}
-              <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${mobileMoreOpen ? "rotate-180" : ""}`} />
-            </button>
-            {mobileMoreOpen && (
-              <div className="mt-1 ml-3 pl-3 border-l-2 border-slate-100 space-y-0.5">
+              <Link href="/marketplace" onClick={() => setIsOpen(false)}>
+                <div className={`flex items-center gap-3 px-3 py-3 rounded-xl text-[15px] font-medium cursor-pointer transition-colors ${
+                  location.startsWith("/marketplace") ? "bg-sky-50 text-sky-700" : "text-slate-700 hover:bg-slate-50"
+                }`}>
+                  Marketplace
+                </div>
+              </Link>
+
+              {/* Services Accordion */}
+              <div>
                 <button
-                  onClick={() => scrollToSection("tentang")}
-                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-[14px] text-slate-600 hover:bg-slate-50 cursor-pointer transition-colors"
+                  className={`w-full flex items-center justify-between px-3 py-3 rounded-xl text-[15px] font-medium transition-colors ${
+                    isServicesActive ? "bg-sky-50 text-sky-700" : "text-slate-700 hover:bg-slate-50"
+                  }`}
+                  onClick={() => setMobileServicesOpen((v) => !v)}
                 >
-                  <Info className="h-4 w-4 text-slate-400 shrink-0" />
-                  {t("nav.about")}
+                  {t("nav.services")}
+                  <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${mobileServicesOpen ? "rotate-180" : ""}`} />
                 </button>
-                <button
-                  onClick={() => scrollToSection("kontak")}
-                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-[14px] text-slate-600 hover:bg-slate-50 cursor-pointer transition-colors"
-                >
-                  <Phone className="h-4 w-4 text-slate-400 shrink-0" />
-                  {t("nav.contact")}
-                </button>
+                {mobileServicesOpen && (
+                  <div className="mt-1 ml-3 pl-3 border-l-2 border-sky-100 space-y-0.5">
+                    {SERVICES_ITEMS.map(({ icon: Icon, titleKey, href }) => (
+                      <Link key={titleKey} href={href} onClick={() => setIsOpen(false)}>
+                        <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[14px] text-slate-600 hover:bg-slate-50 cursor-pointer transition-colors">
+                          <Icon className="h-4 w-4 text-sky-500 shrink-0" />
+                          {t(titleKey)}
+                        </div>
+                      </Link>
+                    ))}
+                    <Link href="/services" onClick={() => setIsOpen(false)}>
+                      <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-[14px] font-semibold text-sky-600 hover:bg-sky-50 cursor-pointer">
+                        <ChevronRight className="h-3.5 w-3.5" />
+                        {t("servicesMenu.viewAll")}
+                      </div>
+                    </Link>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+
+              {/* More Accordion */}
+              <div>
+                <button
+                  className={`w-full flex items-center justify-between px-3 py-3 rounded-xl text-[15px] font-medium transition-colors ${
+                    location === "/calculator" ? "bg-sky-50 text-sky-700" : "text-slate-700 hover:bg-slate-50"
+                  }`}
+                  onClick={() => setMobileMoreOpen((v) => !v)}
+                >
+                  {t("nav.more")}
+                  <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${mobileMoreOpen ? "rotate-180" : ""}`} />
+                </button>
+                {mobileMoreOpen && (
+                  <div className="mt-1 ml-3 pl-3 border-l-2 border-slate-100 space-y-0.5">
+                    <Link href="/calculator" onClick={() => setIsOpen(false)}>
+                      <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[14px] text-slate-600 hover:bg-slate-50 cursor-pointer transition-colors">
+                        <Calculator className="h-4 w-4 text-slate-400 shrink-0" />
+                        {t("nav.calculator")}
+                      </div>
+                    </Link>
+                    <button
+                      onClick={() => scrollToSection("tentang")}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-[14px] text-slate-600 hover:bg-slate-50 cursor-pointer transition-colors"
+                    >
+                      <Info className="h-4 w-4 text-slate-400 shrink-0" />
+                      {t("nav.about")}
+                    </button>
+                    <button
+                      onClick={() => scrollToSection("kontak")}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-[14px] text-slate-600 hover:bg-slate-50 cursor-pointer transition-colors"
+                    >
+                      <Phone className="h-4 w-4 text-slate-400 shrink-0" />
+                      {t("nav.contact")}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
 
           {/* Language */}
           <div className="pt-3 border-t border-slate-100">
@@ -1006,16 +1052,6 @@ export function Navbar() {
                   </Button>
                 </Link>
               )}
-              <Link href="/dashboard" onClick={() => setIsOpen(false)}>
-                <Button variant="outline" className="w-full justify-start gap-2 h-11 rounded-xl">
-                  <LayoutDashboard className="h-4 w-4" /> {t("nav.dashboard")}
-                </Button>
-              </Link>
-              <Link href="/orders" onClick={() => setIsOpen(false)}>
-                <Button variant="outline" className="w-full justify-start gap-2 h-11 rounded-xl">
-                  <ClipboardList className="h-4 w-4" /> Pesanan Saya
-                </Button>
-              </Link>
               <Button
                 variant="ghost"
                 className="w-full justify-start gap-2 h-11 rounded-xl text-red-500 hover:text-red-700 hover:bg-red-50"

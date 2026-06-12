@@ -13,6 +13,9 @@ import { requireAdmin } from "../lib/requireAdmin.js";
 import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import { getAdminGroupWa } from "../lib/adminWa.js";
 
+// ─── Tables dikelola oleh Drizzle schema (lib/db/src/schema/airFreight.ts) ────
+// CREATE TABLE dihapus dari sini — gunakan drizzle-kit push untuk migrasi.
+
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 function genOrderNumber(): string {
   const d = new Date();
@@ -760,68 +763,7 @@ import { sendMail, isSmtpConfigured } from "../lib/mailer.js";
 
 const router = Router();
 
-// ── CREATE TABLE ─────────────────────────────────────────────────────────────
-db.execute(sql`
-  CREATE TABLE IF NOT EXISTS air_freight_orders (
-    id                          SERIAL PRIMARY KEY,
-    order_number                TEXT NOT NULL UNIQUE,
-    customer_id                 INTEGER,
-    customer_name               TEXT NOT NULL DEFAULT '',
-    customer_phone              TEXT NOT NULL DEFAULT '',
-    customer_email              TEXT NOT NULL DEFAULT '',
-    origin_city                 TEXT NOT NULL DEFAULT '',
-    origin_airport              TEXT NOT NULL DEFAULT '',
-    destination_city            TEXT NOT NULL DEFAULT '',
-    destination_airport         TEXT NOT NULL DEFAULT '',
-    trade_type                  TEXT NOT NULL DEFAULT 'export',
-    service_mode                TEXT NOT NULL DEFAULT 'door_to_door',
-    service_level               TEXT NOT NULL DEFAULT 'standard',
-    incoterm                    TEXT NOT NULL DEFAULT 'EXW',
-    commodity                   TEXT NOT NULL DEFAULT '',
-    hs_code                     TEXT,
-    cargo_type                  TEXT NOT NULL DEFAULT 'general',
-    gross_weight                NUMERIC(15,3) NOT NULL DEFAULT 0,
-    total_volumetric_weight     NUMERIC(15,3) NOT NULL DEFAULT 0,
-    chargeable_weight           NUMERIC(15,3) NOT NULL DEFAULT 0,
-    koli                        INTEGER NOT NULL DEFAULT 0,
-    dimension_rows              JSONB NOT NULL DEFAULT '[]',
-    pickup_date                 DATE,
-    ready_cargo_date            DATE,
-    preferred_flight_date       DATE,
-    target_arrival_date         DATE,
-    selected_additional_services JSONB NOT NULL DEFAULT '[]',
-    selected_estimate_option    TEXT,
-    estimated_price             NUMERIC(20,2),
-    estimated_price_idr         NUMERIC(20,2),
-    currency                    TEXT NOT NULL DEFAULT 'IDR',
-    pricing_breakdown           JSONB NOT NULL DEFAULT '{}',
-    selected_rate_id            INTEGER,
-    candidate_rate_ids          JSONB NOT NULL DEFAULT '[]',
-    final_rate_id               INTEGER,
-    final_price                 NUMERIC(20,2),
-    final_price_idr             NUMERIC(20,2),
-    markup_amount               NUMERIC(20,2),
-    ppn_amount                  NUMERIC(20,2),
-    grand_total                 NUMERIC(20,2),
-    final_breakdown             JSONB,
-    admin_notes                 TEXT,
-    price_status                TEXT NOT NULL DEFAULT 'estimate'
-                                  CHECK (price_status IN ('estimate','confirmed')),
-    status                      TEXT NOT NULL DEFAULT 'draft'
-                                  CHECK (status IN (
-                                    'draft','estimated','waiting_rate','rate_requested',
-                                    'rate_received','quoted','approved','booked',
-                                    'departed','arrived','delivered','completed',
-                                    'cancelled','quote_declined'
-                                  )),
-    source                      TEXT NOT NULL DEFAULT 'admin_portal'
-                                  CHECK (source IN ('customer_portal','admin_portal','api')),
-    company_id                  INTEGER,
-    created_by                  TEXT,
-    created_at                  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at                  TIMESTAMPTZ NOT NULL DEFAULT NOW()
-  )
-`).catch(() => {});
+// ── air_freight_orders dikelola Drizzle schema — CREATE TABLE dihapus ────────
 
 // ── ALTER TABLE — new columns (FASE 10) ──────────────────────────────────────
 const _fase10Alters = [

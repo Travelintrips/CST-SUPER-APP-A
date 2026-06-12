@@ -57,9 +57,9 @@ import {
 import { autoCreateLogisticInvoice, type LogisticOrderData } from "../lib/podInvoiceAutoCreate.js";
 import { logger } from "../lib/logger.js";
 import { recordDecision, updateDecisionOutcome } from "../lib/decisionMemory.js";
-import multer from "multer";
 import { Client as ObjStoreClient } from "@replit/object-storage";
 import { ObjectStorageService } from "../lib/objectStorage.js";
+import { documentUpload } from "../lib/uploadMiddleware.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Migration (idempotent)
@@ -165,7 +165,7 @@ const JOB_STATUS_LABEL: Record<string, string> = {
 
 const objStore = new ObjStoreClient();
 const pubObjStore = new ObjectStorageService();
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
+const upload = documentUpload(20);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Admin Router

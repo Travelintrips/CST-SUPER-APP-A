@@ -33,6 +33,11 @@ import { whatsappRouter } from "./whatsapp";
 import { vendorResponseRouter } from "./vendorResponse";
 import mediaRouter from "./media";
 import taxRouter from "./tax.js";
+import { customerServiceRequestsRouter } from "./customerServiceRequests.js";
+import { servicePackagesRouter } from "./servicePackages.js";
+import { portalCustomerProfileRouter } from "./portalCustomerProfile.js";
+import { customerVerificationRouter, customerVerificationAdminRouter } from "./customerVerification.js";
+import { adminServiceRequestsRouter } from "./adminServiceRequests.js";
 
 import warehouseRouter from "./warehouse";
 import inventoryReceiveRouter from "./inventoryReceive";
@@ -89,6 +94,8 @@ import { paymentProofPublicRouter, paymentProofAdminRouter } from "./paymentProo
 
 import { orderAuditTrailRouter } from "./orderAuditTrail.js";
 import { serviceTemplatesRouter } from "./serviceTemplates.js";
+import { vendorTrackingAdminRouter, vendorTrackingPublicRouter } from "./vendorTracking.js";
+import { customerDataFormPublicRouter, customerDataFormAdminRouter } from "./customerDataForm.js";
 import { paymentProofRouter } from "./paymentProof.js";
 
 import { exceptionsRouter } from "./exceptions.js";
@@ -268,6 +275,10 @@ router.use("/payment-proof", paymentProofRouter);
 
 router.use("/logistic", orderAuditTrailRouter);
 router.use("/logistic", orderExceptionsRouter);
+router.use("/logistic", vendorTrackingAdminRouter);
+router.use("/vendor-tracking", vendorTrackingPublicRouter);
+router.use("/customer-data", customerDataFormPublicRouter);
+router.use("/logistic", customerDataFormAdminRouter);
 router.use("/logistic/orders", productFirstOverrideRouter);
 router.use("/logistic/product-first/analytics", productFirstAnalyticsRouter);
 router.use("/logistic/product-first/audit", productFirstAuditDashboardRouter);
@@ -310,6 +321,12 @@ router.use("/sales/escrow", escrowPublicRouter);
 router.use("/sales/escrow", escrowAdminRouter);
 router.use("/vendor-trucking-pricing", vendorTruckingPricingRouter);
 router.use("/tax", taxRouter);
+router.use("/customer-service-requests", customerServiceRequestsRouter);
+router.use("/service-packages", servicePackagesRouter);
+router.use("/portal/customer-profile", portalCustomerProfileRouter);
+router.use("/customer-verification", customerVerificationRouter);
+router.use("/customer-verification/admin", customerVerificationAdminRouter);
+router.use("/admin/service-requests", adminServiceRequestsRouter);
 
 router.get("/alerts/stream", async (req: Request, res: Response) => {
   const ok = await requireAdmin(req, res);

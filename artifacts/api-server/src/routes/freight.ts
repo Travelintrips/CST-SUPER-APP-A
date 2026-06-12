@@ -11,6 +11,7 @@ import {
   type LogisticOrderData,
 } from "../lib/orderNotification.js";
 import { logStorageEvent, getRequestIp, getActor } from "../lib/storageAuditLog.js";
+import { postLogisticSalesInvoice, postLogisticVendorCostJournal, normalizeShipmentServiceType } from "../lib/accounting.js";
 
 const _freightObjectStorage = new ObjectStorageService();
 
@@ -234,9 +235,6 @@ router.post("/freight-shipments", async (req, res) => {
     portOfLoading, portOfDischarge, vessel, voyage, notifyParty, marksAndNumbers, measurement, notes,
     transportMode, cargoType, containerNo, salesDocId, purchaseDocId, freightCost,
     serviceCategory, sourceModule, sourceOrderId } = req.body;
-  if (!salesDocId) {
-    return res.status(400).json({ message: "Sales Order wajib dipilih sebelum membuat shipment." });
-  }
   let validatedTM: TransportMode | null;
   let validatedCT: CargoType | null;
   let validatedSC: FreightServiceCategory | null;
@@ -247,9 +245,11 @@ router.post("/freight-shipments", async (req, res) => {
   } catch (e: any) {
     return res.status(400).json({ message: e.message });
   }
-  const [linkedDoc] = await db.select({ id: salesDocumentsTable.id }).from(salesDocumentsTable).where(eq(salesDocumentsTable.id, Number(salesDocId))).limit(1);
-  if (!linkedDoc) {
-    return res.status(400).json({ message: "Sales Order tidak ditemukan." });
+  if (salesDocId) {
+    const [linkedDoc] = await db.select({ id: salesDocumentsTable.id }).from(salesDocumentsTable).where(eq(salesDocumentsTable.id, Number(salesDocId))).limit(1);
+    if (!linkedDoc) {
+      return res.status(400).json({ message: "Sales Order tidak ditemukan." });
+    }
   }
   if (purchaseDocId) {
     const [linkedPO] = await db.select({ id: purchaseDocumentsTable.id }).from(purchaseDocumentsTable).where(eq(purchaseDocumentsTable.id, Number(purchaseDocId))).limit(1);
@@ -804,7 +804,17 @@ router.get("/freight-shipments/:id/profitability", async (req, res) => {
   const profit = revenue - totalCost;
   const margin = revenue > 0 ? Math.round((profit / revenue) * 10000) / 100 : null;
 
-  return res.json({ revenue, totalCost, profit, margin, invoiceStatus });
+  return res.json({
+    revenue,
+    totalCost,
+    profit,
+    margin,
+    invoiceStatus,
+    estimatedRevenue: shipment.estimatedRevenue ? Number(shipment.estimatedRevenue) : null,
+    estimatedCost:    shipment.estimatedCost    ? Number(shipment.estimatedCost)    : null,
+    actualRevenue:    shipment.actualRevenue    ? Number(shipment.actualRevenue)    : null,
+    vendorBillStatus: shipment.vendorBillStatus ?? "none",
+  });
 });
 
 // ─── Freight Attachments ────────────────────────────────────────────────────
@@ -1244,6 +1254,178 @@ router.delete("/customs-docs/:docId", async (req, res) => {
     .returning();
   if (!deleted) return res.status(404).json({ message: "Dokumen tidak ditemukan" });
   return res.json({ message: "Deleted" });
+// ─── FASE 10: Accounting Linkage ────────────────────────────────────────────
+
+// PATCH /api/logistics/freight-shipments/:id/financial — update estimated/actual financial fields
+router.patch("/freight-shipments/:id/financial", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ message: "Invalid id" });
+  const { estimatedRevenue, estimatedCost, actualRevenue, actualCost } = req.body as Record<string, string | number | undefined>;
+  const patch: Record<string, string | null> = {};
+  if (estimatedRevenue !== undefined) patch.estimatedRevenue = estimatedRevenue !== "" && estimatedRevenue != null ? String(Number(estimatedRevenue)) : null;
+  if (estimatedCost !== undefined)    patch.estimatedCost    = estimatedCost    !== "" && estimatedCost    != null ? String(Number(estimatedCost))    : null;
+  if (actualRevenue !== undefined)    patch.actualRevenue    = actualRevenue    !== "" && actualRevenue    != null ? String(Number(actualRevenue))    : null;
+  if (actualCost !== undefined)       patch.actualCost       = actualCost       !== "" && actualCost       != null ? String(Number(actualCost))       : null;
+  if (Object.keys(patch).length === 0) return res.status(400).json({ message: "Tidak ada field yang diupdate" });
+  const [updated] = await db.update(freightShipmentsTable).set(patch).where(eq(freightShipmentsTable.id, id)).returning();
+  if (!updated) return res.status(404).json({ message: "Shipment tidak ditemukan" });
+  return res.json({ message: "Financial fields updated", shipment: updated });
+});
+
+// POST /api/logistics/freight-shipments/:id/generate-invoice — buat / update Sales Invoice
+router.post("/freight-shipments/:id/generate-invoice", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ message: "Invalid id" });
+  const [s] = await db.select().from(freightShipmentsTable).where(eq(freightShipmentsTable.id, id));
+  if (!s) return res.status(404).json({ message: "Shipment tidak ditemukan" });
+
+  const { customerName, actualRevenue, taxAmount = 0, notes } = req.body as Record<string, string | number | undefined>;
+  const revenue = Number(actualRevenue ?? s.actualRevenue ?? s.freightCost ?? 0);
+  const tax     = Number(taxAmount ?? 0);
+  const grand   = revenue + tax;
+
+  let salesDoc;
+  if (s.salesDocId) {
+    const [upd] = await db.update(salesDocumentsTable)
+      .set({ invoiceStatus: "to_invoice", totalAmount: String(revenue), taxAmount: String(tax), grandTotal: String(grand) })
+      .where(eq(salesDocumentsTable.id, s.salesDocId))
+      .returning();
+    salesDoc = upd;
+  } else {
+    const docNumber = nextNumber("FINV");
+    const [newDoc] = await db.insert(salesDocumentsTable).values({
+      docNumber,
+      kind: "order",
+      status: "confirmed",
+      invoiceStatus: "to_invoice",
+      customerName: String(customerName || s.shipperName || "Customer"),
+      totalAmount: String(revenue),
+      taxAmount: String(tax),
+      grandTotal: String(grand),
+      notes: String(notes || `Invoice Freight ${s.shipmentNumber}`),
+    }).returning();
+    salesDoc = newDoc;
+    await db.update(freightShipmentsTable).set({ salesDocId: salesDoc!.id }).where(eq(freightShipmentsTable.id, id));
+  }
+
+  const [updated] = await db.update(freightShipmentsTable)
+    .set({ invoiceStatus: "to_invoice", actualRevenue: String(revenue) })
+    .where(eq(freightShipmentsTable.id, id))
+    .returning();
+
+  return res.json({ salesDoc, shipment: updated });
+});
+
+// POST /api/logistics/freight-shipments/:id/generate-vendor-bill — buat / update Purchase Bill
+router.post("/freight-shipments/:id/generate-vendor-bill", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ message: "Invalid id" });
+  const [s] = await db.select().from(freightShipmentsTable).where(eq(freightShipmentsTable.id, id));
+  if (!s) return res.status(404).json({ message: "Shipment tidak ditemukan" });
+
+  const { vendorName, actualCost: bodyCost, notes } = req.body as Record<string, string | number | undefined>;
+  const cost = Number(bodyCost ?? s.actualCost ?? 0);
+
+  let purchaseDoc;
+  if (s.purchaseDocId) {
+    const [upd] = await db.update(purchaseDocumentsTable)
+      .set({ billStatus: "to_bill", totalAmount: String(cost), taxAmount: "0", grandTotal: String(cost) })
+      .where(eq(purchaseDocumentsTable.id, s.purchaseDocId))
+      .returning();
+    purchaseDoc = upd;
+  } else {
+    const docNumber = nextNumber("FBILL");
+    const [newDoc] = await db.insert(purchaseDocumentsTable).values({
+      docNumber,
+      kind: "order",
+      status: "confirmed",
+      billStatus: "to_bill",
+      supplierName: String(vendorName || s.approvedVendorName || "Vendor"),
+      totalAmount: String(cost),
+      taxAmount: "0",
+      grandTotal: String(cost),
+      notes: String(notes || `Vendor Bill Freight ${s.shipmentNumber}`),
+    }).returning();
+    purchaseDoc = newDoc;
+    await db.update(freightShipmentsTable).set({ purchaseDocId: purchaseDoc!.id }).where(eq(freightShipmentsTable.id, id));
+  }
+
+  const [updated] = await db.update(freightShipmentsTable)
+    .set({ vendorBillStatus: "to_bill", actualCost: String(cost) })
+    .where(eq(freightShipmentsTable.id, id))
+    .returning();
+
+  return res.json({ purchaseDoc, shipment: updated });
+});
+
+// POST /api/logistics/freight-shipments/:id/post-accounting — posting jurnal akuntansi
+router.post("/freight-shipments/:id/post-accounting", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ message: "Invalid id" });
+  const [s] = await db.select().from(freightShipmentsTable).where(eq(freightShipmentsTable.id, id));
+  if (!s) return res.status(404).json({ message: "Shipment tidak ditemukan" });
+
+  const results: { revenuePosted: boolean; costPosted: boolean; errors: string[] } = {
+    revenuePosted: false, costPosted: false, errors: [],
+  };
+
+  // Jurnal revenue (Sales Invoice)
+  if (s.salesDocId) {
+    const [sdoc] = await db.select().from(salesDocumentsTable).where(eq(salesDocumentsTable.id, s.salesDocId));
+    if (sdoc) {
+      try {
+        const svcType = normalizeShipmentServiceType(s.transportMode || s.serviceCategory || null);
+        await postLogisticSalesInvoice({
+          logisticOrderId: s.sourceOrderId ?? id,
+          salesDocId: sdoc.id,
+          docNumber: sdoc.docNumber,
+          customerName: sdoc.customerName,
+          lines: [{ serviceType: svcType, subtotal: Number(sdoc.totalAmount ?? sdoc.grandTotal ?? 0) }],
+          taxAmount: Number(sdoc.taxAmount ?? 0),
+          companyId: s.companyId ?? null,
+        });
+        await db.update(salesDocumentsTable).set({ invoiceStatus: "invoiced" }).where(eq(salesDocumentsTable.id, sdoc.id));
+        await db.update(freightShipmentsTable)
+          .set({ invoiceStatus: "invoiced", actualRevenue: sdoc.grandTotal })
+          .where(eq(freightShipmentsTable.id, id));
+        results.revenuePosted = true;
+      } catch (e: unknown) {
+        results.errors.push(`Revenue journal: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+  } else {
+    results.errors.push("Belum ada Sales Invoice — generate invoice terlebih dahulu.");
+  }
+
+  // Jurnal biaya vendor (Vendor Bill)
+  if (s.purchaseDocId) {
+    const [pdoc] = await db.select().from(purchaseDocumentsTable).where(eq(purchaseDocumentsTable.id, s.purchaseDocId));
+    if (pdoc) {
+      try {
+        const svcType = normalizeShipmentServiceType(s.transportMode || s.serviceCategory || null);
+        await postLogisticVendorCostJournal({
+          vendorPoId: pdoc.id,
+          docNumber: pdoc.docNumber,
+          supplierName: pdoc.supplierName,
+          serviceType: svcType,
+          vendorCostSnapshot: { vendorCost: Number(pdoc.grandTotal ?? 0), currency: "IDR", source: "freight_shipment" },
+          companyId: s.companyId ?? null,
+        });
+        await db.update(purchaseDocumentsTable).set({ billStatus: "billed" }).where(eq(purchaseDocumentsTable.id, pdoc.id));
+        await db.update(freightShipmentsTable)
+          .set({ vendorBillStatus: "billed", actualCost: pdoc.grandTotal })
+          .where(eq(freightShipmentsTable.id, id));
+        results.costPosted = true;
+      } catch (e: unknown) {
+        results.errors.push(`Cost journal: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+  } else {
+    results.errors.push("Belum ada Vendor Bill — generate vendor bill terlebih dahulu.");
+  }
+
+  const success = results.revenuePosted || results.costPosted;
+  return res.status(success ? 200 : 400).json({ ...results, message: success ? "Posting akuntansi selesai" : "Posting gagal" });
 });
 
 export default router;
