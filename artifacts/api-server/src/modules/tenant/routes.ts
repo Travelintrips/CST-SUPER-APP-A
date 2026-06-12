@@ -73,21 +73,6 @@ router.get("/dashboard", async (req, res) => {
     const { rows: pendingAll } = (await db.execute(
       sql`SELECT COUNT(*)::int AS pending FROM tenant_payments WHERE status = 'pending' ${cAnd}`,
     )) as unknown as { rows: { pending: number }[] };
-    const { rows: inv } = (await db.execute(
-      sql`SELECT
-            COUNT(*)::int AS total,
-            COUNT(*) FILTER (WHERE status = 'overdue')::int AS overdue,
-            COUNT(*) FILTER (WHERE status IN ('draft','sent'))::int AS pending,
-            COALESCE(SUM(outstanding_amount) FILTER (WHERE status NOT IN ('paid','cancelled')), 0)::float AS piutang
-          FROM tenant_invoices WHERE 1=1 ${cAnd}`,
-    )) as unknown as { rows: { total: number; overdue: number; pending: number; piutang: number }[] };
-    const { rows: u } = (await db.execute(
-      sql`SELECT
-            COUNT(*)::int AS total,
-            COUNT(*) FILTER (WHERE status = 'occupied')::int AS occupied,
-            COUNT(*) FILTER (WHERE status = 'available')::int AS available
-          FROM tenant_units ${cFilter}`,
-    )) as unknown as { rows: { total: number; occupied: number; available: number }[] };
 
     const uFilter = companyId ? sql`WHERE company_id = ${companyId}` : sql``;
     const { rows: u } = (await db.execute(
@@ -118,8 +103,6 @@ router.get("/dashboard", async (req, res) => {
       bookings: b[0] ?? { total: 0, unpaid: 0 },
       revenue: p[0]?.revenue ?? 0,
       pendingPayments: pendingAll[0]?.pending ?? 0,
-      invoices: inv[0] ?? { total: 0, overdue: 0, pending: 0, piutang: 0 },
-      units: u[0] ?? { total: 0, occupied: 0, available: 0 },
       units: u[0] ?? { total: 0, available: 0, occupied: 0, maintenance: 0, sport_center: 0, tod_m1: 0 },
       invoices: inv[0] ?? { total: 0, paid: 0, unpaid_count: 0, overdue: 0, total_outstanding: 0, paid_this_month: 0 },
     });
@@ -692,12 +675,6 @@ router.get("/invoices", async (req, res) => {
     const conds: ReturnType<typeof sql>[] = [];
     if (companyId) conds.push(sql`i.company_id = ${companyId}`);
     if (status !== "all") conds.push(sql`i.status = ${status}`);
-    if (search) conds.push(sql`(i.invoice_number ILIKE ${"%" + search + "%"} OR t.business_name ILIKE ${"%" + search + "%"} OR i.unit_code ILIKE ${"%" + search + "%"})`);
-    const where = conds.length ? sql`WHERE ${sql.join(conds, sql` AND `)}` : sql``;
-    const { rows } = (await db.execute(sql`
-      SELECT i.*, t.business_name
-      FROM tenant_invoices i
-      LEFT JOIN tenants t ON t.id = i.tenant_id
     if (tenantId) conds.push(sql`i.tenant_id = ${tenantId}`);
     if (bookingId) conds.push(sql`i.booking_id = ${bookingId}`);
     if (from) conds.push(sql`i.invoice_date >= ${from}`);
@@ -736,19 +713,6 @@ router.get("/invoices/:id", async (req, res) => {
       WHERE i.id = ${id} ${cf} LIMIT 1`)) as unknown as { rows: any[] };
     if (!rows[0]) return res.status(404).json({ error: "Invoice tidak ditemukan" });
     res.json(rows[0]);
-      SELECT i.*, t.business_name, t.owner_name, t.phone AS tenant_phone, t.email AS tenant_email,
-             t.address AS tenant_address, t.business_category,
-             b.order_number, b.payment_period_type, b.requested_area,
-             COALESCE(u2.unit_code, u1.unit_code, i.unit_code) AS eff_unit_code,
-             COALESCE(u2.name, u1.name) AS unit_name,
-             COALESCE(u2.area_name, u1.area_name, b.requested_area) AS unit_area,
-             COALESCE(u2.area_sqm, u1.area_sqm) AS area_sqm
-      FROM tenant_invoices i
-      JOIN tenants t ON t.id = i.tenant_id
-      LEFT JOIN tenant_bookings b ON b.id = i.booking_id
-      LEFT JOIN tenant_units u1 ON u1.id = b.unit_id
-      LEFT JOIN tenant_units u2 ON u2.id = i.unit_id
-      WHERE i.id = ${id} ${cf} LIMIT 1`)) as unknown as { rows: any[] };
     if (!rows[0]) return void res.status(404).json({ error: "Invoice tidak ditemukan" });
     const { rows: payments } = (await db.execute(
       sql`SELECT * FROM tenant_payments WHERE invoice_id = ${id} ORDER BY created_at DESC`,
@@ -780,6 +744,9 @@ router.put("/invoices/:id/status", async (req, res) => {
   } catch (err) {
     logger.error({ err }, "update invoice status failed");
     res.status(500).json({ error: "Gagal memperbarui status invoice" });
+  }
+});
+
 router.post("/invoices/generate-from-booking/:bookingId", async (req, res) => {
   if (!(await requireAdmin(req, res))) return;
   const bookingId = Number(req.params.bookingId);

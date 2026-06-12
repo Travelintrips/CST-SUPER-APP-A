@@ -230,8 +230,6 @@ import TenantList from "@/pages/tenant/tenants";
 import TenantUnits from "@/pages/tenant/units";
 import TenantBookings from "@/pages/tenant/bookings";
 import TenantPayments from "@/pages/tenant/payments";
-import TenantUnits from "@/pages/tenant/units";
-import TenantInvoices from "@/pages/tenant/invoices";
 import TenantInvoices from "@/pages/tenant/invoices";
 import AirFreightNewOrdersPage from "@/pages/air-freight/orders";
 import AirFreightRatesPage from "@/pages/air-freight/rates";

@@ -4,8 +4,7 @@ import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
 import { useCompany } from "@/contexts/CompanyContext";
 import { useLocation } from "wouter";
-import { Store, Users, FileText, DollarSign, Clock, ArrowRight, Building2, AlertTriangle, Receipt } from "lucide-react";
-import { Store, Users, FileText, DollarSign, Clock, ArrowRight, AlertCircle, TrendingUp, Receipt } from "lucide-react";
+import { Store, Users, FileText, DollarSign, Clock, ArrowRight, AlertCircle, AlertTriangle, Building2, TrendingUp, Receipt } from "lucide-react";
 
 const idr = (n: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
@@ -17,8 +16,6 @@ type Summary = {
   pendingPayments: number;
   invoices: { total: number; overdue: number; pending: number; piutang: number };
   units: { total: number; occupied: number; available: number };
-  units?: { total: number; available: number; occupied: number; maintenance: number; sport_center: number; tod_m1: number };
-  invoices?: { total: number; paid: number; unpaid_count: number; overdue: number; total_outstanding: number; paid_this_month: number };
 };
 
 export default function TenantDashboard() {
@@ -66,9 +63,6 @@ export default function TenantDashboard() {
   const unitTotal = data?.units.total ?? 0;
   const unitPct = unitTotal > 0 ? Math.round((unitOccupied / unitTotal) * 100) : 0;
 
-  return (
-    <AppShell>
-      <div className="p-6 space-y-5">
   const mainCards = [
     { label: "Total Penyewa", value: data?.tenants.total ?? 0, sub: `${data?.tenants.active ?? 0} aktif`, icon: Store, color: "text-blue-400", href: "/tenant/tenants" },
     { label: "Penyewaan", value: data?.bookings.total ?? 0, sub: `${data?.bookings.unpaid ?? 0} belum lunas`, icon: FileText, color: "text-purple-400", href: "/tenant/bookings" },
@@ -98,10 +92,6 @@ export default function TenantDashboard() {
 
         {/* Top KPI Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {topCards.map((c) => (
-            <Card key={c.label}
-              className={`border-border/60 cursor-pointer hover:border-border transition-colors ${c.highlight ? "border-red-700/60" : ""}`}
-              onClick={() => navigate(c.href)}>
           {mainCards.map((c) => (
             <Card key={c.label} className="border-border/60 cursor-pointer hover:border-border transition-colors" onClick={() => navigate(c.href)}>
               <CardContent className="p-4">
@@ -194,9 +184,6 @@ export default function TenantDashboard() {
           </Button>
           <Button size="sm" variant="outline" className="gap-1" onClick={() => navigate("/tenant/payments")}>
             <DollarSign className="h-4 w-4" /> Pembayaran
-          </Button>
-          <Button size="sm" variant="outline" className="gap-1" onClick={() => navigate("/tenant/invoices")}>
-            <Receipt className="h-4 w-4" /> Invoice
           </Button>
         </div>
       </div>

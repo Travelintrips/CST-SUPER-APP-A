@@ -337,7 +337,6 @@ export function AppShell({ children, noPadding }: AppShellProps) {
       type: "group",
       titleKey: "Notifications",
       basePath: "/notifications",
-      icon: Bell,
       icon: CalendarDays,
       roles: ["admin", "owner"],
       children: [
