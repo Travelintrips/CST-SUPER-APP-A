@@ -20,6 +20,25 @@ author = "agent"
 task = "workflow.run"
 args = "Gateway"
 
+<<<<<<< HEAD
+=======
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "artifacts/wa-gateway: WA Gateway"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "BizPortal"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "API Server"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Customer Portal"
+
+>>>>>>> 38b4e39cb32b3a38fa0782931ffd2a0bb1ce8d17
 [[workflows.workflow]]
 name = "Gateway"
 author = "agent"
@@ -41,8 +60,8 @@ outputType = "console"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "BIZPORTAL_PORT=6800 bash artifacts/bizportal/start-dev.sh"
-waitForPort = 3000
+args = "BIZPORTAL_PORT=6800 BIZPORTAL_VITE_PORT=18442 bash artifacts/bizportal/start-dev.sh"
+waitForPort = 18442
 
 [[workflows.workflow]]
 name = "Customer Portal"
@@ -56,6 +75,33 @@ task = "shell.exec"
 args = "cd artifacts/customer-portal && PORT=3001 pnpm run dev"
 waitForPort = 3001
 
+<<<<<<< HEAD
+=======
+[[workflows.workflow]]
+name = "artifacts/wa-gateway: WA Gateway"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "pnpm --filter @workspace/wa-gateway run dev"
+waitForPort = 8000
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow]]
+name = "API Server"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "bash artifacts/api-server/start-dev.sh"
+waitForPort = 8080
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+>>>>>>> 38b4e39cb32b3a38fa0782931ffd2a0bb1ce8d17
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
 expertMode = true
