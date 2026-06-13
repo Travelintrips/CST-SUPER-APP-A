@@ -33,44 +33,19 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "fuser -k 5000/tcp 2>/dev/null; sleep 0.3; BIZPORTAL_PORT=6800 PORT=5000 node gateway.mjs"
+args = "bash start-dev-all.sh"
 waitForPort = 5000
-
-[[workflows.workflow]]
-name = "BizPortal"
-author = "agent"
-
-[workflows.workflow.metadata]
-outputType = "console"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "BIZPORTAL_PORT=6800 bash artifacts/bizportal/start-dev.sh"
-waitForPort = 3000
-
-[[workflows.workflow]]
-name = "Customer Portal"
-author = "agent"
-
-[workflows.workflow.metadata]
-outputType = "console"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "cd artifacts/customer-portal && PORT=3001 pnpm run dev"
-waitForPort = 3001
 
 [[workflows.workflow]]
 name = "artifacts/wa-gateway: WA Gateway"
 author = "agent"
 
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "pnpm --filter @workspace/wa-gateway run dev"
-waitForPort = 8000
-
 [workflows.workflow.metadata]
 outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd artifacts/wa-gateway && bash start-dev.sh"
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
@@ -85,7 +60,7 @@ timeoutMs = 120000
 
 [userenv.shared]
 ADMIN_EMAILS = "divatranssoetta@gmail.com,admcst001@gmail.com,almanosetiawan@gmail.com,divarestorxr@gmail.com,wangsamasindo@gmail.com"
-PORTAL_ADMIN_EMAILS = "admcst001@gmail.com,wangsamasindo@gmail.com"
+PORTAL_ADMIN_EMAILS = "admcst001@gmail.com,wangsamasindo@gmail.com,irawansandi03@gmail.com"
 FONNTE_ADMIN_WA = "085121073537"
 ADMIN_WA_PHONES = "085121073537,087882639826"
 ADMIN_EMAIL = "admcst001@gmail.com"
@@ -186,26 +161,6 @@ localPort = 18444
 externalPort = 8080
 
 [[ports]]
-<<<<<<< HEAD
-localPort = 18442
-externalPort = 4200
-
-[[ports]]
-localPort = 18444
-externalPort = 3000
-
-[[ports]]
-localPort = 19368
-externalPort = 5000
-
-[[ports]]
-localPort = 21170
-externalPort = 5173
-
-[[ports]]
-localPort = 23434
-externalPort = 3001
-=======
 localPort = 19368
 externalPort = 6000
 
@@ -224,4 +179,3 @@ externalPort = 5173
 [[ports]]
 localPort = 23435
 externalPort = 8081
->>>>>>> 7866f48f8a475a131600b8c5ed9f800455801ca1
