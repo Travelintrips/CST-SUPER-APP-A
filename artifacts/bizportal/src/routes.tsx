@@ -232,6 +232,7 @@ import TenantBookings from "@/pages/tenant/bookings";
 import TenantPayments from "@/pages/tenant/payments";
 import TenantInvoices from "@/pages/tenant/invoices";
 import TenantMallUnits from "@/pages/tenant/mall-units";
+import PosTenant from "@/pages/tenant/pos-tenant";
 import KasirCompanies from "@/pages/tenant/kasir-companies";
 import KasirBranches from "@/pages/tenant/kasir-branches";
 import KasirUsers from "@/pages/tenant/kasir-users";
@@ -544,6 +545,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/tenant/payments" component={PR(TenantPayments)} />
       <Route path="/tenant/invoices" component={PR(TenantInvoices)} />
       <Route path="/tenant/mall-units" component={PR(TenantMallUnits)} />
+      <Route path="/tenant/pos-tenant" component={PR(PosTenant)} />
       <Route path="/tenant/kasir/companies" component={PR(KasirCompanies)} />
       <Route path="/tenant/kasir/branches" component={PR(KasirBranches)} />
       <Route path="/tenant/kasir/users" component={PR(KasirUsers)} />
