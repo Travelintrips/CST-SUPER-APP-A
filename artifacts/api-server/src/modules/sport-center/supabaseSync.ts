@@ -86,8 +86,8 @@ async function writeSyncLog(opts: {
 
 function getSupabaseClient() {
   try {
-    const mod = require("../../lib/supabaseAdmin.js");
-    return mod.supabaseAdmin as import("@supabase/supabase-js").SupabaseClient | null;
+    const { getSportCenterSupabaseClient } = require("../../lib/supabaseAdminSportCenter.js");
+    return getSportCenterSupabaseClient() as import("@supabase/supabase-js").SupabaseClient | null;
   } catch {
     return null;
   }
@@ -96,8 +96,8 @@ function getSupabaseClient() {
 async function syncToServicesViaClient(row: FacilityRow): Promise<void> {
   let client: import("@supabase/supabase-js").SupabaseClient | null = null;
   try {
-    const { supabaseAdmin } = await import("../../lib/supabaseAdmin.js");
-    client = supabaseAdmin as unknown as import("@supabase/supabase-js").SupabaseClient;
+    const { getSportCenterSupabaseClient } = await import("../../lib/supabaseAdminSportCenter.js");
+    client = getSportCenterSupabaseClient() as unknown as import("@supabase/supabase-js").SupabaseClient;
   } catch { }
 
   const code = facilityCode(row.id);
@@ -145,8 +145,8 @@ async function syncToServicesViaClient(row: FacilityRow): Promise<void> {
 async function syncToFacilitiesViaClient(row: FacilityRow): Promise<void> {
   let client: import("@supabase/supabase-js").SupabaseClient | null = null;
   try {
-    const { supabaseAdmin } = await import("../../lib/supabaseAdmin.js");
-    client = supabaseAdmin as unknown as import("@supabase/supabase-js").SupabaseClient;
+    const { getSportCenterSupabaseClient } = await import("../../lib/supabaseAdminSportCenter.js");
+    client = getSportCenterSupabaseClient() as unknown as import("@supabase/supabase-js").SupabaseClient;
   } catch { }
 
   const payload = {
@@ -221,8 +221,8 @@ export async function syncFacilityDelete(id: number, name: string, companyId?: n
   const code = facilityCode(id);
   let client: import("@supabase/supabase-js").SupabaseClient | null = null;
   try {
-    const { supabaseAdmin } = await import("../../lib/supabaseAdmin.js");
-    client = supabaseAdmin as unknown as import("@supabase/supabase-js").SupabaseClient;
+    const { getSportCenterSupabaseClient } = await import("../../lib/supabaseAdminSportCenter.js");
+    client = getSportCenterSupabaseClient() as unknown as import("@supabase/supabase-js").SupabaseClient;
   } catch { }
 
   const ops = [
@@ -312,8 +312,8 @@ async function getFacilityIdMap(client: import("@supabase/supabase-js").Supabase
 export async function syncBookingUpsert(row: BookingRow): Promise<void> {
   let client: import("@supabase/supabase-js").SupabaseClient | null = null;
   try {
-    const { supabaseAdmin } = await import("../../lib/supabaseAdmin.js");
-    client = supabaseAdmin as unknown as import("@supabase/supabase-js").SupabaseClient;
+    const { getSportCenterSupabaseClient } = await import("../../lib/supabaseAdminSportCenter.js");
+    client = getSportCenterSupabaseClient() as unknown as import("@supabase/supabase-js").SupabaseClient;
   } catch { }
 
   const facilityMap = await getFacilityIdMap(client);
@@ -441,8 +441,8 @@ export async function syncAllBookings(): Promise<{ synced: number; errors: numbe
   // ambil client dan facility map sekali di luar loop
   let client: import("@supabase/supabase-js").SupabaseClient | null = null;
   try {
-    const { supabaseAdmin } = await import("../../lib/supabaseAdmin.js");
-    client = supabaseAdmin as unknown as import("@supabase/supabase-js").SupabaseClient;
+    const { getSportCenterSupabaseClient } = await import("../../lib/supabaseAdminSportCenter.js");
+    client = getSportCenterSupabaseClient() as unknown as import("@supabase/supabase-js").SupabaseClient;
   } catch { }
   const facilityMap = await getFacilityIdMap(client);
 
@@ -535,12 +535,12 @@ export async function getLastSyncLogs(limit = 20): Promise<unknown[]> {
 export async function pullLegacyBookingsFromSupabase(): Promise<{ pulled: number; errors: number; total: number }> {
   let client: import("@supabase/supabase-js").SupabaseClient | null = null;
   try {
-    const { supabaseAdmin } = await import("../../lib/supabaseAdmin.js");
-    client = supabaseAdmin as unknown as import("@supabase/supabase-js").SupabaseClient;
+    const { getSportCenterSupabaseClient } = await import("../../lib/supabaseAdminSportCenter.js");
+    client = getSportCenterSupabaseClient() as unknown as import("@supabase/supabase-js").SupabaseClient;
   } catch { }
 
   if (!client) {
-    console.warn(`${PREFIX} pullLegacyBookings: supabaseAdmin tidak tersedia, skip`);
+    console.warn(`${PREFIX} pullLegacyBookings: Sport Center Supabase client tidak tersedia, skip`);
     return { pulled: 0, errors: 0, total: 0 };
   }
 
