@@ -437,6 +437,11 @@ router.post("/auth/dev-login", async (req: Request, res: Response) => {
         found = retry;
       }
     }
+    // Jika email ada di ADMIN_EMAIL tapi role di DB bukan admin, update sekarang
+    if (found && isAdmin && found.role !== "admin") {
+      const [updated] = await db.update(usersTable).set({ role: "admin" }).where(eq(usersTable.id, found.id)).returning();
+      if (updated) found = updated;
+    }
     dbUser = found ?? syntheticUser;
   } catch {
     // DB unavailable — use synthetic user (session stored in memory)
@@ -662,6 +667,12 @@ router.post("/dev-login", async (req: Request, res: Response) => {
     companyId: null as number | null,
   };
 
+  const _adminEmails2 = (process.env.ADMIN_EMAIL ?? "")
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+  const _isAdmin2 = _adminEmails2.length === 0 || _adminEmails2.includes(email.trim().toLowerCase());
+
   let dbUser: typeof _synth;
   try {
     // Kalau user dengan email ini sudah ada di DB (mis. dari OIDC prod), langsung pakai
@@ -683,6 +694,11 @@ router.post("/dev-login", async (req: Request, res: Response) => {
         picture: null,
       };
       dbUser = await upsertUser(claims);
+    }
+    // Jika email ada di ADMIN_EMAIL tapi role di DB bukan admin, update sekarang
+    if (dbUser && _isAdmin2 && dbUser.role !== "admin") {
+      const [updated] = await db.update(usersTable).set({ role: "admin" }).where(eq(usersTable.id, dbUser.id)).returning();
+      if (updated) dbUser = updated;
     }
   } catch {
     // DB unavailable — use synthetic user (session stored in memory)
