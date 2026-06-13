@@ -1649,15 +1649,6 @@ function WaTemplatesCard() {
               size="sm"
               variant="outline"
               className="gap-2"
-              onClick={() => { window.location.href = "/bizportal/settings/wa-gateway"; }}
-            >
-              <MessageCircle className="h-4 w-4 text-green-600" />
-              WA Gateway
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="gap-2"
               onClick={() => { window.location.href = "/bizportal/settings/wati"; }}
             >
               <MessageCircle className="h-4 w-4 text-emerald-500" />
@@ -2272,7 +2263,6 @@ const SETTINGS_HUB_CARDS: QuickNavCard[] = [
     items: [
       { label: "WA Templates",            href: "/settings/wa-templates" },
       { label: "Enterprise WA Templates", href: "/settings/enterprise-wa-templates" },
-      { label: "WA Gateway",              href: "/settings/wa-gateway" },
       { label: "WA Notification Logs",    href: "/settings/wa-notification-logs" },
       { label: "WATI Config",             href: "/settings/wati" },
     ],
@@ -2512,26 +2502,6 @@ export default function SettingsPage() {
           {isAdmin && <WaTemplatesCard />}
           {isAdmin && <WaLogsCard />}
 
-          {isAdmin && (
-            <Card className="col-span-1 md:col-span-3 bg-card border-border">
-              <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2">
-                  <MessageCircle className="w-4 h-4 text-green-500" /> WA Gateway
-                </CardTitle>
-                <CardDescription>
-                  Konfigurasi WA Gateway (Baileys) sebagai pengirim notifikasi WhatsApp — URL, API Key, dan Device ID.
-                  Jika aktif, semua notifikasi ERP dikirim lewat device ini.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <a href="/bizportal/settings/wa-gateway">
-                  <Button variant="outline" size="sm" className="gap-2">
-                    <MessageCircle className="w-4 h-4 text-green-600" /> Buka WA Gateway Settings
-                  </Button>
-                </a>
-              </CardContent>
-            </Card>
-          )}
 
           {isAdmin && (
             <Card className="col-span-1 md:col-span-3 bg-card border-border">

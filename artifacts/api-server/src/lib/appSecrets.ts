@@ -200,30 +200,6 @@ export const SECRETS_CATALOG: SecretDef[] = [
     sensitive: false,
     group: "WhatsApp",
   },
-  {
-    key: "wa_gateway_url",
-    label: "WA Gateway URL",
-    description: "Base URL WA Gateway sendiri (contoh: http://localhost:8000). Jika diisi bersama API Key dan Device ID, pesan WA akan dikirim lewat gateway ini, bukan Fonnte.",
-    envFallback: "WA_GATEWAY_URL",
-    sensitive: false,
-    group: "WhatsApp",
-  },
-  {
-    key: "wa_gateway_api_key",
-    label: "WA Gateway API Key",
-    description: "API key bertipe wag_xxx dari dashboard WA Gateway (/wa-gateway). Harus diisi bersama URL dan Device ID.",
-    envFallback: "WA_GATEWAY_API_KEY",
-    sensitive: true,
-    group: "WhatsApp",
-  },
-  {
-    key: "wa_gateway_device_id",
-    label: "WA Gateway Device ID",
-    description: "ID device WA yang sudah connected di WA Gateway (angka, lihat di dashboard /wa-gateway).",
-    envFallback: "WA_GATEWAY_DEVICE_ID",
-    sensitive: false,
-    group: "WhatsApp",
-  },
 ];
 
 export function maskSecret(value: string): string {
@@ -290,14 +266,3 @@ export async function getPortalAdminKey(): Promise<string> {
   return getSetting("portal_admin_key", process.env.PORTAL_ADMIN_KEY ?? "");
 }
 
-export async function getWaGatewayConfig(): Promise<{ url: string; apiKey: string; deviceId: number } | null> {
-  const [url, apiKey, deviceIdStr] = await Promise.all([
-    getSetting("wa_gateway_url", process.env.WA_GATEWAY_URL ?? ""),
-    getSetting("wa_gateway_api_key", process.env.WA_GATEWAY_API_KEY ?? ""),
-    getSetting("wa_gateway_device_id", process.env.WA_GATEWAY_DEVICE_ID ?? ""),
-  ]);
-  if (!url || !apiKey || !deviceIdStr) return null;
-  const deviceId = Number(deviceIdStr);
-  if (!Number.isFinite(deviceId) || deviceId <= 0) return null;
-  return { url, apiKey, deviceId };
-}
