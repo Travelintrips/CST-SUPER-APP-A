@@ -232,6 +232,16 @@ import TenantBookings from "@/pages/tenant/bookings";
 import TenantPayments from "@/pages/tenant/payments";
 import TenantInvoices from "@/pages/tenant/invoices";
 import TenantMallUnits from "@/pages/tenant/mall-units";
+import KasirCompanies from "@/pages/tenant/kasir-companies";
+import KasirBranches from "@/pages/tenant/kasir-branches";
+import KasirUsers from "@/pages/tenant/kasir-users";
+import KasirProducts from "@/pages/tenant/kasir-products";
+import KasirDevices from "@/pages/tenant/kasir-devices";
+import PosBranches from "@/pages/tenant/pos-branches";
+import PosCashiers from "@/pages/tenant/pos-cashiers";
+import PosProducts from "@/pages/tenant/pos-products";
+import PosRoles from "@/pages/tenant/pos-roles";
+import PosSettings from "@/pages/tenant/pos-settings";
 import AirFreightNewOrdersPage from "@/pages/air-freight/orders";
 import AirFreightRatesPage from "@/pages/air-freight/rates";
 import AirFreightNewOrderDetailPage from "@/pages/air-freight/order-detail";
@@ -534,6 +544,16 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/tenant/payments" component={PR(TenantPayments)} />
       <Route path="/tenant/invoices" component={PR(TenantInvoices)} />
       <Route path="/tenant/mall-units" component={PR(TenantMallUnits)} />
+      <Route path="/tenant/kasir/companies" component={PR(KasirCompanies)} />
+      <Route path="/tenant/kasir/branches" component={PR(KasirBranches)} />
+      <Route path="/tenant/kasir/users" component={PR(KasirUsers)} />
+      <Route path="/tenant/kasir/products" component={PR(KasirProducts)} />
+      <Route path="/tenant/kasir/devices" component={PR(KasirDevices)} />
+      <Route path="/tenant/pos/branches" component={PR(PosBranches)} />
+      <Route path="/tenant/pos/cashiers" component={PR(PosCashiers)} />
+      <Route path="/tenant/pos/products" component={PR(PosProducts)} />
+      <Route path="/tenant/pos/roles" component={PR(PosRoles)} />
+      <Route path="/tenant/pos/settings" component={PR(PosSettings)} />
       <Route path="/tenant" component={PR(TenantDashboard)} />
 
       {/* ── Ocean Freight ───────────────────────────────────────────────── */}

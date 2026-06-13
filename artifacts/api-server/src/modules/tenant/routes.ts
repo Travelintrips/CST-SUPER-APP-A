@@ -1160,4 +1160,10 @@ router.delete("/mall-units/:id", async (req, res) => {
   }
 });
 
+// ── KASIR & POS SUB-ROUTERS ────────────────────────────────────────────────
+import kasirRouter from "./kasirRoutes.js";
+import posRouter from "./posRoutes.js";
+router.use("/kasir", kasirRouter);
+router.use("/pos", posRouter);
+
 export default router;

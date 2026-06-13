@@ -334,6 +334,38 @@ export function AppShell({ children, noPadding }: AppShellProps) {
       ],
     },
 
+    // ── KASIR POS (kasir_* tables) ────────────────────────────────────
+    {
+      type: "group",
+      titleKey: "Kasir POS",
+      basePath: "/tenant/kasir",
+      icon: Store,
+      roles: ["admin", "owner"],
+      children: [
+        { titleKey: "Perusahaan",  href: "/tenant/kasir/companies", icon: Building2 },
+        { titleKey: "Cabang",      href: "/tenant/kasir/branches",  icon: Layers },
+        { titleKey: "Pengguna",    href: "/tenant/kasir/users",     icon: Users },
+        { titleKey: "Produk",      href: "/tenant/kasir/products",  icon: ShoppingBag },
+        { titleKey: "Perangkat",   href: "/tenant/kasir/devices",   icon: Database },
+      ],
+    },
+
+    // ── POS SYSTEM (pos_* tables) ─────────────────────────────────────
+    {
+      type: "group",
+      titleKey: "POS System",
+      basePath: "/tenant/pos",
+      icon: Package,
+      roles: ["admin", "owner"],
+      children: [
+        { titleKey: "Cabang POS",  href: "/tenant/pos/branches",  icon: Building2 },
+        { titleKey: "Kasir",       href: "/tenant/pos/cashiers",  icon: UserCircle },
+        { titleKey: "Produk POS",  href: "/tenant/pos/products",  icon: Package },
+        { titleKey: "Role & Akses",href: "/tenant/pos/roles",     icon: Shield },
+        { titleKey: "Pengaturan",  href: "/tenant/pos/settings",  icon: Settings },
+      ],
+    },
+
     // ── NOTIFICATIONS ─────────────────────────────────────────────────
     {
       type: "group",
