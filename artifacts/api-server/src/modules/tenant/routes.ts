@@ -1160,6 +1160,187 @@ router.delete("/mall-units/:id", async (req, res) => {
   }
 });
 
+/* ───────────────────────── REKAP TENANT ───────────────────────── */
+router.get("/rekap", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  const companyId = companyOf(req);
+  const cAnd = companyId ? sql`AND t.company_id = ${companyId}` : sql``;
+  try {
+    const { rows } = (await db.execute(sql`
+      SELECT
+        t.id, t.business_name, t.owner_name, t.phone, t.email,
+        t.business_category, t.status, t.company_id,
+        COUNT(DISTINCT b.id)::int AS total_bookings,
+        COUNT(DISTINCT b.id) FILTER (WHERE b.status = 'active')::int AS active_bookings,
+        COALESCE(SUM(p.amount) FILTER (WHERE p.status = 'confirmed'), 0)::float AS total_paid,
+        COALESCE(SUM(i.outstanding_amount) FILTER (WHERE i.status NOT IN ('paid','cancelled')), 0)::float AS total_outstanding,
+        MAX(p.paid_at)::text AS last_payment_at,
+        COUNT(DISTINCT i.id) FILTER (WHERE i.status = 'overdue' OR (i.due_date < CURRENT_DATE AND i.status NOT IN ('paid','cancelled')))::int AS overdue_invoices
+      FROM tenants t
+      LEFT JOIN tenant_bookings b ON b.tenant_id = t.id
+      LEFT JOIN tenant_payments p ON p.tenant_id = t.id
+      LEFT JOIN tenant_invoices i ON i.tenant_id = t.id
+      WHERE 1=1 ${cAnd}
+      GROUP BY t.id
+      ORDER BY total_paid DESC, t.business_name
+    `)) as unknown as { rows: any[] };
+    res.json({ data: rows, total: rows.length });
+  } catch (err) {
+    logger.error({ err }, "rekap tenant failed");
+    res.status(500).json({ error: "Gagal memuat rekap tenant" });
+  }
+});
+
+/* ───────────────────────── LAPORAN KEUANGAN ───────────────────────── */
+router.get("/laporan-keuangan", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  const companyId = companyOf(req);
+  const from = req.query.from ? String(req.query.from) : null;
+  const to   = req.query.to   ? String(req.query.to)   : null;
+  const cAnd = companyId ? sql`AND p.company_id = ${companyId}` : sql``;
+  const fAnd = from ? sql`AND p.paid_at >= ${from}` : sql``;
+  const tAnd = to   ? sql`AND p.paid_at <= ${to}`   : sql``;
+  try {
+    const { rows: monthly } = (await db.execute(sql`
+      SELECT
+        TO_CHAR(DATE_TRUNC('month', p.paid_at), 'YYYY-MM') AS bulan,
+        SUM(p.amount)::float AS total_bayar,
+        COUNT(*)::int AS jumlah_bayar
+      FROM tenant_payments p
+      WHERE p.status = 'confirmed' ${cAnd} ${fAnd} ${tAnd}
+      GROUP BY 1 ORDER BY 1
+    `)) as unknown as { rows: any[] };
+
+    const { rows: byLokasi } = (await db.execute(sql`
+      SELECT
+        CASE p.company_id WHEN 1 THEN 'Sport Center' WHEN 2 THEN 'TOD M1' ELSE 'Lainnya' END AS lokasi,
+        SUM(p.amount)::float AS total_bayar,
+        COUNT(*)::int AS jumlah_bayar
+      FROM tenant_payments p
+      WHERE p.status = 'confirmed' ${fAnd} ${tAnd}
+      GROUP BY p.company_id ORDER BY p.company_id
+    `)) as unknown as { rows: any[] };
+
+    const { rows: summary } = (await db.execute(sql`
+      SELECT
+        COALESCE(SUM(p.amount) FILTER (WHERE p.status = 'confirmed'), 0)::float AS total_terkumpul,
+        COALESCE(SUM(i.outstanding_amount) FILTER (WHERE i.status NOT IN ('paid','cancelled')), 0)::float AS total_outstanding,
+        COUNT(DISTINCT p.id) FILTER (WHERE p.status = 'confirmed')::int AS jumlah_transaksi,
+        COUNT(DISTINCT i.id) FILTER (WHERE i.status = 'overdue')::int AS invoice_overdue
+      FROM tenant_payments p
+      FULL OUTER JOIN tenant_invoices i ON i.company_id = p.company_id
+    `)) as unknown as { rows: any[] };
+
+    res.json({ monthly, byLokasi, summary: summary[0] ?? {} });
+  } catch (err) {
+    logger.error({ err }, "laporan keuangan failed");
+    res.status(500).json({ error: "Gagal memuat laporan keuangan" });
+  }
+});
+
+/* ───────────────────────── PERBANDINGAN LOKASI ───────────────────────── */
+router.get("/perbandingan-lokasi", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  try {
+    const { rows } = (await db.execute(sql`
+      SELECT
+        CASE c.id WHEN 1 THEN 'Sport Center' WHEN 2 THEN 'TOD M1' ELSE 'Lainnya' END AS lokasi,
+        c.id AS company_id,
+        COUNT(DISTINCT t.id)::int AS total_tenant,
+        COUNT(DISTINCT t.id) FILTER (WHERE t.status = 'active')::int AS tenant_aktif,
+        COUNT(DISTINCT u.id)::int AS total_unit,
+        COUNT(DISTINCT u.id) FILTER (WHERE u.status = 'available')::int AS unit_tersedia,
+        COUNT(DISTINCT u.id) FILTER (WHERE u.status = 'occupied')::int AS unit_terisi,
+        COALESCE(SUM(p.amount) FILTER (WHERE p.status = 'confirmed'), 0)::float AS total_pendapatan,
+        COALESCE(SUM(i.outstanding_amount) FILTER (WHERE i.status NOT IN ('paid','cancelled')), 0)::float AS total_piutang,
+        COUNT(DISTINCT i.id) FILTER (WHERE i.status = 'overdue')::int AS invoice_overdue
+      FROM (VALUES (1), (2)) AS c(id)
+      LEFT JOIN tenants t ON t.company_id = c.id
+      LEFT JOIN tenant_units u ON u.company_id = c.id
+      LEFT JOIN tenant_payments p ON p.company_id = c.id
+      LEFT JOIN tenant_invoices i ON i.company_id = c.id
+      GROUP BY c.id ORDER BY c.id
+    `)) as unknown as { rows: any[] };
+    res.json({ data: rows });
+  } catch (err) {
+    logger.error({ err }, "perbandingan lokasi failed");
+    res.status(500).json({ error: "Gagal memuat perbandingan lokasi" });
+  }
+});
+
+/* ───────────────────────── AUDIT LOG ───────────────────────── */
+router.get("/audit-log", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  const page  = Math.max(1, Number(req.query.page ?? 1));
+  const limit = Math.min(100, Number(req.query.limit ?? 50));
+  const offset = (page - 1) * limit;
+  const action = req.query.action ? String(req.query.action) : null;
+  const search = req.query.search ? String(req.query.search).trim() : null;
+  try {
+    const conds: ReturnType<typeof sql>[] = [sql`module ILIKE 'tenant%'`];
+    if (action) conds.push(sql`action = ${action}`);
+    if (search) conds.push(sql`(module ILIKE ${"%" + search + "%"} OR action ILIKE ${"%" + search + "%"})`);
+    const where = sql`WHERE ${sql.join(conds, sql` AND `)}`;
+    const { rows } = (await db.execute(sql`
+      SELECT a.*, u.full_name AS user_name
+      FROM erp_audit_logs a
+      LEFT JOIN users u ON u.id::text = a.user_id::text
+      ${where}
+      ORDER BY a.created_at DESC
+      LIMIT ${limit} OFFSET ${offset}
+    `)) as unknown as { rows: any[] };
+    const { rows: cnt } = (await db.execute(sql`SELECT COUNT(*)::int AS total FROM erp_audit_logs ${where}`)) as unknown as { rows: { total: number }[] };
+    res.json({ data: rows, total: cnt[0]?.total ?? 0, page, limit });
+  } catch (err) {
+    logger.error({ err }, "tenant audit log failed");
+    res.status(500).json({ error: "Gagal memuat audit log" });
+  }
+});
+
+/* ───────────────────────── KIRIM WA ───────────────────────── */
+router.post("/kirim-wa", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  const { message, tenantIds, companyId: reqCompanyId, sendToAll } = req.body ?? {};
+  if (!message?.trim()) return void res.status(400).json({ error: "Pesan wajib diisi" });
+
+  const cAnd = reqCompanyId ? sql`AND company_id = ${Number(reqCompanyId)}` : sql``;
+  const idFilter = Array.isArray(tenantIds) && tenantIds.length > 0 && !sendToAll
+    ? sql`AND id = ANY(${tenantIds.map(Number)})`
+    : sql``;
+
+  try {
+    const { rows } = (await db.execute(sql`
+      SELECT id, business_name, phone FROM tenants
+      WHERE phone IS NOT NULL AND phone != '' AND status = 'active' ${cAnd} ${idFilter}
+      ORDER BY business_name
+    `)) as unknown as { rows: { id: number; business_name: string; phone: string }[] };
+
+    if (rows.length === 0) return void res.status(400).json({ error: "Tidak ada penyewa dengan nomor WhatsApp" });
+
+    const token = process.env.FONNTE_TOKEN;
+    if (!token) return void res.json({ ok: true, sent: 0, skipped: rows.length, reason: "FONNTE_TOKEN tidak dikonfigurasi" });
+
+    let sent = 0; let failed = 0;
+    for (const t of rows) {
+      try {
+        const phone = t.phone.replace(/[^0-9]/g, "").replace(/^0/, "62");
+        const body = message.replace(/\{nama\}/gi, t.business_name);
+        const resp = await fetch("https://api.fonnte.com/send", {
+          method: "POST",
+          headers: { Authorization: token, "Content-Type": "application/json" },
+          body: JSON.stringify({ target: phone, message: body }),
+        });
+        if (resp.ok) sent++; else failed++;
+      } catch { failed++; }
+    }
+    await writeAuditLog("KIRIM_WA", "tenant_broadcast", null, { message: message.slice(0, 100), sent, failed, total: rows.length }, req);
+    res.json({ ok: true, sent, failed, total: rows.length });
+  } catch (err) {
+    logger.error({ err }, "kirim wa tenant failed");
+    res.status(500).json({ error: "Gagal mengirim WhatsApp" });
+  }
+});
+
 // ── KASIR & POS SUB-ROUTERS ────────────────────────────────────────────────
 import kasirRouter from "./kasirRoutes.js";
 import posRouter from "./posRoutes.js";

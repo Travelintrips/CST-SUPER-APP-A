@@ -243,6 +243,13 @@ import PosCashiers from "@/pages/tenant/pos-cashiers";
 import PosProducts from "@/pages/tenant/pos-products";
 import PosRoles from "@/pages/tenant/pos-roles";
 import PosSettings from "@/pages/tenant/pos-settings";
+import TenantRekap from "@/pages/tenant/rekap";
+import TenantLaporanKeuangan from "@/pages/tenant/laporan-keuangan";
+import TenantRekonsiliasi from "@/pages/tenant/rekonsiliasi";
+import TenantPerbandinganLokasi from "@/pages/tenant/perbandingan-lokasi";
+import TenantKirimWa from "@/pages/tenant/kirim-wa";
+import TenantAuditLog from "@/pages/tenant/audit-log";
+import TenantPengaturan from "@/pages/tenant/pengaturan";
 import AirFreightNewOrdersPage from "@/pages/air-freight/orders";
 import AirFreightRatesPage from "@/pages/air-freight/rates";
 import AirFreightNewOrderDetailPage from "@/pages/air-freight/order-detail";
@@ -556,6 +563,13 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/tenant/pos/products" component={PR(PosProducts)} />
       <Route path="/tenant/pos/roles" component={PR(PosRoles)} />
       <Route path="/tenant/pos/settings" component={PR(PosSettings)} />
+      <Route path="/tenant/rekap" component={PR(TenantRekap)} />
+      <Route path="/tenant/laporan-keuangan" component={PR(TenantLaporanKeuangan)} />
+      <Route path="/tenant/rekonsiliasi" component={PR(TenantRekonsiliasi)} />
+      <Route path="/tenant/perbandingan-lokasi" component={PR(TenantPerbandinganLokasi)} />
+      <Route path="/tenant/kirim-wa" component={PR(TenantKirimWa)} />
+      <Route path="/tenant/audit-log" component={PR(TenantAuditLog)} />
+      <Route path="/tenant/pengaturan" component={PR(TenantPengaturan)} />
       <Route path="/tenant" component={PR(TenantDashboard)} />
 
       {/* ── Ocean Freight ───────────────────────────────────────────────── */}
