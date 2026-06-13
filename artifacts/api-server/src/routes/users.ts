@@ -71,62 +71,92 @@ router.get("/me", async (req, res) => {
 
   const authUser = req.user;
   const fullName = [authUser.firstName, authUser.lastName].filter(Boolean).join(" ") || null;
-  await ensureUserRecord(authUser.id, authUser.email, fullName);
 
-  const rows = await db.execute(sql`
-    SELECT
-      u.id, u.email, u.name, u.role, u.division, u.department,
-      u.company_id, u.branch_id, u.division_id, u.department_id, u.section_id,
-      cr.id   AS custom_role_id,
-      cr.name AS custom_role_name,
-      cr.permissions AS custom_role_permissions,
-      c.company_name,
-      c.company_code,
-      b.name AS branch_name,
-      dv.name AS division_name,
-      dep.name AS department_name,
-      sec.name AS section_name
-    FROM users u
-    LEFT JOIN custom_roles cr  ON cr.id  = u.custom_role_id
-    LEFT JOIN companies    c   ON c.id   = u.company_id
-    LEFT JOIN branches     b   ON b.id   = u.branch_id
-    LEFT JOIN divisions    dv  ON dv.id  = u.division_id
-    LEFT JOIN departments  dep ON dep.id = u.department_id
-    LEFT JOIN sections     sec ON sec.id = u.section_id
-    WHERE u.id = ${authUser.id}
-  `);
-  const u = rows.rows[0] as any;
-  if (!u) return res.status(500).json({ message: "Failed to retrieve user record" });
+  try {
+    await ensureUserRecord(authUser.id, authUser.email, fullName);
 
-  let customRolePermissions: string[] | null = null;
-  if (u.custom_role_permissions != null) {
-    customRolePermissions = Array.isArray(u.custom_role_permissions)
-      ? u.custom_role_permissions
-      : JSON.parse(u.custom_role_permissions);
+    const rows = await db.execute(sql`
+      SELECT
+        u.id, u.email, u.name, u.role, u.division, u.department,
+        u.company_id, u.branch_id, u.division_id, u.department_id, u.section_id,
+        cr.id   AS custom_role_id,
+        cr.name AS custom_role_name,
+        cr.permissions AS custom_role_permissions,
+        c.company_name,
+        c.company_code,
+        b.name AS branch_name,
+        dv.name AS division_name,
+        dep.name AS department_name,
+        sec.name AS section_name
+      FROM users u
+      LEFT JOIN custom_roles cr  ON cr.id  = u.custom_role_id
+      LEFT JOIN companies    c   ON c.id   = u.company_id
+      LEFT JOIN branches     b   ON b.id   = u.branch_id
+      LEFT JOIN divisions    dv  ON dv.id  = u.division_id
+      LEFT JOIN departments  dep ON dep.id = u.department_id
+      LEFT JOIN sections     sec ON sec.id = u.section_id
+      WHERE u.id = ${authUser.id}
+    `);
+    const u = rows.rows[0] as any;
+    if (!u) {
+      // DB returned no row — fall back to session data
+      return res.json({
+        id: authUser.id,
+        email: authUser.email ?? null,
+        name: fullName ?? authUser.email ?? null,
+        role: authUser.role ?? null,
+        division: null, department: null,
+        companyId: authUser.companyId ?? null, companyName: null, companyCode: null,
+        branchId: null, branchName: null, divisionId: null, divisionName: null,
+        departmentId: null, departmentName: null, sectionId: null, sectionName: null,
+        customRoleId: null, customRoleName: null, customRolePermissions: null,
+      });
+    }
+
+    let customRolePermissions: string[] | null = null;
+    if (u.custom_role_permissions != null) {
+      customRolePermissions = Array.isArray(u.custom_role_permissions)
+        ? u.custom_role_permissions
+        : JSON.parse(u.custom_role_permissions);
+    }
+
+    return res.json({
+      id: u.id,
+      email: u.email,
+      name: u.name,
+      role: u.role,
+      division: u.division,
+      department: u.department,
+      companyId: u.company_id ?? null,
+      companyName: u.company_name ?? null,
+      companyCode: u.company_code ?? null,
+      branchId: u.branch_id ?? null,
+      branchName: u.branch_name ?? null,
+      divisionId: u.division_id ?? null,
+      divisionName: u.division_name ?? null,
+      departmentId: u.department_id ?? null,
+      departmentName: u.department_name ?? null,
+      sectionId: u.section_id ?? null,
+      sectionName: u.section_name ?? null,
+      customRoleId: u.custom_role_id ?? null,
+      customRoleName: u.custom_role_name ?? null,
+      customRolePermissions,
+    });
+  } catch (_err) {
+    // DB transient error — return session user data as fallback so the frontend
+    // can still route correctly without redirecting to login.
+    return res.json({
+      id: authUser.id,
+      email: authUser.email ?? null,
+      name: fullName ?? authUser.email ?? null,
+      role: authUser.role ?? null,
+      division: null, department: null,
+      companyId: authUser.companyId ?? null, companyName: null, companyCode: null,
+      branchId: null, branchName: null, divisionId: null, divisionName: null,
+      departmentId: null, departmentName: null, sectionId: null, sectionName: null,
+      customRoleId: null, customRoleName: null, customRolePermissions: null,
+    });
   }
-
-  return res.json({
-    id: u.id,
-    email: u.email,
-    name: u.name,
-    role: u.role,
-    division: u.division,
-    department: u.department,
-    companyId: u.company_id ?? null,
-    companyName: u.company_name ?? null,
-    companyCode: u.company_code ?? null,
-    branchId: u.branch_id ?? null,
-    branchName: u.branch_name ?? null,
-    divisionId: u.division_id ?? null,
-    divisionName: u.division_name ?? null,
-    departmentId: u.department_id ?? null,
-    departmentName: u.department_name ?? null,
-    sectionId: u.section_id ?? null,
-    sectionName: u.section_name ?? null,
-    customRoleId: u.custom_role_id ?? null,
-    customRoleName: u.custom_role_name ?? null,
-    customRolePermissions,
-  });
 });
 
 // GET /api/users — admin only

@@ -70,7 +70,19 @@ export async function authMiddleware(
     try {
       const session = await getSession(sid);
       if (session?.user) {
-        const ctx = await _loadUserCtx(session.user.id);
+        // Load DB context (role, companyId). On transient DB failure, fall back
+        // to values stored in the session so the user stays authenticated.
+        let ctx: { companyId: number | null; role: string | null };
+        try {
+          ctx = await _loadUserCtx(session.user.id);
+        } catch (ctxErr) {
+          const msg = ctxErr instanceof Error ? ctxErr.message : String(ctxErr);
+          req.log?.warn?.({ sid: sid.slice(0, 8) + "...", err: msg }, "[authMiddleware] _loadUserCtx DB error, falling back to session data");
+          ctx = {
+            role: (session.user as { role?: string | null }).role ?? null,
+            companyId: (session.user as { companyId?: number | null }).companyId ?? null,
+          };
+        }
         req.user = {
           id: session.user.id,
           email: session.user.email ?? null,
@@ -85,9 +97,7 @@ export async function authMiddleware(
         return;
       }
     } catch (err) {
-      // DB transient error (e.g. Supabase idle-connection drop) — log and
-      // continue unauthenticated rather than returning 500 to the client.
-      // The client will retry and succeed once the pool reconnects.
+      // DB transient error reading the session itself — log and continue unauthenticated.
       const msg = err instanceof Error ? err.message : String(err);
       req.log?.warn?.({ sid: sid.slice(0, 8) + "...", err: msg }, "[authMiddleware] getSession failed, treating as unauthenticated");
     }
