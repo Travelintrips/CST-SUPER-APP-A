@@ -975,4 +975,189 @@ router.post("/invoices/:id/mark-paid", async (req, res) => {
   }
 });
 
+/* ───────────────────────── MALL SITES ───────────────────────── */
+router.get("/mall-sites", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  try {
+    const { rows } = (await db.execute(
+      sql`SELECT s.*, COUNT(u.id)::int AS unit_count,
+               COUNT(u.id) FILTER (WHERE u.status = 'available')::int AS available_count,
+               COUNT(u.id) FILTER (WHERE u.status = 'occupied')::int AS occupied_count
+          FROM mall_sites s
+          LEFT JOIN mall_units u ON u.site_id = s.id
+          GROUP BY s.id ORDER BY s.id`,
+    )) as unknown as { rows: any[] };
+    res.json({ data: rows, total: rows.length });
+  } catch (err) {
+    logger.error({ err }, "list mall sites failed");
+    res.status(500).json({ error: "Gagal memuat site" });
+  }
+});
+
+router.post("/mall-sites", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  const b = req.body ?? {};
+  if (!b.name || !b.code) return void res.status(400).json({ error: "Nama dan kode wajib diisi" });
+  try {
+    const { rows } = (await db.execute(sql`
+      INSERT INTO mall_sites (code, name, type, address, status)
+      VALUES (${String(b.code).toUpperCase()}, ${b.name}, ${b.type ?? "mall_tenant"}, ${b.address ?? null}, ${b.status ?? "active"})
+      RETURNING *`)) as unknown as { rows: any[] };
+    await writeAuditLog("CREATE", "mall_site", rows[0]?.id ?? null, { code: rows[0]?.code }, req);
+    res.json(rows[0]);
+  } catch (err: any) {
+    if (err?.code === "23505") return void res.status(409).json({ error: "Kode site sudah digunakan" });
+    logger.error({ err }, "create mall site failed");
+    res.status(500).json({ error: "Gagal menyimpan site" });
+  }
+});
+
+router.put("/mall-sites/:id", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  const id = Number(req.params.id);
+  const b = req.body ?? {};
+  try {
+    const sets: ReturnType<typeof sql>[] = [sql`updated_at = NOW()`];
+    if (b.name != null) sets.push(sql`name = ${b.name}`);
+    if (b.code != null) sets.push(sql`code = ${String(b.code).toUpperCase()}`);
+    if (b.type != null) sets.push(sql`type = ${b.type}`);
+    if (b.address != null) sets.push(sql`address = ${b.address}`);
+    if (b.status != null) sets.push(sql`status = ${b.status}`);
+    const { rows } = (await db.execute(
+      sql`UPDATE mall_sites SET ${sql.join(sets, sql`, `)} WHERE id = ${id} RETURNING *`,
+    )) as unknown as { rows: any[] };
+    if (!rows[0]) return void res.status(404).json({ error: "Site tidak ditemukan" });
+    await writeAuditLog("UPDATE", "mall_site", id, { changes: b }, req);
+    res.json(rows[0]);
+  } catch (err) {
+    logger.error({ err }, "update mall site failed");
+    res.status(500).json({ error: "Gagal memperbarui site" });
+  }
+});
+
+/* ───────────────────────── MALL UNITS ───────────────────────── */
+router.get("/mall-units", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  const siteId = req.query.site_id ? Number(req.query.site_id) : null;
+  const status = String(req.query.status ?? "").trim();
+  const unitType = String(req.query.unit_type ?? "").trim();
+  const search = String(req.query.search ?? "").trim();
+  try {
+    const conds: ReturnType<typeof sql>[] = [];
+    if (siteId) conds.push(sql`u.site_id = ${siteId}`);
+    if (status) conds.push(sql`u.status = ${status}`);
+    if (unitType) conds.push(sql`u.unit_type = ${unitType}`);
+    if (search) conds.push(sql`(u.unit_code ILIKE ${"%" + search + "%"} OR u.area_kantin ILIKE ${"%" + search + "%"})`);
+    const where = conds.length ? sql`WHERE ${sql.join(conds, sql` AND `)}` : sql``;
+    const { rows } = (await db.execute(sql`
+      SELECT u.*, s.name AS site_name, s.code AS site_code, s.type AS site_type
+      FROM mall_units u
+      LEFT JOIN mall_sites s ON s.id = u.site_id
+      ${where} ORDER BY u.site_id, u.floor, u.unit_code`,
+    )) as unknown as { rows: any[] };
+    res.json({ data: rows, total: rows.length });
+  } catch (err) {
+    logger.error({ err }, "list mall units failed");
+    res.status(500).json({ error: "Gagal memuat mall units" });
+  }
+});
+
+router.get("/mall-units/:id", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  const id = Number(req.params.id);
+  try {
+    const { rows } = (await db.execute(sql`
+      SELECT u.*, s.name AS site_name, s.code AS site_code
+      FROM mall_units u
+      LEFT JOIN mall_sites s ON s.id = u.site_id
+      WHERE u.id = ${id} LIMIT 1`)) as unknown as { rows: any[] };
+    if (!rows[0]) return void res.status(404).json({ error: "Unit tidak ditemukan" });
+    res.json(rows[0]);
+  } catch (err) {
+    logger.error({ err }, "get mall unit failed");
+    res.status(500).json({ error: "Gagal memuat unit" });
+  }
+});
+
+router.post("/mall-units", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  const b = req.body ?? {};
+  if (!b.unit_code || !b.site_id) return void res.status(400).json({ error: "Kode unit dan site wajib diisi" });
+  try {
+    const { rows } = (await db.execute(sql`
+      INSERT INTO mall_units (
+        site_id, unit_code, floor, zone, size_m2, status,
+        position_x, position_y, width, height, notes,
+        unit_type, area_kantin, default_rent_amount
+      ) VALUES (
+        ${Number(b.site_id)}, ${String(b.unit_code).toUpperCase()},
+        ${b.floor ?? null}, ${b.zone ?? null},
+        ${b.size_m2 ? Number(b.size_m2) : null},
+        ${b.status ?? "available"},
+        ${Number(b.position_x ?? 0)}, ${Number(b.position_y ?? 0)},
+        ${Number(b.width ?? 2)}, ${Number(b.height ?? 2)},
+        ${b.notes ?? null},
+        ${b.unit_type ?? "food_booth"},
+        ${b.area_kantin ?? null},
+        ${b.default_rent_amount ? Number(b.default_rent_amount) : 0}
+      ) RETURNING *`)) as unknown as { rows: any[] };
+    await writeAuditLog("CREATE", "mall_unit", rows[0]?.id ?? null, { unit_code: rows[0]?.unit_code, site_id: b.site_id }, req);
+    res.json(rows[0]);
+  } catch (err: any) {
+    if (err?.code === "23505") return void res.status(409).json({ error: "Kode unit sudah digunakan di site ini" });
+    logger.error({ err }, "create mall unit failed");
+    res.status(500).json({ error: "Gagal menyimpan unit" });
+  }
+});
+
+router.put("/mall-units/:id", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  const id = Number(req.params.id);
+  const b = req.body ?? {};
+  try {
+    const sets: ReturnType<typeof sql>[] = [sql`updated_at = NOW()`];
+    if (b.unit_code != null) sets.push(sql`unit_code = ${String(b.unit_code).toUpperCase()}`);
+    if (b.site_id != null) sets.push(sql`site_id = ${Number(b.site_id)}`);
+    if (b.floor != null) sets.push(sql`floor = ${b.floor}`);
+    if (b.zone != null) sets.push(sql`zone = ${b.zone}`);
+    if (b.size_m2 != null) sets.push(sql`size_m2 = ${Number(b.size_m2)}`);
+    if (b.status != null) sets.push(sql`status = ${b.status}`);
+    if (b.position_x != null) sets.push(sql`position_x = ${Number(b.position_x)}`);
+    if (b.position_y != null) sets.push(sql`position_y = ${Number(b.position_y)}`);
+    if (b.width != null) sets.push(sql`width = ${Number(b.width)}`);
+    if (b.height != null) sets.push(sql`height = ${Number(b.height)}`);
+    if (b.notes != null) sets.push(sql`notes = ${b.notes}`);
+    if (b.unit_type != null) sets.push(sql`unit_type = ${b.unit_type}`);
+    if (b.area_kantin != null) sets.push(sql`area_kantin = ${b.area_kantin}`);
+    if (b.default_rent_amount != null) sets.push(sql`default_rent_amount = ${Number(b.default_rent_amount)}`);
+    const { rows } = (await db.execute(
+      sql`UPDATE mall_units SET ${sql.join(sets, sql`, `)} WHERE id = ${id} RETURNING *`,
+    )) as unknown as { rows: any[] };
+    if (!rows[0]) return void res.status(404).json({ error: "Unit tidak ditemukan" });
+    await writeAuditLog("UPDATE", "mall_unit", id, { changes: b }, req);
+    res.json(rows[0]);
+  } catch (err) {
+    logger.error({ err }, "update mall unit failed");
+    res.status(500).json({ error: "Gagal memperbarui unit" });
+  }
+});
+
+router.delete("/mall-units/:id", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  const id = Number(req.params.id);
+  try {
+    const { rows: cur } = (await db.execute(
+      sql`SELECT status FROM mall_units WHERE id = ${id} LIMIT 1`,
+    )) as unknown as { rows: any[] };
+    if (!cur[0]) return void res.status(404).json({ error: "Unit tidak ditemukan" });
+    if (cur[0].status === "occupied") return void res.status(409).json({ error: "Unit sedang terisi, tidak bisa dihapus" });
+    await db.execute(sql`DELETE FROM mall_units WHERE id = ${id}`);
+    await writeAuditLog("DELETE", "mall_unit", id, {}, req);
+    res.json({ ok: true });
+  } catch (err) {
+    logger.error({ err }, "delete mall unit failed");
+    res.status(500).json({ error: "Gagal menghapus unit" });
+  }
+});
+
 export default router;

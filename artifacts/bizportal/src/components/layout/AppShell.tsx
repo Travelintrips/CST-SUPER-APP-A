@@ -75,6 +75,7 @@ import {
   Sparkles,
   Plane,
   Anchor,
+  MapPin,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -325,6 +326,7 @@ export function AppShell({ children, noPadding }: AppShellProps) {
       children: [
         { titleKey: "Dashboard", href: "/tenant/dashboard", icon: LayoutDashboard },
         { titleKey: "Data Tenant", href: "/tenant/tenants", icon: Store },
+        { titleKey: "Mall Units", href: "/tenant/mall-units", icon: MapPin },
         { titleKey: "Unit Kantin", href: "/tenant/units", icon: Building2 },
         { titleKey: "Booking Tenant", href: "/tenant/bookings", icon: FileText },
         { titleKey: "Invoice Tenant", href: "/tenant/invoices", icon: Receipt },
@@ -353,22 +355,6 @@ export function AppShell({ children, noPadding }: AppShellProps) {
       ],
     },
 
-    // ── 7c. TENANT ────────────────────────────────────────────────────
-    {
-      type: "group",
-      titleKey: "Tenant",
-      basePath: "/tenant",
-      icon: Building2,
-      roles: ["admin", "owner"],
-      children: [
-        { titleKey: "Dashboard",     href: "/tenant/dashboard",   icon: LayoutDashboard },
-        { titleKey: "Daftar Tenant", href: "/tenant/tenants",     icon: Users },
-        { titleKey: "Unit",          href: "/tenant/units",        icon: Layers },
-        { titleKey: "Bookings",      href: "/tenant/bookings",     icon: Calendar },
-        { titleKey: "Pembayaran",    href: "/tenant/payments",     icon: CreditCard },
-        { titleKey: "Invoice",       href: "/tenant/invoices",     icon: FileText },
-      ],
-    },
 
     // ── 8. FINANCE ────────────────────────────────────────────────────
     {

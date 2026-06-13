@@ -153,6 +153,42 @@ export async function runTenantMigration(): Promise<void> {
     await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_tenant_user_access_tenant ON tenant_user_access(tenant_id)`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_tenant_user_access_user ON tenant_user_access(user_id)`);
 
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS mall_sites (
+        id SERIAL PRIMARY KEY,
+        code TEXT NOT NULL UNIQUE,
+        name TEXT NOT NULL,
+        type TEXT NOT NULL DEFAULT 'mall_tenant',
+        address TEXT,
+        status TEXT NOT NULL DEFAULT 'active',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS mall_units (
+        id SERIAL PRIMARY KEY,
+        site_id INTEGER NOT NULL REFERENCES mall_sites(id) ON DELETE CASCADE,
+        unit_code TEXT NOT NULL,
+        floor TEXT,
+        zone TEXT,
+        size_m2 NUMERIC(10,2),
+        status TEXT NOT NULL DEFAULT 'available',
+        position_x INTEGER NOT NULL DEFAULT 0,
+        position_y INTEGER NOT NULL DEFAULT 0,
+        width INTEGER NOT NULL DEFAULT 2,
+        height INTEGER NOT NULL DEFAULT 2,
+        notes TEXT,
+        unit_type TEXT NOT NULL DEFAULT 'food_booth',
+        area_kantin TEXT,
+        default_rent_amount NUMERIC(14,2) NOT NULL DEFAULT 0,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_mall_units_site ON mall_units(site_id)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_mall_units_status ON mall_units(status)`);
+
     logger.info("Tenant migration OK");
   } catch (err) {
     logger.error({ err }, "Tenant migration failed");

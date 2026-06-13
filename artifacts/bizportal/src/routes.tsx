@@ -231,6 +231,7 @@ import TenantUnits from "@/pages/tenant/units";
 import TenantBookings from "@/pages/tenant/bookings";
 import TenantPayments from "@/pages/tenant/payments";
 import TenantInvoices from "@/pages/tenant/invoices";
+import TenantMallUnits from "@/pages/tenant/mall-units";
 import AirFreightNewOrdersPage from "@/pages/air-freight/orders";
 import AirFreightRatesPage from "@/pages/air-freight/rates";
 import AirFreightNewOrderDetailPage from "@/pages/air-freight/order-detail";
@@ -532,6 +533,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/tenant/bookings" component={PR(TenantBookings)} />
       <Route path="/tenant/payments" component={PR(TenantPayments)} />
       <Route path="/tenant/invoices" component={PR(TenantInvoices)} />
+      <Route path="/tenant/mall-units" component={PR(TenantMallUnits)} />
       <Route path="/tenant" component={PR(TenantDashboard)} />
 
       {/* ── Ocean Freight ───────────────────────────────────────────────── */}
