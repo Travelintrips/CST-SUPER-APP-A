@@ -39,10 +39,7 @@ const API_PORT            = Number(process.env.API_PORT            ?? 8080);
 const BIZPORTAL_PORT      = Number(process.env.BIZPORTAL_PORT      ?? 18442);
 const CUSTOMER_PORT       = Number(process.env.CUSTOMER_PORT       ?? 3001);
 const LOGISTIC_ORDER_PORT = Number(process.env.LOGISTIC_ORDER_PORT ?? 6000);
-const WA_GATEWAY_PORT     = Number(process.env.WA_GATEWAY_PORT     ?? 8000);
-
 const ROUTES = [
-  { prefix: "/wa-gateway",      upstream: { host: "localhost", port: WA_GATEWAY_PORT } },
   { prefix: "/api",             upstream: { host: "localhost", port: API_PORT } },
   { prefix: "/pos-images",      upstream: { host: "localhost", port: API_PORT } },
   { prefix: "/q",               upstream: { host: "localhost", port: API_PORT } },
@@ -101,7 +98,6 @@ const SERVICE_NAMES = {
   [BIZPORTAL_PORT]:      "BizPortal",
   [CUSTOMER_PORT]:       "Customer Portal",
   [LOGISTIC_ORDER_PORT]: "Logistic Order",
-  [WA_GATEWAY_PORT]:     "WA Gateway",
 };
 
 function resolve(url) {
@@ -351,7 +347,6 @@ async function startGateway() {
       });
       srv.listen(PORT, () => {
         console.log(`Gateway listening on port ${PORT}`);
-        console.log(`  /wa-gateway/*      → :${WA_GATEWAY_PORT} (WA Gateway)`);
         console.log(`  /api/*             → :${API_PORT} (API Server)`);
         console.log(`  /bizportal/*       → :${BIZPORTAL_PORT} (BizPortal)`);
         console.log(`  /logistic-order/*  → :${LOGISTIC_ORDER_PORT} (Logistic Order)`);
