@@ -711,8 +711,6 @@ router.get("/invoices/:id", async (req, res) => {
       FROM tenant_invoices i
       LEFT JOIN tenants t ON t.id = i.tenant_id
       WHERE i.id = ${id} ${cf} LIMIT 1`)) as unknown as { rows: any[] };
-    if (!rows[0]) return res.status(404).json({ error: "Invoice tidak ditemukan" });
-    res.json(rows[0]);
     if (!rows[0]) return void res.status(404).json({ error: "Invoice tidak ditemukan" });
     const { rows: payments } = (await db.execute(
       sql`SELECT * FROM tenant_payments WHERE invoice_id = ${id} ORDER BY created_at DESC`,
