@@ -24,6 +24,18 @@ args = "Gateway"
 task = "workflow.run"
 args = "artifacts/wa-gateway: WA Gateway"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "BizPortal"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "API Server"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Customer Portal"
+
 [[workflows.workflow]]
 name = "Gateway"
 author = "agent"
@@ -45,8 +57,8 @@ outputType = "console"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "BIZPORTAL_PORT=6800 bash artifacts/bizportal/start-dev.sh"
-waitForPort = 3000
+args = "BIZPORTAL_PORT=6800 BIZPORTAL_VITE_PORT=18442 bash artifacts/bizportal/start-dev.sh"
+waitForPort = 18442
 
 [[workflows.workflow]]
 name = "Customer Portal"
@@ -68,6 +80,18 @@ author = "agent"
 task = "shell.exec"
 args = "pnpm --filter @workspace/wa-gateway run dev"
 waitForPort = 8000
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow]]
+name = "API Server"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "bash artifacts/api-server/start-dev.sh"
+waitForPort = 8080
 
 [workflows.workflow.metadata]
 outputType = "console"
