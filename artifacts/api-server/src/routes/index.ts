@@ -147,6 +147,7 @@ import vendorTruckingPricingRouter from "./vendorTruckingPricing.js";
 import productMediaRouter from "./productMedia.js";
 import oceanFreightMasterRouter from "./oceanFreightMaster.js";
 import ppjkRouter from "./ppjk.js";
+import qrMenuRouter from "./qrMenu.js";
 
 import type { Request, Response } from "express";
 
@@ -297,6 +298,7 @@ router.use("/rbac", rbacRouter);
 router.use("/import-advisor", importAdvisorRouter);
 router.use("/sport-center", sportCenterRouter);
 router.use("/tenant", tenantRouter);
+router.use("/qr-menu", qrMenuRouter);
 router.use("/air-freight", airFreightNewRouter);
 router.use("/air-freight", airFreightRatesRouter);
 router.use("/air-freight", airFreightPublicRouter);
