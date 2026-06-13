@@ -712,6 +712,8 @@ router.post("/dev-login", async (req: Request, res: Response) => {
       firstName: dbUser.firstName,
       lastName: dbUser.lastName,
       profileImageUrl: dbUser.profileImageUrl,
+      role: dbUser.role,
+      companyId: dbUser.companyId,
     },
     access_token: "dev",
     refresh_token: undefined,
