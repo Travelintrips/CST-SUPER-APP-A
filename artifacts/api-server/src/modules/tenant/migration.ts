@@ -138,6 +138,21 @@ export async function runTenantMigration(): Promise<void> {
     }
     await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_tenant_invoices_status ON tenant_invoices(status)`);
 
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS tenant_user_access (
+        id SERIAL PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        site_id INTEGER,
+        access_level TEXT NOT NULL DEFAULT 'viewer',
+        status TEXT NOT NULL DEFAULT 'active',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_tenant_user_access_tenant ON tenant_user_access(tenant_id)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_tenant_user_access_user ON tenant_user_access(user_id)`);
+
     logger.info("Tenant migration OK");
   } catch (err) {
     logger.error({ err }, "Tenant migration failed");

@@ -89,6 +89,7 @@ const ROUTES = [
   { prefix: "/ai-approvals",         upstream: null, redirectMapTo: "/bizportal/ai-approvals",          redirectDefaultSuffix: "/" },
   { prefix: "/kasir",                upstream: null, redirectMapTo: "/bizportal/kasir",                 redirectDefaultSuffix: "/" },
   { prefix: "/pos",                  upstream: null, redirectMapTo: "/kasir",                           redirectDefaultSuffix: "/" },
+  { prefix: "/tenant",               upstream: null, redirectMapTo: "/bizportal/tenant",                redirectDefaultSuffix: "/dashboard" },
 
   // Canvas artifact iframe hits /customer-portal/* — redirect to strip the prefix
   { prefix: "/customer-portal", upstream: null, redirectStrip: "/customer-portal" },
