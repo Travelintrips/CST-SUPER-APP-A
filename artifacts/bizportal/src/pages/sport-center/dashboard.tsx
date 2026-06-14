@@ -218,6 +218,54 @@ export default function SportCenterDashboard() {
     staleTime: 30_000,
   });
 
+  // ── Query: Sync Logs (riwayat + ringkasan lokal) ─────────────────────────
+  type SyncLogRow = {
+    id: number; entity: string; action: string; entity_id: string | null;
+    status: string; detail: string | null; created_at: string;
+  };
+  type SyncLogsData = {
+    recent_logs: SyncLogRow[];
+    last_facility_sync: SyncLogRow | null;
+    last_booking_sync:  SyncLogRow | null;
+    local: { bookings: number; payments: number; facilities: number };
+  };
+  const {
+    data: syncData,
+    isLoading: syncLoading,
+    refetch: refetchSync,
+  } = useQuery<SyncLogsData>({
+    queryKey: ["sport-center-sync-logs", activeCompanyId],
+    queryFn: async () => {
+      const qs = activeCompanyId ? `?companyId=${activeCompanyId}` : "";
+      const r = await fetch(`/api/sport-center/sync/logs${qs}`, { credentials: "include" });
+      if (!r.ok) throw new Error("Gagal ambil log");
+      return r.json() as Promise<SyncLogsData>;
+    },
+    refetchInterval: 30_000,
+    retry: 1,
+  });
+
+  // ── Query: Sync Status (koneksi Supabase + hitungan data lokal vs remote) ────
+  type SyncStatusData = {
+    supabase: { connected: boolean; error: string | null; bookings: number; payments: number; facilities: number };
+    local:    { bookings: number; payments: number; facilities: number };
+  };
+  const {
+    data: syncStatus,
+    isLoading: syncStatusLoading,
+    refetch: refetchSyncStatus,
+  } = useQuery<SyncStatusData>({
+    queryKey: ["sport-center-sync-status", activeCompanyId],
+    queryFn: async () => {
+      const qs = activeCompanyId ? `?companyId=${activeCompanyId}` : "";
+      const r = await fetch(`/api/sport-center/sync/status${qs}`, { credentials: "include" });
+      if (!r.ok) throw new Error("Gagal cek status");
+      return r.json() as Promise<SyncStatusData>;
+    },
+    refetchInterval: 60_000,
+    retry: 1,
+  });
+
   // ── Query: Semua booking dari Supabase (lazy — hanya saat expandedCard === 'totalBooking') ──
   const {
     data: allBookingsData,
@@ -1259,14 +1307,24 @@ export default function SportCenterDashboard() {
             <div className="flex items-center justify-between flex-wrap gap-3">
               <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                 <CloudUpload className="h-4 w-4" /> Sinkronisasi ke Supabase
-                <span className="text-xs font-normal opacity-60">— auto-refresh tiap 30 detik</span>
+                {syncStatusLoading ? (
+                  <span className="text-xs font-normal opacity-60 animate-pulse">— memeriksa koneksi...</span>
+                ) : syncStatus?.supabase.connected ? (
+                  <span className="text-xs font-normal text-emerald-400">
+                    — ✓ Terhubung | Supabase: {syncStatus.supabase.bookings} booking, {syncStatus.supabase.payments} payment
+                  </span>
+                ) : (
+                  <span className="text-xs font-normal text-red-400">
+                    — ✗ {syncStatus?.supabase.error ?? "Tidak terhubung"}
+                  </span>
+                )}
               </CardTitle>
               <div className="flex items-center gap-2 flex-wrap">
                 <Button
                   size="sm" variant="outline"
                   className="h-7 text-xs gap-1.5"
                   disabled={syncBusy}
-                  onClick={() => void refetchSync()}
+                  onClick={() => { void refetchSync(); void refetchSyncStatus(); }}
                 >
                   <RefreshCw className={`h-3 w-3 ${syncLoading ? "animate-spin" : ""}`} />
                   Refresh

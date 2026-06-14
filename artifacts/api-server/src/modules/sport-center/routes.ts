@@ -3434,6 +3434,125 @@ router.post("/company-invoices/:id/mark-paid", async (req, res) => {
 });
 
 /**
+ * GET /api/sport-center/sync/logs
+ * Ambil riwayat sync log + ringkasan (last facility/booking sync, local counts).
+ */
+router.get("/sync/logs", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  try {
+    const cId = req.query.companyId ? Number(req.query.companyId) : null;
+    const limit = Math.min(50, Number(req.query.limit ?? 20));
+
+    const [logsRes, localBk, localPay, localFac] = await Promise.all([
+      db.execute(sql`
+        SELECT id, entity, action, entity_id, status, detail, created_at
+        FROM sport_sync_logs
+        ORDER BY created_at DESC
+        LIMIT ${limit}
+      `),
+      db.execute(sql`SELECT COUNT(*) AS cnt FROM sport_bookings WHERE (${cId}::int IS NULL OR company_id = ${cId})`),
+      db.execute(sql`SELECT COUNT(*) AS cnt FROM sport_payments WHERE (${cId}::int IS NULL OR company_id = ${cId})`),
+      db.execute(sql`SELECT COUNT(*) AS cnt FROM sport_facilities WHERE (${cId}::int IS NULL OR company_id = ${cId})`),
+    ]);
+
+    // Last sync per entity
+    const lastFacRes = await db.execute(sql`
+      SELECT id, entity, action, status, detail, created_at
+      FROM sport_sync_logs WHERE entity = 'facility'
+      ORDER BY created_at DESC LIMIT 1
+    `);
+    const lastBkRes = await db.execute(sql`
+      SELECT id, entity, action, status, detail, created_at
+      FROM sport_sync_logs WHERE entity = 'booking'
+      ORDER BY created_at DESC LIMIT 1
+    `);
+
+    res.json({
+      ok: true,
+      recent_logs: logsRes.rows,
+      last_facility_sync: lastFacRes.rows[0] ?? null,
+      last_booking_sync: lastBkRes.rows[0] ?? null,
+      local: {
+        bookings:   Number((localBk.rows[0]  as any).cnt),
+        payments:   Number((localPay.rows[0] as any).cnt),
+        facilities: Number((localFac.rows[0] as any).cnt),
+      },
+    });
+  } catch (err) {
+    console.error("[sport-center] sync/logs error:", err);
+    res.status(500).json({ error: "Gagal ambil log" });
+  }
+});
+
+/**
+ * GET /api/sport-center/sync/status
+ * Cek koneksi ke Supabase sport_center + hitung data lokal vs Supabase.
+ */
+router.get("/sync/status", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  try {
+    const companyId = req.query.companyId ? Number(req.query.companyId) : null;
+
+    // Hitung data lokal
+    const [localBk, localPay, localFac] = await Promise.all([
+      db.execute(sql`SELECT COUNT(*) AS cnt FROM sport_bookings WHERE (${companyId}::int IS NULL OR company_id = ${companyId})`),
+      db.execute(sql`SELECT COUNT(*) AS cnt FROM sport_payments WHERE (${companyId}::int IS NULL OR company_id = ${companyId})`),
+      db.execute(sql`SELECT COUNT(*) AS cnt FROM sport_facilities WHERE (${companyId}::int IS NULL OR company_id = ${companyId})`),
+    ]);
+
+    // Test koneksi Supabase + hitung data remote
+    let supabaseOk = false;
+    let scBookings = 0;
+    let scPayments = 0;
+    let scFacilities = 0;
+    let supabaseError: string | null = null;
+
+    try {
+      const { getSportCenterSupabaseClient } = await import("../../lib/supabaseAdminSportCenter.js");
+      const client = getSportCenterSupabaseClient() as any;
+      if (client) {
+        const [bkRes, payRes, facRes] = await Promise.all([
+          client.schema("sport_center").from("bookings").select("id", { count: "exact", head: true }),
+          client.schema("sport_center").from("payments").select("id", { count: "exact", head: true }),
+          client.schema("sport_center").from("facilities").select("id", { count: "exact", head: true }),
+        ]);
+        if (!bkRes.error) {
+          supabaseOk = true;
+          scBookings   = bkRes.count   ?? 0;
+          scPayments   = payRes.count  ?? 0;
+          scFacilities = facRes.count  ?? 0;
+        } else {
+          supabaseError = bkRes.error.message;
+        }
+      } else {
+        supabaseError = "Client tidak tersedia (env vars missing?)";
+      }
+    } catch (e) {
+      supabaseError = String(e instanceof Error ? e.message : e);
+    }
+
+    res.json({
+      ok: true,
+      supabase: {
+        connected: supabaseOk,
+        error: supabaseError,
+        bookings: scBookings,
+        payments: scPayments,
+        facilities: scFacilities,
+      },
+      local: {
+        bookings:   Number((localBk.rows[0]  as any).cnt),
+        payments:   Number((localPay.rows[0] as any).cnt),
+        facilities: Number((localFac.rows[0] as any).cnt),
+      },
+    });
+  } catch (err) {
+    console.error("[sport-center] sync/status error:", err);
+    res.status(500).json({ error: "Gagal cek status" });
+  }
+});
+
+/**
  * POST /api/sport-center/sync/pull-from-supabase
  * Tarik semua booking dari sport_center schema → sport_bookings lokal (idempoten).
  */

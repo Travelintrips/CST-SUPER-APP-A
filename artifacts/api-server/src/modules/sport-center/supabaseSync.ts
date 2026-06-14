@@ -792,7 +792,7 @@ export async function pullLegacyBookingsFromSupabase(): Promise<{ pulled: number
   const { data, error } = await (client as any)
     .schema("sport_center")
     .from("bookings")
-    .select("order_number, customer_name, customer_phone, customer_email, facility_id, booking_date, start_time, end_time, duration_hours, total_price, status, payment_status, notes, created_at")
+    .select("order_number, customer_name, customer_phone, customer_email, facility_id, booking_date, start_time, end_time, duration_hours, total_price, grand_total, status, billing_status, notes, created_at")
     .order("created_at", { ascending: true });
 
   if (error) {
@@ -811,8 +811,9 @@ export async function pullLegacyBookingsFromSupabase(): Promise<{ pulled: number
     end_time: string;
     duration_hours?: number | null;
     total_price?: number | null;
+    grand_total?: number | null;
     status?: string | null;
-    payment_status?: string | null;
+    billing_status?: string | null;
     notes?: string | null;
     created_at?: string | null;
   }>;
@@ -836,10 +837,15 @@ export async function pullLegacyBookingsFromSupabase(): Promise<{ pulled: number
     const startTime = row.start_time?.slice(0, 5) ?? "00:00";
     const endTime = row.end_time?.slice(0, 5) ?? "01:00";
     const durationHours = Number(row.duration_hours ?? 1);
-    const totalAmount = Number(row.total_price ?? 0);
+    const totalAmount = Number(row.grand_total ?? row.total_price ?? 0);
     const rawStatus = row.status ?? "pending";
     const mappedStatus = rawStatus === "confirmed" ? "confirmed" : rawStatus === "cancelled" ? "cancelled" : rawStatus === "completed" ? "completed" : "pending";
-    const paymentStatus = row.payment_status ?? "unpaid";
+    // billing_status di Supabase = payment status; map ke nilai lokal
+    const rawBillingStatus = (row.billing_status ?? "").toLowerCase();
+    const paymentStatus = rawBillingStatus === "paid" ? "paid"
+      : rawBillingStatus === "partial" ? "partial"
+      : rawBillingStatus === "free" ? "paid"
+      : "unpaid";
 
     try {
       const existing = await db.execute(sql`SELECT id FROM sport_bookings WHERE booking_number = ${bookingNumber} LIMIT 1`);
