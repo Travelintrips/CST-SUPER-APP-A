@@ -703,20 +703,27 @@ export async function pullPaymentsFromSupabase(companyId = 1): Promise<{ pulled:
       `);
       if (existingRes.rows.length > 0) { skipped++; continue; }
 
-      // resolve local booking_id dari order_number
+      // resolve local booking_id: coba via order_number dulu, fallback via sc_booking_id
       const orderNumber = scBkMap[pay.booking_id];
       let localBookingId: number | null = null;
+
       if (orderNumber) {
         const bkRes = await db.execute(sql`
           SELECT id FROM sport_bookings WHERE booking_number = ${orderNumber} LIMIT 1
         `);
-        if (bkRes.rows.length > 0) {
-          localBookingId = Number((bkRes.rows[0] as any).id);
-        }
+        if (bkRes.rows.length > 0) localBookingId = Number((bkRes.rows[0] as any).id);
+      }
+
+      if (!localBookingId && pay.booking_id) {
+        // Fallback: cari via sc_booking_id (disimpan saat pullLegacyBookingsFromSupabase)
+        const bkRes2 = await db.execute(sql`
+          SELECT id FROM sport_bookings WHERE sc_booking_id = ${pay.booking_id} LIMIT 1
+        `);
+        if (bkRes2.rows.length > 0) localBookingId = Number((bkRes2.rows[0] as any).id);
       }
 
       if (!localBookingId) {
-        // Booking belum di-sync lokal — skip payment ini (akan retry setelah pull bookings)
+        // Booking belum ada di lokal — skip, akan retry setelah pull bookings
         console.warn(`${PREFIX} pullPayments: booking ${orderNumber ?? pay.booking_id} belum ada lokal, skip pay.id=${pay.id}`);
         skipped++;
         continue;
@@ -777,6 +784,14 @@ export async function getLastSyncLogs(limit = 20): Promise<unknown[]> {
 }
 
 export async function pullLegacyBookingsFromSupabase(): Promise<{ pulled: number; errors: number; total: number }> {
+  // Pastikan kolom sc_booking_id ada (self-bootstrapping, idempoten)
+  try {
+    await db.execute(sql`
+      ALTER TABLE sport_bookings ADD COLUMN IF NOT EXISTS sc_booking_id INTEGER;
+      CREATE INDEX IF NOT EXISTS idx_sport_bookings_sc_id ON sport_bookings(sc_booking_id) WHERE sc_booking_id IS NOT NULL;
+    `);
+  } catch { /* non-fatal — kolom mungkin sudah ada atau tabel belum dibuat */ }
+
   let client: import("@supabase/supabase-js").SupabaseClient | null = null;
   try {
     const { getSportCenterSupabaseClient } = await import("../../lib/supabaseAdminSportCenter.js");
@@ -788,11 +803,11 @@ export async function pullLegacyBookingsFromSupabase(): Promise<{ pulled: number
     return { pulled: 0, errors: 0, total: 0 };
   }
 
-  // Query sport_center schema (bukan public)
+  // Query sport_center schema (bukan public) — include id untuk sc_booking_id
   const { data, error } = await (client as any)
     .schema("sport_center")
     .from("bookings")
-    .select("order_number, customer_name, customer_phone, customer_email, facility_id, booking_date, start_time, end_time, duration_hours, total_price, grand_total, status, billing_status, notes, created_at")
+    .select("id, order_number, customer_name, customer_phone, customer_email, facility_id, booking_date, start_time, end_time, duration_hours, total_price, grand_total, status, billing_status, notes, created_at")
     .order("created_at", { ascending: true });
 
   if (error) {
@@ -801,6 +816,7 @@ export async function pullLegacyBookingsFromSupabase(): Promise<{ pulled: number
   }
 
   const rows = (data ?? []) as Array<{
+    id: number;
     order_number: string | null;
     customer_name: string;
     customer_phone?: string | null;
@@ -847,8 +863,14 @@ export async function pullLegacyBookingsFromSupabase(): Promise<{ pulled: number
       : rawBillingStatus === "free" ? "paid"
       : "unpaid";
 
+    const scBookingId = row.id;
     try {
-      const existing = await db.execute(sql`SELECT id FROM sport_bookings WHERE booking_number = ${bookingNumber} LIMIT 1`);
+      // Coba lookup via sc_booking_id dulu (idempoten yg lebih stabil), fallback ke booking_number
+      const existing = await db.execute(sql`
+        SELECT id FROM sport_bookings
+        WHERE sc_booking_id = ${scBookingId} OR booking_number = ${bookingNumber}
+        LIMIT 1
+      `);
       if (existing.rows.length > 0) {
         await db.execute(sql`
           UPDATE sport_bookings SET
@@ -864,8 +886,9 @@ export async function pullLegacyBookingsFromSupabase(): Promise<{ pulled: number
             status          = ${mappedStatus},
             payment_status  = ${paymentStatus},
             notes           = ${row.notes ?? null},
+            sc_booking_id   = ${scBookingId},
             updated_at      = NOW()
-          WHERE booking_number = ${bookingNumber}
+          WHERE sc_booking_id = ${scBookingId} OR booking_number = ${bookingNumber}
         `);
       } else {
         await db.execute(sql`
@@ -873,12 +896,13 @@ export async function pullLegacyBookingsFromSupabase(): Promise<{ pulled: number
             (company_id, booking_number, customer_name, customer_phone,
              facility_name, booking_date, start_time, end_time,
              duration_hours, base_amount, total_amount,
-             status, payment_status, notes, created_at, updated_at)
+             status, payment_status, notes, sc_booking_id, created_at, updated_at)
           VALUES
             (1, ${bookingNumber}, ${row.customer_name}, ${row.customer_phone ?? null},
              ${facilityName}, ${bookingDate}::DATE, ${startTime}::TIME, ${endTime}::TIME,
              ${durationHours}, ${totalAmount}, ${totalAmount},
              ${mappedStatus}, ${paymentStatus}, ${row.notes ?? null},
+             ${scBookingId},
              ${row.created_at ?? new Date().toISOString()}::TIMESTAMPTZ, NOW())
         `);
       }

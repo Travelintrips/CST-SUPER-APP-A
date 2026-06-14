@@ -424,6 +424,12 @@ export async function runSportCenterMigration(): Promise<void> {
       ALTER TABLE sport_bookings ADD COLUMN IF NOT EXISTS customer_email TEXT;
     `);
 
+    // Kolom sc_booking_id untuk idempoten lookup saat pull payments dari Supabase
+    await db.execute(sql`
+      ALTER TABLE sport_bookings ADD COLUMN IF NOT EXISTS sc_booking_id INTEGER;
+      CREATE INDEX IF NOT EXISTS idx_sport_bookings_sc_id ON sport_bookings(sc_booking_id) WHERE sc_booking_id IS NOT NULL;
+    `);
+
     await db.execute(sql`
       DO $$ BEGIN
         IF NOT EXISTS (
