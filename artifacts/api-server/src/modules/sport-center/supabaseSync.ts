@@ -521,6 +521,128 @@ export async function syncAllBookings(): Promise<{ synced: number; errors: numbe
   return { synced, errors, total: rows.length };
 }
 
+/**
+ * syncPaymentsToAccounting
+ * Baca sport_center.payments yang sudah confirmed, lalu buat accounting_payments
+ * di BizPortal jika belum ada (idempoten via source_type='sport_center' + source_doc_id).
+ */
+export async function syncPaymentsToAccounting(companyId = 1): Promise<{ synced: number; skipped: number; errors: number }> {
+  let client: import("@supabase/supabase-js").SupabaseClient | null = null;
+  try {
+    const { getSportCenterSupabaseClient } = await import("../../lib/supabaseAdminSportCenter.js");
+    client = getSportCenterSupabaseClient() as unknown as import("@supabase/supabase-js").SupabaseClient;
+  } catch { }
+
+  if (!client) {
+    console.warn(`${PREFIX} syncPaymentsToAccounting: Supabase client tidak tersedia`);
+    return { synced: 0, skipped: 0, errors: 0 };
+  }
+
+  const { data: payments, error: payErr } = await (client as any)
+    .schema("sport_center")
+    .from("payments")
+    .select("id, booking_id, amount, payment_method, status, confirmed_at, created_at")
+    .eq("status", "confirmed");
+
+  if (payErr) {
+    console.error(`${PREFIX} syncPaymentsToAccounting: fetch payments gagal`, payErr.message);
+    return { synced: 0, skipped: 0, errors: 1 };
+  }
+
+  const { data: bookings, error: bkErr } = await (client as any)
+    .schema("sport_center")
+    .from("bookings")
+    .select("id, order_number, customer_name, grand_total, total_price, ppn_amount, booking_date");
+
+  if (bkErr) {
+    console.warn(`${PREFIX} syncPaymentsToAccounting: fetch bookings warning`, bkErr.message);
+  }
+
+  const bookingMap: Record<number, { order_number: string; customer_name: string; grand_total: number; booking_date: string }> = {};
+  for (const b of (bookings ?? []) as Array<{ id: number; order_number: string; customer_name: string; grand_total: number; total_price: number; booking_date: string }>) {
+    bookingMap[b.id] = {
+      order_number: b.order_number ?? `SC-${b.id}`,
+      customer_name: b.customer_name ?? "Customer",
+      grand_total: Number(b.grand_total ?? b.total_price ?? 0),
+      booking_date: b.booking_date ?? new Date().toISOString().split("T")[0]!,
+    };
+  }
+
+  let synced = 0;
+  let skipped = 0;
+  let errors = 0;
+
+  for (const pay of (payments ?? []) as Array<{ id: number; booking_id: number; amount: number; payment_method: string; confirmed_at: string; created_at: string }>) {
+    try {
+      const existing = await db.execute(sql`
+        SELECT id FROM accounting_payments
+        WHERE source_type = 'sport_center' AND source_doc_id = ${pay.id}
+        LIMIT 1
+      `);
+      if (existing.rows.length > 0) { skipped++; continue; }
+
+      const bk = bookingMap[pay.booking_id] ?? {
+        order_number: `SC-PAY-${pay.id}`,
+        customer_name: "Customer",
+        grand_total: Number(pay.amount),
+        booking_date: (pay.confirmed_at ?? pay.created_at ?? "").split("T")[0] ?? new Date().toISOString().split("T")[0]!,
+      };
+
+      const payDate = (pay.confirmed_at ?? pay.created_at ?? "").split("T")[0] ?? new Date().toISOString().split("T")[0]!;
+      const year = payDate.slice(0, 4);
+      const cntRes = await db.execute(sql`SELECT CAST(COUNT(*) AS int) AS seq FROM accounting_payments WHERE company_id = ${companyId}`);
+      const seq = Number((cntRes.rows[0] as any)?.seq ?? 0);
+      const paySeq = (seq + 1).toString().padStart(4, "0");
+      const acctPayNumber = `SCPAY/${year}/${paySeq}`;
+
+      const method = pay.payment_method?.toLowerCase() ?? "";
+      const isCash = ["cash", "tunai", "cash on hand"].includes(method);
+
+      const settingsRes = await db.execute(sql`
+        SELECT cash_journal_id, bank_journal_id FROM accounting_settings WHERE company_id = ${companyId} LIMIT 1
+      `);
+      const settings = settingsRes.rows[0] as any;
+      const journalId = isCash
+        ? (settings?.cash_journal_id ?? settings?.bank_journal_id ?? null)
+        : (settings?.bank_journal_id ?? settings?.cash_journal_id ?? null);
+
+      if (!journalId) {
+        console.warn(`${PREFIX} syncPaymentsToAccounting: tidak ada journal untuk companyId=${companyId}, skip pay.id=${pay.id}`);
+        skipped++;
+        continue;
+      }
+
+      await db.execute(sql`
+        INSERT INTO accounting_payments
+          (company_id, payment_number, payment_type, status, amount, journal_id,
+           partner_name, date, ref, memo, source_type, source_doc_id)
+        VALUES
+          (${companyId}, ${acctPayNumber}, 'inbound', 'posted', ${String(Number(pay.amount))},
+           ${journalId}, ${bk.customer_name}, ${payDate},
+           ${bk.order_number}, ${'Sport Center: ' + bk.order_number},
+           'sport_center', ${pay.id})
+      `);
+
+      console.log(`${PREFIX} syncPaymentsToAccounting OK → pay.id=${pay.id} ${bk.order_number} Rp${pay.amount}`);
+      synced++;
+    } catch (err) {
+      console.error(`${PREFIX} syncPaymentsToAccounting gagal pay.id=${pay.id}:`, err);
+      errors++;
+    }
+  }
+
+  console.log(`${PREFIX} syncPaymentsToAccounting selesai: synced=${synced} skipped=${skipped} errors=${errors}`);
+  void writeSyncLog({
+    entity: "booking",
+    action: "resync",
+    entityId: null,
+    status: errors === 0 ? "ok" : "error",
+    detail: `accounting sync: ${synced} synced, ${skipped} skipped, ${errors} errors`,
+  });
+
+  return { synced, skipped, errors };
+}
+
 export async function getLastSyncLogs(limit = 20): Promise<unknown[]> {
   try {
     const result = await db.execute(sql`

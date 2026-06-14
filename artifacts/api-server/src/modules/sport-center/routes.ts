@@ -5,7 +5,7 @@ import { requireAdmin } from "../../lib/requireAdmin.js";
 import { handleSportCenterSse, broadcastSportCenterEvent } from "./broadcast.js";
 import { postSportCenterBooking, postSportCenterBookingReversal, postSportCenterRefund, postSportCenterMembershipPayment, postSportCenterBookingWithTax, postSportCenterBookingRefundDirect } from "../../lib/accounting.js";
 import { ensureAccountingSettings } from "../../lib/accountingSeed.js";
-import { syncFacilityUpsert, syncFacilityDelete, syncAllFacilities, syncBookingUpsert, syncAllBookings, getLastSyncLogs, pullLegacyBookingsFromSupabase } from "./supabaseSync.js";
+import { syncFacilityUpsert, syncFacilityDelete, syncAllFacilities, syncBookingUpsert, syncAllBookings, getLastSyncLogs, pullLegacyBookingsFromSupabase, syncPaymentsToAccounting } from "./supabaseSync.js";
 import { saveAndBroadcast } from "../../lib/notificationStore.js";
 
 async function insertAccountingPaymentForSportCenter(args: {
@@ -3430,6 +3430,37 @@ router.post("/company-invoices/:id/mark-paid", async (req, res) => {
   } catch (err) {
     console.error("[sport-center] POST /company-invoices/:id/mark-paid error:", err);
     res.status(500).json({ error: "Gagal memperbarui status" });
+  }
+});
+
+/**
+ * POST /api/sport-center/sync/pull-from-supabase
+ * Tarik semua booking dari sport_center schema → sport_bookings lokal (idempoten).
+ */
+router.post("/sync/pull-from-supabase", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  try {
+    const result = await pullLegacyBookingsFromSupabase();
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    console.error("[sport-center] sync/pull-from-supabase error:", err);
+    res.status(500).json({ error: "Gagal pull dari Supabase" });
+  }
+});
+
+/**
+ * POST /api/sport-center/sync/accounting
+ * Sinkronisasi pembayaran confirmed di sport_center → accounting_payments BizPortal.
+ */
+router.post("/sync/accounting", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  try {
+    const companyId = req.body?.companyId ? Number(req.body.companyId) : 1;
+    const result = await syncPaymentsToAccounting(companyId);
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    console.error("[sport-center] sync/accounting error:", err);
+    res.status(500).json({ error: "Gagal sync akuntansi" });
   }
 });
 

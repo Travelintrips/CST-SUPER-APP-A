@@ -17,7 +17,7 @@ import {
   XCircle, Database, BookOpen, Flame, CheckCheck, BarChart2,
   ArrowDownRight, Zap, Filter, ChevronLeft, ChevronRight, ChevronDown,
 } from "lucide-react";
-import { fetchSportCenterData, type SportCenterSupabaseData } from "@/lib/sportCenterSupabase";
+import { fetchSportCenterData, fetchAllBookingsFromSportCenter, type SportCenterSupabaseData } from "@/lib/sportCenterSupabase";
 import { supabase } from "@/lib/supabaseClient";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
@@ -225,13 +225,8 @@ export default function SportCenterDashboard() {
   } = useQuery<AllBookingRow[]>({
     queryKey: ["sport-center-supabase-all-bookings"],
     queryFn: async () => {
-      if (!supabase) return [];
-      const { data, error } = await supabase
-        .from("sport_center_bookings")
-        .select("booking_code, customer_name, facility_name, date, start_time, end_time, status, payment_status, total_price, created_at")
-        .order("created_at", { ascending: false });
-      if (error) throw new Error(error.message);
-      return (data ?? []) as AllBookingRow[];
+      const rows = await fetchAllBookingsFromSportCenter();
+      return rows as AllBookingRow[];
     },
     enabled: expandedCard === "totalBooking",
     staleTime: 30_000,
@@ -263,25 +258,25 @@ export default function SportCenterDashboard() {
     if (!supabase) return;
     const channel = supabase
       .channel("sport-center-dashboard-rt")
-      .on("postgres_changes", { event: "*", schema: "public", table: "sport_center_bookings" }, (payload) => {
+      .on("postgres_changes", { event: "*", schema: "sport_center", table: "bookings" }, (payload) => {
         qc.invalidateQueries({ queryKey: ["sport-center-supabase"] });
-        qc.invalidateQueries({ queryKey: ["sport-center-supabase-bookings-raw"] });
+        qc.invalidateQueries({ queryKey: ["sport-center-supabase-all-bookings"] });
         setRealtimeCount((c) => c + 1);
-        // Auto-push perubahan individual ke local DB tanpa perlu manual sync
         const row = (payload as { new?: Record<string, unknown> }).new;
-        if (row && row.booking_code) {
-          void fetch("/api/sport-center/sync/push-bookings", {
+        if (row && row.order_number) {
+          void fetch("/api/sport-center/sync/pull-from-supabase", {
             method: "POST", credentials: "include",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ bookings: [row], companyId: activeCompanyId }),
+            body: JSON.stringify({ companyId: activeCompanyId }),
           });
         }
       })
-      .on("postgres_changes", { event: "*", schema: "public", table: "sport_center_services" }, () => {
+      .on("postgres_changes", { event: "*", schema: "sport_center", table: "payments" }, () => {
         qc.invalidateQueries({ queryKey: ["sport-center-supabase"] });
+        qc.invalidateQueries({ queryKey: ["sport-center-dashboard"] });
         setRealtimeCount((c) => c + 1);
       })
-      .on("postgres_changes", { event: "*", schema: "public", table: "sport_center_facilities" }, () => {
+      .on("postgres_changes", { event: "*", schema: "sport_center", table: "facilities" }, () => {
         qc.invalidateQueries({ queryKey: ["sport-center-supabase"] });
         setRealtimeCount((c) => c + 1);
       })
@@ -398,14 +393,9 @@ export default function SportCenterDashboard() {
     const rawBookings = supaData.recentBookings;             // SupabaseBooking raw via recentBookings
     if (!rawBookings || rawBookings.length === 0) return;
     pushBookingsDone.current = true;
-    if (!supabase) return;
-    supabase
-      .from("sport_center_bookings")
-      .select("booking_code, customer_name, customer_phone, customer_email, facility_name, date, start_time, end_time, total_hours, total_price, status, payment_status, notes, created_at")
-      .then(({ data }) => {
-        if (data && data.length > 0) void pushBookings.mutateAsync(data);
-      })
-      .catch(() => {});
+    void fetchAllBookingsFromSportCenter().then((data) => {
+      if (data && data.length > 0) void pushBookings.mutateAsync(data);
+    }).catch(() => {});
   }, [supaData, syncData, activeCompanyId]);
 
   // ── Mutations: trigger resync manual ─────────────────────────────────────
@@ -442,6 +432,19 @@ export default function SportCenterDashboard() {
     onSuccess: () => { void refetchSync(); },
   });
 
+  const syncAccounting = useMutation({
+    mutationFn: async () => {
+      const r = await fetch("/api/sport-center/sync/accounting", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ companyId: activeCompanyId }),
+      });
+      if (!r.ok) throw new Error("Sync akuntansi gagal");
+      return r.json() as Promise<{ synced: number; skipped: number; errors: number }>;
+    },
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ["accounting-payments"] }); },
+  });
+
   const fmtTs = (ts: string | null | undefined) => {
     if (!ts) return "-";
     try {
@@ -452,7 +455,7 @@ export default function SportCenterDashboard() {
     } catch { return ts; }
   };
 
-  const syncBusy = resyncFacilities.isPending || resyncAll.isPending || resyncBookings.isPending;
+  const syncBusy = resyncFacilities.isPending || resyncAll.isPending || resyncBookings.isPending || syncAccounting.isPending;
 
   const stats: {
     title: string; value: string | number;
@@ -1292,6 +1295,17 @@ export default function SportCenterDashboard() {
                     : <CloudUpload className="h-3 w-3" />}
                   Resync Semua
                 </Button>
+                <Button
+                  size="sm" variant="outline"
+                  className="h-7 text-xs gap-1.5 border-amber-700 text-amber-300 hover:bg-amber-950/40"
+                  disabled={syncBusy}
+                  onClick={() => void syncAccounting.mutateAsync()}
+                >
+                  {syncAccounting.isPending
+                    ? <RefreshCw className="h-3 w-3 animate-spin" />
+                    : <CheckCheck className="h-3 w-3" />}
+                  Sync Akuntansi
+                </Button>
               </div>
             </div>
           </CardHeader>
@@ -1324,14 +1338,27 @@ export default function SportCenterDashboard() {
                 </AlertDescription>
               </Alert>
             )}
-            {(resyncFacilities.isError || resyncAll.isError || resyncBookings.isError) && (
+            {syncAccounting.isSuccess && syncAccounting.data && (
+              <Alert className="border-amber-700 bg-amber-950/40 text-amber-300 py-2">
+                <CheckCheck className="h-4 w-4 text-amber-400" />
+                <AlertDescription className="text-xs">
+                  Sync akuntansi selesai —{" "}
+                  Disync: <strong>{syncAccounting.data.synced}</strong>,{" "}
+                  Sudah ada: <strong>{syncAccounting.data.skipped}</strong>
+                  {syncAccounting.data.errors > 0 && (
+                    <span>, Gagal: <strong className="text-red-400">{syncAccounting.data.errors}</strong></span>
+                  )}
+                </AlertDescription>
+              </Alert>
+            )}
+            {(resyncFacilities.isError || resyncAll.isError || resyncBookings.isError || syncAccounting.isError) && (
               <Alert className="border-red-700 bg-red-950/40 text-red-300 py-2">
                 <XCircle className="h-4 w-4 text-red-400" />
                 <AlertDescription className="text-xs">
                   {String(
-                    (resyncAll.error ?? resyncFacilities.error ?? resyncBookings.error) instanceof Error
-                      ? (resyncAll.error ?? resyncFacilities.error ?? resyncBookings.error as Error)?.message
-                      : "Resync gagal"
+                    (resyncAll.error ?? resyncFacilities.error ?? resyncBookings.error ?? syncAccounting.error) instanceof Error
+                      ? (resyncAll.error ?? resyncFacilities.error ?? resyncBookings.error ?? syncAccounting.error as Error)?.message
+                      : "Sync gagal"
                   )}
                 </AlertDescription>
               </Alert>
