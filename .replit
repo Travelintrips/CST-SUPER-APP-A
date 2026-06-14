@@ -22,7 +22,15 @@ args = "Gateway"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "artifacts/wa-gateway: WA Gateway"
+args = "BizPortal"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Customer Portal"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "API Server"
 
 [[workflows.workflow]]
 name = "Gateway"
@@ -33,7 +41,7 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "fuser -k 5000/tcp 2>/dev/null; sleep 0.3; BIZPORTAL_PORT=6800 PORT=5000 node gateway.mjs"
+args = "BIZPORTAL_PORT=6800 PORT=5000 node gateway.mjs"
 waitForPort = 5000
 
 [[workflows.workflow]]
@@ -46,7 +54,7 @@ outputType = "console"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "BIZPORTAL_PORT=6800 bash artifacts/bizportal/start-dev.sh"
-waitForPort = 3000
+waitForPort = 6800
 
 [[workflows.workflow]]
 name = "Customer Portal"
@@ -57,20 +65,20 @@ outputType = "console"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "cd artifacts/customer-portal && PORT=3001 pnpm run dev"
+args = "bash artifacts/customer-portal/start-dev.sh"
 waitForPort = 3001
 
 [[workflows.workflow]]
-name = "artifacts/wa-gateway: WA Gateway"
+name = "API Server"
 author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "pnpm --filter @workspace/wa-gateway run dev"
-waitForPort = 8000
 
 [workflows.workflow.metadata]
 outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd artifacts/api-server && bash start-dev.sh"
+waitForPort = 8080
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
@@ -112,7 +120,7 @@ SMTP_PASS = " info@cstlogistic.co.id"
 [userenv.development]
 ADMIN_EMAIL_DOMAINS = "example.com"
 SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhzc3Jmc2hkcnRkZnVwZ3F3ZmR3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4OTY3MjgsImV4cCI6MjA5NDQ3MjcyOH0.czKzR9GjEL6UK8AhPAX6OYyF74fz1YtImYQSXiiG69U"
-SUPABASE_DATABASE_URL = "postgresql://postgres.nzdweipzckfszczzqtuw:%24%23Admin12345%40%24@aws-1-ap-southeast-2.pooler.supabase.com:6543/postgres"
+SUPABASE_DATABASE_URL = "postgresql://postgres.xssrfshdrtdfupgqwfdw:%24%23Admin12345%40%24@aws-1-ap-southeast-2.pooler.supabase.com:6543/postgres"
 SUPABASE_SERVICE_ROLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhzc3Jmc2hkcnRkZnVwZ3F3ZmR3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3ODg5NjcyOCwiZXhwIjoyMDk0NDcyNzI4fQ.VFPcBxsVJkYwNo3ojy3uOHglqUA9zILhjw4_0JAhZYI"
 SUPABASE_STORAGE_BUCKET = "https://xssrfshdrtdfupgqwfdw.storage.supabase.co/storage/v1/s3"
 SUPABASE_URL = "https://xssrfshdrtdfupgqwfdw.supabase.co"
@@ -138,69 +146,29 @@ packages = ["freetype", "lcms2", "libimagequant", "libjpeg", "libtiff", "libwebp
 defaultBucketID = "replit-objstore-e357cc66-19c3-4d73-9ca9-3069d78355d1"
 
 [[ports]]
-localPort = 3000
-externalPort = 9000
-
-[[ports]]
 localPort = 3001
-externalPort = 3001
-
-[[ports]]
-localPort = 3002
-externalPort = 8008
+externalPort = 3003
 
 [[ports]]
 localPort = 5000
 externalPort = 80
 
 [[ports]]
-localPort = 8082
-externalPort = 3002
-
-[[ports]]
-localPort = 8083
-externalPort = 3001
-
-[[ports]]
-localPort = 8084
-externalPort = 3003
-
-[[ports]]
-localPort = 8085
-externalPort = 5000
-
-[[ports]]
-localPort = 8086
-externalPort = 4200
-
-[[ports]]
-localPort = 18442
-externalPort = 3000
-
-[[ports]]
-localPort = 18443
+localPort = 6800
 externalPort = 6800
 
 [[ports]]
-localPort = 18444
+localPort = 8080
 externalPort = 8080
 
 [[ports]]
-localPort = 19368
-externalPort = 6000
+localPort = 18442
+externalPort = 3001
 
 [[ports]]
-localPort = 21170
-externalPort = 8000
-
-[[ports]]
-localPort = 21171
-externalPort = 8099
+localPort = 18444
+externalPort = 3002
 
 [[ports]]
 localPort = 23434
-externalPort = 5173
-
-[[ports]]
-localPort = 23435
-externalPort = 8081
+externalPort = 4200
