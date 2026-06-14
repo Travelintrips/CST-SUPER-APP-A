@@ -5,7 +5,7 @@ import { requireAdmin } from "../../lib/requireAdmin.js";
 import { handleSportCenterSse, broadcastSportCenterEvent } from "./broadcast.js";
 import { postSportCenterBooking, postSportCenterBookingReversal, postSportCenterRefund, postSportCenterMembershipPayment, postSportCenterBookingWithTax, postSportCenterBookingRefundDirect } from "../../lib/accounting.js";
 import { ensureAccountingSettings } from "../../lib/accountingSeed.js";
-import { syncFacilityUpsert, syncFacilityDelete, syncAllFacilities, syncBookingUpsert, syncAllBookings, getLastSyncLogs, pullLegacyBookingsFromSupabase } from "./supabaseSync.js";
+import { syncFacilityUpsert, syncFacilityDelete, syncAllFacilities, syncBookingUpsert, syncAllBookings, getLastSyncLogs, pullLegacyBookingsFromSupabase, pullFacilitiesFromSupabase } from "./supabaseSync.js";
 import { saveAndBroadcast } from "../../lib/notificationStore.js";
 
 async function insertAccountingPaymentForSportCenter(args: {
@@ -598,6 +598,16 @@ router.post("/facilities/resync-all", async (req, res) => {
     });
   } catch (err: any) {
     res.status(500).json({ error: "Resync gagal", detail: err?.message });
+  }
+});
+
+router.post("/facilities/pull-from-supabase", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+  try {
+    const result = await pullFacilitiesFromSupabase();
+    res.json({ success: true, ...result, completed_at: new Date().toISOString() });
+  } catch (err: any) {
+    res.status(500).json({ error: "Pull fasilitas gagal", detail: err?.message });
   }
 });
 
