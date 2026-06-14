@@ -569,7 +569,22 @@ router.get("/callback/google", async (req: Request, res: Response) => {
       picture: payload.picture || null,
     };
 
-    const dbUser = await upsertUser(claims);
+    let dbUser: { id: string; email: string | null; firstName: string | null; lastName: string | null; profileImageUrl: string | null; role?: string | null; companyId?: number | null };
+    try {
+      dbUser = await upsertUser(claims);
+    } catch (dbErr) {
+      // DB tidak tersedia — buat user sementara dari Google claims
+      req.log.warn({ err: dbErr }, "[Google OAuth] upsertUser DB error — using claims-only user");
+      dbUser = {
+        id: claims.sub as string,
+        email: (claims.email as string) || null,
+        firstName: (claims.first_name as string) || null,
+        lastName: (claims.last_name as string) || null,
+        profileImageUrl: ((claims.picture || claims.profile_image_url) as string) || null,
+        role: null,
+        companyId: null,
+      };
+    }
 
     const now = Math.floor(Date.now() / 1000);
     const sessionData: SessionData = {
