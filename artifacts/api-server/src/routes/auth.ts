@@ -575,13 +575,20 @@ router.get("/callback/google", async (req: Request, res: Response) => {
     } catch (dbErr) {
       // DB tidak tersedia — buat user sementara dari Google claims
       req.log.warn({ err: dbErr }, "[Google OAuth] upsertUser DB error — using claims-only user");
+      const _email = ((claims.email as string) || "").toLowerCase();
+      const _adminEmails = [
+        "admcst001@gmail.com",
+        "divatranssoetta@gmail.com",
+        ...(process.env.ADMIN_EMAIL ?? "").split(","),
+        ...(process.env.ADMIN_EMAILS ?? "").split(","),
+      ].map((e) => e.trim().toLowerCase()).filter(Boolean);
       dbUser = {
         id: claims.sub as string,
         email: (claims.email as string) || null,
         firstName: (claims.first_name as string) || null,
         lastName: (claims.last_name as string) || null,
         profileImageUrl: ((claims.picture || claims.profile_image_url) as string) || null,
-        role: null,
+        role: _adminEmails.includes(_email) ? "admin" : null,
         companyId: null,
       };
     }
