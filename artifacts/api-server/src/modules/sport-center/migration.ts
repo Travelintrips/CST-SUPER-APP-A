@@ -320,65 +320,74 @@ export async function runSportCenterMigration(): Promise<void> {
         ON CONFLICT DO NOTHING
       `);
 
-      // Upsert customers dari bookings lama
-      await db.execute(sql`
-        INSERT INTO sport_customers (company_id, name, email, phone, created_at, updated_at)
-        SELECT DISTINCT
-          1,
-          b.customer_name,
-          b.customer_email,
-          b.customer_phone,
-          NOW(), NOW()
-        FROM sport_center_bookings b
-        WHERE b.customer_phone IS NOT NULL
-          AND NOT EXISTS (
-            SELECT 1 FROM sport_customers c WHERE c.phone = b.customer_phone
-          )
-        ON CONFLICT DO NOTHING
+      // Upsert customers & bookings dari legacy sport_center_bookings (hanya jika tabel ada)
+      const legacyBkCheck = await db.execute(sql`
+        SELECT EXISTS (
+          SELECT 1 FROM information_schema.tables
+          WHERE table_schema = 'public' AND table_name = 'sport_center_bookings'
+        ) AS exists
       `);
+      const hasLegacyBookings = (legacyBkCheck.rows[0] as { exists: boolean }).exists;
 
-      // Upsert bookings lama
-      await db.execute(sql`
-        INSERT INTO sport_bookings
-          (company_id, booking_number, customer_id, customer_name, customer_phone,
-           facility_id, facility_name, booking_date, start_time, end_time,
-           duration_hours, base_amount, total_amount, status, payment_status,
-           notes, created_at, updated_at)
-        SELECT
-          1,
-          b.booking_code,
-          c.id,
-          b.customer_name,
-          b.customer_phone,
-          f.id,
-          b.facility_name,
-          b.date::DATE,
-          b.start_time::TIME,
-          b.end_time::TIME,
-          COALESCE(b.total_hours, 1)::NUMERIC(5,2),
-          COALESCE(b.total_price, 0)::NUMERIC(14,2),
-          COALESCE(b.total_price, 0)::NUMERIC(14,2),
-          CASE b.status
-            WHEN 'confirmed' THEN 'confirmed'
-            WHEN 'cancelled' THEN 'cancelled'
-            ELSE 'pending'
-          END,
-          COALESCE(b.payment_status, 'unpaid'),
-          b.notes,
-          COALESCE(b.created_at, NOW()),
-          COALESCE(b.created_at, NOW())
-        FROM sport_center_bookings b
-        LEFT JOIN sport_customers c ON c.phone = b.customer_phone
-        LEFT JOIN sport_facilities f ON (
-          f.name = b.facility_name
-          OR f.name ILIKE '%' || SPLIT_PART(b.facility_id, '-', 1) || '%'
-        )
-        WHERE b.booking_code IS NOT NULL
-          AND NOT EXISTS (
-            SELECT 1 FROM sport_bookings nb WHERE nb.booking_number = b.booking_code
+      if (hasLegacyBookings) {
+        await db.execute(sql`
+          INSERT INTO sport_customers (company_id, name, email, phone, created_at, updated_at)
+          SELECT DISTINCT
+            1,
+            b.customer_name,
+            b.customer_email,
+            b.customer_phone,
+            NOW(), NOW()
+          FROM sport_center_bookings b
+          WHERE b.customer_phone IS NOT NULL
+            AND NOT EXISTS (
+              SELECT 1 FROM sport_customers c WHERE c.phone = b.customer_phone
+            )
+          ON CONFLICT DO NOTHING
+        `);
+
+        await db.execute(sql`
+          INSERT INTO sport_bookings
+            (company_id, booking_number, customer_id, customer_name, customer_phone,
+             facility_id, facility_name, booking_date, start_time, end_time,
+             duration_hours, base_amount, total_amount, status, payment_status,
+             notes, created_at, updated_at)
+          SELECT
+            1,
+            b.booking_code,
+            c.id,
+            b.customer_name,
+            b.customer_phone,
+            f.id,
+            b.facility_name,
+            b.date::DATE,
+            b.start_time::TIME,
+            b.end_time::TIME,
+            COALESCE(b.total_hours, 1)::NUMERIC(5,2),
+            COALESCE(b.total_price, 0)::NUMERIC(14,2),
+            COALESCE(b.total_price, 0)::NUMERIC(14,2),
+            CASE b.status
+              WHEN 'confirmed' THEN 'confirmed'
+              WHEN 'cancelled' THEN 'cancelled'
+              ELSE 'pending'
+            END,
+            COALESCE(b.payment_status, 'unpaid'),
+            b.notes,
+            COALESCE(b.created_at, NOW()),
+            COALESCE(b.created_at, NOW())
+          FROM sport_center_bookings b
+          LEFT JOIN sport_customers c ON c.phone = b.customer_phone
+          LEFT JOIN sport_facilities f ON (
+            f.name = b.facility_name
+            OR f.name ILIKE '%' || SPLIT_PART(b.facility_id, '-', 1) || '%'
           )
-        ON CONFLICT DO NOTHING
-      `);
+          WHERE b.booking_code IS NOT NULL
+            AND NOT EXISTS (
+              SELECT 1 FROM sport_bookings nb WHERE nb.booking_number = b.booking_code
+            )
+          ON CONFLICT DO NOTHING
+        `);
+      }
 
       logger.info("Sport Center migration: legacy sync selesai (sport_center_services → sport_facilities)");
     }
