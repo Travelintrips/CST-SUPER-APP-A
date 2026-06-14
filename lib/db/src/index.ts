@@ -9,8 +9,8 @@ function resolveConnectionString(): string {
 
   const candidates = isProd
     ? [
-        process.env.SUPABASE_PG_URL,
         process.env.SUPABASE_DATABASE_URL,
+        process.env.SUPABASE_PG_URL,
         process.env.DATABASE_URL,
       ]
     : [
