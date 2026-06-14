@@ -701,11 +701,13 @@ export async function pullPaymentsFromSupabase(companyId = 1): Promise<{ pulled:
       }
 
       if (!localBookingId && pay.booking_id) {
-        // Fallback: cari via sc_booking_id (disimpan saat pullLegacyBookingsFromSupabase)
-        const bkRes2 = await db.execute(sql`
-          SELECT id FROM sport_bookings WHERE sc_booking_id = ${pay.booking_id} LIMIT 1
-        `);
-        if (bkRes2.rows.length > 0) localBookingId = Number((bkRes2.rows[0] as any).id);
+        // Fallback: cari via sc_booking_id — hanya jika kolom sudah ada di DB
+        try {
+          const bkRes2 = await db.execute(sql`
+            SELECT id FROM sport_bookings WHERE sc_booking_id = ${pay.booking_id} LIMIT 1
+          `);
+          if (bkRes2.rows.length > 0) localBookingId = Number((bkRes2.rows[0] as any).id);
+        } catch { /* sc_booking_id belum ada — skip fallback ini */ }
       }
 
       if (!localBookingId) {
@@ -770,13 +772,18 @@ export async function getLastSyncLogs(limit = 20): Promise<unknown[]> {
 }
 
 export async function pullLegacyBookingsFromSupabase(): Promise<{ pulled: number; errors: number; total: number }> {
-  // Pastikan kolom sc_booking_id ada (self-bootstrapping, idempoten)
+  // Pastikan kolom sc_booking_id ada (self-bootstrapping, idempoten).
+  // Pisah ALTER TABLE dan CREATE INDEX agar satu tidak memblokir yang lain.
+  let scIdColumnExists = false;
   try {
-    await db.execute(sql`
-      ALTER TABLE sport_bookings ADD COLUMN IF NOT EXISTS sc_booking_id INTEGER;
-      CREATE INDEX IF NOT EXISTS idx_sport_bookings_sc_id ON sport_bookings(sc_booking_id) WHERE sc_booking_id IS NOT NULL;
-    `);
-  } catch { /* non-fatal — kolom mungkin sudah ada atau tabel belum dibuat */ }
+    await db.execute(sql`ALTER TABLE sport_bookings ADD COLUMN IF NOT EXISTS sc_booking_id INTEGER`);
+    scIdColumnExists = true;
+  } catch { /* non-fatal — tabel belum ada atau circuit breaker */ }
+  if (scIdColumnExists) {
+    try {
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_sport_bookings_sc_id ON sport_bookings(sc_booking_id) WHERE sc_booking_id IS NOT NULL`);
+    } catch { /* index non-fatal */ }
+  }
 
   let client: import("@supabase/supabase-js").SupabaseClient | null = null;
   try {
@@ -851,32 +858,50 @@ export async function pullLegacyBookingsFromSupabase(): Promise<{ pulled: number
 
     const scBookingId = row.id;
     try {
-      // Coba lookup via sc_booking_id dulu (idempoten yg lebih stabil), fallback ke booking_number
+      // Lookup via booking_number (selalu reliable), tambah sc_booking_id jika kolom sudah ada
       const existing = await db.execute(sql`
-        SELECT id FROM sport_bookings
-        WHERE sc_booking_id = ${scBookingId} OR booking_number = ${bookingNumber}
-        LIMIT 1
+        SELECT id FROM sport_bookings WHERE booking_number = ${bookingNumber} LIMIT 1
       `);
       if (existing.rows.length > 0) {
-        await db.execute(sql`
-          UPDATE sport_bookings SET
-            customer_name   = ${row.customer_name},
-            customer_phone  = ${row.customer_phone ?? null},
-            facility_name   = ${facilityName},
-            booking_date    = ${bookingDate}::DATE,
-            start_time      = ${startTime}::TIME,
-            end_time        = ${endTime}::TIME,
-            duration_hours  = ${durationHours},
-            base_amount     = ${totalAmount},
-            total_amount    = ${totalAmount},
-            status          = ${mappedStatus},
-            payment_status  = ${paymentStatus},
-            notes           = ${row.notes ?? null},
-            sc_booking_id   = ${scBookingId},
-            updated_at      = NOW()
-          WHERE sc_booking_id = ${scBookingId} OR booking_number = ${bookingNumber}
-        `);
-      } else {
+        if (scIdColumnExists) {
+          await db.execute(sql`
+            UPDATE sport_bookings SET
+              customer_name   = ${row.customer_name},
+              customer_phone  = ${row.customer_phone ?? null},
+              facility_name   = ${facilityName},
+              booking_date    = ${bookingDate}::DATE,
+              start_time      = ${startTime}::TIME,
+              end_time        = ${endTime}::TIME,
+              duration_hours  = ${durationHours},
+              base_amount     = ${totalAmount},
+              total_amount    = ${totalAmount},
+              status          = ${mappedStatus},
+              payment_status  = ${paymentStatus},
+              notes           = ${row.notes ?? null},
+              sc_booking_id   = ${scBookingId},
+              updated_at      = NOW()
+            WHERE booking_number = ${bookingNumber}
+          `);
+        } else {
+          await db.execute(sql`
+            UPDATE sport_bookings SET
+              customer_name   = ${row.customer_name},
+              customer_phone  = ${row.customer_phone ?? null},
+              facility_name   = ${facilityName},
+              booking_date    = ${bookingDate}::DATE,
+              start_time      = ${startTime}::TIME,
+              end_time        = ${endTime}::TIME,
+              duration_hours  = ${durationHours},
+              base_amount     = ${totalAmount},
+              total_amount    = ${totalAmount},
+              status          = ${mappedStatus},
+              payment_status  = ${paymentStatus},
+              notes           = ${row.notes ?? null},
+              updated_at      = NOW()
+            WHERE booking_number = ${bookingNumber}
+          `);
+        }
+      } else if (scIdColumnExists) {
         await db.execute(sql`
           INSERT INTO sport_bookings
             (company_id, booking_number, customer_name, customer_phone,
@@ -889,6 +914,20 @@ export async function pullLegacyBookingsFromSupabase(): Promise<{ pulled: number
              ${durationHours}, ${totalAmount}, ${totalAmount},
              ${mappedStatus}, ${paymentStatus}, ${row.notes ?? null},
              ${scBookingId},
+             ${row.created_at ?? new Date().toISOString()}::TIMESTAMPTZ, NOW())
+        `);
+      } else {
+        await db.execute(sql`
+          INSERT INTO sport_bookings
+            (company_id, booking_number, customer_name, customer_phone,
+             facility_name, booking_date, start_time, end_time,
+             duration_hours, base_amount, total_amount,
+             status, payment_status, notes, created_at, updated_at)
+          VALUES
+            (1, ${bookingNumber}, ${row.customer_name}, ${row.customer_phone ?? null},
+             ${facilityName}, ${bookingDate}::DATE, ${startTime}::TIME, ${endTime}::TIME,
+             ${durationHours}, ${totalAmount}, ${totalAmount},
+             ${mappedStatus}, ${paymentStatus}, ${row.notes ?? null},
              ${row.created_at ?? new Date().toISOString()}::TIMESTAMPTZ, NOW())
         `);
       }
