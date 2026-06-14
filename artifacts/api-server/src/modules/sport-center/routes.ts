@@ -760,7 +760,7 @@ router.get("/bookings", async (req, res) => {
     const paymentStatus = (req.query.payment_status as string) ?? null;
     const date = (req.query.date as string) ?? null;
     const page = Math.max(1, Number(req.query.page ?? 1));
-    const limit = 50;
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit ?? 10)));
     const offset = (page - 1) * limit;
 
     // Query langsung ke Supabase sport_center (source of truth)

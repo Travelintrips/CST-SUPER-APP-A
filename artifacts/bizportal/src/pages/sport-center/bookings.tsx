@@ -72,6 +72,7 @@ export default function SportCenterBookings() {
   const [dateFilter, setDateFilter] = useState("");
   const [searchText, setSearchText] = useState("");
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [realtimeCount, setRealtimeCount] = useState(0);
   const [payBooking, setPayBooking] = useState<Booking | null>(null);
@@ -85,7 +86,7 @@ export default function SportCenterBookings() {
   });
 
   const { data, isLoading } = useQuery<{ data: Booking[]; total: number }>({
-    queryKey: ["sport-center-bookings", activeCompanyId, statusFilter, paymentFilter, dateFilter, page],
+    queryKey: ["sport-center-bookings", activeCompanyId, statusFilter, paymentFilter, dateFilter, page, pageSize],
     queryFn: async () => {
       const qs = new URLSearchParams();
       if (activeCompanyId) qs.set("companyId", String(activeCompanyId));
@@ -93,6 +94,7 @@ export default function SportCenterBookings() {
       if (paymentFilter !== "all") qs.set("payment_status", paymentFilter);
       if (dateFilter) qs.set("date", dateFilter);
       qs.set("page", String(page));
+      qs.set("limit", String(pageSize));
       try {
         const r = await fetch(`/api/sport-center/bookings?${qs}`, { credentials: "include" });
         if (!r.ok) return { data: [], total: 0 };
@@ -315,17 +317,25 @@ export default function SportCenterBookings() {
     setForm((p) => ({ ...p, facility_id: facilityId, base_amount: String(price), total_amount: String(price) }));
   };
 
+  const supaFiltered: Booking[] = (supaBookings ?? []).filter((b) =>
+    (!searchText || String(b.customer_name).toLowerCase().includes(searchText.toLowerCase()) || String(b.booking_number).toLowerCase().includes(searchText.toLowerCase())) &&
+    (statusFilter === "all" || b.status === statusFilter) &&
+    (!dateFilter || b.booking_date === dateFilter),
+  );
+  const supaTotal = supaFiltered.length;
+  const supaStart = (page - 1) * pageSize;
+
   const displayRows: Booking[] = showingSupabase
-    ? (supaBookings ?? []).filter((b) =>
-        (!searchText || String(b.customer_name).toLowerCase().includes(searchText.toLowerCase()) || String(b.booking_number).toLowerCase().includes(searchText.toLowerCase())) &&
-        (statusFilter === "all" || b.status === statusFilter) &&
-        (!dateFilter || b.booking_date === dateFilter),
-      )
+    ? supaFiltered.slice(supaStart, supaStart + pageSize)
     : (data?.data ?? []).filter((b: any) =>
         !searchText ||
         String(b.customer_name).toLowerCase().includes(searchText.toLowerCase()) ||
         String(b.booking_number).toLowerCase().includes(searchText.toLowerCase()),
       );
+
+  const totalRows = showingSupabase ? supaTotal : (data?.total ?? 0);
+  const fromRow = totalRows === 0 ? 0 : (page - 1) * pageSize + 1;
+  const toRow = Math.min(page * pageSize, totalRows);
 
   return (
     <AppShell>
@@ -377,7 +387,7 @@ export default function SportCenterBookings() {
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative flex-1 min-w-[200px]">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input placeholder="Cari nama / no. booking…" value={searchText} onChange={(e) => setSearchText(e.target.value)} className="pl-8" />
+            <Input placeholder="Cari nama / no. booking…" value={searchText} onChange={(e) => { setSearchText(e.target.value); setPage(1); }} className="pl-8" />
           </div>
           <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
             <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
@@ -408,6 +418,21 @@ export default function SportCenterBookings() {
               <XCircle className="h-4 w-4" />
             </Button>
           )}
+          <div className="flex items-center gap-1.5 ml-auto shrink-0">
+            <span className="text-xs text-muted-foreground whitespace-nowrap">Tampilkan</span>
+            <Select value={String(pageSize)} onValueChange={(v) => { setPageSize(Number(v)); setPage(1); }}>
+              <SelectTrigger className="w-[72px] h-8 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="10">10</SelectItem>
+                <SelectItem value="25">25</SelectItem>
+                <SelectItem value="50">50</SelectItem>
+                <SelectItem value="100">100</SelectItem>
+              </SelectContent>
+            </Select>
+            <span className="text-xs text-muted-foreground">data</span>
+          </div>
         </div>
 
         <Card className="border-border/60">
@@ -483,15 +508,20 @@ export default function SportCenterBookings() {
           </CardContent>
         </Card>
 
-        {(data?.total ?? 0) > 50 && (
-          <div className="flex items-center justify-between text-sm text-muted-foreground">
-            <span>Total: {data?.total} booking</span>
-            <div className="flex gap-2">
+        <div className="flex items-center justify-between text-sm text-muted-foreground">
+          <span>
+            {totalRows === 0
+              ? "Tidak ada data"
+              : `Menampilkan ${fromRow}–${toRow} dari ${totalRows} data`}
+          </span>
+          {totalRows > pageSize && (
+            <div className="flex items-center gap-2">
               <Button variant="outline" size="sm" disabled={page === 1} onClick={() => setPage((p) => p - 1)}>Prev</Button>
-              <Button variant="outline" size="sm" disabled={page * 50 >= (data?.total ?? 0)} onClick={() => setPage((p) => p + 1)}>Next</Button>
+              <span className="text-xs px-1">{page} / {Math.ceil(totalRows / pageSize)}</span>
+              <Button variant="outline" size="sm" disabled={toRow >= totalRows} onClick={() => setPage((p) => p + 1)}>Next</Button>
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
         {/* Payment Dialog */}
         <Dialog open={!!payBooking} onOpenChange={(o) => { if (!o) { setPayBooking(null); setPayForm({ method: "cash", notes: "" }); } }}>
