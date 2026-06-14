@@ -110,7 +110,7 @@ export function DevUserSwitcher() {
                       className="flex w-full items-center gap-2.5 px-3 py-2 text-left hover:bg-accent transition-colors disabled:opacity-50"
                     >
                       <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/20 text-[10px] font-bold text-primary">
-                        {name.substring(0, 1).toUpperCase()}
+                        {(name ?? "?").substring(0, 1).toUpperCase()}
                       </div>
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-xs font-medium leading-none">{name}</p>

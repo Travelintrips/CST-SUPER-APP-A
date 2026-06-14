@@ -1,7 +1,7 @@
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { logger } from "../../lib/logger.js";
-import { pullLegacyBookingsFromSupabase } from "./supabaseSync.js";
+import { pullLegacyBookingsFromSupabase, pullFacilitiesFromSupabase } from "./supabaseSync.js";
 
 export async function runSportCenterMigration(): Promise<void> {
   try {
@@ -469,6 +469,14 @@ export async function runSportCenterMigration(): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_recurring_expenses_facility ON recurring_expenses(facility_id);
       CREATE INDEX IF NOT EXISTS idx_recurring_expenses_next_run ON recurring_expenses(next_run) WHERE is_active = TRUE;
     `);
+
+    // Pull fasilitas dari Supabase sport_center.facilities → sport_facilities (idempoten)
+    try {
+      const facPullResult = await pullFacilitiesFromSupabase();
+      logger.info({ ...facPullResult }, "Sport Center migration: pull facilities dari Supabase selesai");
+    } catch (facPullErr) {
+      logger.warn({ err: facPullErr }, "Sport Center migration: pull facilities gagal (non-fatal)");
+    }
 
     // Pull semua booking dari Supabase sport_center_bookings → sport_bookings (idempoten via ON CONFLICT)
     try {

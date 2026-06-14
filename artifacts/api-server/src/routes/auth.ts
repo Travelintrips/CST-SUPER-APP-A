@@ -802,6 +802,86 @@ function genOtpCode(): string {
   return String(Math.floor(100000 + Math.random() * 900000));
 }
 
+// In-memory OTP store sebagai fallback ketika tabel DB tidak tersedia
+// Key: `${phone}:${purpose}`, Value: array of OTP entries
+type MemOtp = { id: number; codeHash: string; attempts: number; verified: boolean; expiresAt: Date; createdAt: Date };
+const memOtpStore = new Map<string, MemOtp[]>();
+let memOtpSeq = 1;
+function memOtpKey(phone: string, purpose: string) { return `${phone}:${purpose}`; }
+function memOtpClean() {
+  const now = new Date();
+  for (const [k, arr] of memOtpStore) {
+    const alive = arr.filter(o => o.expiresAt > now);
+    if (alive.length === 0) memOtpStore.delete(k);
+    else memOtpStore.set(k, alive);
+  }
+}
+setInterval(memOtpClean, 60_000);
+
+async function otpSend(phone: string, purpose: string, codeHash: string, expiresAt: Date): Promise<void> {
+  try {
+    await db.insert(waOtpCodesTable).values({ phone, codeHash, purpose, expiresAt });
+  } catch {
+    // Fallback: in-memory
+    const key = memOtpKey(phone, purpose);
+    const arr = memOtpStore.get(key) ?? [];
+    arr.push({ id: memOtpSeq++, codeHash, attempts: 0, verified: false, expiresAt, createdAt: new Date() });
+    memOtpStore.set(key, arr);
+  }
+}
+
+async function otpCountRecent(phone: string, purpose: string, since: Date): Promise<number> {
+  try {
+    const rows = await db
+      .select({ id: waOtpCodesTable.id })
+      .from(waOtpCodesTable)
+      .where(and(eq(waOtpCodesTable.phone, phone), eq(waOtpCodesTable.purpose, purpose), gte(waOtpCodesTable.createdAt, since)));
+    return rows.length;
+  } catch {
+    const key = memOtpKey(phone, purpose);
+    return (memOtpStore.get(key) ?? []).filter(o => o.createdAt >= since).length;
+  }
+}
+
+async function otpGetLatest(phone: string, purpose: string): Promise<MemOtp | null> {
+  try {
+    const [row] = await db
+      .select()
+      .from(waOtpCodesTable)
+      .where(and(eq(waOtpCodesTable.phone, phone), eq(waOtpCodesTable.purpose, purpose), eq(waOtpCodesTable.verified, false)))
+      .orderBy(desc(waOtpCodesTable.createdAt))
+      .limit(1);
+    if (!row) return null;
+    return { id: row.id, codeHash: row.codeHash, attempts: row.attempts, verified: row.verified, expiresAt: row.expiresAt, createdAt: row.createdAt };
+  } catch {
+    const key = memOtpKey(phone, purpose);
+    const arr = (memOtpStore.get(key) ?? []).filter(o => !o.verified).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    return arr[0] ?? null;
+  }
+}
+
+async function otpIncAttempts(id: number, phone: string, purpose: string): Promise<void> {
+  try {
+    await db.update(waOtpCodesTable).set({ attempts: sql`attempts + 1` }).where(eq(waOtpCodesTable.id, id));
+  } catch {
+    const key = memOtpKey(phone, purpose);
+    const arr = memOtpStore.get(key) ?? [];
+    const entry = arr.find(o => o.id === id);
+    if (entry) entry.attempts++;
+  }
+}
+
+async function otpMarkVerified(id: number, phone: string, purpose: string): Promise<void> {
+  try {
+    await db.update(waOtpCodesTable).set({ verified: true }).where(eq(waOtpCodesTable.id, id));
+  } catch {
+    const key = memOtpKey(phone, purpose);
+    const arr = memOtpStore.get(key) ?? [];
+    const entry = arr.find(o => o.id === id);
+    if (entry) entry.verified = true;
+  }
+}
+
 // POST /api/auth/wa-otp/send — kirim OTP ke nomor WA staff
 router.post("/auth/wa-otp/send", async (req: Request, res: Response) => {
   const { phone } = req.body ?? {};
@@ -811,11 +891,8 @@ router.post("/auth/wa-otp/send", async (req: Request, res: Response) => {
 
   // Rate limit: max 3 OTP per phone per 10 menit
   const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000);
-  const recent = await db
-    .select({ id: waOtpCodesTable.id })
-    .from(waOtpCodesTable)
-    .where(and(eq(waOtpCodesTable.phone, normalized), eq(waOtpCodesTable.purpose, "biz-login"), gte(waOtpCodesTable.createdAt, tenMinAgo)));
-  if (recent.length >= 3) {
+  const recentCount = await otpCountRecent(normalized, "biz-login", tenMinAgo);
+  if (recentCount >= 3) {
     res.status(429).json({ message: "Terlalu banyak permintaan OTP. Coba lagi nanti." });
     return;
   }
@@ -824,7 +901,7 @@ router.post("/auth/wa-otp/send", async (req: Request, res: Response) => {
   const codeHash = await bcrypt.hash(code, 10);
   const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
 
-  await db.insert(waOtpCodesTable).values({ phone: normalized, codeHash, purpose: "biz-login", expiresAt });
+  await otpSend(normalized, "biz-login", codeHash, expiresAt);
 
   const hasFonnte = !!process.env.FONNTE_TOKEN;
   const isDev = !process.env.REPLIT_DEPLOYMENT;
@@ -859,12 +936,7 @@ router.post("/auth/wa-otp/verify", async (req: Request, res: Response) => {
   if (!phone || !code) { res.status(400).json({ message: "Nomor HP dan kode OTP diperlukan." }); return; }
   const normalized = normalizePhoneBiz(String(phone));
 
-  const [otp] = await db
-    .select()
-    .from(waOtpCodesTable)
-    .where(and(eq(waOtpCodesTable.phone, normalized), eq(waOtpCodesTable.purpose, "biz-login"), eq(waOtpCodesTable.verified, false)))
-    .orderBy(desc(waOtpCodesTable.createdAt))
-    .limit(1);
+  const otp = await otpGetLatest(normalized, "biz-login");
 
   if (!otp) { res.status(400).json({ message: "OTP tidak ditemukan. Minta OTP baru." }); return; }
   if (otp.expiresAt < new Date()) { res.status(400).json({ message: "OTP kadaluarsa. Minta OTP baru." }); return; }
@@ -872,13 +944,13 @@ router.post("/auth/wa-otp/verify", async (req: Request, res: Response) => {
 
   const valid = await bcrypt.compare(String(code), otp.codeHash);
   if (!valid) {
-    await db.update(waOtpCodesTable).set({ attempts: otp.attempts + 1 }).where(eq(waOtpCodesTable.id, otp.id));
+    await otpIncAttempts(otp.id, normalized, "biz-login");
     res.status(400).json({ message: "Kode OTP salah." });
     return;
   }
 
   // Mark verified
-  await db.update(waOtpCodesTable).set({ verified: true }).where(eq(waOtpCodesTable.id, otp.id));
+  await otpMarkVerified(otp.id, normalized, "biz-login");
 
   // Cari atau buat user BizPortal berdasarkan phone
   const waUserId = `wa_${normalized}`;

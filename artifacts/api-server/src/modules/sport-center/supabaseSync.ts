@@ -149,41 +149,27 @@ async function syncToFacilitiesViaClient(row: FacilityRow): Promise<void> {
     client = getSportCenterSupabaseClient() as unknown as import("@supabase/supabase-js").SupabaseClient;
   } catch { }
 
+  if (!client) {
+    console.warn(`${PREFIX} syncToFacilitiesViaClient: client tidak tersedia, skip`);
+    return;
+  }
+
   const payload = {
     name: row.name,
     category: row.type ?? "court",
     description: row.description ?? null,
     price_per_hour: Math.round(Number(row.price_per_hour ?? 0)),
-    capacity: Number(row.capacity ?? 1),
-    is_active: row.is_active ?? true,
-    sort_order: row.sort_order ?? 0,
     updated_at: new Date().toISOString(),
   };
 
-  if (client) {
-    await retry(async () => {
-      const { error } = await (client as any)
-        .from("sport_center_facilities")
-        .upsert(payload, { onConflict: "name" });
-      if (error) throw new Error(error.message);
-    });
-  } else {
-    await retry(async () => {
-      await db.execute(sql`
-        INSERT INTO sport_center_facilities (name, category, description, price_per_hour, capacity, is_active, sort_order, updated_at)
-        VALUES (${payload.name}, ${payload.category}, ${payload.description}, ${payload.price_per_hour}, ${payload.capacity}, ${payload.is_active}, ${payload.sort_order}, NOW())
-        ON CONFLICT (name) DO UPDATE SET
-          category       = EXCLUDED.category,
-          description    = EXCLUDED.description,
-          price_per_hour = EXCLUDED.price_per_hour,
-          capacity       = EXCLUDED.capacity,
-          is_active      = EXCLUDED.is_active,
-          sort_order     = EXCLUDED.sort_order,
-          updated_at     = NOW()
-      `);
-    });
-  }
-  console.log(`${PREFIX} sport_center_facilities upsert OK → name="${row.name}"`);
+  await retry(async () => {
+    const { error } = await (client as any)
+      .schema("sport_center")
+      .from("facilities")
+      .upsert(payload, { onConflict: "name" });
+    if (error) throw new Error(error.message);
+  });
+  console.log(`${PREFIX} sport_center.facilities upsert OK → name="${row.name}"`);
 }
 
 export async function syncFacilityUpsert(row: FacilityRow): Promise<void> {
@@ -916,4 +902,79 @@ export async function pullLegacyBookingsFromSupabase(): Promise<{ pulled: number
 
   console.log(`${PREFIX} pullLegacyBookings selesai: ${pulled} pulled, ${errors} errors dari ${rows.length} total`);
   return { pulled, errors, total: rows.length };
+}
+
+export async function pullFacilitiesFromSupabase(): Promise<{ pulled: number; skipped: number; errors: number; total: number }> {
+  let client: import("@supabase/supabase-js").SupabaseClient | null = null;
+  try {
+    const { getSportCenterSupabaseClient } = await import("../../lib/supabaseAdminSportCenter.js");
+    client = getSportCenterSupabaseClient() as unknown as import("@supabase/supabase-js").SupabaseClient;
+  } catch { }
+
+  if (!client) {
+    console.warn(`${PREFIX} pullFacilities: Sport Center Supabase client tidak tersedia, skip`);
+    return { pulled: 0, skipped: 0, errors: 0, total: 0 };
+  }
+
+  const { data, error } = await (client as any)
+    .schema("sport_center")
+    .from("facilities")
+    .select("id, name, category, description, price_per_hour");
+
+  if (error) {
+    console.error(`${PREFIX} pullFacilities: fetch gagal`, error.message);
+    return { pulled: 0, skipped: 0, errors: 1, total: 0 };
+  }
+
+  const rows = (data ?? []) as Array<{
+    id: number;
+    name: string;
+    category?: string | null;
+    description?: string | null;
+    price_per_hour?: number | null;
+  }>;
+
+  let pulled = 0;
+  let skipped = 0;
+  let errors = 0;
+
+  for (const f of rows) {
+    try {
+      const existing = await db.execute(sql`SELECT id FROM sport_facilities WHERE name = ${f.name} LIMIT 1`);
+      if (existing.rows.length > 0) {
+        // Update jika price atau category berubah
+        await db.execute(sql`
+          UPDATE sport_facilities SET
+            type           = ${f.category ?? "court"},
+            description    = COALESCE(${f.description ?? null}, description),
+            price_per_hour = ${Number(f.price_per_hour ?? 0)},
+            updated_at     = NOW()
+          WHERE name = ${f.name}
+        `);
+        skipped++;
+      } else {
+        await db.execute(sql`
+          INSERT INTO sport_facilities
+            (company_id, name, type, description, price_per_hour, capacity, is_active, sort_order)
+          VALUES
+            (1, ${f.name}, ${f.category ?? "court"}, ${f.description ?? null},
+             ${Number(f.price_per_hour ?? 0)}, 1, TRUE, 0)
+        `);
+        pulled++;
+      }
+      console.log(`${PREFIX} pullFacilities OK → "${f.name}"`);
+    } catch (err) {
+      console.error(`${PREFIX} pullFacilities gagal → "${f.name}":`, err);
+      errors++;
+    }
+  }
+
+  void writeSyncLog({
+    entity: "facility", action: "resync", entityId: null,
+    status: errors === 0 ? "ok" : "error",
+    detail: `pull: ${pulled} new, ${skipped} updated, ${errors} errors dari ${rows.length} total`,
+  });
+
+  console.log(`${PREFIX} pullFacilities selesai: ${pulled} new, ${skipped} updated, ${errors} errors dari ${rows.length} total`);
+  return { pulled, skipped, errors, total: rows.length };
 }
