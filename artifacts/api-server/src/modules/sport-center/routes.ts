@@ -3501,66 +3501,64 @@ router.get("/sync/logs", async (req, res) => {
  */
 router.get("/sync/status", async (req, res) => {
   if (!await requireAdmin(req, res)) return;
+  const companyId = req.query.companyId ? Number(req.query.companyId) : null;
+
+  // Hitung data lokal — tidak throw jika DB sementara tidak tersedia (ECIRCUITBREAKER)
+  const safeCount = async (query: Promise<any>): Promise<number> => {
+    try { return Number((await query).rows[0]?.cnt ?? 0); } catch { return 0; }
+  };
+  const [localBookings, localPayments, localFacilities] = await Promise.all([
+    safeCount(db.execute(sql`SELECT COUNT(*) AS cnt FROM sport_bookings WHERE (${companyId}::int IS NULL OR company_id = ${companyId})`)),
+    safeCount(db.execute(sql`SELECT COUNT(*) AS cnt FROM sport_payments WHERE (${companyId}::int IS NULL OR company_id = ${companyId})`)),
+    safeCount(db.execute(sql`SELECT COUNT(*) AS cnt FROM sport_facilities WHERE (${companyId}::int IS NULL OR company_id = ${companyId})`)),
+  ]);
+
+  // Test koneksi Supabase sport_center + hitung data remote
+  let supabaseOk = false;
+  let scBookings = 0;
+  let scPayments = 0;
+  let scFacilities = 0;
+  let supabaseError: string | null = null;
+
   try {
-    const companyId = req.query.companyId ? Number(req.query.companyId) : null;
-
-    // Hitung data lokal
-    const [localBk, localPay, localFac] = await Promise.all([
-      db.execute(sql`SELECT COUNT(*) AS cnt FROM sport_bookings WHERE (${companyId}::int IS NULL OR company_id = ${companyId})`),
-      db.execute(sql`SELECT COUNT(*) AS cnt FROM sport_payments WHERE (${companyId}::int IS NULL OR company_id = ${companyId})`),
-      db.execute(sql`SELECT COUNT(*) AS cnt FROM sport_facilities WHERE (${companyId}::int IS NULL OR company_id = ${companyId})`),
-    ]);
-
-    // Test koneksi Supabase + hitung data remote
-    let supabaseOk = false;
-    let scBookings = 0;
-    let scPayments = 0;
-    let scFacilities = 0;
-    let supabaseError: string | null = null;
-
-    try {
-      const { getSportCenterSupabaseClient } = await import("../../lib/supabaseAdminSportCenter.js");
-      const client = getSportCenterSupabaseClient() as any;
-      if (client) {
-        const [bkRes, payRes, facRes] = await Promise.all([
-          client.schema("sport_center").from("bookings").select("id", { count: "exact", head: true }),
-          client.schema("sport_center").from("payments").select("id", { count: "exact", head: true }),
-          client.schema("sport_center").from("facilities").select("id", { count: "exact", head: true }),
-        ]);
-        if (!bkRes.error) {
-          supabaseOk = true;
-          scBookings   = bkRes.count   ?? 0;
-          scPayments   = payRes.count  ?? 0;
-          scFacilities = facRes.count  ?? 0;
-        } else {
-          supabaseError = bkRes.error.message;
-        }
+    const { getSportCenterSupabaseClient } = await import("../../lib/supabaseAdminSportCenter.js");
+    const client = getSportCenterSupabaseClient() as any;
+    if (client) {
+      const [bkRes, payRes, facRes] = await Promise.all([
+        client.schema("sport_center").from("bookings").select("id", { count: "exact", head: true }),
+        client.schema("sport_center").from("payments").select("id", { count: "exact", head: true }),
+        client.schema("sport_center").from("facilities").select("id", { count: "exact", head: true }),
+      ]);
+      if (!bkRes.error) {
+        supabaseOk = true;
+        scBookings   = bkRes.count  ?? 0;
+        scPayments   = payRes.count ?? 0;
+        scFacilities = facRes.count ?? 0;
       } else {
-        supabaseError = "Client tidak tersedia (env vars missing?)";
+        supabaseError = bkRes.error.message;
       }
-    } catch (e) {
-      supabaseError = String(e instanceof Error ? e.message : e);
+    } else {
+      supabaseError = "Client tidak tersedia (env vars missing?)";
     }
-
-    res.json({
-      ok: true,
-      supabase: {
-        connected: supabaseOk,
-        error: supabaseError,
-        bookings: scBookings,
-        payments: scPayments,
-        facilities: scFacilities,
-      },
-      local: {
-        bookings:   Number((localBk.rows[0]  as any).cnt),
-        payments:   Number((localPay.rows[0] as any).cnt),
-        facilities: Number((localFac.rows[0] as any).cnt),
-      },
-    });
-  } catch (err) {
-    console.error("[sport-center] sync/status error:", err);
-    res.status(500).json({ error: "Gagal cek status" });
+  } catch (e) {
+    supabaseError = String(e instanceof Error ? e.message : e);
   }
+
+  res.json({
+    ok: true,
+    supabase: {
+      connected: supabaseOk,
+      error: supabaseError,
+      bookings: scBookings,
+      payments: scPayments,
+      facilities: scFacilities,
+    },
+    local: {
+      bookings:   localBookings,
+      payments:   localPayments,
+      facilities: localFacilities,
+    },
+  });
 });
 
 /**
