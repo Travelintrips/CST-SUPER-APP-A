@@ -8,10 +8,18 @@ import { logger } from "./logger";
  */
 export async function runPortalMigration(): Promise<void> {
   try {
-    // Tambah kolom role ke portal_customers jika belum ada
+    // Tambah kolom role ke portal_customers jika belum ada (tabel mungkin belum exist)
     await db.execute(sql`
-      ALTER TABLE portal_customers
-        ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'customer'
+      DO $$ BEGIN
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'portal_customers') THEN
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'portal_customers' AND column_name = 'role'
+          ) THEN
+            ALTER TABLE portal_customers ADD COLUMN role TEXT NOT NULL DEFAULT 'customer';
+          END IF;
+        END IF;
+      END $$
     `);
 
     // Buat tabel portal_content jika belum ada
@@ -81,7 +89,39 @@ export async function runPortalMigration(): Promise<void> {
       )
     `);
 
-    logger.info("Portal migration: selesai (role column + portal_content table + admin email promotion + quote_requests + media_assets)");
+    // Buat tabel wa_otp_codes jika belum ada
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS wa_otp_codes (
+        id          SERIAL PRIMARY KEY,
+        phone       TEXT NOT NULL,
+        code_hash   TEXT NOT NULL,
+        purpose     TEXT NOT NULL DEFAULT 'register',
+        attempts    INTEGER NOT NULL DEFAULT 0,
+        verified    BOOLEAN NOT NULL DEFAULT FALSE,
+        verify_token TEXT,
+        expires_at  TIMESTAMP NOT NULL,
+        created_at  TIMESTAMP NOT NULL DEFAULT NOW()
+      )
+    `);
+    await db.execute(sql`
+      CREATE INDEX IF NOT EXISTS wa_otp_phone_idx ON wa_otp_codes (phone)
+    `);
+    await db.execute(sql`
+      CREATE INDEX IF NOT EXISTS wa_otp_token_idx ON wa_otp_codes (verify_token)
+    `);
+
+    // Buat tabel trusted_devices jika belum ada
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS trusted_devices (
+        id           SERIAL PRIMARY KEY,
+        phone        TEXT NOT NULL,
+        device_token TEXT NOT NULL UNIQUE,
+        expires_at   TIMESTAMP NOT NULL,
+        created_at   TIMESTAMP NOT NULL DEFAULT NOW()
+      )
+    `);
+
+    logger.info("Portal migration: selesai (role column + portal_content table + admin email promotion + quote_requests + media_assets + wa_otp_codes + trusted_devices)");
   } catch (err) {
     logger.error({ err }, "Portal migration gagal");
   }

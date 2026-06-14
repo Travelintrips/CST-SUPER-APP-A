@@ -147,6 +147,38 @@ async function runWithRetry<T>(
 // ── Pre-startup critical schema migrations (run BEFORE accepting requests) ────
 // These ensure Drizzle ORM columns exist before any query can be executed.
 async function runCriticalPreStartMigrations() {
+  // Buat wa_otp_codes dan trusted_devices PERTAMA — diperlukan untuk WA OTP login
+  // Gunakan try/catch terpisah agar tidak menghalangi migrasi lain
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS wa_otp_codes (
+        id          SERIAL PRIMARY KEY,
+        phone       TEXT NOT NULL,
+        code_hash   TEXT NOT NULL,
+        purpose     TEXT NOT NULL DEFAULT 'register',
+        attempts    INTEGER NOT NULL DEFAULT 0,
+        verified    BOOLEAN NOT NULL DEFAULT FALSE,
+        verify_token TEXT,
+        expires_at  TIMESTAMP NOT NULL,
+        created_at  TIMESTAMP NOT NULL DEFAULT NOW()
+      )
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS wa_otp_phone_idx ON wa_otp_codes (phone)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS wa_otp_token_idx ON wa_otp_codes (verify_token)`);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS trusted_devices (
+        id           SERIAL PRIMARY KEY,
+        phone        TEXT NOT NULL,
+        device_token TEXT NOT NULL UNIQUE,
+        expires_at   TIMESTAMP NOT NULL,
+        created_at   TIMESTAMP NOT NULL DEFAULT NOW()
+      )
+    `);
+    logger.info("wa_otp_codes & trusted_devices tables ready");
+  } catch (err) {
+    logger.warn({ err }, "wa_otp_codes creation failed (non-fatal, will retry via portal migration)");
+  }
+
   // Add grir_account_id column without FK (FK is added later in accountingMigration when COA exists)
   await db.execute(sql`
     DO $$ BEGIN
@@ -557,6 +589,32 @@ async function runCriticalPreStartMigrations() {
 
   // Create logistics rate tables (needed before first request, not deferrable)
   await runLogisticsRatesMigration();
+
+  // Buat tabel wa_otp_codes (diperlukan untuk WA OTP login BizPortal)
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS wa_otp_codes (
+      id          SERIAL PRIMARY KEY,
+      phone       TEXT NOT NULL,
+      code_hash   TEXT NOT NULL,
+      purpose     TEXT NOT NULL DEFAULT 'register',
+      attempts    INTEGER NOT NULL DEFAULT 0,
+      verified    BOOLEAN NOT NULL DEFAULT FALSE,
+      verify_token TEXT,
+      expires_at  TIMESTAMP NOT NULL,
+      created_at  TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS wa_otp_phone_idx ON wa_otp_codes (phone)`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS wa_otp_token_idx ON wa_otp_codes (verify_token)`);
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS trusted_devices (
+      id           SERIAL PRIMARY KEY,
+      phone        TEXT NOT NULL,
+      device_token TEXT NOT NULL UNIQUE,
+      expires_at   TIMESTAMP NOT NULL,
+      created_at   TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
 }
 
 // Flag set to true once the full migration + seed chain completes.

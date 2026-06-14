@@ -1,7 +1,8 @@
 import * as oidc from "openid-client";
 import { OAuth2Client } from "google-auth-library";
 import { Router, type IRouter, type Request, type Response } from "express";
-import crypto from "crypto";
+import crypto, { randomUUID } from "crypto";
+import bcrypt from "bcryptjs";
 import {
   GetCurrentAuthUserResponse,
   ExchangeMobileAuthorizationCodeBody,
@@ -9,9 +10,10 @@ import {
   LogoutMobileSessionResponse,
 } from "@workspace/api-zod";
 import { db } from "@workspace/db";
-import { usersTable } from "@workspace/db";
-import { and, eq, ne } from "drizzle-orm";
+import { usersTable, waOtpCodesTable } from "@workspace/db";
+import { and, desc, eq, gte, ne } from "drizzle-orm";
 import { saveOauthState, consumeOauthState } from "../lib/oauthStateMigration";
+import { sendViaService as sendWhatsApp } from "../lib/waTransport.js";
 import {
   clearSession,
   getOidcConfig,
@@ -765,6 +767,149 @@ router.post("/dev-login", async (req: Request, res: Response) => {
     return;
   }
   res.json({ ok: true, email: dbUser.email, role: dbUser.role });
+});
+
+// ─── WA OTP Login untuk BizPortal Staff ───────────────────────────────────────
+
+function normalizePhoneBiz(raw: string): string {
+  let p = String(raw).replace(/[^\d+]/g, "");
+  if (p.startsWith("+")) p = p.slice(1);
+  if (p.startsWith("0")) p = "62" + p.slice(1);
+  if (!p.startsWith("62")) p = "62" + p;
+  return p;
+}
+
+function genOtpCode(): string {
+  return String(Math.floor(100000 + Math.random() * 900000));
+}
+
+// POST /api/auth/wa-otp/send — kirim OTP ke nomor WA staff
+router.post("/auth/wa-otp/send", async (req: Request, res: Response) => {
+  const { phone } = req.body ?? {};
+  if (!phone) { res.status(400).json({ message: "Nomor HP diperlukan." }); return; }
+  const normalized = normalizePhoneBiz(String(phone));
+  if (normalized.length < 10) { res.status(400).json({ message: "Nomor HP tidak valid." }); return; }
+
+  // Rate limit: max 3 OTP per phone per 10 menit
+  const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000);
+  const recent = await db
+    .select({ id: waOtpCodesTable.id })
+    .from(waOtpCodesTable)
+    .where(and(eq(waOtpCodesTable.phone, normalized), eq(waOtpCodesTable.purpose, "biz-login"), gte(waOtpCodesTable.createdAt, tenMinAgo)));
+  if (recent.length >= 3) {
+    res.status(429).json({ message: "Terlalu banyak permintaan OTP. Coba lagi nanti." });
+    return;
+  }
+
+  const code = genOtpCode();
+  const codeHash = await bcrypt.hash(code, 10);
+  const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+
+  await db.insert(waOtpCodesTable).values({ phone: normalized, codeHash, purpose: "biz-login", expiresAt });
+
+  const hasFonnte = !!process.env.FONNTE_TOKEN;
+  const isDev = !process.env.REPLIT_DEPLOYMENT;
+
+  if (hasFonnte) {
+    try {
+      await sendWhatsApp(
+        normalized,
+        `*Kode Login BizPortal*\n\nKode OTP Anda: *${code}*\n\nBerlaku 5 menit. Jangan bagikan kode ini ke siapapun.`
+      );
+    } catch (err) {
+      req.log.error({ err }, "wa-otp biz send failed");
+      res.status(500).json({ message: "Gagal mengirim OTP via WhatsApp." });
+      return;
+    }
+    res.json({ ok: true, phone: normalized });
+    return;
+  }
+
+  if (isDev) {
+    req.log.warn({ normalized }, "wa-otp biz dev mode: FONNTE_TOKEN not set");
+    res.json({ ok: true, phone: normalized, _dev_code: code });
+    return;
+  }
+
+  res.status(503).json({ message: "Layanan WhatsApp belum dikonfigurasi. Hubungi admin." });
+});
+
+// POST /api/auth/wa-otp/verify — verifikasi OTP & buat session BizPortal
+router.post("/auth/wa-otp/verify", async (req: Request, res: Response) => {
+  const { phone, code } = req.body ?? {};
+  if (!phone || !code) { res.status(400).json({ message: "Nomor HP dan kode OTP diperlukan." }); return; }
+  const normalized = normalizePhoneBiz(String(phone));
+
+  const [otp] = await db
+    .select()
+    .from(waOtpCodesTable)
+    .where(and(eq(waOtpCodesTable.phone, normalized), eq(waOtpCodesTable.purpose, "biz-login"), eq(waOtpCodesTable.verified, false)))
+    .orderBy(desc(waOtpCodesTable.createdAt))
+    .limit(1);
+
+  if (!otp) { res.status(400).json({ message: "OTP tidak ditemukan. Minta OTP baru." }); return; }
+  if (otp.expiresAt < new Date()) { res.status(400).json({ message: "OTP kadaluarsa. Minta OTP baru." }); return; }
+  if (otp.attempts >= 5) { res.status(429).json({ message: "Terlalu banyak percobaan. Minta OTP baru." }); return; }
+
+  const valid = await bcrypt.compare(String(code), otp.codeHash);
+  if (!valid) {
+    await db.update(waOtpCodesTable).set({ attempts: otp.attempts + 1 }).where(eq(waOtpCodesTable.id, otp.id));
+    res.status(400).json({ message: "Kode OTP salah." });
+    return;
+  }
+
+  // Mark verified
+  await db.update(waOtpCodesTable).set({ verified: true }).where(eq(waOtpCodesTable.id, otp.id));
+
+  // Cari atau buat user BizPortal berdasarkan phone
+  const waUserId = `wa_${normalized}`;
+  const phoneEmail = `${normalized}@wa.local`;
+
+  let dbUser: typeof usersTable.$inferSelect;
+  try {
+    const [existing] = await db.select().from(usersTable).where(eq(usersTable.id, waUserId)).limit(1);
+    if (existing) {
+      dbUser = existing;
+    } else {
+      // Belum ada — daftar otomatis dengan role ecommerce (admin bisa promote)
+      const [created] = await db
+        .insert(usersTable)
+        .values({
+          id: waUserId,
+          email: phoneEmail,
+          name: normalized,
+          role: "ecommerce" as const,
+        })
+        .onConflictDoUpdate({ target: usersTable.id, set: { updatedAt: new Date() } })
+        .returning();
+      dbUser = created;
+    }
+  } catch (err) {
+    req.log.error({ err }, "wa-otp biz user upsert failed");
+    res.status(500).json({ message: "Gagal membuat akun. Coba lagi." });
+    return;
+  }
+
+  // Buat server-side session (sama seperti Google login)
+  const now = Math.floor(Date.now() / 1000);
+  const sessionData: SessionData = {
+    user: {
+      id: dbUser.id,
+      email: dbUser.email,
+      firstName: dbUser.firstName,
+      lastName: dbUser.lastName,
+      profileImageUrl: dbUser.profileImageUrl,
+      role: dbUser.role,
+      companyId: dbUser.companyId,
+    },
+    access_token: "wa-otp",
+    expires_at: now + SESSION_TTL / 1000,
+  };
+
+  const sid = await createSession(sessionData);
+  setSessionCookie(res, sid);
+
+  res.json({ ok: true, user: { id: dbUser.id, email: dbUser.email, role: dbUser.role } });
 });
 
 // ─── Logout ───────────────────────────────────────────────────────────────────

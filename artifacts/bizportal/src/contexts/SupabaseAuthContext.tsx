@@ -10,6 +10,7 @@ interface AuthContextValue {
   signInWithGoogle: () => void;
   signInWithEmail: (email: string, password: string) => Promise<{ error: string | null }>;
   devLogin: (email: string) => Promise<{ error: string | null }>;
+  loginWithWA: (phone: string, code: string) => Promise<{ error: string | null }>;
   signOut: () => void;
   login: () => void;
   logout: () => void;
@@ -146,6 +147,24 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
     }
   }, []);
 
+  const loginWithWA = useCallback(async (phone: string, code: string) => {
+    try {
+      const res = await fetch("/api/auth/wa-otp/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ phone, code }),
+      });
+      const data = await res.json() as { ok?: boolean; user?: AuthUser; message?: string };
+      if (!res.ok) return { error: data.message ?? "Verifikasi gagal" };
+      if (data.user) { writeCache(data.user); setUser(data.user); }
+      else await fetchUser();
+      return { error: null };
+    } catch {
+      return { error: "Koneksi ke server gagal" };
+    }
+  }, [fetchUser]);
+
   const signOut = useCallback(() => {
     writeCache(null);
     setUser(null);
@@ -162,6 +181,7 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
     signInWithGoogle,
     signInWithEmail,
     devLogin,
+    loginWithWA,
     signOut,
     login: signInWithGoogle,
     logout: signOut,

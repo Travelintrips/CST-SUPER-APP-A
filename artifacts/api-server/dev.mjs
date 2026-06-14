@@ -8,6 +8,7 @@ import { spawn } from "node:child_process";
 globalThis.require = createRequire(import.meta.url);
 
 const artifactDir = path.dirname(fileURLToPath(import.meta.url));
+const workspaceRoot = path.resolve(artifactDir, "../..");
 const distDir = path.resolve(artifactDir, "dist");
 const entry = path.resolve(artifactDir, "src/index.ts");
 
@@ -88,7 +89,7 @@ const external = [
   "piscina", "realm", "ref-napi", "rocksdb", "sass-embedded", "sequelize",
   "serialport", "snappy", "tinypool", "usb", "workerd", "wrangler",
   "zeromq", "zeromq-prebuilt", "playwright", "puppeteer", "puppeteer-core", "electron",
-  "ws", "web-push", "compression", "fluent-ffmpeg",
+  "ws", "web-push", "compression", "fluent-ffmpeg", "xlsx",
 ];
 
 const ctx = await esbuildContext({
@@ -101,6 +102,12 @@ const ctx = await esbuildContext({
   logLevel: "error",
   sourcemap: "linked",
   external,
+  alias: {
+    "@workspace/logistics-constants": path.resolve(workspaceRoot, "lib/logistics-constants/src/index.ts"),
+    "@workspace/product-templates": path.resolve(workspaceRoot, "lib/product-templates/src/index.ts"),
+    "@workspace/service-templates": path.resolve(workspaceRoot, "lib/service-templates/src/index.ts"),
+    "zod": path.resolve(workspaceRoot, "node_modules/.pnpm/zod@3.25.76/node_modules/zod"),
+  },
   plugins: [
     esbuildPluginPino({ transports: ["pino-pretty"] }),
     restartPlugin,
