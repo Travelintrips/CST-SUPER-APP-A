@@ -296,13 +296,16 @@ router.post("/auth/supabase-exchange", async (req: Request, res: Response) => {
     .from(usersTable)
     .where(eq(usersTable.email, supabaseUser.email));
 
+  const _adminEmailsSE = [
+    "admcst001@gmail.com",
+    "divatranssoetta@gmail.com",
+    ...(process.env.ADMIN_EMAIL ?? "").split(","),
+    ...(process.env.ADMIN_EMAILS ?? "").split(","),
+  ].map((e) => e.trim().toLowerCase()).filter(Boolean);
+  const _isAdminSE = _adminEmailsSE.includes(supabaseUser.email.toLowerCase());
+
   if (!dbUser) {
     const meta = supabaseUser.user_metadata ?? {};
-    const adminEmails = (process.env.ADMIN_EMAIL ?? "")
-      .split(",")
-      .map((e) => e.trim().toLowerCase())
-      .filter(Boolean);
-    const isAdmin = adminEmails.includes(supabaseUser.email.toLowerCase());
 
     const firstName =
       (meta.given_name as string) ||
@@ -324,7 +327,7 @@ router.post("/auth/supabase-exchange", async (req: Request, res: Response) => {
           firstName,
           lastName,
           profileImageUrl,
-          role: isAdmin ? "admin" : "ecommerce",
+          role: _isAdminSE ? "admin" : "ecommerce",
         })
         .returning();
       dbUser = created;
@@ -340,6 +343,16 @@ router.post("/auth/supabase-exchange", async (req: Request, res: Response) => {
       }
       dbUser = retry;
     }
+  }
+
+  // Promote existing user to admin jika email ada di allowlist tapi role belum admin
+  if (dbUser && _isAdminSE && dbUser.role !== "admin") {
+    const [promoted] = await db
+      .update(usersTable)
+      .set({ role: "admin" })
+      .where(eq(usersTable.id, dbUser.id))
+      .returning();
+    if (promoted) dbUser = promoted;
   }
 
   const now = Math.floor(Date.now() / 1000);
