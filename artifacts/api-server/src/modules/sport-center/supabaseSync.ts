@@ -643,6 +643,128 @@ export async function syncPaymentsToAccounting(companyId = 1): Promise<{ synced:
   return { synced, skipped, errors };
 }
 
+/**
+ * pullPaymentsFromSupabase
+ * Tarik sport_center.payments (Supabase) → sport_payments (lokal BizPortal).
+ * Idempoten: cek via payment_number = 'SCPAY-{sc_payment_id}'.
+ * Status mapping: confirmed/paid → 'paid', lainnya → 'pending'.
+ */
+export async function pullPaymentsFromSupabase(companyId = 1): Promise<{ pulled: number; skipped: number; errors: number; total: number }> {
+  let client: import("@supabase/supabase-js").SupabaseClient | null = null;
+  try {
+    const { getSportCenterSupabaseClient } = await import("../../lib/supabaseAdminSportCenter.js");
+    client = getSportCenterSupabaseClient() as unknown as import("@supabase/supabase-js").SupabaseClient;
+  } catch { }
+
+  if (!client) {
+    console.warn(`${PREFIX} pullPayments: Supabase client tidak tersedia`);
+    return { pulled: 0, skipped: 0, errors: 0, total: 0 };
+  }
+
+  const [paymentsRes, bookingsRes] = await Promise.all([
+    (client as any).schema("sport_center").from("payments")
+      .select("id, booking_id, amount, payment_method, status, confirmed_at, created_at"),
+    (client as any).schema("sport_center").from("bookings")
+      .select("id, order_number, grand_total, total_price, booking_date"),
+  ]);
+
+  if (paymentsRes.error) {
+    console.error(`${PREFIX} pullPayments: fetch payments gagal`, paymentsRes.error.message);
+    return { pulled: 0, skipped: 0, errors: 1, total: 0 };
+  }
+
+  const scPayments = (paymentsRes.data ?? []) as Array<{
+    id: number; booking_id: number; amount: number;
+    payment_method: string | null; status: string | null;
+    confirmed_at: string | null; created_at: string | null;
+  }>;
+
+  const scBookings = (bookingsRes.data ?? []) as Array<{
+    id: number; order_number: string | null; grand_total: number | null; total_price: number | null; booking_date: string | null;
+  }>;
+
+  // map sc booking id → order_number
+  const scBkMap: Record<number, string> = {};
+  for (const b of scBookings) {
+    if (b.id && b.order_number) scBkMap[b.id] = b.order_number;
+  }
+
+  let pulled = 0;
+  let skipped = 0;
+  let errors = 0;
+
+  for (const pay of scPayments) {
+    try {
+      const scPaymentNumber = `SCPAY-${pay.id}`;
+
+      // idempoten check
+      const existingRes = await db.execute(sql`
+        SELECT id FROM sport_payments WHERE payment_number = ${scPaymentNumber} LIMIT 1
+      `);
+      if (existingRes.rows.length > 0) { skipped++; continue; }
+
+      // resolve local booking_id dari order_number
+      const orderNumber = scBkMap[pay.booking_id];
+      let localBookingId: number | null = null;
+      if (orderNumber) {
+        const bkRes = await db.execute(sql`
+          SELECT id FROM sport_bookings WHERE booking_number = ${orderNumber} LIMIT 1
+        `);
+        if (bkRes.rows.length > 0) {
+          localBookingId = Number((bkRes.rows[0] as any).id);
+        }
+      }
+
+      if (!localBookingId) {
+        // Booking belum di-sync lokal — skip payment ini (akan retry setelah pull bookings)
+        console.warn(`${PREFIX} pullPayments: booking ${orderNumber ?? pay.booking_id} belum ada lokal, skip pay.id=${pay.id}`);
+        skipped++;
+        continue;
+      }
+
+      const statusRaw = pay.status?.toLowerCase() ?? "";
+      const mappedStatus = ["confirmed", "paid", "settlement", "capture"].includes(statusRaw) ? "paid" : "pending";
+      const paidAt = pay.confirmed_at ?? pay.created_at ?? new Date().toISOString();
+      const method = pay.payment_method ?? "cash";
+
+      await db.execute(sql`
+        INSERT INTO sport_payments
+          (company_id, booking_id, payment_number, amount, method, status,
+           paid_at, source, payment_type)
+        VALUES
+          (${companyId}, ${localBookingId}, ${scPaymentNumber}, ${String(Number(pay.amount))},
+           ${method}, ${mappedStatus}, ${paidAt}::TIMESTAMPTZ,
+           'SPORT_CENTER_SUPABASE', 'booking')
+      `);
+
+      // Update payment_status di sport_bookings jika status = paid
+      if (mappedStatus === "paid") {
+        await db.execute(sql`
+          UPDATE sport_bookings SET payment_status = 'paid', updated_at = NOW()
+          WHERE id = ${localBookingId} AND payment_status != 'paid'
+        `);
+      }
+
+      console.log(`${PREFIX} pullPayments OK → ${scPaymentNumber} (local_booking=${localBookingId}) Rp${pay.amount}`);
+      pulled++;
+    } catch (err) {
+      console.error(`${PREFIX} pullPayments gagal pay.id=${pay.id}:`, err);
+      errors++;
+    }
+  }
+
+  console.log(`${PREFIX} pullPayments selesai: pulled=${pulled} skipped=${skipped} errors=${errors} total=${scPayments.length}`);
+  void writeSyncLog({
+    entity: "booking",
+    action: "resync",
+    entityId: null,
+    status: errors === 0 ? "ok" : "error",
+    detail: `payment pull: ${pulled} pulled, ${skipped} skipped, ${errors} errors`,
+  });
+
+  return { pulled, skipped, errors, total: scPayments.length };
+}
+
 export async function getLastSyncLogs(limit = 20): Promise<unknown[]> {
   try {
     const result = await db.execute(sql`

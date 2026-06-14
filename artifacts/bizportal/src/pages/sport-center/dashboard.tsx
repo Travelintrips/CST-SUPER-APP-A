@@ -440,9 +440,18 @@ export default function SportCenterDashboard() {
         body: JSON.stringify({ companyId: activeCompanyId }),
       });
       if (!r.ok) throw new Error("Sync akuntansi gagal");
-      return r.json() as Promise<{ synced: number; skipped: number; errors: number }>;
+      return r.json() as Promise<{
+        ok: boolean;
+        bookings: { pulled: number; errors: number; total: number };
+        payments: { pulled: number; skipped: number; errors: number; total: number };
+        accounting: { synced: number; skipped: number; errors: number };
+      }>;
     },
-    onSuccess: () => { void qc.invalidateQueries({ queryKey: ["accounting-payments"] }); },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["accounting-payments"] });
+      void qc.invalidateQueries({ queryKey: ["sport-center-payments"] });
+      void qc.invalidateQueries({ queryKey: ["sport-center-dashboard"] });
+    },
   });
 
   const fmtTs = (ts: string | null | undefined) => {
@@ -1341,13 +1350,23 @@ export default function SportCenterDashboard() {
             {syncAccounting.isSuccess && syncAccounting.data && (
               <Alert className="border-amber-700 bg-amber-950/40 text-amber-300 py-2">
                 <CheckCheck className="h-4 w-4 text-amber-400" />
-                <AlertDescription className="text-xs">
-                  Sync akuntansi selesai —{" "}
-                  Disync: <strong>{syncAccounting.data.synced}</strong>,{" "}
-                  Sudah ada: <strong>{syncAccounting.data.skipped}</strong>
-                  {syncAccounting.data.errors > 0 && (
-                    <span>, Gagal: <strong className="text-red-400">{syncAccounting.data.errors}</strong></span>
-                  )}
+                <AlertDescription className="text-xs space-y-0.5">
+                  <span className="block">
+                    Pembayaran ditarik:{" "}
+                    <strong>{syncAccounting.data.payments?.pulled ?? 0}</strong> baru,{" "}
+                    <strong>{syncAccounting.data.payments?.skipped ?? 0}</strong> sudah ada
+                    {(syncAccounting.data.payments?.errors ?? 0) > 0 && (
+                      <span>, <strong className="text-red-400">{syncAccounting.data.payments.errors}</strong> error</span>
+                    )}
+                  </span>
+                  <span className="block">
+                    Akuntansi disync:{" "}
+                    <strong>{syncAccounting.data.accounting?.synced ?? 0}</strong> jurnal baru,{" "}
+                    <strong>{syncAccounting.data.accounting?.skipped ?? 0}</strong> sudah ada
+                    {(syncAccounting.data.accounting?.errors ?? 0) > 0 && (
+                      <span>, <strong className="text-red-400">{syncAccounting.data.accounting.errors}</strong> error</span>
+                    )}
+                  </span>
                 </AlertDescription>
               </Alert>
             )}
