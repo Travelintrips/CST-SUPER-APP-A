@@ -24,7 +24,7 @@ export interface SessionData {
   expires_at?: number;
 }
 
-// In-memory session store — dev fallback when DB is unavailable
+// In-memory session store — fallback when DB is unavailable (dev & prod)
 const _memSessions = new Map<string, { data: SessionData; expire: Date }>();
 
 const IS_DEV = !process.env.REPLIT_DEPLOYMENT;
@@ -58,44 +58,40 @@ export async function getOidcConfig(): Promise<client.Configuration> {
 
 export async function createSession(data: SessionData): Promise<string> {
   const sid = crypto.randomBytes(32).toString("hex");
-  if (IS_DEV) {
-    try {
-      await db.insert(sessionsTable).values({
-        sid,
-        sess: data as unknown as Record<string, unknown>,
-        expire: new Date(Date.now() + SESSION_TTL),
-      });
-      return sid;
-    } catch {
-      // DB unavailable — store in memory
-      _memSet(sid, data);
-      return sid;
-    }
+  try {
+    await db.insert(sessionsTable).values({
+      sid,
+      sess: data as unknown as Record<string, unknown>,
+      expire: new Date(Date.now() + SESSION_TTL),
+    });
+    return sid;
+  } catch {
+    // DB unavailable — store in memory (works for both dev and prod)
+    _memSet(sid, data);
+    return sid;
   }
-  await db.insert(sessionsTable).values({
-    sid,
-    sess: data as unknown as Record<string, unknown>,
-    expire: new Date(Date.now() + SESSION_TTL),
-  });
-  return sid;
 }
 
 export async function getSession(sid: string): Promise<SessionData | null> {
-  // Check in-memory store first (populated by dev fallback)
+  // Check in-memory store first (populated by DB-fallback path)
   const memData = _memGet(sid);
   if (memData) return memData;
 
-  const [row] = await db
-    .select()
-    .from(sessionsTable)
-    .where(eq(sessionsTable.sid, sid));
+  try {
+    const [row] = await db
+      .select()
+      .from(sessionsTable)
+      .where(eq(sessionsTable.sid, sid));
 
-  if (!row || row.expire < new Date()) {
-    if (row) await deleteSession(sid);
+    if (!row || row.expire < new Date()) {
+      if (row) await deleteSession(sid).catch(() => {});
+      return null;
+    }
+
+    return row.sess as unknown as SessionData;
+  } catch {
     return null;
   }
-
-  return row.sess as unknown as SessionData;
 }
 
 export async function updateSession(
@@ -114,9 +110,8 @@ export async function updateSession(
         expire: new Date(Date.now() + SESSION_TTL),
       })
       .where(eq(sessionsTable.sid, sid));
-  } catch (err) {
-    if (IS_DEV) _memSet(sid, data);
-    else throw err;
+  } catch {
+    _memSet(sid, data);
   }
 }
 
