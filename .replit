@@ -68,7 +68,6 @@ CASHIER_TOKEN_SECRET = "239a1a73ea517bf5430a357fb7a39aa0deef38cecaf4d8135310a7cf
 PUBLIC_OBJECT_SEARCH_PATHS = "/replit-objstore-e357cc66-19c3-4d73-9ca9-3069d78355d1/public"
 PRIVATE_OBJECT_DIR = "/replit-objstore-e357cc66-19c3-4d73-9ca9-3069d78355d1/private"
 GOOGLE_CLIENT_ID = "751551151000-fqrgt8si0pgnchqkn3pfo6nmqienv38f.apps.googleusercontent.com"
-AI_INTEGRATIONS_OPENAI_BASE_URL = "http://localhost:1106/modelfarm/openai"
 DEFAULT_OBJECT_STORAGE_BUCKET_ID = "replit-objstore-e357cc66-19c3-4d73-9ca9-3069d78355d1"
 FONNTE_TOKEN = "jEz4NKMr17NBTFv7PZgr"
 VAPID_PUBLIC_KEY = "BEAKgZOdT9HxFJLxVNxgtY-Dh2XzGptrjQwQibP2obUjPlLkfk0WR1TyzqbJvnhLlWrNGjiexhndtXZj9klZUPE"
@@ -83,6 +82,7 @@ GOOGLE_SERVICE_ACCOUNT_JSON = '{   "type": "service_account",   "project_id": "s
 GOOGLE_CLIENT_SECRET = "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"
 SMTP_PASS = " info@cstlogistic.co.id"
 OPENAI_API_KEY = "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"
+OPENAI_BASE_URL = "https://api.openai.com/v1"
 
 [userenv.development]
 ADMIN_EMAIL_DOMAINS = "example.com"
