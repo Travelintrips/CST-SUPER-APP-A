@@ -763,27 +763,91 @@ router.get("/bookings", async (req, res) => {
     const limit = 50;
     const offset = (page - 1) * limit;
 
-    const [dataRes, countRes] = await Promise.all([
-      db.execute(sql`
-        SELECT * FROM sport_bookings
-        WHERE (${cId}::int IS NULL OR company_id = ${cId})
-          AND (${status}::text IS NULL OR status = ${status})
-          AND (${paymentStatus}::text IS NULL OR payment_status = ${paymentStatus})
-          AND (${date}::date IS NULL OR booking_date = ${date}::date)
-        ORDER BY booking_date DESC, start_time DESC
-        LIMIT ${limit} OFFSET ${offset}
-      `),
-      db.execute(sql`
-        SELECT COUNT(*) AS cnt FROM sport_bookings
-        WHERE (${cId}::int IS NULL OR company_id = ${cId})
-          AND (${status}::text IS NULL OR status = ${status})
-          AND (${paymentStatus}::text IS NULL OR payment_status = ${paymentStatus})
-          AND (${date}::date IS NULL OR booking_date = ${date}::date)
-      `),
+    // Query langsung ke Supabase sport_center (source of truth)
+    const supaUrl = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL ?? "";
+    const supaKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.VITE_SUPABASE_ANON_KEY ?? "";
+    if (!supaUrl || !supaKey) {
+      // Fallback ke DB lokal jika Supabase tidak dikonfigurasi
+      try {
+        const [dataRes, countRes] = await Promise.all([
+          db.execute(sql`
+            SELECT * FROM sport_bookings
+            WHERE (${cId}::int IS NULL OR company_id = ${cId})
+              AND (${status}::text IS NULL OR status = ${status})
+              AND (${paymentStatus}::text IS NULL OR payment_status = ${paymentStatus})
+              AND (${date}::date IS NULL OR booking_date = ${date}::date)
+            ORDER BY booking_date DESC, start_time DESC
+            LIMIT ${limit} OFFSET ${offset}
+          `),
+          db.execute(sql`
+            SELECT COUNT(*) AS cnt FROM sport_bookings
+            WHERE (${cId}::int IS NULL OR company_id = ${cId})
+              AND (${status}::text IS NULL OR status = ${status})
+              AND (${paymentStatus}::text IS NULL OR payment_status = ${paymentStatus})
+              AND (${date}::date IS NULL OR booking_date = ${date}::date)
+          `),
+        ]);
+        return res.json({ data: dataRes.rows, total: Number((countRes.rows[0] as any).cnt) });
+      } catch {
+        return res.json({ data: [], total: 0 });
+      }
+    }
+
+    const filters: string[] = [];
+    if (status) filters.push(`status=eq.${status}`);
+    if (paymentStatus) filters.push(`payment_status=eq.${paymentStatus}`);
+    if (date) filters.push(`booking_date=eq.${date}`);
+    const filterStr = filters.length ? `&${filters.join("&")}` : "";
+    const rangeStart = offset;
+    const rangeEnd = offset + limit - 1;
+
+    const [dataResp, countResp] = await Promise.all([
+      fetch(
+        `${supaUrl}/rest/v1/bookings?select=id,order_number,customer_name,customer_email,customer_phone,facility_id,booking_date,start_time,end_time,duration_hours,total_price,status,billing_status,paid_at,notes,created_at${filterStr}&order=booking_date.desc,start_time.desc&limit=${limit}&offset=${offset}`,
+        { headers: { apikey: supaKey, Authorization: `Bearer ${supaKey}`, "Accept-Profile": "sport_center" } }
+      ),
+      fetch(
+        `${supaUrl}/rest/v1/bookings?select=id${filterStr}&limit=1`,
+        { headers: { apikey: supaKey, Authorization: `Bearer ${supaKey}`, "Accept-Profile": "sport_center", Prefer: "count=exact" } }
+      ),
     ]);
 
-    res.json({ data: dataRes.rows, total: Number((countRes.rows[0] as any).cnt) });
-  } catch {
+    const rawRows: any[] = dataResp.ok ? await dataResp.json() : [];
+    const countHeader = countResp.headers.get("content-range") ?? "";
+    const total = Number(countHeader.split("/")[1] ?? rawRows.length);
+
+    // Lookup facility names
+    const facResp = await fetch(`${supaUrl}/rest/v1/facilities?select=id,name`, {
+      headers: { apikey: supaKey, Authorization: `Bearer ${supaKey}`, "Accept-Profile": "sport_center" }
+    });
+    const facilities: { id: number; name: string }[] = facResp.ok ? await facResp.json() : [];
+    const facMap: Record<number, string> = {};
+    for (const f of facilities) facMap[f.id] = f.name;
+
+    const rows = rawRows.map((b: any) => ({
+      id: b.id,
+      booking_number: b.order_number,
+      customer_name: b.customer_name,
+      customer_email: b.customer_email,
+      customer_phone: b.customer_phone,
+      facility_name: (b.facility_id ? facMap[b.facility_id] : null) ?? `Fasilitas #${b.facility_id ?? "-"}`,
+      facility_id: b.facility_id,
+      booking_date: b.booking_date,
+      start_time: (b.start_time ?? "").slice(0, 5),
+      end_time: (b.end_time ?? "").slice(0, 5),
+      duration_hours: b.duration_hours,
+      base_amount: b.total_price,
+      total_amount: b.total_price,
+      status: b.status,
+      payment_status: b.billing_status ?? (b.paid_at ? "paid" : "unpaid"),
+      notes: b.notes,
+      created_at: b.created_at,
+      _from_supabase: true,
+    }));
+
+    res.json({ data: rows, total });
+  } catch (err: any) {
+    console.error("[sport-center] GET /bookings error:", err?.message);
     res.status(500).json({ error: "Gagal" });
   }
 });

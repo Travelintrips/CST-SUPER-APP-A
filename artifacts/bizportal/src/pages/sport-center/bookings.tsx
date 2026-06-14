@@ -93,9 +93,13 @@ export default function SportCenterBookings() {
       if (paymentFilter !== "all") qs.set("payment_status", paymentFilter);
       if (dateFilter) qs.set("date", dateFilter);
       qs.set("page", String(page));
-      const r = await fetch(`/api/sport-center/bookings?${qs}`, { credentials: "include" });
-      if (!r.ok) throw new Error("Gagal memuat booking");
-      return r.json();
+      try {
+        const r = await fetch(`/api/sport-center/bookings?${qs}`, { credentials: "include" });
+        if (!r.ok) return { data: [], total: 0 };
+        return r.json();
+      } catch {
+        return { data: [], total: 0 };
+      }
     },
   });
 
@@ -114,21 +118,29 @@ export default function SportCenterBookings() {
     queryKey: ["sport-center-supabase-bookings-raw"],
     queryFn: async () => {
       if (!supabase) return [];
-      const { data, error } = await supabase
-        .from("sport_center_bookings")
-        .select("id, booking_code, customer_name, customer_phone, facility_name, date, start_time, end_time, total_hours, total_price, status, payment_status, notes, created_at")
+      // Query sport_center schema via schema() selector
+      const scClient = (supabase as any).schema("sport_center");
+      const { data, error } = await scClient
+        .from("bookings")
+        .select("id, order_number, customer_name, customer_phone, facility_id, booking_date, start_time, end_time, duration_hours, total_price, status, payment_status, notes, created_at")
         .order("created_at", { ascending: false });
       if (error || !data) return [];
+      // Fetch facility names
+      let facilityMap: Record<number, string> = {};
+      try {
+        const facRes = await (supabase as any).schema("sport_center").from("facilities").select("id, name");
+        if (facRes.data) { for (const f of facRes.data) facilityMap[f.id] = f.name; }
+      } catch { }
       return data.map((b: any) => ({
-        id: b.id ?? b.booking_code ?? "-",
-        booking_number: b.booking_code ?? "-",
+        id: b.id ?? b.order_number ?? "-",
+        booking_number: b.order_number ?? "-",
         customer_name: b.customer_name ?? "-",
         customer_phone: b.customer_phone ?? "-",
-        facility_name: b.facility_name ?? "-",
-        booking_date: b.date ?? "-",
+        facility_name: (b.facility_id ? facilityMap[b.facility_id] : null) ?? `Fasilitas #${b.facility_id ?? "-"}`,
+        booking_date: b.booking_date ?? "-",
         start_time: (b.start_time ?? "").slice(0, 5),
         end_time: (b.end_time ?? "").slice(0, 5),
-        duration_hours: b.total_hours ?? 1,
+        duration_hours: b.duration_hours ?? 1,
         total_amount: Number(b.total_price ?? 0),
         status: b.status ?? "pending",
         payment_status: b.payment_status ?? "unpaid",
