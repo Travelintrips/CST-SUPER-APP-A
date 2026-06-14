@@ -230,6 +230,11 @@ app.get("/healthz", (_req: Request, res: Response) => {
   res.status(200).json({ status: "ok" });
 });
 
+// /api (root) — Replit deployment healthcheck target, harus selalu 200.
+app.get("/api", (_req: Request, res: Response) => {
+  res.status(200).json({ status: "ok" });
+});
+
 // In development, frontend apps run as separate Vite processes so
 // customer-portal/dist doesn't exist yet. Return 200 with a redirect meta tag
 // so Replit's proxy health-check passes (302 causes health-check failures).
