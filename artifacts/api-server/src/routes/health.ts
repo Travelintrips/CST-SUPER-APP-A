@@ -99,7 +99,9 @@ router.get("/healthz", async (_req, res) => {
     : anyExternalError ? "degraded"
     : "ok";
 
-  res.status(criticalFailing ? 503 : 200).json({
+  // Selalu return 200 agar deployment platform tidak restart server.
+  // DB down bukan alasan untuk membunuh proses — session memory masih bisa melayani user.
+  res.status(200).json({
     status: overallStatus,
     db: db.status,
     dbLatencyMs: db.latencyMs,

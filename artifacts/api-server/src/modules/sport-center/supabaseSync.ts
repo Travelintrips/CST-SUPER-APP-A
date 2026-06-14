@@ -544,9 +544,11 @@ export async function pullLegacyBookingsFromSupabase(): Promise<{ pulled: number
     return { pulled: 0, errors: 0, total: 0 };
   }
 
+  // Query sport_center schema (bukan public)
   const { data, error } = await (client as any)
-    .from("sport_center_bookings")
-    .select("booking_code, customer_name, customer_phone, customer_email, facility_name, facility_id, date, start_time, end_time, total_hours, total_price, status, payment_status, notes, created_at")
+    .schema("sport_center")
+    .from("bookings")
+    .select("order_number, customer_name, customer_phone, customer_email, facility_id, booking_date, start_time, end_time, duration_hours, total_price, status, payment_status, notes, created_at")
     .order("created_at", { ascending: true });
 
   if (error) {
@@ -555,16 +557,15 @@ export async function pullLegacyBookingsFromSupabase(): Promise<{ pulled: number
   }
 
   const rows = (data ?? []) as Array<{
-    booking_code: string | null;
+    order_number: string | null;
     customer_name: string;
     customer_phone?: string | null;
     customer_email?: string | null;
-    facility_name: string;
-    facility_id?: string | null;
-    date: string;
+    facility_id?: number | null;
+    booking_date: string;
     start_time: string;
     end_time: string;
-    total_hours?: number | null;
+    duration_hours?: number | null;
     total_price?: number | null;
     status?: string | null;
     payment_status?: string | null;
@@ -572,16 +573,25 @@ export async function pullLegacyBookingsFromSupabase(): Promise<{ pulled: number
     created_at?: string | null;
   }>;
 
+  // Lookup facility names from sport_facilities
+  let facilityMap: Record<number, string> = {};
+  try {
+    const facRes = await (client as any).schema("sport_center").from("facilities").select("id, name");
+    if (facRes.data) {
+      for (const f of facRes.data) facilityMap[f.id] = f.name;
+    }
+  } catch { }
+
   let pulled = 0;
   let errors = 0;
 
   for (const row of rows) {
-    const bookingNumber = row.booking_code ?? `LEGACY-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
-    const facilityName = row.facility_name ?? "Unknown";
-    const bookingDate = row.date;
+    const bookingNumber = row.order_number ?? `LEGACY-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+    const facilityName = (row.facility_id ? facilityMap[row.facility_id] : null) ?? "Unknown";
+    const bookingDate = row.booking_date;
     const startTime = row.start_time?.slice(0, 5) ?? "00:00";
     const endTime = row.end_time?.slice(0, 5) ?? "01:00";
-    const durationHours = Number(row.total_hours ?? 1);
+    const durationHours = Number(row.duration_hours ?? 1);
     const totalAmount = Number(row.total_price ?? 0);
     const rawStatus = row.status ?? "pending";
     const mappedStatus = rawStatus === "confirmed" ? "confirmed" : rawStatus === "cancelled" ? "cancelled" : rawStatus === "completed" ? "completed" : "pending";

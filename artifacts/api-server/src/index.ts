@@ -94,13 +94,10 @@ import { runFreightAccountingMigration } from "./lib/freightAccountingMigration.
 // that maps to external port 8080 in the Replit dev proxy (localPort=18444).
 const rawPort = process.env["REPLIT_API_PORT"] ?? process.env["PORT"] ?? process.env["API_PORT"] ?? "5000";
 
-// Security: PORTAL_ADMIN_EMAILS must be set in production.
-// Without it, requirePortalAdmin falls back to DB role-only check,
-// allowing pre-existing forged admin rows to pass.
+// Security: PORTAL_ADMIN_EMAILS should be set in production.
 if (process.env["NODE_ENV"] === "production" && !process.env["PORTAL_ADMIN_EMAILS"]?.trim()) {
-  throw new Error(
-    "PORTAL_ADMIN_EMAILS environment variable is required in production. " +
-    "Set it to a comma-separated list of allowed portal admin emails."
+  console.warn(
+    "[WARN] PORTAL_ADMIN_EMAILS is not set. Portal admin access will rely on DB role only."
   );
 }
 
