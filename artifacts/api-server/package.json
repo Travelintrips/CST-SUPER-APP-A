@@ -7,7 +7,7 @@
     "dev": "bash ./start-dev.sh",
     "dev:watch": "PORT=9090 node ./dev.mjs",
     "build": "node ./build.mjs",
-    "start": "PORT=8080 node --enable-source-maps ./dist/index.mjs",
+    "start": "PORT=18444 node --enable-source-maps ./dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:price-sync": "node tests/price-sync.regression.mjs"
   },
