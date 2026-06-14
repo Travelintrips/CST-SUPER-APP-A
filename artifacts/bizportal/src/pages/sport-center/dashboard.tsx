@@ -391,26 +391,6 @@ export default function SportCenterDashboard() {
     status: "ok" | "error"; detail: string | null; company_id: number | null;
     created_at: string;
   }
-  interface SyncStatus {
-    local: { facilities: number; bookings: number };
-    last_facility_sync: { created_at: string; status: string; detail: string | null } | null;
-    last_booking_sync:  { created_at: string; status: string; detail: string | null } | null;
-    recent_logs: SyncLog[];
-  }
-  const {
-    data: syncData,
-    isLoading: syncLoading,
-    refetch: refetchSync,
-  } = useQuery<SyncStatus>({
-    queryKey: ["sport-center-sync-status"],
-    queryFn: async () => {
-      const r = await fetch("/api/sport-center/sync/status?limit=30", { credentials: "include" });
-      if (!r.ok) throw new Error("Gagal memuat status sync");
-      return r.json() as Promise<SyncStatus>;
-    },
-    refetchInterval: 30_000,
-  });
-
   // ── Auto-push: Supabase → local saat local kosong ────────────────────────
   const pushBookingsDone = useRef(false);
   const pushBookings = useMutation({
