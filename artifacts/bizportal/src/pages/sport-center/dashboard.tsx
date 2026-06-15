@@ -247,8 +247,9 @@ export default function SportCenterDashboard() {
 
   // ── Query: Sync Status (koneksi Supabase + hitungan data lokal vs remote) ────
   type SyncStatusData = {
-    supabase: { connected: boolean; error: string | null; bookings: number; payments: number; facilities: number };
+    supabase: { connected: boolean; error: string | null; bookings: number; payments: number; facilities: number; project?: string; envConfigured?: boolean };
     local:    { bookings: number; payments: number; facilities: number };
+    circuitBreaker?: { open: boolean; openedAt: string | null; remainingCooldownSeconds: number };
   };
   const {
     data: syncStatus,
@@ -259,7 +260,10 @@ export default function SportCenterDashboard() {
     queryFn: async () => {
       const qs = activeCompanyId ? `?companyId=${activeCompanyId}` : "";
       const r = await fetch(`/api/sport-center/sync/status${qs}`, { credentials: "include" });
-      if (!r.ok) throw new Error("Gagal cek status");
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({}));
+        throw new Error((body as any)?.error ?? "Gagal cek status");
+      }
       return r.json() as Promise<SyncStatusData>;
     },
     refetchInterval: 60_000,
@@ -1285,17 +1289,25 @@ export default function SportCenterDashboard() {
         <Card className="border-border/60">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between flex-wrap gap-3">
-              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2 flex-wrap">
                 <CloudUpload className="h-4 w-4" /> Sinkronisasi ke Supabase
                 {syncStatusLoading ? (
                   <span className="text-xs font-normal opacity-60 animate-pulse">— memeriksa koneksi...</span>
+                ) : syncStatus?.circuitBreaker?.open ? (
+                  <span className="text-xs font-normal text-orange-400">
+                    — ⏸ Koneksi DB cooldown {syncStatus.circuitBreaker.remainingCooldownSeconds}s (ECIRCUITBREAKER)
+                  </span>
                 ) : syncStatus?.supabase.connected ? (
                   <span className="text-xs font-normal text-emerald-400">
-                    — ✓ Terhubung | Supabase: {syncStatus.supabase.bookings} booking, {syncStatus.supabase.payments} payment
+                    — ✓ Terhubung [{syncStatus.supabase.project}] | {syncStatus.supabase.bookings} booking, {syncStatus.supabase.payments} payment, {syncStatus.supabase.facilities} fasilitas
+                  </span>
+                ) : syncStatus?.supabase.envConfigured === false ? (
+                  <span className="text-xs font-normal text-yellow-400">
+                    — ⚠ Env vars belum dikonfigurasi
                   </span>
                 ) : (
-                  <span className="text-xs font-normal text-red-400">
-                    — ✗ {syncStatus?.supabase.error ?? "Tidak terhubung"}
+                  <span className="text-xs font-normal text-red-400" title={syncStatus?.supabase.error ?? ""}>
+                    — ✗ {(syncStatus?.supabase.error ?? "Tidak terhubung").slice(0, 80)}
                   </span>
                 )}
               </CardTitle>
@@ -1410,13 +1422,24 @@ export default function SportCenterDashboard() {
             )}
             {(resyncFacilities.isError || resyncAll.isError || resyncBookings.isError || syncAccounting.isError) && (
               <Alert className="border-red-700 bg-red-950/40 text-red-300 py-2">
-                <XCircle className="h-4 w-4 text-red-400" />
-                <AlertDescription className="text-xs">
-                  {String(
-                    (resyncAll.error ?? resyncFacilities.error ?? resyncBookings.error ?? syncAccounting.error) instanceof Error
-                      ? (resyncAll.error ?? resyncFacilities.error ?? resyncBookings.error ?? syncAccounting.error as Error)?.message
-                      : "Sync gagal"
-                  )}
+                <XCircle className="h-4 w-4 text-red-400 shrink-0 mt-0.5" />
+                <AlertDescription className="text-xs space-y-1">
+                  {(() => {
+                    const activeErr = resyncAll.error ?? resyncFacilities.error ?? resyncBookings.error ?? syncAccounting.error;
+                    const msg = activeErr instanceof Error ? activeErr.message : String(activeErr ?? "Sync gagal");
+                    const which = resyncAll.isError ? "Resync Semua" : resyncFacilities.isError ? "Resync Fasilitas" : resyncBookings.isError ? "Resync Booking" : "Sync Akuntansi";
+                    return (
+                      <>
+                        <span className="font-semibold block">{which} gagal:</span>
+                        <span className="block text-red-300/80">{msg}</span>
+                        {msg.includes("cooldown") && (
+                          <span className="block text-orange-300/80 mt-1">
+                            ⏸ DB sedang dalam mode cooldown ECIRCUITBREAKER. Tunggu beberapa menit lalu coba lagi.
+                          </span>
+                        )}
+                      </>
+                    );
+                  })()}
                 </AlertDescription>
               </Alert>
             )}

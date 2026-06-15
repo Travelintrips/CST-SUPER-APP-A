@@ -143,3 +143,18 @@ pool.on("error", (err) => {
 export const db = drizzle(pool, { schema });
 
 export * from "./schema";
+
+/** Baca status circuit breaker saat ini (untuk diagnostik, tidak memerlukan koneksi DB). */
+export function getCircuitBreakerStatus(): {
+  open: boolean;
+  openedAt: string | null;
+  remainingCooldownSeconds: number;
+} {
+  const now = Date.now();
+  const open = now < ecbBlockedUntil;
+  return {
+    open,
+    openedAt: open ? new Date(ecbBlockedUntil - ECB_PAUSE_MS).toISOString() : null,
+    remainingCooldownSeconds: open ? Math.ceil((ecbBlockedUntil - now) / 1000) : 0,
+  };
+}

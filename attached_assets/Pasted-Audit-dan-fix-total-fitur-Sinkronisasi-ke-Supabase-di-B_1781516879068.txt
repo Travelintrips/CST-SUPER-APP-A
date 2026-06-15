@@ -1,0 +1,135 @@
+Audit dan fix total fitur “Sinkronisasi ke Supabase” di BizPortal → Sport Center Dashboard.
+
+Masalah saat ini:
+
+* UI menampilkan “Sinkronisasi ke Supabase — Tidak terhubung”
+* Resync fasilitas gagal
+* Resync booking/payment/accounting menghasilkan banyak error
+* Sebelumnya sudah ada fix circuit breaker pg-pool callback/promise, tapi sync tetap gagal.
+
+Kerjakan secara berurutan:
+
+1. Audit tombol frontend sync.
+   Cari handler untuk tombol:
+
+* Refresh
+* Resync Fasilitas
+* Resync Booking
+* Resync Semua
+* Sync Akuntansi
+
+Pastikan setiap tombol memanggil endpoint backend yang benar, bukan endpoint lama/deprecated.
+
+2. Audit endpoint backend sync.
+   Cari semua route terkait:
+
+* `/api/sync/*`
+* `/api/admin/system/supabase-status`
+* `/api/bizportal-sync/*`
+* endpoint resync fasilitas
+* endpoint resync bookings
+* endpoint sync accounting
+
+Untuk setiap endpoint, log:
+
+* URL yang dipanggil
+* method
+* payload
+* response status
+* error body
+* request id
+
+3. Jangan tampilkan “Tidak terhubung” hanya berdasarkan error umum.
+   Ubah status koneksi menjadi detail:
+
+* DB connected / failed
+* Storage connected / failed
+* BizPortal Sync API configured / missing
+* Supabase target reachable / failed
+* Last error message
+
+4. Tangkap root cause error 15 item.
+   Saat resync gagal, jangan hanya tampil “15 error”.
+   Tampilkan daftar error detail:
+
+* item id / booking code / facility id
+* action yang gagal
+* error code
+* error message asli
+* stack pendek di server log
+* apakah error DB, storage, auth, duplicate, missing column, atau validation
+
+5. Audit environment yang dipakai oleh BizPortal.
+   Pastikan BizPortal production memakai:
+
+* `SUPABASE_DATABASE_URL`
+* `SUPABASE_URL`
+* `SUPABASE_SERVICE_ROLE_KEY`
+* `BIZPORTAL_SYNC_API_KEY`
+
+Pastikan tidak salah memakai:
+
+* `SUPABASE_DATABASE_URL_DEV`
+* Replit heliumdb dev
+* Supabase dev project untuk production dashboard
+
+6. Audit header API key.
+   Jika BizPortal pull ke Sport Center via `/api/sync/*`, pastikan request mengirim:
+
+* `X-API-Key: process.env.BIZPORTAL_SYNC_API_KEY`
+
+Jika key kosong/salah, tampilkan error jelas:
+“BIZPORTAL_SYNC_API_KEY mismatch / missing”, bukan “resync gagal”.
+
+7. Audit schema mismatch.
+   Untuk error sync fasilitas, booking, payment, accounting:
+
+* Bandingkan field yang dikirim frontend/backend dengan kolom DB nyata.
+* Jangan insert field yang tidak ada.
+* Gunakan upsert dengan key unik:
+
+  * fasilitas: facility id / slug / code
+  * booking: booking_code
+  * payment: payment id / reference
+  * accounting journal: source module + source id
+
+8. Audit circuit breaker.
+   Pastikan circuit breaker hanya aktif jika benar-benar ada `ECIRCUITBREAKER`.
+   Tambahkan diagnostic:
+
+* circuitBreakerOpen: true/false
+* openedAt
+* remainingCooldownSeconds
+* lastCircuitBreakerError
+
+Jika circuit breaker open, UI harus tampil:
+“Koneksi DB sedang cooldown 5 menit”, bukan “sync gagal”.
+
+9. Tambahkan endpoint debug aman:
+   `GET /api/admin/system/sync-debug`
+
+Return tanpa bocor secret:
+
+* dbSource
+* syncApiConfigured
+* targetSupabaseProject label
+* storageProjectSource
+* circuitBreakerOpen
+* lastSyncErrors grouped by module
+* lastSuccessfulSyncAt
+
+10. Jalankan test ulang:
+
+* Refresh status
+* Resync fasilitas
+* Resync booking
+* Sync akuntansi
+* Resync semua
+
+Output akhir:
+
+* Root cause sebenarnya kenapa “Tidak terhubung”
+* Error detail dari 15 error
+* File yang diperbaiki
+* Endpoint yang dipakai setiap tombol
+* Hasil test setelah fix

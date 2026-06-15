@@ -1,12 +1,11 @@
 import { Router } from "express";
-import { db, accountingPaymentsTable } from "@workspace/db";
+import { db, accountingPaymentsTable, getCircuitBreakerStatus } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { requireAdmin } from "../../lib/requireAdmin.js";
 import { handleSportCenterSse, broadcastSportCenterEvent } from "./broadcast.js";
 import { postSportCenterBooking, postSportCenterBookingReversal, postSportCenterRefund, postSportCenterMembershipPayment, postSportCenterBookingWithTax, postSportCenterBookingRefundDirect } from "../../lib/accounting.js";
 import { ensureAccountingSettings } from "../../lib/accountingSeed.js";
-import { syncFacilityUpsert, syncFacilityDelete, syncAllFacilities, syncBookingUpsert, syncAllBookings, getLastSyncLogs, pullLegacyBookingsFromSupabase, syncPaymentsToAccounting, pullPaymentsFromSupabase } from "./supabaseSync.js";
-import { syncFacilityUpsert, syncFacilityDelete, syncAllFacilities, syncBookingUpsert, syncAllBookings, getLastSyncLogs, pullLegacyBookingsFromSupabase, pullFacilitiesFromSupabase } from "./supabaseSync.js";
+import { syncFacilityUpsert, syncFacilityDelete, syncAllFacilities, syncBookingUpsert, syncAllBookings, getLastSyncLogs, pullLegacyBookingsFromSupabase, syncPaymentsToAccounting, pullPaymentsFromSupabase, pullFacilitiesFromSupabase } from "./supabaseSync.js";
 import { saveAndBroadcast } from "../../lib/notificationStore.js";
 
 async function insertAccountingPaymentForSportCenter(args: {
@@ -734,32 +733,6 @@ router.post("/sync/push-bookings", async (req, res) => {
     res.json({ success: true, pushed, errors, total: bookings.length });
   } catch (err: any) {
     res.status(500).json({ error: "Push bookings gagal", detail: err?.message });
-  }
-});
-
-router.get("/sync/status", async (req, res) => {
-  if (!await requireAdmin(req, res)) return;
-  try {
-    const limit = Math.min(100, Math.max(1, Number(req.query.limit ?? 50)));
-    const [logs, facilityCount, bookingCount, lastFacilitySync, lastBookingSync] = await Promise.all([
-      getLastSyncLogs(limit),
-      db.execute(sql`SELECT COUNT(*) AS cnt FROM sport_facilities WHERE is_active = TRUE`),
-      db.execute(sql`SELECT COUNT(*) AS cnt FROM sport_bookings`),
-      db.execute(sql`SELECT created_at, status, detail FROM sport_sync_logs WHERE entity = 'facility' ORDER BY created_at DESC LIMIT 1`),
-      db.execute(sql`SELECT created_at, status, detail FROM sport_sync_logs WHERE entity = 'booking' ORDER BY created_at DESC LIMIT 1`),
-    ]);
-
-    res.json({
-      local: {
-        facilities: Number((facilityCount.rows[0] as any).cnt),
-        bookings: Number((bookingCount.rows[0] as any).cnt),
-      },
-      last_facility_sync: lastFacilitySync.rows[0] ?? null,
-      last_booking_sync: lastBookingSync.rows[0] ?? null,
-      recent_logs: logs,
-    });
-  } catch (err: any) {
-    res.status(500).json({ error: "Gagal memuat status sinkronisasi", detail: err?.message });
   }
 });
 
@@ -3498,10 +3471,14 @@ router.get("/sync/logs", async (req, res) => {
 /**
  * GET /api/sport-center/sync/status
  * Cek koneksi ke Supabase sport_center + hitung data lokal vs Supabase.
+ * Juga sertakan status circuit breaker DB lokal.
  */
 router.get("/sync/status", async (req, res) => {
   if (!await requireAdmin(req, res)) return;
   const companyId = req.query.companyId ? Number(req.query.companyId) : null;
+
+  // Cek circuit breaker SEBELUM query DB agar tidak block
+  const cb = getCircuitBreakerStatus();
 
   // Hitung data lokal — tidak throw jika DB sementara tidak tersedia (ECIRCUITBREAKER)
   const safeCount = async (query: Promise<any>): Promise<number> => {
@@ -3513,6 +3490,20 @@ router.get("/sync/status", async (req, res) => {
     safeCount(db.execute(sql`SELECT COUNT(*) AS cnt FROM sport_facilities WHERE (${companyId}::int IS NULL OR company_id = ${companyId})`)),
   ]);
 
+  // Env vars untuk Supabase — cek ketersediaan (tanpa expose nilainya)
+  const isProd = !!process.env.REPLIT_DEPLOYMENT;
+  const supaUrl = isProd
+    ? (process.env.VITE_SUPABASE_URL ?? process.env.SUPABASE_URL ?? "")
+    : (process.env.SUPABASE_URL_DEV ?? process.env.VITE_SUPABASE_URL ?? process.env.SUPABASE_URL ?? "");
+  const supaKey = isProd
+    ? (process.env.SUPABASE_SERVICE_ROLE_KEY ?? "")
+    : (process.env.SUPABASE_SERVICE_ROLE_KEY_DEV ?? process.env.SUPABASE_SERVICE_ROLE_KEY ?? "");
+
+  const envConfigured = !!(supaUrl && supaKey);
+  const supabaseProjectLabel = supaUrl
+    ? supaUrl.replace(/^https?:\/\/([^.]+).*$/, "$1")
+    : "(not configured)";
+
   // Test koneksi Supabase sport_center + hitung data remote
   let supabaseOk = false;
   let scBookings = 0;
@@ -3520,28 +3511,32 @@ router.get("/sync/status", async (req, res) => {
   let scFacilities = 0;
   let supabaseError: string | null = null;
 
-  try {
-    const { getSportCenterSupabaseClient } = await import("../../lib/supabaseAdminSportCenter.js");
-    const client = getSportCenterSupabaseClient() as any;
-    if (client) {
-      const [bkRes, payRes, facRes] = await Promise.all([
-        client.schema("sport_center").from("bookings").select("id", { count: "exact", head: true }),
-        client.schema("sport_center").from("payments").select("id", { count: "exact", head: true }),
-        client.schema("sport_center").from("facilities").select("id", { count: "exact", head: true }),
-      ]);
-      if (!bkRes.error) {
-        supabaseOk = true;
-        scBookings   = bkRes.count  ?? 0;
-        scPayments   = payRes.count ?? 0;
-        scFacilities = facRes.count ?? 0;
+  if (!envConfigured) {
+    supabaseError = `Env vars tidak dikonfigurasi — SUPABASE_URL${isProd ? "" : "_DEV"} dan SUPABASE_SERVICE_ROLE_KEY${isProd ? "" : "_DEV"} diperlukan`;
+  } else {
+    try {
+      const { getSportCenterSupabaseClient } = await import("../../lib/supabaseAdminSportCenter.js");
+      const client = getSportCenterSupabaseClient() as any;
+      if (client) {
+        const [bkRes, payRes, facRes] = await Promise.all([
+          client.schema("sport_center").from("bookings").select("id", { count: "exact", head: true }),
+          client.schema("sport_center").from("payments").select("id", { count: "exact", head: true }),
+          client.schema("sport_center").from("facilities").select("id", { count: "exact", head: true }),
+        ]);
+        if (!bkRes.error) {
+          supabaseOk = true;
+          scBookings   = bkRes.count  ?? 0;
+          scPayments   = payRes.count ?? 0;
+          scFacilities = facRes.count ?? 0;
+        } else {
+          supabaseError = `Supabase error: ${bkRes.error.message}`;
+        }
       } else {
-        supabaseError = bkRes.error.message;
+        supabaseError = "Supabase client null (env vars tidak lengkap)";
       }
-    } else {
-      supabaseError = "Client tidak tersedia (env vars missing?)";
+    } catch (e) {
+      supabaseError = String(e instanceof Error ? e.message : e);
     }
-  } catch (e) {
-    supabaseError = String(e instanceof Error ? e.message : e);
   }
 
   res.json({
@@ -3552,12 +3547,74 @@ router.get("/sync/status", async (req, res) => {
       bookings: scBookings,
       payments: scPayments,
       facilities: scFacilities,
+      project: supabaseProjectLabel,
+      envConfigured,
     },
     local: {
       bookings:   localBookings,
       payments:   localPayments,
       facilities: localFacilities,
     },
+    circuitBreaker: {
+      open: cb.open,
+      openedAt: cb.openedAt,
+      remainingCooldownSeconds: cb.remainingCooldownSeconds,
+    },
+  });
+});
+
+/**
+ * GET /api/sport-center/sync/debug
+ * Endpoint diagnostik aman — tidak mengekspos secret, hanya status sistem.
+ */
+router.get("/sync/debug", async (req, res) => {
+  if (!await requireAdmin(req, res)) return;
+
+  const cb = getCircuitBreakerStatus();
+  const isProd = !!process.env.REPLIT_DEPLOYMENT;
+
+  const supaUrl = isProd
+    ? (process.env.VITE_SUPABASE_URL ?? process.env.SUPABASE_URL ?? "")
+    : (process.env.SUPABASE_URL_DEV ?? process.env.VITE_SUPABASE_URL ?? process.env.SUPABASE_URL ?? "");
+  const supaKey = isProd
+    ? (process.env.SUPABASE_SERVICE_ROLE_KEY ?? "")
+    : (process.env.SUPABASE_SERVICE_ROLE_KEY_DEV ?? process.env.SUPABASE_SERVICE_ROLE_KEY ?? "");
+  const dbUrl = process.env.SUPABASE_DATABASE_URL ?? process.env.DATABASE_URL ?? "";
+
+  // Ambil log sync terakhir per modul
+  type LogRow = { entity: string; status: string; detail: string | null; created_at: string };
+  let lastSyncErrors: LogRow[] = [];
+  let lastSuccessAt: string | null = null;
+  try {
+    const errRes = await db.execute(sql`
+      SELECT entity, status, detail, created_at
+      FROM sport_sync_logs
+      WHERE status = 'error'
+      ORDER BY created_at DESC
+      LIMIT 10
+    `);
+    lastSyncErrors = errRes.rows as LogRow[];
+
+    const okRes = await db.execute(sql`
+      SELECT created_at FROM sport_sync_logs WHERE status = 'ok'
+      ORDER BY created_at DESC LIMIT 1
+    `);
+    lastSuccessAt = (okRes.rows[0] as any)?.created_at ?? null;
+  } catch { /* DB mungkin circuit breaker */ }
+
+  res.json({
+    env: isProd ? "production" : "development",
+    dbSource: dbUrl ? dbUrl.replace(/\/\/[^@]+@/, "//***@").split("?")[0] : "(not set)",
+    supabaseProject: supaUrl ? supaUrl.replace(/^https?:\/\/([^.]+).*$/, "$1") : "(not set)",
+    supabaseUrlConfigured: !!supaUrl,
+    supabaseKeyConfigured: !!supaKey,
+    circuitBreaker: {
+      open: cb.open,
+      openedAt: cb.openedAt,
+      remainingCooldownSeconds: cb.remainingCooldownSeconds,
+    },
+    lastSyncErrors,
+    lastSuccessfulSyncAt: lastSuccessAt,
   });
 });
 
