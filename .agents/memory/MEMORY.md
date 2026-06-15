@@ -14,4 +14,4 @@
 - [Logistics module audit map](logistics-audit-map.md) — 6 route namespaces, 3-router collision at /logistic/orders, dead airFreightRouter import, Air/Ocean use raw SQL (not Drizzle); unified fields added to freight_shipments.
 - [Logistics governance doc](logistics-governance.md) — docs/LOGISTICS_MODULE_MAP.md is the single source of truth; guardrails, naming rules, checklist, decision tree, and known tech debt all live there.
 - [Dynamic Service Calculator](dynamic-service-calculator.md) — redesigned calculator.tsx (v2): 6 service types with per-service fields/formulas; backend rates at GET /api/portal/calculator-rates-v2 stored as portal_content key "calculator_rates_v2".
-- [ECIRCUITBREAKER session resilience](ecb-session-resilience.md) — saat CB aktif, getSession return null → 401; fix: getSessionFromCacheOnly fallback di authMiddleware + connectionTimeoutMillis 20s→8s.
+- [ECIRCUITBREAKER full fix](ecb-full-fix.md) — startup probe (top-level await in lib/db) + startupOrchestrator stagger + session cache fallback; CB sumber dari Supabase pgBouncer throttle.

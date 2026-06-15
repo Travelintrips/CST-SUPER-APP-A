@@ -65,6 +65,7 @@ import { runStep4TemplateMigration } from "./lib/step4TemplateMigration.js";
 import { runServiceTemplateMigration } from "./lib/serviceTemplateMigration.js";
 import { expireStaleApprovals } from "./lib/aiGovernance.js";
 import { startDbBackupScheduler } from "./lib/dbBackup.js";
+import { registerWorker, startAll } from "./lib/startupOrchestrator.js";
 import { initAlertsBroadcast } from "./lib/alertsBroadcast.js";
 import { warmupMailer } from "./lib/mailer.js";
 import { runSportCenterMigration, runSportCenterAccountCorrection, runSportCenterCompanyInvoiceMigration } from "./modules/sport-center/migration.js";
@@ -668,29 +669,49 @@ async function startServer() {
   process.once("SIGTERM", shutdown);
   process.once("SIGINT", shutdown);
 
-  // Start background services immediately
-  startImapPoller(3 * 60 * 1000);
-  startOcrTempCleanup();
-  startVmfGapNotifier();
-  startFulfillmentExpiryNotifier();
-  startWorkflowWorker();
-  startDriverJobWorker();
-  startRecurringExpenseWorker();
-  startMemberReminderWorker();
-  startExpenseReminderWorker();
-  startWhtReminderWorker();
-  startProductFirstReminderWorker();
-  startProductFirstExceptionWorker();
-  startRekonsiliasiWorker();
-  startDbBackupScheduler();
-  startWaRetryWorker();
+  // ── Background workers — staggered via startupOrchestrator ──────────────────
+  // Urutan delay mencegah burst koneksi ke pgBouncer yang memicu ECIRCUITBREAKER.
+  // Workers yang membuat DB query langsung (tanpa internal delay) diberi delay lebih besar.
+  //
+  // Delay slot (ms) — efektif setelah dikali STARTUP_WORKER_STAGGER_MS / 1000:
+  //   0s   : No-DB workers (IMAP, OCR cleanup, DB backup scheduler)
+  //   10s  : Workers with long internal initial delay (vmf, fulfillment expiry)
+  //   15s  : Driver job worker
+  //   20s  : WA retry worker — hits DB immediately (fixRelativeMediaUrls)
+  //   30s  : Workflow worker — hits DB immediately (initInvoiceReminderTable)
+  //   35s  : Recurring expense worker (has 10min internal delay, just registering here)
+  //   40s  : Member reminder worker
+  //   45s  : Expense reminder worker
+  //   50s  : WHT reminder worker
+  //   55s  : Product-first reminder worker
+  //   58s  : Product-first exception worker
+  //   62s  : Rekonsiliasi worker
+  //   68s  : AI governance expire (setInterval)
 
-  // AI Governance: expire stale approvals & auto-approve setiap 5 menit
-  setInterval(() => {
-    expireStaleApprovals().catch((err: unknown) => {
-      logger.warn({ err }, "expireStaleApprovals background tick failed (non-fatal)");
-    });
-  }, 5 * 60 * 1000).unref();
+  registerWorker("imap-poller", () => startImapPoller(3 * 60 * 1000), 0);
+  registerWorker("ocr-temp-cleanup", startOcrTempCleanup, 0);
+  registerWorker("db-backup-scheduler", startDbBackupScheduler, 0);
+  registerWorker("vmf-gap-notifier", startVmfGapNotifier, 10_000);
+  registerWorker("fulfillment-expiry-notifier", startFulfillmentExpiryNotifier, 12_000);
+  registerWorker("driver-job-worker", startDriverJobWorker, 15_000);
+  registerWorker("wa-retry-worker", startWaRetryWorker, 20_000);
+  registerWorker("workflow-worker", startWorkflowWorker, 30_000);
+  registerWorker("recurring-expense-worker", startRecurringExpenseWorker, 35_000);
+  registerWorker("member-reminder-worker", startMemberReminderWorker, 40_000);
+  registerWorker("expense-reminder-worker", startExpenseReminderWorker, 45_000);
+  registerWorker("wht-reminder-worker", startWhtReminderWorker, 50_000);
+  registerWorker("product-first-reminder", startProductFirstReminderWorker, 55_000);
+  registerWorker("product-first-exception", startProductFirstExceptionWorker, 58_000);
+  registerWorker("rekonsiliasi-worker", startRekonsiliasiWorker, 62_000);
+  registerWorker("ai-governance-expire", () => {
+    setInterval(() => {
+      expireStaleApprovals().catch((err: unknown) => {
+        logger.warn({ err }, "expireStaleApprovals background tick failed (non-fatal)");
+      });
+    }, 5 * 60 * 1000).unref();
+  }, 68_000);
+
+  startAll();
 
   // Run all migrations + seeds in the background with an initial delay
   // to let the DB pool stabilize before hammering pgBouncer with DDL.

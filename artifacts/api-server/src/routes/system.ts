@@ -12,6 +12,7 @@ import { sql } from "drizzle-orm";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { logger } from "../lib/logger.js";
 import { getRuntimeCheckState } from "../lib/startupValidator.js";
+import { getWorkerStates } from "../lib/startupOrchestrator.js";
 
 const router = Router();
 
@@ -489,6 +490,40 @@ router.post("/reset-circuit-breaker", async (req, res) => {
       cbBefore,
       cbAfter,
       dbTest: testResult,
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+// ── Startup Workers Status ────────────────────────────────────────────────────
+/**
+ * GET /api/system/startup-workers
+ * Admin-only. Mengembalikan status semua background worker yang didaftarkan ke orchestrator.
+ */
+router.get("/startup-workers", (_req, res) => {
+  try {
+    const workers = getWorkerStates();
+    const summary = {
+      total: workers.length,
+      running: workers.filter((w) => w.status === "running").length,
+      scheduled: workers.filter((w) => w.status === "scheduled").length,
+      pending: workers.filter((w) => w.status === "pending").length,
+      disabled: workers.filter((w) => w.status === "disabled").length,
+      error: workers.filter((w) => w.status === "error").length,
+      skippedCb: workers.filter((w) => w.status === "skipped_cb").length,
+    };
+    res.json({
+      ok: true,
+      config: {
+        disableBackgroundWorkers: process.env.DISABLE_BACKGROUND_WORKERS === "true",
+        staggerScale: Math.max(0.1, parseInt(process.env.STARTUP_WORKER_STAGGER_MS ?? "1000") / 1000),
+        pgPoolMax: process.env.PG_POOL_MAX ?? "(default)",
+        pgConnectionTimeoutMs: process.env.PG_CONNECTION_TIMEOUT_MS ?? "(default: 8000)",
+        pgIdleTimeoutMs: process.env.PG_IDLE_TIMEOUT_MS ?? "(default: 30000)",
+      },
+      summary,
+      workers,
     });
   } catch (err) {
     res.status(500).json({ ok: false, error: err instanceof Error ? err.message : String(err) });

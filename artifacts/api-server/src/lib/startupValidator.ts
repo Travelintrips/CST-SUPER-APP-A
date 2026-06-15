@@ -5,6 +5,7 @@
  */
 
 import { logger } from "./logger.js";
+import { getCircuitBreakerStatus, pingDbNoCb } from "@workspace/db";
 
 export interface DepCheckResult {
   status: "ok" | "missing" | "error";
@@ -70,14 +71,23 @@ async function checkDrizzle(): Promise<DepCheckResult> {
 }
 
 async function checkPg(): Promise<DepCheckResult> {
-  try {
-    const { pool } = await import("@workspace/db");
-    const t0 = Date.now();
-    await pool.query("SELECT 1");
-    return { status: "ok", detail: `DB ping OK (${Date.now() - t0}ms)` };
-  } catch (err: any) {
-    return { status: "error", detail: String(err?.message ?? err) };
+  // Gunakan pingDbNoCb() — raw pool sementara yang TIDAK melewati CB guard.
+  // Dengan ini, hasil ping tidak akan membuka circuit breaker lokal,
+  // sehingga startup validator tidak ikut-ikutan memicu ECB saat pgBouncer throttle.
+  const cbStatus = getCircuitBreakerStatus();
+  if (cbStatus.open) {
+    const remaining = cbStatus.remainingCooldownSeconds;
+    return {
+      status: "error",
+      detail: `Circuit breaker open — pgBouncer sedang throttle (cooldown ${remaining}s lagi). Queries di-hold sampai CB expire.`,
+    };
   }
+
+  const result = await pingDbNoCb();
+  if (result.ok) {
+    return { status: "ok", detail: `DB ping OK (${result.latencyMs}ms)` };
+  }
+  return { status: "error", detail: result.error ?? "Ping gagal (tidak ada detail)" };
 }
 
 async function checkOpenai(): Promise<DepCheckResult> {

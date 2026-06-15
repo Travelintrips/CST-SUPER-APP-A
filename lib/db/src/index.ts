@@ -34,16 +34,34 @@ function resolveConnectionString(): string {
 
 const connectionString = resolveConnectionString();
 const isLocalConn = /localhost|127\.0\.0\.1|helium/.test(connectionString);
+const isProdEnv = process.env.NODE_ENV === "production" || !!process.env.REPLIT_DEPLOYMENT;
+
+// Pool config — configurable via env vars.
+// Dev default: max=3 (fewer connections to reduce pgBouncer pressure)
+// Prod default: max=5
+const PG_POOL_MAX = process.env.PG_POOL_MAX
+  ? Math.max(1, parseInt(process.env.PG_POOL_MAX))
+  : isProdEnv ? 5 : 3;
+const PG_IDLE_TIMEOUT_MS = process.env.PG_IDLE_TIMEOUT_MS
+  ? parseInt(process.env.PG_IDLE_TIMEOUT_MS)
+  : 30_000;
+const PG_CONNECTION_TIMEOUT_MS = process.env.PG_CONNECTION_TIMEOUT_MS
+  ? parseInt(process.env.PG_CONNECTION_TIMEOUT_MS)
+  : 8_000;
+
+console.log(
+  `[db] pool config — max=${PG_POOL_MAX}, connTimeout=${PG_CONNECTION_TIMEOUT_MS}ms, idleTimeout=${PG_IDLE_TIMEOUT_MS}ms`
+);
 
 export const pool = new Pool({
   connectionString,
   ssl: isLocalConn ? false : { rejectUnauthorized: false },
-  max: 2,
+  max: PG_POOL_MAX,
   min: 0,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 8000,
+  idleTimeoutMillis: PG_IDLE_TIMEOUT_MS,
+  connectionTimeoutMillis: PG_CONNECTION_TIMEOUT_MS,
   keepAlive: true,
-  keepAliveInitialDelayMillis: 10000,
+  keepAliveInitialDelayMillis: 10_000,
   allowExitOnIdle: false,
 });
 
@@ -149,6 +167,53 @@ pool.on("error", (err) => {
   }
 });
 
+// ── Startup probe (TOP-LEVEL AWAIT) ──────────────────────────────────────────
+// Probe pgBouncer dengan raw pool (tanpa CB patch) SEBELUM modul ini resolve export-nya.
+// Top-level await menyebabkan semua importer (@workspace/db) menunggu sampai probe selesai,
+// sehingga jika pgBouncer sudah throttle, CB lokal di-set SEBELUM route-level top-level
+// DB calls (approvalWorkflow, cashAdvances, paymentProof, dll.) sempat menggunakan patched pool.
+// Probe timeout: 4 detik — cepat karena pgBouncer biasanya langsung reject jika throttled.
+await (async function startupProbe() {
+  try {
+    const tempPool = new Pool({
+      connectionString,
+      ssl: isLocalConn ? false : { rejectUnauthorized: false },
+      max: 1,
+      connectionTimeoutMillis: 4_000,
+    });
+    try {
+      await tempPool.query("SELECT 1");
+      console.log("[db startup probe] pgBouncer OK — DB siap, tidak ada pre-existing throttle");
+    } catch (err: unknown) {
+      const msg = String((err as any)?.message ?? "");
+      const isAuthFailure =
+        msg.includes("ECIRCUITBREAKER") ||
+        msg.includes("too many authentication") ||
+        msg.includes("password authentication failed") ||
+        msg.includes("authentication failed");
+      if (isAuthFailure) {
+        // Auth failure → pgBouncer throttle terdeteksi sebelum route-level code jalan.
+        // Set CB proaktif agar semua route-level top-level DB calls ditolak lokal
+        // tanpa memperpanjang throttle di sisi pgBouncer.
+        // Admin dapat reset via POST /api/system/reset-circuit-breaker setelah DB pulih.
+        setEcbBlock("startup-probe", err);
+        console.warn(
+          "[db startup probe] Auth failure saat startup — CB lokal diset proaktif (" +
+          msg.slice(0, 80) + "). " +
+          "Top-level DB calls ditolak lokal selama " + (ECB_PAUSE_MS / 60_000).toFixed(0) + " menit."
+        );
+      } else {
+        // Timeout atau error non-auth — bukan throttle pgBouncer, biarkan pool mencoba sendiri
+        console.warn("[db startup probe] DB tidak tersedia saat startup (non-auth):", msg.slice(0, 120));
+      }
+    } finally {
+      tempPool.end().catch(() => {});
+    }
+  } catch {
+    // Jangan crash server jika probe gagal
+  }
+})();
+
 export const db = drizzle(pool, { schema });
 
 export * from "./schema";
@@ -192,6 +257,33 @@ export function getPoolStats(): {
     idleCount: pool.idleCount,
     waitingCount: pool.waitingCount,
   };
+}
+
+/**
+ * Ping DB secara langsung tanpa CB guard — hanya untuk health check startup.
+ * Menggunakan koneksi sementara yang TIDAK melewati patch pool.connect,
+ * sehingga hasil ping tidak akan membuka atau menutup circuit breaker lokal.
+ * Timeout: 5 detik.
+ */
+export async function pingDbNoCb(): Promise<{ ok: boolean; latencyMs?: number; error?: string }> {
+  const { Pool: RawPool } = await import("pg");
+  const connectionString = resolveConnectionString();
+  const isLocal = /localhost|127\.0\.0\.1|helium/.test(connectionString);
+  const tempPool = new RawPool({
+    connectionString,
+    ssl: isLocal ? false : { rejectUnauthorized: false },
+    max: 1,
+    connectionTimeoutMillis: 5_000,
+  });
+  try {
+    const t0 = Date.now();
+    await tempPool.query("SELECT 1");
+    return { ok: true, latencyMs: Date.now() - t0 };
+  } catch (err: unknown) {
+    return { ok: false, error: String((err as any)?.message ?? err).slice(0, 200) };
+  } finally {
+    tempPool.end().catch(() => {});
+  }
 }
 
 /** Masked DB connection info untuk diagnostik. */

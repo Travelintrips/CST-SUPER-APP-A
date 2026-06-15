@@ -1,0 +1,93 @@
+Lanjutkan fix jangka panjang untuk mencegah ECIRCUITBREAKER saat startup.
+
+Masalah:
+Saat server startup, banyak background worker langsung query DB bersamaan:
+
+* invoice reminder
+* waRetryWorker
+* migration checks
+* sync checks
+* scheduler lain
+
+Akibatnya Supabase pooler port 6543 menerima burst koneksi dan memicu:
+“too many authentication failures, new connections are temporarily blocked”
+
+Kerjakan:
+
+1. Buat startup orchestrator.
+
+* Jangan jalankan semua worker bersamaan saat server start.
+* Buat file misalnya:
+  `artifacts/api-server/src/lib/startupOrchestrator.ts`
+
+2. Tambahkan stagger delay:
+
+* DB health check: langsung
+* auth/session cleanup: +5 detik
+* WA retry worker: +15 detik
+* invoice reminder: +30 detik
+* sync scheduler: +45 detik
+* accounting scheduler: +60 detik
+
+3. Tambahkan config:
+
+* `DISABLE_BACKGROUND_WORKERS=true`
+* `STARTUP_WORKER_STAGGER_MS=15000`
+* `MAX_STARTUP_DB_TASKS=1`
+
+4. Pastikan setiap worker:
+
+* Tidak membuat pool baru.
+* Menggunakan shared pool dari `lib/db/src/index.ts`.
+* Tidak query DB jika circuit breaker sedang open.
+* Retry dengan exponential backoff.
+* Tidak infinite loop tanpa delay.
+
+5. Batasi pool size di dev dan prod.
+
+* Dev: max 2–3 connection
+* Prod: max 5–10 connection
+* Tambahkan env:
+
+  * `PG_POOL_MAX`
+  * `PG_IDLE_TIMEOUT_MS`
+  * `PG_CONNECTION_TIMEOUT_MS`
+
+6. Tambahkan startup log:
+
+* Worker name
+* scheduled delay
+* startedAt
+* skipped karena circuit breaker
+* success/error
+
+7. Tambahkan endpoint admin:
+   `GET /api/system/startup-workers`
+
+Return:
+
+* worker name
+* enabled/disabled
+* scheduledAt
+* startedAt
+* lastRunAt
+* lastError
+* nextRetryAt
+
+8. Test:
+
+* Restart server.
+* Pastikan tidak langsung banyak query.
+* Pastikan circuit breaker tidak terbuka.
+* Cek `/api/system/db-connections`.
+* Cek `/api/system/startup-workers`.
+* Baru setelah itu klik Resync Semua.
+
+Output:
+
+* File yang diubah.
+* Worker yang ditemukan.
+* Worker yang distagger.
+* Pool config final.
+* Hasil restart test.
+* Apakah ECIRCUITBREAKER muncul lagi atau tidak.
