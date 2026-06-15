@@ -7,7 +7,7 @@
  */
 
 import { Router, type Request, type Response, type NextFunction } from "express";
-import { db, getCircuitBreakerStatus, resetCircuitBreaker, getPoolStats, getActiveDbInfo } from "@workspace/db";
+import { db, getCircuitBreakerStatus, resetCircuitBreaker, getPoolStats, getActiveDbInfo, pingDbNoCb } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { logger } from "../lib/logger.js";
@@ -493,6 +493,63 @@ router.post("/reset-circuit-breaker", async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+// ── DB Auth Check ─────────────────────────────────────────────────────────────
+/**
+ * GET /api/system/db-auth-check
+ * Admin-only. Test koneksi langsung ke PostgreSQL menggunakan credential aktif.
+ * Response: host, port, username, database, pooler, canConnect, authError, connectionSource.
+ * TIDAK pernah menampilkan password.
+ */
+router.get("/db-auth-check", async (_req, res) => {
+  try {
+    const dbInfo = getActiveDbInfo();
+
+    // Parse connection string untuk extract host, port, user, dbname (tanpa password)
+    const urlKey = dbInfo.source !== "(none)" ? dbInfo.source : null;
+    const rawUrl: string | undefined = urlKey ? (process.env[urlKey] ?? undefined) : undefined;
+
+    let host = dbInfo.host;
+    let port: number | null = null;
+    let username: string | null = null;
+    let database: string | null = null;
+    let pooler = dbInfo.pooler;
+
+    if (rawUrl) {
+      try {
+        const u = new URL(rawUrl.replace(/^postgresql:/, "postgres:"));
+        host = u.hostname || host;
+        port = u.port ? parseInt(u.port) : 5432;
+        username = u.username || null;
+        database = u.pathname?.replace(/^\//, "") || null;
+        pooler = port === 6543 || u.hostname.includes("pooler") || u.hostname.includes("pgbouncer");
+      } catch {
+        // URL parse gagal — gunakan host dari getActiveDbInfo
+      }
+    }
+
+    // Test koneksi langsung (tanpa CB guard)
+    const pingResult = await pingDbNoCb();
+
+    res.json({
+      host,
+      port: port ?? (pooler ? 6543 : 5432),
+      username,
+      database,
+      pooler,
+      canConnect: pingResult.ok,
+      authError: pingResult.ok ? null : (pingResult.error ?? "Unknown error"),
+      latencyMs: pingResult.ok ? pingResult.latencyMs : null,
+      connectionSource: dbInfo.source,
+      mode: dbInfo.mode,
+    });
+  } catch (err) {
+    res.status(500).json({
+      canConnect: false,
+      authError: err instanceof Error ? err.message : String(err),
+    });
   }
 });
 
