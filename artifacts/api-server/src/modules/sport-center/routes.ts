@@ -3565,7 +3565,7 @@ router.get("/sync/status", async (req, res) => {
 
 /**
  * GET /api/sport-center/sync/debug
- * Endpoint diagnostik aman — tidak mengekspos secret, hanya status sistem.
+ * Audit circuit breaker + root cause analysis. Tidak mengekspos secret.
  */
 router.get("/sync/debug", async (req, res) => {
   if (!await requireAdmin(req, res)) return;
@@ -3573,48 +3573,171 @@ router.get("/sync/debug", async (req, res) => {
   const cb = getCircuitBreakerStatus();
   const isProd = !!process.env.REPLIT_DEPLOYMENT;
 
+  // ── DB & Supabase env resolution ──────────────────────────────────────────
   const supaUrl = isProd
     ? (process.env.VITE_SUPABASE_URL ?? process.env.SUPABASE_URL ?? "")
     : (process.env.SUPABASE_URL_DEV ?? process.env.VITE_SUPABASE_URL ?? process.env.SUPABASE_URL ?? "");
   const supaKey = isProd
     ? (process.env.SUPABASE_SERVICE_ROLE_KEY ?? "")
     : (process.env.SUPABASE_SERVICE_ROLE_KEY_DEV ?? process.env.SUPABASE_SERVICE_ROLE_KEY ?? "");
-  const dbUrl = process.env.SUPABASE_DATABASE_URL ?? process.env.DATABASE_URL ?? "";
 
-  // Ambil log sync terakhir per modul
-  type LogRow = { entity: string; status: string; detail: string | null; created_at: string };
-  let lastSyncErrors: LogRow[] = [];
+  const dbUrlRaw = isProd
+    ? (process.env.SUPABASE_DATABASE_URL ?? process.env.DATABASE_URL ?? "")
+    : (process.env.SUPABASE_DATABASE_URL_DEV ?? process.env.SUPABASE_DATABASE_URL ?? process.env.DATABASE_URL ?? "");
+
+  const dbMasked  = dbUrlRaw  ? dbUrlRaw.replace(/\/\/[^@]+@/, "//***@").split("?")[0] : "(not set)";
+  const dbMode    = isProd ? "production" : "development";
+  const dbHost    = dbUrlRaw  ? (dbUrlRaw.match(/@([^:/]+)/) ?? [])[1] ?? "unknown" : "unknown";
+  const supaProject = supaUrl ? supaUrl.replace(/^https?:\/\/([^.]+).*$/, "$1") : "(not set)";
+
+  // ── Kategorisasi error ────────────────────────────────────────────────────
+  type ErrorCategory = "database" | "auth" | "duplicate" | "validation" | "schema_mismatch" | "foreign_key" | "network" | "other";
+  function categorize(msg: string | null): ErrorCategory {
+    const m = (msg ?? "").toLowerCase();
+    if (m.includes("ecircuitbreaker") || m.includes("cooldown") || m.includes("timeout") || m.includes("connect")) return "database";
+    if (m.includes("authentication") || m.includes("unauthorized") || m.includes("jwt") || m.includes("forbidden")) return "auth";
+    if (m.includes("duplicate") || m.includes("unique") || m.includes("already exists") || m.includes("conflict")) return "duplicate";
+    if (m.includes("foreign key") || m.includes("violates foreign") || m.includes("fk_")) return "foreign_key";
+    if (m.includes("schema") || m.includes("column") || m.includes("does not exist") || m.includes("no such")) return "schema_mismatch";
+    if (m.includes("invalid") || m.includes("null value") || m.includes("not null") || m.includes("check constraint")) return "validation";
+    if (m.includes("econnrefused") || m.includes("fetch") || m.includes("network") || m.includes("enotfound")) return "network";
+    return "other";
+  }
+
+  type LogEntry = {
+    id: number; entity: string; action: string; entity_id: number | null;
+    status: string; detail: string | null; company_id: number | null; created_at: string;
+    errorCategory: ErrorCategory;
+  };
+  type CountByCategory = Record<ErrorCategory, number>;
+
+  let recentErrors: LogEntry[] = [];
   let lastSuccessAt: string | null = null;
+  let errorsByCategory: CountByCategory = {
+    database: 0, auth: 0, duplicate: 0, validation: 0, schema_mismatch: 0, foreign_key: 0, network: 0, other: 0
+  };
+  let firstEcbOpeningError: LogEntry | null = null;
+  let dbAccessible = true;
+
   try {
+    // Ambil 10 error terbaru
     const errRes = await db.execute(sql`
-      SELECT entity, status, detail, created_at
+      SELECT id, entity, action, entity_id, status, detail, company_id, created_at
       FROM sport_sync_logs
       WHERE status = 'error'
       ORDER BY created_at DESC
       LIMIT 10
     `);
-    lastSyncErrors = errRes.rows as LogRow[];
+    recentErrors = (errRes.rows as any[]).map(r => ({
+      ...r,
+      errorCategory: categorize(r.detail),
+    }));
 
+    // Hitung per kategori (semua waktu)
+    const allErrRes = await db.execute(sql`
+      SELECT detail FROM sport_sync_logs WHERE status = 'error'
+    `);
+    for (const row of allErrRes.rows as any[]) {
+      const cat = categorize(row.detail);
+      errorsByCategory[cat] = (errorsByCategory[cat] ?? 0) + 1;
+    }
+
+    // Cari error pertama yang bertipe database/auth (kemungkinan yang memicu CB)
+    if (cb.open && cb.openedAt) {
+      const cbOpenTs = new Date(cb.openedAt);
+      const proximityWindow = new Date(cbOpenTs.getTime() + 60_000).toISOString();
+      const cbErr = await db.execute(sql`
+        SELECT id, entity, action, entity_id, status, detail, company_id, created_at
+        FROM sport_sync_logs
+        WHERE status = 'error'
+          AND (detail ILIKE '%ECIRCUITBREAKER%' OR detail ILIKE '%authentication%' OR detail ILIKE '%timeout%' OR detail ILIKE '%connect%')
+          AND created_at <= ${proximityWindow}::timestamptz
+        ORDER BY created_at ASC
+        LIMIT 1
+      `);
+      if (cbErr.rows.length > 0) {
+        firstEcbOpeningError = { ...(cbErr.rows[0] as any), errorCategory: "database" };
+      }
+    }
+
+    // Waktu sukses terakhir
     const okRes = await db.execute(sql`
       SELECT created_at FROM sport_sync_logs WHERE status = 'ok'
       ORDER BY created_at DESC LIMIT 1
     `);
     lastSuccessAt = (okRes.rows[0] as any)?.created_at ?? null;
-  } catch { /* DB mungkin circuit breaker */ }
+  } catch (dbErr) {
+    dbAccessible = false;
+    console.warn("[sync/debug] DB tidak bisa diakses (mungkin circuit breaker):", dbErr);
+  }
+
+  // ── Root cause analysis ───────────────────────────────────────────────────
+  let rootCause: string;
+  let affectedFiles: string[] = [];
+  let recommendations: string[] = [];
+
+  if (cb.open) {
+    const trigger = cb.lastTrigger;
+    if (trigger?.message.includes("authentication") || trigger?.source.includes("connect")) {
+      rootCause = `pgBouncer memblokir koneksi karena terlalu banyak auth failure — pertama terdeteksi via '${trigger.source}' pada ${trigger.openedAt}. Pesan asli: "${trigger.message}"`;
+      affectedFiles = ["lib/db/src/index.ts", "artifacts/api-server/src/modules/sport-center/supabaseSync.ts"];
+      recommendations = [
+        "Tunggu hingga cooldown CB selesai (~5 menit dari waktu buka).",
+        "Verifikasi SUPABASE_DATABASE_URL — pastikan credentials masih valid di Supabase dashboard.",
+        "Cek apakah ada background worker yang melakukan retry loop berulang ke DB.",
+        "Pertimbangkan kurangi pool.max dari 2 ke 1 untuk mengurangi tekanan auth di pgBouncer.",
+      ];
+    } else {
+      rootCause = trigger
+        ? `Circuit breaker terbuka via '${trigger.source}': "${trigger.message}"`
+        : "Circuit breaker terbuka — root cause tidak tersimpan (restart server menghapus memory).";
+      recommendations = ["Tunggu cooldown selesai, lalu cek log server untuk error sebelum CB terbuka."];
+    }
+  } else if (!supaUrl || !supaKey) {
+    rootCause = `Env vars Supabase belum dikonfigurasi untuk mode ${dbMode}.`;
+    affectedFiles = [];
+    recommendations = [
+      isProd
+        ? "Set SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY di Replit Secrets."
+        : "Set SUPABASE_URL_DEV + SUPABASE_SERVICE_ROLE_KEY_DEV di Replit Secrets.",
+    ];
+  } else if (errorsByCategory.schema_mismatch > 0) {
+    rootCause = `Schema mismatch antara tabel lokal dan Supabase sport_center (${errorsByCategory.schema_mismatch} error).`;
+    affectedFiles = ["artifacts/api-server/src/modules/sport-center/supabaseSync.ts", "artifacts/api-server/src/modules/sport-center/migration.ts"];
+    recommendations = ["Jalankan migration terbaru di Supabase sport_center schema.", "Periksa kolom di tabel bookings/facilities/payments Supabase."];
+  } else if (errorsByCategory.auth > 0) {
+    rootCause = `Auth failure ke Supabase JS client (${errorsByCategory.auth} error) — service role key kemungkinan expired atau salah project.`;
+    recommendations = ["Regenerate SUPABASE_SERVICE_ROLE_KEY di Supabase dashboard.", "Pastikan project ID sesuai antara SUPABASE_URL dan service role key."];
+  } else if (recentErrors.length === 0 && !dbAccessible) {
+    rootCause = "DB lokal tidak dapat diakses saat audit — circuit breaker mungkin baru saja aktif.";
+    recommendations = ["Tunggu 5 menit, lalu coba refresh debug."];
+  } else {
+    rootCause = recentErrors.length > 0
+      ? `${recentErrors.length} error sync terakhir — lihat detail di bawah.`
+      : "Tidak ada error sync yang ditemukan — sistem normal.";
+  }
 
   res.json({
-    env: isProd ? "production" : "development",
-    dbSource: dbUrl ? dbUrl.replace(/\/\/[^@]+@/, "//***@").split("?")[0] : "(not set)",
-    supabaseProject: supaUrl ? supaUrl.replace(/^https?:\/\/([^.]+).*$/, "$1") : "(not set)",
+    env: dbMode,
+    dbSource: dbMasked,
+    dbHost,
+    supabaseProject,
     supabaseUrlConfigured: !!supaUrl,
     supabaseKeyConfigured: !!supaKey,
+    dbAccessible,
     circuitBreaker: {
       open: cb.open,
       openedAt: cb.openedAt,
       remainingCooldownSeconds: cb.remainingCooldownSeconds,
+      lastTrigger: cb.lastTrigger,
     },
-    lastSyncErrors,
     lastSuccessfulSyncAt: lastSuccessAt,
+    recentErrors,
+    errorsByCategory,
+    firstEcbOpeningError,
+    rootCause,
+    affectedFiles,
+    recommendations,
   });
 });
 

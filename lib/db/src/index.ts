@@ -55,6 +55,7 @@ export const pool = new Pool({
 
 const ECB_PAUSE_MS = 5 * 60 * 1000;
 let ecbBlockedUntil = 0;
+let ecbLastTrigger: { source: string; message: string; openedAt: string } | null = null;
 
 function isEcbError(err: unknown): boolean {
   const msg = (err as any)?.message ?? "";
@@ -65,13 +66,21 @@ function isEcbError(err: unknown): boolean {
   );
 }
 
-function setEcbBlock(source: string) {
+function setEcbBlock(source: string, originalErr?: unknown) {
   const now = Date.now();
   if (now >= ecbBlockedUntil) {
     ecbBlockedUntil = now + ECB_PAUSE_MS;
     const resume = new Date(ecbBlockedUntil).toISOString();
+    const openedAt = new Date(now).toISOString();
+    // Ambil pesan asli dari pgBouncer/pg, bukan dari error lokal kita
+    const rawMsg =
+      (originalErr as any)?.cause?.message ||
+      (originalErr as any)?.message ||
+      "(tidak ada detail)";
+    ecbLastTrigger = { source, message: rawMsg, openedAt };
     console.warn(
       `[db pool] ECIRCUITBREAKER dari '${source}' — blokir koneksi baru sampai ${resume}`,
+      { rawMsg },
     );
   }
 }
@@ -115,7 +124,7 @@ const _origConnect = pool.connect.bind(pool);
       client: unknown,
       done: unknown,
     ) {
-      if (err && isEcbError(err)) setEcbBlock("pool.connect-cb");
+      if (err && isEcbError(err)) setEcbBlock("pool.connect-cb", err);
       return origCb(err, client, done);
     }];
     return _origConnect.apply(pool, newArgs as any);
@@ -125,7 +134,7 @@ const _origConnect = pool.connect.bind(pool);
   const result = _origConnect.apply(pool, args as any) as Promise<unknown>;
   if (result && typeof result.catch === "function") {
     return result.catch((err: unknown) => {
-      if (isEcbError(err)) setEcbBlock("pool.connect-promise");
+      if (isEcbError(err)) setEcbBlock("pool.connect-promise", err);
       throw err;
     });
   }
@@ -134,7 +143,7 @@ const _origConnect = pool.connect.bind(pool);
 
 pool.on("error", (err) => {
   if (isEcbError(err)) {
-    setEcbBlock("pool idle error");
+    setEcbBlock("pool idle error", err);
   } else {
     console.error("[pg pool] Idle client error (non-fatal):", err.message);
   }
@@ -149,6 +158,7 @@ export function getCircuitBreakerStatus(): {
   open: boolean;
   openedAt: string | null;
   remainingCooldownSeconds: number;
+  lastTrigger: { source: string; message: string; openedAt: string } | null;
 } {
   const now = Date.now();
   const open = now < ecbBlockedUntil;
@@ -156,5 +166,6 @@ export function getCircuitBreakerStatus(): {
     open,
     openedAt: open ? new Date(ecbBlockedUntil - ECB_PAUSE_MS).toISOString() : null,
     remainingCooldownSeconds: open ? Math.ceil((ecbBlockedUntil - now) / 1000) : 0,
+    lastTrigger: ecbLastTrigger,
   };
 }

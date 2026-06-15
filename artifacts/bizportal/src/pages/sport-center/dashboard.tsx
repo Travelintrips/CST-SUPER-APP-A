@@ -16,6 +16,8 @@ import {
   Dumbbell, ShoppingBag, RefreshCw, CloudUpload, CheckCircle2,
   XCircle, Database, BookOpen, Flame, CheckCheck, BarChart2,
   ArrowDownRight, Zap, Filter, ChevronLeft, ChevronRight, ChevronDown,
+  Bug, FileText, AlertTriangle, Info, ShieldAlert, Network, Key,
+  GitMerge, Copy, Hash, Server,
 } from "lucide-react";
 import { fetchSportCenterData, fetchAllBookingsFromSportCenter, type SportCenterSupabaseData } from "@/lib/sportCenterSupabase";
 import { supabase } from "@/lib/supabaseClient";
@@ -267,6 +269,57 @@ export default function SportCenterDashboard() {
       return r.json() as Promise<SyncStatusData>;
     },
     refetchInterval: 60_000,
+    retry: 1,
+  });
+
+  // ── State: Toggle debug panel ─────────────────────────────────────────────
+  const [showDebugPanel, setShowDebugPanel] = useState(false);
+
+  // ── Query: CB Audit Debug ─────────────────────────────────────────────────
+  type DebugErrorEntry = {
+    id: number; entity: string; action: string; entity_id: number | null;
+    status: string; detail: string | null; company_id: number | null;
+    created_at: string; errorCategory: string;
+  };
+  type SyncDebugData = {
+    env: string;
+    dbSource: string;
+    dbHost: string;
+    supabaseProject: string;
+    supabaseUrlConfigured: boolean;
+    supabaseKeyConfigured: boolean;
+    dbAccessible: boolean;
+    circuitBreaker: {
+      open: boolean;
+      openedAt: string | null;
+      remainingCooldownSeconds: number;
+      lastTrigger: { source: string; message: string; openedAt: string } | null;
+    };
+    lastSuccessfulSyncAt: string | null;
+    recentErrors: DebugErrorEntry[];
+    errorsByCategory: Record<string, number>;
+    firstEcbOpeningError: DebugErrorEntry | null;
+    rootCause: string;
+    affectedFiles: string[];
+    recommendations: string[];
+  };
+  const {
+    data: debugData,
+    isLoading: debugLoading,
+    refetch: refetchDebug,
+    error: debugError,
+  } = useQuery<SyncDebugData>({
+    queryKey: ["sport-center-sync-debug"],
+    queryFn: async () => {
+      const r = await fetch("/api/sport-center/sync/debug", { credentials: "include" });
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({}));
+        throw new Error((body as any)?.error ?? "Gagal ambil debug info");
+      }
+      return r.json() as Promise<SyncDebugData>;
+    },
+    enabled: showDebugPanel,
+    staleTime: 15_000,
     retry: 1,
   });
 
@@ -1365,6 +1418,17 @@ export default function SportCenterDashboard() {
                     : <CheckCheck className="h-3 w-3" />}
                   Sync Akuntansi
                 </Button>
+                <Button
+                  size="sm" variant="outline"
+                  className={`h-7 text-xs gap-1.5 ${showDebugPanel ? "border-orange-600 text-orange-300 bg-orange-950/30" : "border-slate-600 text-slate-400 hover:text-orange-300 hover:border-orange-700"}`}
+                  onClick={() => {
+                    setShowDebugPanel(v => !v);
+                    if (!showDebugPanel) void refetchDebug();
+                  }}
+                >
+                  <Bug className="h-3 w-3" />
+                  Audit CB
+                </Button>
               </div>
             </div>
           </CardHeader>
@@ -1542,6 +1606,246 @@ export default function SportCenterDashboard() {
                 </table>
               </div>
             )}
+            {/* ── SyncDebugPanel (Circuit Breaker Audit) ───────────────────── */}
+            {showDebugPanel && (
+              <div className="rounded-lg border border-orange-800/60 bg-orange-950/10 p-4 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-orange-300 flex items-center gap-2">
+                    <Bug className="h-4 w-4" /> Audit Circuit Breaker
+                  </h3>
+                  <Button
+                    size="sm" variant="ghost"
+                    className="h-6 w-6 p-0 text-muted-foreground"
+                    onClick={() => void refetchDebug()}
+                    disabled={debugLoading}
+                  >
+                    <RefreshCw className={`h-3 w-3 ${debugLoading ? "animate-spin" : ""}`} />
+                  </Button>
+                </div>
+
+                {debugLoading && (
+                  <div className="space-y-2">
+                    {[1,2,3].map(i => <div key={i} className="h-10 rounded bg-muted/20 animate-pulse" />)}
+                  </div>
+                )}
+                {debugError && (
+                  <p className="text-xs text-red-400">{(debugError as Error).message}</p>
+                )}
+
+                {debugData && (
+                  <div className="space-y-4 text-xs">
+
+                    {/* ── 1. Circuit Breaker Status ──────────────────────── */}
+                    <div className={`rounded-lg border p-3 space-y-2 ${debugData.circuitBreaker.open ? "border-red-700/60 bg-red-950/20" : "border-emerald-700/40 bg-emerald-950/10"}`}>
+                      <p className="font-semibold text-sm flex items-center gap-2">
+                        <ShieldAlert className={`h-4 w-4 ${debugData.circuitBreaker.open ? "text-red-400" : "text-emerald-400"}`} />
+                        Circuit Breaker: {debugData.circuitBreaker.open ? <span className="text-red-400">TERBUKA</span> : <span className="text-emerald-400">TERTUTUP (normal)</span>}
+                      </p>
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                        <div>
+                          <p className="text-muted-foreground">Dibuka Pada</p>
+                          <p className="font-mono text-foreground">{debugData.circuitBreaker.openedAt ? fmtTs(debugData.circuitBreaker.openedAt) : "—"}</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground">Sisa Cooldown</p>
+                          <p className={`font-bold ${debugData.circuitBreaker.remainingCooldownSeconds > 0 ? "text-orange-400" : "text-emerald-400"}`}>
+                            {debugData.circuitBreaker.remainingCooldownSeconds > 0 ? `${debugData.circuitBreaker.remainingCooldownSeconds}s` : "Sudah selesai"}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground">Sync Sukses Terakhir</p>
+                          <p className="font-mono text-foreground">{debugData.lastSuccessfulSyncAt ? fmtTs(debugData.lastSuccessfulSyncAt) : "Belum pernah"}</p>
+                        </div>
+                      </div>
+
+                      {/* Trigger pertama yang membuka CB */}
+                      {debugData.circuitBreaker.lastTrigger && (
+                        <div className="rounded border border-red-800/40 bg-red-950/20 p-2 space-y-1">
+                          <p className="font-semibold text-red-300 flex items-center gap-1">
+                            <AlertTriangle className="h-3 w-3" /> Error Yang Membuka CB
+                          </p>
+                          <p className="text-muted-foreground">Source: <span className="font-mono text-orange-300">{debugData.circuitBreaker.lastTrigger.source}</span></p>
+                          <p className="text-muted-foreground">Waktu: <span className="font-mono">{fmtTs(debugData.circuitBreaker.lastTrigger.openedAt)}</span></p>
+                          <p className="text-red-300/80 break-all">{debugData.circuitBreaker.lastTrigger.message}</p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* ── 2. DB & Supabase Config ────────────────────────── */}
+                    <div className="rounded-lg border border-border/40 bg-muted/10 p-3 space-y-2">
+                      <p className="font-semibold flex items-center gap-2"><Server className="h-3.5 w-3.5 text-blue-400" /> Target Sync</p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        <div>
+                          <p className="text-muted-foreground flex items-center gap-1"><Database className="h-3 w-3" /> DB Mode</p>
+                          <p className={`font-semibold ${debugData.env === "production" ? "text-red-400" : "text-yellow-400"}`}>{debugData.env.toUpperCase()}</p>
+                          <p className="font-mono text-muted-foreground/70 truncate" title={debugData.dbSource}>{debugData.dbSource}</p>
+                          <p className="text-muted-foreground/60">Host: {debugData.dbHost}</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground flex items-center gap-1"><Network className="h-3 w-3" /> Supabase Project</p>
+                          <p className="font-mono text-blue-300">{debugData.supabaseProject}</p>
+                          <div className="flex gap-2 mt-1">
+                            <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs border ${debugData.supabaseUrlConfigured ? "border-emerald-700 text-emerald-400 bg-emerald-950/30" : "border-red-700 text-red-400 bg-red-950/30"}`}>
+                              <Network className="h-3 w-3" /> URL {debugData.supabaseUrlConfigured ? "✓" : "✗"}
+                            </span>
+                            <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs border ${debugData.supabaseKeyConfigured ? "border-emerald-700 text-emerald-400 bg-emerald-950/30" : "border-red-700 text-red-400 bg-red-950/30"}`}>
+                              <Key className="h-3 w-3" /> Key {debugData.supabaseKeyConfigured ? "✓" : "✗"}
+                            </span>
+                            <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs border ${debugData.dbAccessible ? "border-emerald-700 text-emerald-400 bg-emerald-950/30" : "border-orange-700 text-orange-400 bg-orange-950/30"}`}>
+                              <Database className="h-3 w-3" /> DB {debugData.dbAccessible ? "aksesible" : "blokir"}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* ── 3. Root Cause ──────────────────────────────────── */}
+                    <div className="rounded-lg border border-amber-700/50 bg-amber-950/10 p-3 space-y-2">
+                      <p className="font-semibold text-amber-300 flex items-center gap-2">
+                        <Info className="h-3.5 w-3.5" /> Root Cause
+                      </p>
+                      <p className="text-foreground leading-relaxed">{debugData.rootCause}</p>
+                      {debugData.affectedFiles.length > 0 && (
+                        <div>
+                          <p className="text-muted-foreground mt-2">File yang perlu diperbaiki:</p>
+                          <ul className="mt-1 space-y-0.5">
+                            {debugData.affectedFiles.map(f => (
+                              <li key={f} className="font-mono text-orange-300/80 flex items-center gap-1">
+                                <FileText className="h-3 w-3 shrink-0" /> {f}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {debugData.recommendations.length > 0 && (
+                        <div>
+                          <p className="text-muted-foreground mt-2">Rekomendasi:</p>
+                          <ul className="mt-1 space-y-1">
+                            {debugData.recommendations.map((r, i) => (
+                              <li key={i} className="text-foreground/80 flex gap-2">
+                                <span className="text-emerald-500 shrink-0">{i + 1}.</span> {r}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* ── 4. Error Breakdown per Kategori ───────────────── */}
+                    {(() => {
+                      const cats = Object.entries(debugData.errorsByCategory).filter(([, v]) => v > 0);
+                      if (cats.length === 0) return null;
+                      const catColor: Record<string, string> = {
+                        database: "bg-red-900/40 text-red-300 border-red-700",
+                        auth: "bg-purple-900/40 text-purple-300 border-purple-700",
+                        duplicate: "bg-yellow-900/40 text-yellow-300 border-yellow-700",
+                        validation: "bg-orange-900/40 text-orange-300 border-orange-700",
+                        schema_mismatch: "bg-blue-900/40 text-blue-300 border-blue-700",
+                        foreign_key: "bg-pink-900/40 text-pink-300 border-pink-700",
+                        network: "bg-cyan-900/40 text-cyan-300 border-cyan-700",
+                        other: "bg-muted/40 text-muted-foreground border-border",
+                      };
+                      const catLabel: Record<string, string> = {
+                        database: "Database/CB", auth: "Auth", duplicate: "Duplikat",
+                        validation: "Validasi", schema_mismatch: "Schema Mismatch",
+                        foreign_key: "Foreign Key", network: "Network", other: "Lainnya",
+                      };
+                      return (
+                        <div>
+                          <p className="font-semibold mb-2 flex items-center gap-2">
+                            <BarChart2 className="h-3.5 w-3.5 text-muted-foreground" /> Jumlah Error per Kategori
+                          </p>
+                          <div className="flex flex-wrap gap-2">
+                            {cats.sort((a,b) => b[1] - a[1]).map(([cat, count]) => (
+                              <span key={cat} className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full border text-xs font-medium ${catColor[cat] ?? catColor.other}`}>
+                                {catLabel[cat] ?? cat} <strong>{count}</strong>
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* ── 5. Error yang memicu CB (dari logs) ───────────── */}
+                    {debugData.firstEcbOpeningError && (
+                      <div className="rounded-lg border border-red-800/50 bg-red-950/15 p-3 space-y-2">
+                        <p className="font-semibold text-red-300 flex items-center gap-2">
+                          <AlertTriangle className="h-3.5 w-3.5" /> Error dari Log yang Membuka CB
+                        </p>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                          <div><p className="text-muted-foreground">Modul</p><p className="capitalize text-foreground">{debugData.firstEcbOpeningError.entity}</p></div>
+                          <div><p className="text-muted-foreground">Operasi</p><p className="capitalize text-foreground">{debugData.firstEcbOpeningError.action}</p></div>
+                          <div><p className="text-muted-foreground">Entity ID</p><p className="font-mono text-foreground">{debugData.firstEcbOpeningError.entity_id ?? "—"}</p></div>
+                          <div><p className="text-muted-foreground">Waktu</p><p className="font-mono">{fmtTs(debugData.firstEcbOpeningError.created_at)}</p></div>
+                        </div>
+                        <p className="text-red-300/80 break-all">{debugData.firstEcbOpeningError.detail}</p>
+                      </div>
+                    )}
+
+                    {/* ── 6. 10 Error Terakhir ───────────────────────────── */}
+                    {debugData.recentErrors.length > 0 && (
+                      <div>
+                        <p className="font-semibold mb-2 flex items-center gap-2">
+                          <Hash className="h-3.5 w-3.5 text-muted-foreground" /> 10 Error Sync Terakhir
+                        </p>
+                        <div className="overflow-x-auto rounded-lg border border-border/40">
+                          <table className="w-full text-xs">
+                            <thead>
+                              <tr className="border-b border-border/40 bg-muted/30">
+                                {["Waktu", "Modul", "Operasi", "Entity ID", "Kategori", "Pesan Error"].map(h => (
+                                  <th key={h} className="text-left py-2 px-3 text-muted-foreground font-medium whitespace-nowrap">{h}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {debugData.recentErrors.map(e => {
+                                const catColor: Record<string, string> = {
+                                  database: "bg-red-900/30 text-red-300 border-red-800",
+                                  auth: "bg-purple-900/30 text-purple-300 border-purple-800",
+                                  duplicate: "bg-yellow-900/30 text-yellow-300 border-yellow-800",
+                                  validation: "bg-orange-900/30 text-orange-300 border-orange-800",
+                                  schema_mismatch: "bg-blue-900/30 text-blue-300 border-blue-800",
+                                  foreign_key: "bg-pink-900/30 text-pink-300 border-pink-800",
+                                  network: "bg-cyan-900/30 text-cyan-300 border-cyan-800",
+                                  other: "bg-muted/30 text-muted-foreground border-border",
+                                };
+                                const catLabel: Record<string, string> = {
+                                  database: "DB/CB", auth: "Auth", duplicate: "Duplikat",
+                                  validation: "Validasi", schema_mismatch: "Schema", foreign_key: "FK", network: "Network", other: "Lain",
+                                };
+                                return (
+                                  <tr key={e.id} className="border-b border-border/20 hover:bg-muted/10 transition-colors">
+                                    <td className="py-2 px-3 font-mono text-muted-foreground whitespace-nowrap">{fmtTs(e.created_at)}</td>
+                                    <td className="py-2 px-3 capitalize">{e.entity}</td>
+                                    <td className="py-2 px-3 text-muted-foreground capitalize">{e.action}</td>
+                                    <td className="py-2 px-3 font-mono text-center">{e.entity_id ?? <span className="opacity-30">—</span>}</td>
+                                    <td className="py-2 px-3">
+                                      <span className={`inline-block px-1.5 py-0.5 rounded border text-xs ${catColor[e.errorCategory] ?? catColor.other}`}>
+                                        {catLabel[e.errorCategory] ?? e.errorCategory}
+                                      </span>
+                                    </td>
+                                    <td className="py-2 px-3 text-red-300/70 max-w-[280px]">
+                                      <span title={e.detail ?? ""} className="line-clamp-2 break-all">{e.detail ?? "—"}</span>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    {debugData.recentErrors.length === 0 && !debugLoading && (
+                      <p className="text-emerald-400 flex items-center gap-2">
+                        <CheckCircle2 className="h-4 w-4" /> Tidak ada error sync yang tercatat.
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
           </CardContent>
         </Card>
 
