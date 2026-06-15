@@ -10,13 +10,11 @@ function resolveConnectionString(): string {
   const candidates = isProd
     ? [
         process.env.SUPABASE_DATABASE_URL,
-        process.env.SUPABASE_PG_URL,
         process.env.DATABASE_URL,
       ]
     : [
         process.env.SUPABASE_DATABASE_URL_DEV,
         process.env.SUPABASE_DATABASE_URL,
-        process.env.SUPABASE_PG_URL,
         process.env.DATABASE_URL,
       ];
 
@@ -30,7 +28,7 @@ function resolveConnectionString(): string {
   }
 
   throw new Error(
-    "No valid PostgreSQL connection string found. Set SUPABASE_DATABASE_URL_DEV (dev) or SUPABASE_PG_URL (prod).",
+    "No valid PostgreSQL connection string found. Set SUPABASE_DATABASE_URL.",
   );
 }
 
@@ -40,7 +38,7 @@ const isLocalConn = /localhost|127\.0\.0\.1|helium/.test(connectionString);
 export const pool = new Pool({
   connectionString,
   ssl: isLocalConn ? false : { rejectUnauthorized: false },
-  max: 3,
+  max: 2,
   min: 0,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 20000,
@@ -49,8 +47,97 @@ export const pool = new Pool({
   allowExitOnIdle: false,
 });
 
+// ── Pool-level ECIRCUITBREAKER guard ────────────────────────────────────────
+// Ketika pgBouncer memblokir koneksi karena terlalu banyak auth failure,
+// setiap retry dari background workers justru memperpanjang block.
+// Guard ini: ketika ECIRCUITBREAKER terdeteksi, semua koneksi baru ditolak
+// secara lokal selama 5 menit agar pgBouncer punya waktu reset sendiri.
+
+const ECB_PAUSE_MS = 5 * 60 * 1000;
+let ecbBlockedUntil = 0;
+
+function isEcbError(err: unknown): boolean {
+  const msg = (err as any)?.message ?? "";
+  const cause = (err as any)?.cause?.message ?? "";
+  return (
+    msg.includes("ECIRCUITBREAKER") ||
+    cause.includes("ECIRCUITBREAKER")
+  );
+}
+
+function setEcbBlock(source: string) {
+  const now = Date.now();
+  if (now >= ecbBlockedUntil) {
+    ecbBlockedUntil = now + ECB_PAUSE_MS;
+    const resume = new Date(ecbBlockedUntil).toISOString();
+    console.warn(
+      `[db pool] ECIRCUITBREAKER dari '${source}' — blokir koneksi baru sampai ${resume}`,
+    );
+  }
+}
+
+function makeEcbError(): Error {
+  const remaining = Math.ceil((ecbBlockedUntil - Date.now()) / 1000);
+  return Object.assign(
+    new Error(
+      `(ECIRCUITBREAKER) too many authentication failures, new connections are temporarily blocked (local cooldown ${remaining}s)`,
+    ),
+    { code: "ECIRCUITBREAKER_LOCAL" },
+  );
+}
+
+// Patch pool.connect — handle BOTH callback mode (used by pool.query internally)
+// AND promise mode (used by external callers).
+const _origConnect = pool.connect.bind(pool);
+(pool as any).connect = function connect(
+  this: typeof pool,
+  ...args: unknown[]
+): unknown {
+  // If locally blocked, reject immediately without touching pgBouncer
+  if (Date.now() < ecbBlockedUntil) {
+    const ecbErr = makeEcbError();
+    // Check for callback (pg-pool callback convention: last arg is function)
+    const lastArg = args[args.length - 1];
+    if (typeof lastArg === "function") {
+      const cb = lastArg as (err: Error, client?: unknown, done?: unknown) => void;
+      process.nextTick(() => cb(ecbErr));
+      return undefined;
+    }
+    return Promise.reject(ecbErr);
+  }
+
+  // Has callback → wrap the callback to detect ECB errors
+  const lastArg = args[args.length - 1];
+  if (typeof lastArg === "function") {
+    const origCb = lastArg as (err: Error | null, client?: unknown, done?: unknown) => void;
+    const newArgs = [...args.slice(0, -1), function wrappedCb(
+      err: Error | null,
+      client: unknown,
+      done: unknown,
+    ) {
+      if (err && isEcbError(err)) setEcbBlock("pool.connect-cb");
+      return origCb(err, client, done);
+    }];
+    return _origConnect.apply(pool, newArgs as any);
+  }
+
+  // Promise mode
+  const result = _origConnect.apply(pool, args as any) as Promise<unknown>;
+  if (result && typeof result.catch === "function") {
+    return result.catch((err: unknown) => {
+      if (isEcbError(err)) setEcbBlock("pool.connect-promise");
+      throw err;
+    });
+  }
+  return result;
+};
+
 pool.on("error", (err) => {
-  console.error("[pg pool] Idle client error (non-fatal):", err.message);
+  if (isEcbError(err)) {
+    setEcbBlock("pool idle error");
+  } else {
+    console.error("[pg pool] Idle client error (non-fatal):", err.message);
+  }
 });
 
 export const db = drizzle(pool, { schema });
