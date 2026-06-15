@@ -3607,7 +3607,7 @@ router.get("/sync/debug", async (req, res) => {
   const dbMasked  = dbUrlRaw  ? dbUrlRaw.replace(/\/\/[^@]+@/, "//***@").split("?")[0] : "(not set)";
   const dbMode    = isProd ? "production" : "development";
   const dbHost    = dbUrlRaw  ? (dbUrlRaw.match(/@([^:/]+)/) ?? [])[1] ?? "unknown" : "unknown";
-  const supaProject = supaUrl ? supaUrl.replace(/^https?:\/\/([^.]+).*$/, "$1") : "(not set)";
+  const supabaseProject = supaUrl ? supaUrl.replace(/^https?:\/\/([^.]+).*$/, "$1") : "(not set)";
 
   // ── Kategorisasi error ────────────────────────────────────────────────────
   type ErrorCategory = "database" | "auth" | "duplicate" | "validation" | "schema_mismatch" | "foreign_key" | "network" | "other";

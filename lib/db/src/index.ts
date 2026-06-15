@@ -169,3 +169,64 @@ export function getCircuitBreakerStatus(): {
     lastTrigger: ecbLastTrigger,
   };
 }
+
+/**
+ * Reset circuit breaker secara manual (admin only).
+ * Hanya berguna setelah root cause sudah diperbaiki (password/credentials fixed).
+ * Jangan reset jika credentials masih salah — CB akan terbuka lagi segera.
+ */
+export function resetCircuitBreaker(): void {
+  ecbBlockedUntil = 0;
+  ecbLastTrigger = null;
+  console.warn("[db pool] Circuit breaker di-RESET secara manual oleh admin.");
+}
+
+/** Pool stats snapshot — tidak memerlukan koneksi baru. */
+export function getPoolStats(): {
+  totalCount: number;
+  idleCount: number;
+  waitingCount: number;
+} {
+  return {
+    totalCount: pool.totalCount,
+    idleCount: pool.idleCount,
+    waitingCount: pool.waitingCount,
+  };
+}
+
+/** Masked DB connection info untuk diagnostik. */
+export function getActiveDbInfo(): {
+  source: string;
+  host: string;
+  mode: string;
+  pooler: boolean;
+} {
+  const isProd = process.env.NODE_ENV === "production" || !!process.env.REPLIT_DEPLOYMENT;
+  const mode = isProd ? "production" : "development";
+
+  // Resolve mana yang aktif (sama dengan resolveConnectionString, tapi read-only)
+  const candidates = isProd
+    ? [
+        { key: "SUPABASE_DATABASE_URL", val: process.env.SUPABASE_DATABASE_URL },
+        { key: "DATABASE_URL", val: process.env.DATABASE_URL },
+      ]
+    : [
+        { key: "SUPABASE_DATABASE_URL_DEV", val: process.env.SUPABASE_DATABASE_URL_DEV },
+        { key: "SUPABASE_DATABASE_URL", val: process.env.SUPABASE_DATABASE_URL },
+        { key: "DATABASE_URL", val: process.env.DATABASE_URL },
+      ];
+
+  for (const c of candidates) {
+    if (c.val && /^postgres(?:ql)?:\/\//i.test(c.val)) {
+      const host = (c.val.match(/@([^:/]+)/) ?? [])[1] ?? "unknown";
+      return {
+        source: c.key,
+        host,
+        mode,
+        pooler: host.includes("pooler") || host.includes("pgbouncer") || c.val.includes(":6543"),
+      };
+    }
+  }
+
+  return { source: "(none)", host: "unknown", mode, pooler: false };
+}

@@ -7,7 +7,7 @@
  */
 
 import { Router, type Request, type Response, type NextFunction } from "express";
-import { db } from "@workspace/db";
+import { db, getCircuitBreakerStatus, resetCircuitBreaker, getPoolStats, getActiveDbInfo } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { logger } from "../lib/logger.js";
@@ -347,6 +347,151 @@ router.get("/init-storage", async (_req, res) => {
     res.json(results);
   } catch (err) {
     res.status(500).json({ error: String(err) });
+  }
+});
+
+// ── DB Connections Diagnostic ─────────────────────────────────────────────────
+/**
+ * GET /api/system/db-connections
+ * Admin-only. Mengembalikan info koneksi DB aktif, pool stats, dan CB status.
+ * Tidak pernah membocorkan password atau credentials.
+ */
+router.get("/db-connections", async (req, res) => {
+  try {
+    const cb = getCircuitBreakerStatus();
+    const pool = getPoolStats();
+    const dbInfo = getActiveDbInfo();
+
+    // Coba query ringan untuk cek apakah DB saat ini accessible
+    let dbAccessible = false;
+    let dbLatencyMs: number | null = null;
+    let dbError: string | null = null;
+    if (!cb.open) {
+      const t0 = Date.now();
+      try {
+        await db.execute(sql`SELECT 1`);
+        dbAccessible = true;
+        dbLatencyMs = Date.now() - t0;
+      } catch (err) {
+        dbError = err instanceof Error ? err.message : String(err);
+      }
+    } else {
+      dbError = `Circuit breaker aktif — cooldown ${cb.remainingCooldownSeconds}s tersisa`;
+    }
+
+    // Scan env vars yang ada (tanpa nilai) untuk mendeteksi mismatch
+    const envPresence = {
+      SUPABASE_DATABASE_URL: !!process.env.SUPABASE_DATABASE_URL,
+      SUPABASE_DATABASE_URL_DEV: !!process.env.SUPABASE_DATABASE_URL_DEV,
+      DATABASE_URL: !!process.env.DATABASE_URL,
+    };
+
+    // Audit seluruh sumber koneksi yang dikenal
+    const connectionSources = [
+      {
+        file: "lib/db/src/index.ts",
+        type: "pg.Pool (primary)",
+        activeSource: dbInfo.source,
+        host: dbInfo.host,
+        mode: dbInfo.mode,
+        pooler: dbInfo.pooler,
+        note: "Sumber utama — dipakai oleh semua Drizzle queries di server.",
+      },
+      {
+        file: "artifacts/api-server/src/lib/dbBackup.ts",
+        type: "pg_dump CLI",
+        activeSource: dbInfo.mode === "production"
+          ? (process.env.SUPABASE_DATABASE_URL ? "SUPABASE_DATABASE_URL" : "DATABASE_URL (fallback)")
+          : (process.env.SUPABASE_DATABASE_URL_DEV ? "SUPABASE_DATABASE_URL_DEV" : process.env.SUPABASE_DATABASE_URL ? "SUPABASE_DATABASE_URL" : "DATABASE_URL (fallback)"),
+        host: dbInfo.host,
+        mode: dbInfo.mode,
+        pooler: false,
+        note: "Digunakan oleh pg_dump untuk backup harian. Pakai URL yang sama dengan pool.",
+      },
+    ];
+
+    res.json({
+      ok: true,
+      activeDb: {
+        source: dbInfo.source,
+        host: dbInfo.host,
+        mode: dbInfo.mode,
+        pooler: dbInfo.pooler,
+        accessible: dbAccessible,
+        latencyMs: dbLatencyMs,
+        error: dbError,
+      },
+      poolStats: {
+        totalConnections: pool.totalCount,
+        idleConnections: pool.idleCount,
+        waitingRequests: pool.waitingCount,
+      },
+      circuitBreaker: {
+        open: cb.open,
+        openedAt: cb.openedAt,
+        remainingCooldownSeconds: cb.remainingCooldownSeconds,
+        lastTrigger: cb.lastTrigger,
+      },
+      envPresence,
+      connectionSources,
+      potentialMismatches: [
+        ...(!envPresence.SUPABASE_DATABASE_URL && !envPresence.SUPABASE_DATABASE_URL_DEV
+          ? ["⚠️ SUPABASE_DATABASE_URL tidak ada — sistem pakai DATABASE_URL lama"]
+          : []),
+        ...(dbInfo.mode === "development" && !envPresence.SUPABASE_DATABASE_URL_DEV
+          ? ["ℹ️ SUPABASE_DATABASE_URL_DEV tidak dikonfigurasi — dev memakai URL production (shared pool)"]
+          : []),
+        ...(dbInfo.pooler
+          ? ["ℹ️ Menggunakan pgBouncer pooler (port 6543) — rentan ECIRCUITBREAKER jika terlalu banyak auth failure"]
+          : []),
+      ],
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+/**
+ * POST /api/system/reset-circuit-breaker
+ * Admin-only. Reset CB manual — HANYA gunakan setelah credentials sudah diperbaiki.
+ * Jika credentials masih salah, CB akan terbuka kembali dalam hitungan detik.
+ */
+router.post("/reset-circuit-breaker", async (req, res) => {
+  try {
+    const cbBefore = getCircuitBreakerStatus();
+    if (!cbBefore.open) {
+      return res.json({ ok: true, message: "Circuit breaker sudah tidak aktif — tidak perlu reset.", cbBefore });
+    }
+
+    resetCircuitBreaker();
+
+    // Test koneksi sekali setelah reset (tidak block jika gagal)
+    let testResult: { accessible: boolean; latencyMs?: number; error?: string } = { accessible: false };
+    try {
+      const t0 = Date.now();
+      await db.execute(sql`SELECT 1`);
+      testResult = { accessible: true, latencyMs: Date.now() - t0 };
+    } catch (err) {
+      testResult = {
+        accessible: false,
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
+
+    const cbAfter = getCircuitBreakerStatus();
+    logger.warn({ resetBy: (req as any).user?.email ?? "admin", testResult }, "[system] Circuit breaker di-reset manual");
+
+    res.json({
+      ok: true,
+      message: testResult.accessible
+        ? `Circuit breaker di-reset. Koneksi DB berhasil (${testResult.latencyMs}ms).`
+        : `Circuit breaker di-reset tapi DB masih tidak accessible: ${testResult.error}. Periksa credentials.`,
+      cbBefore,
+      cbAfter,
+      dbTest: testResult,
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
   }
 });
 
