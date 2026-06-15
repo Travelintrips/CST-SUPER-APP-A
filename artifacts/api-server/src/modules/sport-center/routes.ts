@@ -3568,10 +3568,29 @@ router.get("/sync/status", async (req, res) => {
  * Audit circuit breaker + root cause analysis. Tidak mengekspos secret.
  */
 router.get("/sync/debug", async (req, res) => {
-  if (!await requireAdmin(req, res)) return;
+  // Log request masuk untuk diagnostik
+  console.info("[sync/debug] request masuk", {
+    authenticated: req.isAuthenticated?.(),
+    isInternalSession: (req as any).isInternalSession,
+    userId: (req.user as any)?.id,
+    userRole: (req.user as any)?.role,
+  });
 
+  if (!await requireAdmin(req, res)) {
+    console.warn("[sync/debug] auth ditolak — bukan admin atau sesi tidak valid");
+    return;
+  }
+
+  console.info("[sync/debug] auth OK, mulai audit...");
+
+  // Minimal payload — returned even if everything else fails
   const cb = getCircuitBreakerStatus();
+  console.info("[sync/debug] circuit breaker", cb);
+
   const isProd = !!process.env.REPLIT_DEPLOYMENT;
+
+  // Wrap semua logic dalam try-catch agar tidak pernah return 500 karena data kosong
+  try {
 
   // ── DB & Supabase env resolution ──────────────────────────────────────────
   const supaUrl = isProd
@@ -3717,7 +3736,9 @@ router.get("/sync/debug", async (req, res) => {
       : "Tidak ada error sync yang ditemukan — sistem normal.";
   }
 
+  console.info("[sync/debug] audit selesai, mengirim response");
   res.json({
+    ok: true,
     env: dbMode,
     dbSource: dbMasked,
     dbHost,
@@ -3739,6 +3760,35 @@ router.get("/sync/debug", async (req, res) => {
     affectedFiles,
     recommendations,
   });
+
+  } catch (fatalErr) {
+    // Jangan pernah return 500 — kembalikan minimal payload dengan info CB
+    const errMsg = fatalErr instanceof Error ? fatalErr.message : String(fatalErr);
+    console.error("[sync/debug] fatal error saat audit:", errMsg);
+    res.json({
+      ok: true,
+      env: isProd ? "production" : "development",
+      dbSource: "(error saat resolve)",
+      dbHost: "unknown",
+      supabaseProject: "(error saat resolve)",
+      supabaseUrlConfigured: false,
+      supabaseKeyConfigured: false,
+      dbAccessible: false,
+      circuitBreaker: {
+        open: cb.open,
+        openedAt: cb.openedAt,
+        remainingCooldownSeconds: cb.remainingCooldownSeconds,
+        lastTrigger: cb.lastTrigger,
+      },
+      lastSuccessfulSyncAt: null,
+      recentErrors: [],
+      errorsByCategory: { database: 0, auth: 0, duplicate: 0, validation: 0, schema_mismatch: 0, foreign_key: 0, network: 0, other: 0 },
+      firstEcbOpeningError: null,
+      rootCause: `Error saat audit: ${errMsg}`,
+      affectedFiles: ["artifacts/api-server/src/modules/sport-center/routes.ts"],
+      recommendations: ["Lihat log server untuk detail error."],
+    });
+  }
 });
 
 /**

@@ -27,6 +27,11 @@ export interface SessionData {
 // In-memory session store — fallback when DB is unavailable (dev & prod)
 const _memSessions = new Map<string, { data: SessionData; expire: Date }>();
 
+// Read-through cache: populated whenever getSession succeeds from DB.
+// Survives ECIRCUITBREAKER — session stays accessible while CB cooldown is active.
+// Max 500 entries; entries expire when the DB session expires.
+const _sessionReadCache = new Map<string, { data: SessionData; expireMs: number }>();
+
 const IS_DEV = !process.env.REPLIT_DEPLOYMENT;
 
 function _memGet(sid: string): SessionData | null {
@@ -42,6 +47,26 @@ function _memSet(sid: string, data: SessionData): void {
 
 function _memDelete(sid: string): void {
   _memSessions.delete(sid);
+}
+
+function _readCacheGet(sid: string): SessionData | null {
+  const entry = _sessionReadCache.get(sid);
+  if (!entry) return null;
+  if (entry.expireMs < Date.now()) { _sessionReadCache.delete(sid); return null; }
+  return entry.data;
+}
+
+function _readCacheSet(sid: string, data: SessionData, expireMs: number): void {
+  if (_sessionReadCache.size > 500) {
+    // Evict oldest entry
+    const firstKey = _sessionReadCache.keys().next().value;
+    if (firstKey) _sessionReadCache.delete(firstKey);
+  }
+  _sessionReadCache.set(sid, { data, expireMs });
+}
+
+function _readCacheDelete(sid: string): void {
+  _sessionReadCache.delete(sid);
 }
 
 let oidcConfig: client.Configuration | null = null;
@@ -73,9 +98,12 @@ export async function createSession(data: SessionData): Promise<string> {
 }
 
 export async function getSession(sid: string): Promise<SessionData | null> {
-  // Check in-memory store first (populated by DB-fallback path)
+  // 1. In-memory store (sessions created when DB was unavailable)
   const memData = _memGet(sid);
   if (memData) return memData;
+
+  // 2. Read-through cache (survives ECIRCUITBREAKER restarts)
+  const cached = _readCacheGet(sid);
 
   try {
     const [row] = await db
@@ -85,13 +113,29 @@ export async function getSession(sid: string): Promise<SessionData | null> {
 
     if (!row || row.expire < new Date()) {
       if (row) await deleteSession(sid).catch(() => {});
+      _readCacheDelete(sid);
       return null;
     }
 
-    return row.sess as unknown as SessionData;
+    // Cache on successful DB read so subsequent requests survive ECIRCUITBREAKER
+    const data = row.sess as unknown as SessionData;
+    _readCacheSet(sid, data, row.expire.getTime());
+    return data;
   } catch {
+    // DB unavailable (ECIRCUITBREAKER or other transient error).
+    // Return cached data if available — it was verified from DB previously.
+    if (cached) return cached;
     return null;
   }
+}
+
+/**
+ * Cache-only session lookup — no DB query.
+ * Used as ECIRCUITBREAKER fallback in authMiddleware: if getSession returns null
+ * but we know DB is in cooldown, this lets previously-verified sessions survive.
+ */
+export function getSessionFromCacheOnly(sid: string): SessionData | null {
+  return _memGet(sid) ?? _readCacheGet(sid);
 }
 
 export async function updateSession(
@@ -117,6 +161,7 @@ export async function updateSession(
 
 export async function deleteSession(sid: string): Promise<void> {
   _memDelete(sid);
+  _readCacheDelete(sid);
   try {
     await db.delete(sessionsTable).where(eq(sessionsTable.sid, sid));
   } catch {

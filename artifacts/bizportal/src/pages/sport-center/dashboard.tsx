@@ -314,7 +314,10 @@ export default function SportCenterDashboard() {
       const r = await fetch("/api/sport-center/sync/debug", { credentials: "include" });
       if (!r.ok) {
         const body = await r.json().catch(() => ({}));
-        throw new Error((body as any)?.error ?? "Gagal ambil debug info");
+        const msg = (body as any)?.error ?? (body as any)?.message ?? `HTTP ${r.status}`;
+        if (r.status === 401) throw new Error(`Sesi habis atau belum login (401) — coba refresh halaman`);
+        if (r.status === 403) throw new Error(`Akses ditolak — hanya admin (403)`);
+        throw new Error(`Gagal ambil debug info: ${msg}`);
       }
       return r.json() as Promise<SyncDebugData>;
     },

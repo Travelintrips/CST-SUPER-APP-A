@@ -41,7 +41,7 @@ export const pool = new Pool({
   max: 2,
   min: 0,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 20000,
+  connectionTimeoutMillis: 8000,
   keepAlive: true,
   keepAliveInitialDelayMillis: 10000,
   allowExitOnIdle: false,

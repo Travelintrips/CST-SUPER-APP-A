@@ -3,7 +3,8 @@ import type { AuthUser } from "../lib/auth";
 import { db, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { verifySupabaseToken } from "../lib/supabaseAdmin";
-import { getSessionId, getSession } from "../lib/auth";
+import { getSessionId, getSession, getSessionFromCacheOnly } from "../lib/auth";
+import { getCircuitBreakerStatus } from "@workspace/db";
 
 // ── In-memory cache: userId → { companyId, role } — TTL 5 min ────────────────
 const _userCtxCache = new Map<string, { companyId: number | null; role: string | null; cachedAt: number }>();
@@ -68,7 +69,25 @@ export async function authMiddleware(
   const sid = getSessionId(req);
   if (sid && !req.headers.authorization?.startsWith("Bearer ")) {
     try {
-      const session = await getSession(sid);
+      let session = await getSession(sid);
+
+      // ECIRCUITBREAKER fallback: if DB is in cooldown and getSession returned null,
+      // try reading from in-memory/read-through cache so previously-verified sessions
+      // survive the 5-minute CB window without requiring a DB round-trip.
+      if (!session?.user) {
+        const cb = getCircuitBreakerStatus();
+        if (cb.open) {
+          const fromCache = getSessionFromCacheOnly(sid);
+          if (fromCache?.user) {
+            req.log?.info?.(
+              { sid: sid.slice(0, 8) + "...", cbRemaining: cb.remainingCooldownSeconds },
+              "[authMiddleware] CB actif — menggunakan session dari cache"
+            );
+            session = fromCache;
+          }
+        }
+      }
+
       if (session?.user) {
         // Load DB context (role, companyId). On transient DB failure, fall back
         // to values stored in the session so the user stays authenticated.
